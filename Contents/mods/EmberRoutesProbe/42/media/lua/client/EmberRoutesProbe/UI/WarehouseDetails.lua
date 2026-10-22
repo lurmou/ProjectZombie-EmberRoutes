@@ -18,7 +18,12 @@ local function sourceName(source)
     end
     return text("container")
 end
-local function location(source) return source.x..", "..source.y.." | z="..source.z end
+local function location(source)
+    local floorStr
+    if source.z==0 then floorStr=text("floorGround")
+    else floorStr=(source.z+1)..text("floorLevel") end
+    return floorStr.." · ("..source.x..", "..source.y..")"
+end
 function Details.new(owner,bounds,presentation)
     local h,p=owner.fontHeight,owner.pad
     local compact=bounds.height<h*9

@@ -194,10 +194,15 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
             local c=s.counts
             self.summary:setValues({loaded=c.loaded.."/"..c.containers,unloaded=c.unloaded,private=c.private,
                 missing=c.missing,limited=c.limited,items=c.items})
-            self.summary:setCoverage(c.loaded,c.containers)
+            local capRatio=(c.totalCapacity and c.totalCapacity>0) and (c.usedWeight/c.totalCapacity) or nil
+            self.summary:setCoverage(c.usedWeight or c.loaded,c.totalCapacity or c.containers)
         elseif s.state~="UPDATING" or not s.retain then self.summary:setValues(nil) self.summary:setCoverage(nil,nil) end
         local note=""
-        if s.state=="ERROR" and s.reason then note=text(s.reason) end
+        if s.state=="ERROR" and s.reason then note=text(s.reason)
+        elseif s.state=="READY" and c then
+            if c.fullCount and c.fullCount>0 then note="▲ "..c.fullCount.." "..text("limited")
+            elseif capRatio then note=text(capRatio>0.8 and "capacityWarning" or "capacityAdequate").." ("..math.floor(capRatio*100).."%)" end
+        end
         local partial=s.state=="READY" and (s.counts.unloaded>0 or s.counts.private>0 or s.counts.missing>0 or s.counts.limited>0)
         self.summary:setStatus(partial and "PARTIAL" or s.state,note)
     end

@@ -109,7 +109,9 @@ local function start(ctx,id)
     local position=Registry.data().containers[id]
     ctx.active={id=id,object=endpoint.object,container=container,items=items,size=items:size(),cursor=0,
         result={status="LOADED",count=items:size(),types={},ids={},x=position.x,y=position.y,z=position.z,
-            kind=container:getType(),displayType=container:getDisplayType(),customName=container:getCustomName()}}
+            kind=container:getType(),displayType=container:getDisplayType(),customName=container:getCustomName(),
+            capacity=(container.getCapacity and container:getCapacity()) or 0,
+            usedWeight=(container.getCapacityWeight and container:getCapacityWeight()) or (container.getContentsWeight and container:getContentsWeight()) or 0}}
 end
 local function advance(ctx,budget)
     if not ctx.pending or ctx.halted or Index.clock<ctx.notBefore then return 0 end

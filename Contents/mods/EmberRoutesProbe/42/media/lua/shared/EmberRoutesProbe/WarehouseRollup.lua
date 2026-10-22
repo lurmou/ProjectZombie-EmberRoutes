@@ -4,7 +4,8 @@ local methods={}
 methods.__index=methods
 function Rollup.new(ids,results,maxItems,maxTypes)
     return setmetatable({ids=ids,results=results,maxItems=maxItems,maxTypes=maxTypes,cursor=1,
-        seen={},byType={},rows={},counts={loaded=0,unloaded=0,private=0,missing=0,limited=0,items=0,containers=#ids},
+        seen={},byType={},rows={},counts={loaded=0,unloaded=0,private=0,missing=0,limited=0,items=0,containers=#ids,
+            totalCapacity=0,usedWeight=0,fullCount=0,fullContainers={}},
         state="MERGING",types=0,phase="container"},methods)
 end
 local function fail(self,reason) self.state="ERROR" self.reason=reason end
@@ -23,6 +24,18 @@ function methods:step(budget)
                 if contribution.status=="LOADED" then
                     self.counts.loaded=self.counts.loaded+1
                     self.counts.items=self.counts.items+contribution.count
+                    local cap=contribution.capacity or 0
+                    local used=contribution.usedWeight or 0
+                    self.counts.totalCapacity=(self.counts.totalCapacity or 0)+cap
+                    self.counts.usedWeight=(self.counts.usedWeight or 0)+used
+                    if cap>0 and used>=cap*0.9 then
+                        self.counts.fullCount=(self.counts.fullCount or 0)+1
+                        local fc=self.counts.fullContainers
+                        if fc and #fc<8 then
+                            fc[#fc+1]={name=contribution.customName or contribution.kind or "container",
+                                x=contribution.x,y=contribution.y,z=contribution.z,capacity=cap,used=used}
+                        end
+                    end
                     if self.counts.items>self.maxItems then fail(self,"INVENTORY_SCAN_LIMIT")
                     else
                         self.currentId=id self.current=contribution self.phase="ids"

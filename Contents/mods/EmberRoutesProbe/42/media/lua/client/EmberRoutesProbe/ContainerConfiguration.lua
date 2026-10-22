@@ -64,9 +64,10 @@ function Config.summary(config,role,registered)
         if #values>3 then visible[#visible+1]="…" end
         return #visible>0 and table.concat(visible,", ") or Config.text("configNone")
     end
+    local exactText = (yes==0 and no==0) and Config.text("exactNone") or (Config.text("exactSummary")..yes.." / "..no)
     return (registered and "" or (Config.text("configDraft").." · "))..Config.text(role).." · "..state
         .."\n"..Config.text("configAllow")..groups(allowed).." | "..Config.text("configDeny")..groups(denied)
-        .."\n"..Config.text("exactSummary")..yes.." / "..no
+        .."\n"..exactText
 end
 function Config.warning(config,role)
     if not config.enabled then return Config.text("configDisabledHint") end

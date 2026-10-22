@@ -19,7 +19,10 @@ function Draft.new(owner,bounds)
         b:initialise() Theme.button(b) Tooltip.attach(b,"prerender") owner:addChild(b) return b
     end
     self.run=button(text("button_run"),function() owner:command("run") end)
-    self.teach=button(text("button_teach"),function() owner:command("teach") end)
+    self.teach=button(text("button_teach"),function()
+        local blocker=self.preview and self.preview.blocker
+        owner:command("teach",blocker and blocker.recipeId,blocker and blocker.surfaceId)
+    end)
     self.surfaceHelp=button(text("registerSurface"),function()
         if self.helpModal then return end
         local width=math.min(owner.width,h*30)
@@ -176,7 +179,8 @@ function Draft.new(owner,bounds)
 
             local borderColor=Theme.border
             local countColor=Theme.textColor
-            if row.isTool then
+            if row.precursor then borderColor=Theme.accent countColor=Theme.accent
+            elseif row.isTool then
                 borderColor={r=0.94,g=0.73,b=0.36,a=1}
                 countColor=row.missing and Theme.status.ERROR or Theme.status.READY
             elseif row.missing then
@@ -336,9 +340,11 @@ function Draft.new(owner,bounds)
         local state=preview and preview.state or "CHECKING"
         if state=="CHECKING" then self.hint=text("checking")
         elseif #reasons>0 then self.hint=table.concat(reasons,"  ")
+        elseif preview and preview.chain then self.hint=text("chainReady")
         else self.hint=text("executionRecheck") end
+        if preview and preview.blocker then self.hint=preview.blocker.recipeName..": "..self.hint end
         self.conditionLines=Text.wrapLimited(self.hint,self.conditionBounds.width,UIFont.Small,2)
-        self.run.tooltip=self.hint self.teach.tooltip=Words.reason("NPC_RECIPE_UNKNOWN")
+        self.run.tooltip=self.hint self.teach.tooltip=preview and preview.blocker and preview.blocker.recipeName or Words.reason("NPC_RECIPE_UNKNOWN")
         self.teach:setVisible(canTeach and not hard)
         Theme.enable(self.teach,canTeach and not hard)
         Theme.enable(self.run,recipe and recipe.supported and value.quantity~=false and value.npcId~=false
@@ -384,12 +390,14 @@ function Draft.new(owner,bounds)
                     end
                     local availNum=count and count.available or 0
                     local isMissing=count and (count.available<need) or (count==nil)
+                    local precursor=isMissing and preview and preview.chain and state=="READY"
                     local stockSub=""
                     if count==nil then
                         stockSub=text("checking")
                     else
                         stockSub=tostring(availNum).." / "..need
                     end
+                    if precursor then stockSub=stockSub.."  → "..text("chainSupply") end
                     local itemName=first and first.name or input.names[1] or "?"
                     add({
                         kind="input",
@@ -397,9 +405,10 @@ function Draft.new(owner,bounds)
                         fullType=first and first.fullType,
                         title=itemName,
                         sub=stockSub,
-                        label=itemName.." "..(count and tostring(availNum) or "?").." / "..need,
+                        label=itemName.." "..(count and tostring(availNum) or "?").." / "..need..(precursor and " →" or ""),
                         known=count~=nil,
-                        missing=isMissing,
+                        missing=isMissing and not precursor,
+                        precursor=precursor,
                         isTool=keep,
                         choices=choices
                     })
@@ -409,6 +418,13 @@ function Draft.new(owner,bounds)
                         end
                     end
                 end
+            end
+        end
+        if preview and preview.chain and #preview.chain.nodes>1 then
+            add({kind="heading",label=text("chainPlan")})
+            for i,node in ipairs(preview.chain.nodes) do
+                add({kind="output",fullType=node.product,title=i.." → "..node.recipeName,
+                    sub=text("plannedOutput").." "..node.requested,label=i.." → "..node.recipeName.." ×"..node.requested})
             end
         end
         if preview and preview.partial then add({kind="heading",label=text("partialStock")}) end

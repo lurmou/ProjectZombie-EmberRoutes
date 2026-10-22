@@ -82,7 +82,7 @@ function Cards.details(owner,bounds)
             else add(text("noTask"),Theme.muted,1) y=y+p end
             local completed=row.lastCompleted
             if completed and (completed.id~=row.taskId or row.state~="DONE") then
-                add(Presentation.completed(completed),Theme.accent,2)
+                add(Presentation.completed(completed),Theme.muted,2)
                 add(text("recentSession"),Theme.muted,2) y=y+p
             end
             if row.taskId~="" then

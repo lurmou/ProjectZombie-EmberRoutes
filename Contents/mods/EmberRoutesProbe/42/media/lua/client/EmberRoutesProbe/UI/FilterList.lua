@@ -90,8 +90,14 @@ function Rows.draw(list,y,entry)
             if list.owner.tickTexture then
                 list:drawTextureScaledAspect(list.owner.tickTexture,x+2,cy+2,box-4,box-4,1,0.6,0.85,0.65)
             else list:drawRect(x+3,cy+3,box-6,box-6,1,0.6,0.85,0.65) end
-        elseif row.mark=="[-]" or row.mark=="[~]" then
-            list:drawRect(x+3,cy+box/2-1,box-6,2,1,0.85,0.72,0.4)
+        elseif row.mark=="[-]" then
+            local inset=math.floor(box*0.25)
+            list:drawRect(x+inset,cy+inset,box-inset*2,box-inset*2,1,0.45,0.72,0.88)
+        elseif row.mark=="[~]" then
+            list:drawRect(x+3,cy+box/2-2,box-6,2,1,0.95,0.8,0.3)
+            list:drawRect(x+3,cy+box/2+1,box-6,2,1,0.95,0.8,0.3)
+
+
         end
         for index,line in ipairs(row.lines) do
             list:drawText(line,x+box+pad,cy+(index-1)*list.owner.fontHeight,0.92,0.93,0.9,1,UIFont.Small)

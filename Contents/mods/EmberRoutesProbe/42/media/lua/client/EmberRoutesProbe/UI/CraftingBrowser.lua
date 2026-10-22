@@ -199,9 +199,9 @@ function EmberRoutesCraftingBrowser:project(value,changes)
     end
     self.draft:set(self.recipe,value.preview,value.snapshot,value)
 end
-function EmberRoutesCraftingBrowser:command(command)
+function EmberRoutesCraftingBrowser:command(command,recipeId,surfaceId)
     local v=self.store.value
-    local result=Service.command(self.actor,self.entry.id,v.npcId,command,v.surface,v.recipeId,v.quantity)
+    local result=Service.command(self.actor,self.entry.id,v.npcId,command,surfaceId or v.surface,recipeId or v.recipeId,v.quantity)
     self:change({notice=Words.reason(result),snapshot=Service.status(self.actor,self.entry.id)})
     if command=="run" and result=="STARTED" then self.shell:selectView("orders") end
 end

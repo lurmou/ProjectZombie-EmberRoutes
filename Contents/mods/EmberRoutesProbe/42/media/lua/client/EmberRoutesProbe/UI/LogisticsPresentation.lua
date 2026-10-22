@@ -55,7 +55,9 @@ function Presentation.endpoint(id)
     if not position then return text("noEndpoint") end
     local kind=position.containerType
     local name=kind and (getTextOrNull("IGUI_ContainerTitle_"..kind) or kind) or text("container")
-    return name.." ("..position.x..", "..position.y..", z="..position.z..")"
+    local floor=position.z==0 and (getTextOrNull("IGUI_EmberRoutesProbe_Settlement_floorGround") or "1F")
+        or ((position.z+1)..(getTextOrNull("IGUI_EmberRoutesProbe_Settlement_floorLevel") or "F"))
+    return name.." ("..floor.." · "..position.x..", "..position.y..")"
 end
 function Presentation.details(row)
     if not row then return text("selectWorker") end

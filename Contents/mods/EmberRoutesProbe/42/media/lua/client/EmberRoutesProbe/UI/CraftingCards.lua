@@ -96,6 +96,9 @@ function Cards.details(owner,bounds)
             end
         end
         if order and order.target then
+            if order.chainTotal and order.chainTotal>0 then
+                add(text("chainStep").." "..order.chainIndex.." / "..order.chainTotal.."  → "..order.stepName,Theme.accent)
+            end
             for _,metric in ipairs({{key="produced",label="madeCount",color=Theme.accent},{key="delivered",label="storedCount",color=Visual.colors.done}}) do
                 add(text(metric.label).."  "..order[metric.key].." / "..order.target,metric.color)
                 v.bars[#v.bars+1]={y=y,fraction=order[metric.key]/order.target,color=metric.color} y=y+p*1.5
