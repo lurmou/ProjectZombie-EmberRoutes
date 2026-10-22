@@ -79,8 +79,23 @@ function Draft.new(owner,bounds)
     function style.prepare(list,row)
         local icon=row.fullType and self.presentation:icon(row.fullType) or nil
         if row.kind=="heading" then
-            return {height=math.floor(h*1.5),icon=nil}
-        elseif row.kind=="output" or row.kind=="input" then
+            return {height=math.floor(h*1.6),icon=nil}
+        elseif row.kind=="output" then
+            local slotSize=math.floor(h*2.2)
+            local textW=math.max(1,list.width-slotSize-p*3)
+            local titleLines=Text.wrapLimited(row.title or row.label,textW,UIFont.Small,1)
+            local subLines=row.sub and Text.wrapLimited(row.sub,textW,UIFont.Small,1) or {}
+            local headerH=math.floor(h*1.3)
+            return {
+                height=slotSize+p+headerH,
+                icon=icon,
+                slotSize=slotSize,
+                title=titleLines[1] or "",
+                sub=subLines[1] or "",
+                headerH=headerH,
+                sectionTitle=text("expectedOutput")
+            }
+        elseif row.kind=="input" then
             local slotSize=math.floor(h*2.2)
             local textW=math.max(1,list.width-slotSize-p*3)
             local titleLines=Text.wrapLimited(row.title or row.label,textW,UIFont.Small,1)
@@ -113,12 +128,46 @@ function Draft.new(owner,bounds)
         if visible+entry.height<0 or visible>list.height then return y+entry.height end
 
         if row.kind=="heading" then
-            Theme.rect(list,math.floor(p/2),y+entry.height-2,list.width-p,1,Theme.border)
-            Theme.text(list,row.label,p,y+math.floor(p/4),Theme.accent)
+            local barH=math.floor(h*1.2)
+            local barY=y+math.floor((entry.height-barH)/2)
+            Theme.rect(list,p,barY,list.width-p*2,barH,Theme.control)
+            local accentColor=row.section=="tools" and {r=0.94,g=0.73,b=0.36,a=1} or Theme.accent
+            Theme.rect(list,p,barY,3,barH,accentColor)
+            Theme.text(list,row.label,p+8,barY+math.floor((barH-h)/2),Theme.textColor)
             return y+entry.height
         end
 
-        if row.kind=="output" or row.kind=="input" then
+        if row.kind=="output" then
+            local headerH=v.headerH or math.floor(h*1.3)
+            local barH=math.floor(h*1.2)
+            Theme.rect(list,p,y+2,list.width-p*2,barH,Theme.control)
+            Theme.rect(list,p,y+2,3,barH,Theme.accent)
+            Theme.text(list,v.sectionTitle or text("expectedOutput"),p+8,y+2+math.floor((barH-h)/2),Theme.accent)
+
+            local slotSize=v.slotSize or math.floor(h*2.2)
+            local slotX=p
+            local slotY=y+headerH+math.floor(p/2)
+
+            Theme.rect(list,slotX,slotY,slotSize,slotSize,Theme.panel)
+            Theme.rect(list,slotX,slotY,slotSize,slotSize,Theme.accent,true)
+
+            if v.icon then
+                list:drawTextureScaledAspect(v.icon,slotX+2,slotY+2,slotSize-4,slotSize-4,1,1,1,1)
+            end
+
+            local textX=slotX+slotSize+p
+            local titleY=slotY+math.floor(p/4)
+            local subY=titleY+h
+
+            Theme.text(list,v.title or "",textX,titleY,Theme.textColor)
+            if v.sub and v.sub~="" then
+                Theme.text(list,v.sub,textX,subY,Theme.muted)
+            end
+
+            return y+entry.height
+        end
+
+        if row.kind=="input" then
             local slotSize=v.slotSize or math.floor(h*2.2)
             local slotX=p
             local slotY=y+math.floor((entry.height-slotSize)/2)
@@ -126,16 +175,16 @@ function Draft.new(owner,bounds)
             Theme.rect(list,slotX,slotY,slotSize,slotSize,Theme.panel)
 
             local borderColor=Theme.border
-            if row.kind=="output" then
-                borderColor=Theme.accent
-            elseif row.kind=="input" then
-                if row.isTool then
-                    borderColor={r=0.94,g=0.73,b=0.36,a=1}
-                elseif row.missing then
-                    borderColor=Theme.status.ERROR
-                elseif row.known then
-                    borderColor=Theme.status.READY
-                end
+            local countColor=Theme.textColor
+            if row.isTool then
+                borderColor={r=0.94,g=0.73,b=0.36,a=1}
+                countColor=row.missing and Theme.status.ERROR or Theme.status.READY
+            elseif row.missing then
+                borderColor=Theme.status.ERROR
+                countColor=Theme.status.ERROR
+            elseif row.known then
+                borderColor=Theme.border
+                countColor=Theme.status.READY
             end
             Theme.rect(list,slotX,slotY,slotSize,slotSize,borderColor,true)
 
@@ -148,16 +197,7 @@ function Draft.new(owner,bounds)
             local subY=titleY+h
 
             Theme.text(list,v.title or "",textX,titleY,Theme.textColor)
-
-            local subColor=Theme.muted
-            if row.kind=="input" then
-                if row.missing then
-                    subColor=Theme.status.ERROR
-                elseif row.known then
-                    subColor=Theme.status.READY
-                end
-            end
-            Theme.text(list,v.sub or "",textX,subY,subColor)
+            Theme.text(list,v.sub or "",textX,subY,countColor)
 
             if row.isTool then
                 local badgeText=text("toolBadge")
@@ -309,19 +349,19 @@ function Draft.new(owner,bounds)
         self.title=recipe and Text.wrapLimited(recipe.name,self.header.width-h*3,UIFont.Small,compact and 1 or 2) or {text("selectRecipe")}
         self.summaryY=compact and h+p/2 or h*2+p/2
         self.icon=recipe and self.presentation:icon(recipe.product)
-        local extraUnits=recipe and recipe.yield and (units*recipe.yield-(value.quantity or 1)) or 0
-        local extraSummary=extraUnits>0 and ("  |  "..text("extra").." "..extraUnits) or ""
-        self.summary=recipe and recipe.supported and (text("batches").." "..units..extraSummary.."  |  "..text(recipe.surface and "surface" or "hand")) or ""
+        self.summary=recipe and recipe.supported and (text("batches").." "..units.."  |  "..text(recipe.surface and "surface" or "hand")) or ""
         if recipe and not recipe.supported then add({kind="heading",label=Words.reason(recipe.reason or "RECIPE_MECHANISM_UNSUPPORTED")}) end
         for _,output in ipairs(recipe and recipe.outputs or {}) do
             local totalCount=output.count*units
-            local extraOutput=totalCount-(value.quantity or 1)
-            local extraText=extraOutput>0 and (" ("..text("extra").." "..extraOutput..")") or ""
+            local subText=""
+            if output.count>1 or units>1 then
+                subText=text("batchOutput").." "..output.count
+            end
             add({
                 kind="output",
                 fullType=output.fullType,
                 title=output.name.." x"..totalCount,
-                sub=text("batchOutput").." "..output.count..extraText,
+                sub=subText,
                 label=output.name.." x"..totalCount
             })
         end
@@ -330,7 +370,7 @@ function Draft.new(owner,bounds)
             for _,input in ipairs(recipe and recipe.inputs or {}) do
                 if input.keep==keep then
                     if not headed then
-                        add({kind="heading",label=text(keep and "keptTools" or "orderMaterials")})
+                        add({kind="heading",section=keep and "tools" or "materials",label=text(keep and "keptTools" or "orderMaterials")})
                         headed=true
                     end
                     local need=input.count*(keep and 1 or units)
@@ -347,10 +387,8 @@ function Draft.new(owner,bounds)
                     local stockSub=""
                     if count==nil then
                         stockSub=text("checking")
-                    elseif isMissing then
-                        stockSub=text("shortageBadge")..": "..availNum.." / "..need
                     else
-                        stockSub=text("readyBadge")..": "..availNum.." / "..need
+                        stockSub=tostring(availNum).." / "..need
                     end
                     local itemName=first and first.name or input.names[1] or "?"
                     add({
