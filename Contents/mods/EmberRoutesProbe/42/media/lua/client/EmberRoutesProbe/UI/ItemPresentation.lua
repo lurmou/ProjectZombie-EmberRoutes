@@ -17,7 +17,10 @@ function methods:icon(fullType)
         if variants and not variants:isEmpty() then
             -- The engine returns ArrayList<String>, not Texture objects.
             local name=variants:get(0)
-            if type(name)=="string" and name~="" then texture=tryGetTexture("Item_"..name) or texture end
+            local tryGet=_G.tryGetTexture
+            if type(name)=="string" and name~="" and type(tryGet)=="function" then
+                texture=tryGet("Item_"..name) or texture
+            end
         end
     end
     self.icons[fullType]=texture or false
