@@ -48,6 +48,7 @@ function EmberRoutesSettlementDashboard:createChildren()
         {{basis=h+p},{grow=1}},{direction="column",padding=p,gap=p/2}))
     self.pageBounds=regions[2]
     local tracks={} for _ in ipairs(tabs) do tracks[#tracks+1]={grow=1} end
+    tracks[#tracks+1]={basis=math.floor(h*6.5)}
     local top=assert(Layout.axis(regions[1],tracks,{gap=p/2}))
     for i,id in ipairs(tabs) do
         local r=top[i]
@@ -55,6 +56,12 @@ function EmberRoutesSettlementDashboard:createChildren()
         button.internal=id button:initialise() Theme.button(button) button.tooltip=text("tabNavigation")
         Tooltip.attach(button,"prerender") self:addChild(button) self.tabButtons[id]=button
     end
+    local themeR=top[#top]
+    local themeTitle=(Theme.presetIcon or "✦").." "..(Theme.activePreset=="ae2" and "AE2科技" or "原版经典")
+    self.themeButton=ISButton:new(themeR.x,themeR.y,themeR.width,themeR.height,themeTitle,self,EmberRoutesSettlementDashboard.toggleTheme)
+    self.themeButton:initialise() Theme.button(self.themeButton,true)
+    self.themeButton.tooltip="点击在 [AE2 现代科技] 与 [原版经典] 风格间一键换装"
+    Tooltip.attach(self.themeButton,"prerender") self:addChild(self.themeButton)
     self:setWantKeyEvents(true)
 end
 function EmberRoutesSettlementDashboard:valid()
@@ -81,6 +88,26 @@ function EmberRoutesSettlementDashboard:selectTab(id)
         button.borderColor=key==id and Theme.accent or Theme.border
     end
     page:focusContent()
+end
+function EmberRoutesSettlementDashboard:toggleTheme()
+    local nextId=Theme.toggle()
+    local title=(Theme.presetIcon or "✦").." "..(nextId=="ae2" and "AE2科技" or "原版经典")
+    self.themeButton:setTitle(title)
+    Theme.button(self.themeButton,true)
+    for key,button in pairs(self.tabButtons) do
+        Theme.button(button,key==self.activeTab)
+        button.borderColor=key==self.activeTab and Theme.accent or Theme.border
+    end
+    self.backgroundColor=Theme.window
+    self.borderColor=Theme.border
+    if self.activeTab and self.pages[self.activeTab] then
+        local p=self.pages[self.activeTab]
+        p.backgroundColor=Theme.window
+        p.borderColor=Theme.border
+        if p.store and p.store.value and p.project then
+            p:project(p.store.value,{snapshot=true,search=true,selection=true})
+        end
+    end
 end
 function EmberRoutesSettlementDashboard:tabClicked(button) self:selectTab(button.internal) end
 function EmberRoutesSettlementDashboard:nextTab(direction)
