@@ -309,15 +309,19 @@ function Draft.new(owner,bounds)
         self.title=recipe and Text.wrapLimited(recipe.name,self.header.width-h*3,UIFont.Small,compact and 1 or 2) or {text("selectRecipe")}
         self.summaryY=compact and h+p/2 or h*2+p/2
         self.icon=recipe and self.presentation:icon(recipe.product)
-        self.summary=recipe and recipe.supported and (text("batches").." "..units.."  |  "..text("extra").." "..(units*recipe.yield-(value.quantity or 1)).."  |  "..text(recipe.surface and "surface" or "hand")) or ""
+        local extraUnits=recipe and recipe.yield and (units*recipe.yield-(value.quantity or 1)) or 0
+        local extraSummary=extraUnits>0 and ("  |  "..text("extra").." "..extraUnits) or ""
+        self.summary=recipe and recipe.supported and (text("batches").." "..units..extraSummary.."  |  "..text(recipe.surface and "surface" or "hand")) or ""
         if recipe and not recipe.supported then add({kind="heading",label=Words.reason(recipe.reason or "RECIPE_MECHANISM_UNSUPPORTED")}) end
         for _,output in ipairs(recipe and recipe.outputs or {}) do
             local totalCount=output.count*units
+            local extraOutput=totalCount-(value.quantity or 1)
+            local extraText=extraOutput>0 and (" ("..text("extra").." "..extraOutput..")") or ""
             add({
                 kind="output",
                 fullType=output.fullType,
                 title=output.name.." x"..totalCount,
-                sub=text("batchOutput").." "..output.count.." ("..text("extra").." "..(totalCount-(value.quantity or 1))..")",
+                sub=text("batchOutput").." "..output.count..extraText,
                 label=output.name.." x"..totalCount
             })
         end
@@ -344,7 +348,7 @@ function Draft.new(owner,bounds)
                     if count==nil then
                         stockSub=text("checking")
                     elseif isMissing then
-                        stockSub=text("shortageBadge")..": "..availNum.." / "..need.." ("..text("extra").." "..(need-availNum)..")"
+                        stockSub=text("shortageBadge")..": "..availNum.." / "..need
                     else
                         stockSub=text("readyBadge")..": "..availNum.." / "..need
                     end

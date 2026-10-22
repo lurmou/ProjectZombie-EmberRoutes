@@ -30,14 +30,59 @@ function Cached.create(owner,bounds,select,style)
     list:initialise() Tooltip.attach(list,"updateTooltip") list.font=UIFont.Small
     list.emberPad,list.emberFontHeight=owner.pad,owner.fontHeight
     list.emberStyle=style
-    if style then
-        local nativePre=list.prerender
-        list.prerender=function(self)
-            local key=self.emberMetric or "ui.list"
-            local measured=Metrics.begin(key)
-            nativePre(self)
-            Metrics.finish(key,measured)
+
+    local function clampScroll(self)
+        local total=(self.getScrollHeight and self:getScrollHeight()) or (self.items and #self.items*(self.itemheight or 0)) or 0
+        local height=self.height or 0
+        local maxScroll=math.max(0,total-height)
+        if maxScroll<=0 then
+            if self.getYScroll and self:getYScroll()~=0 and self.setYScroll then self:setYScroll(0) end
+            self.smoothScrollTargetY=nil
+            self.smoothScrollY=nil
+            return 0
         end
+        local cur=self.getYScroll and self:getYScroll() or 0
+        local clamped=math.max(-maxScroll,math.min(0,cur))
+        if cur~=clamped and self.setYScroll then self:setYScroll(clamped) end
+        if self.smoothScrollTargetY then
+            self.smoothScrollTargetY=math.max(-maxScroll,math.min(0,self.smoothScrollTargetY))
+        end
+        return maxScroll
+    end
+
+    local nativeWheel=list.onMouseWheel
+    list.onMouseWheel=function(self,del)
+        local maxScroll=math.max(0,self:getScrollHeight()-self.height)
+        if maxScroll<=0 then
+            self:setYScroll(0)
+            self.smoothScrollTargetY=nil
+            self.smoothScrollY=nil
+            return true
+        end
+        local res=nativeWheel(self,del)
+        clampScroll(self)
+        return res
+    end
+
+    local nativeSmooth=list.updateSmoothScrolling
+    list.updateSmoothScrolling=function(self)
+        local maxScroll=clampScroll(self)
+        if maxScroll<=0 then return end
+        nativeSmooth(self)
+        clampScroll(self)
+    end
+
+    local nativePre=list.prerender
+    list.prerender=function(self)
+        clampScroll(self)
+        local key=self.emberMetric or "ui.list"
+        local measured=Metrics.begin(key)
+        nativePre(self)
+        Metrics.finish(key,measured)
+        clampScroll(self)
+    end
+
+    if style then
         local native=list.render
         list.render=function(self)
             if native then native(self) end

@@ -426,7 +426,7 @@
     "IGUI_EmberRoutesProbe_Crafting_orderMaterials": "原料（整单消耗）",
     "IGUI_EmberRoutesProbe_Crafting_alternatives": "任选",
     "IGUI_EmberRoutesProbe_Crafting_batches": "批数",
-    "IGUI_EmberRoutesProbe_Crafting_extra": "多出",
+    "IGUI_EmberRoutesProbe_Crafting_extra": "富余",
     "IGUI_EmberRoutesProbe_Crafting_hand": "手持",
     "IGUI_EmberRoutesProbe_Crafting_partialStock": "有容器未加载，以上仅为已核对范围。",
     "IGUI_EmberRoutesProbe_Crafting_PREVIEW_LIMIT": "整单预检超出有界预算；可缩小数量，执行仍按单批复验。",
