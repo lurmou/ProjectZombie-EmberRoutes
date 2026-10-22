@@ -550,5 +550,10 @@
     "IGUI_EmberRoutesProbe_Crafting_ITEM_LOCATION_CHANGED": "Original location changed; check and continue",
     "IGUI_EmberRoutesProbe_Crafting_CARGO_RETAINED_RESUME_FIRST": "Resolve cargo retained by the previous task first",
     "IGUI_EmberRoutesProbe_Settlement_tab_crafting": "Crafting",
-    "IGUI_EmberRoutesProbe_Craft_resume": "Continue Original Order"
+    "IGUI_EmberRoutesProbe_Craft_resume": "Continue Original Order",
+    "IGUI_EmberRoutesProbe_Crafting_stepperMax": "Max",
+    "IGUI_EmberRoutesProbe_Crafting_toolBadge": "Tool",
+    "IGUI_EmberRoutesProbe_Crafting_shortageBadge": "Shortage",
+    "IGUI_EmberRoutesProbe_Crafting_readyBadge": "Ready",
+    "IGUI_EmberRoutesProbe_Crafting_altBadge": "Alternatives"
 }

@@ -550,5 +550,10 @@
     "IGUI_EmberRoutesProbe_Crafting_ITEM_LOCATION_CHANGED": "原件位置已变化，请核对后继续",
     "IGUI_EmberRoutesProbe_Crafting_CARGO_RETAINED_RESUME_FIRST": "请先处理 NPC 持有的上一任务物品",
     "IGUI_EmberRoutesProbe_Settlement_tab_crafting": "制作",
-    "IGUI_EmberRoutesProbe_Craft_resume": "继续原工单"
+    "IGUI_EmberRoutesProbe_Craft_resume": "继续原工单",
+    "IGUI_EmberRoutesProbe_Crafting_stepperMax": "最大",
+    "IGUI_EmberRoutesProbe_Crafting_toolBadge": "保留工具",
+    "IGUI_EmberRoutesProbe_Crafting_shortageBadge": "缺料",
+    "IGUI_EmberRoutesProbe_Crafting_readyBadge": "满足",
+    "IGUI_EmberRoutesProbe_Crafting_altBadge": "替代品"
 }

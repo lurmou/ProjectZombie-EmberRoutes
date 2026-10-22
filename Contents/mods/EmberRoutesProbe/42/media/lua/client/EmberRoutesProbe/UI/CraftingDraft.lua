@@ -36,6 +36,37 @@ function Draft.new(owner,bounds)
         if not self.syncing then owner:change({npcId=self.workerIds[self.worker.selected] or false}) end
     end)
     for _,box in ipairs({self.platform,self.worker}) do box:initialise() owner:addChild(box) end
+
+    local function step(delta)
+        local cur=tonumber(self.quantity:getText()) or 1
+        local nextVal=math.max(1,math.min(9999,cur+delta))
+        self.quantity:setText(tostring(nextVal))
+        owner:change({quantity=nextVal})
+    end
+    self.btnMinus10=button("-10",function() step(-10) end)
+    self.btnMinus1=button("-1",function() step(-1) end)
+    self.btnPlus1=button("+1",function() step(1) end)
+    self.btnPlus10=button("+10",function() step(10) end)
+    self.btnMax=button(text("stepperMax"),function()
+        if not self.recipe or not self.preview or not self.preview.counts then return end
+        local maxBatches=9999
+        local hasMaterial=false
+        for _,input in ipairs(self.recipe.inputs or {}) do
+            if not input.keep then
+                hasMaterial=true
+                local count=self.preview.counts[input.slot]
+                local avail=count and count.available or 0
+                local needPerBatch=input.count or 1
+                local possible=math.floor(avail/needPerBatch)
+                if possible<maxBatches then maxBatches=possible end
+            end
+        end
+        if not hasMaterial or maxBatches<=0 or maxBatches==9999 then maxBatches=1 end
+        local target=math.max(1,math.min(9999,maxBatches*(self.recipe.yield or 1)))
+        self.quantity:setText(tostring(target))
+        owner:change({quantity=target})
+    end)
+
     self.quantity=ISTextEntryBox:new("1",bounds.x,bounds.y,h*4,h+p)
     self.quantity:initialise() self.quantity.target=owner
     self.quantity.onTextChangeFunction=function()
@@ -43,23 +74,136 @@ function Draft.new(owner,bounds)
         owner:change({quantity=n and n==math.floor(n) and n>=1 and n<=9999 and n or false})
     end
     self.quantity.tooltip=text("quantityHint") Tooltip.attach(self.quantity,"prerender") owner:addChild(self.quantity)
+
     local style={emptyColor=Theme.muted}
     function style.prepare(list,row)
-        local lines=Text.wrapLimited(row.label,list.width-p*3-h*2,UIFont.Small,row.kind=="choice" and 2 or 3)
-        return {lines=lines,height=math.max(h*2,p+#lines*h),icon=row.fullType and self.presentation:icon(row.fullType)}
+        local icon=row.fullType and self.presentation:icon(row.fullType) or nil
+        if row.kind=="heading" then
+            return {height=math.floor(h*1.5),icon=nil}
+        elseif row.kind=="output" or row.kind=="input" then
+            local slotSize=math.floor(h*2.2)
+            local textW=math.max(1,list.width-slotSize-p*3)
+            local titleLines=Text.wrapLimited(row.title or row.label,textW,UIFont.Small,1)
+            local subLines=row.sub and Text.wrapLimited(row.sub,textW,UIFont.Small,1) or {}
+            return {
+                height=slotSize+p,
+                icon=icon,
+                slotSize=slotSize,
+                title=titleLines[1] or "",
+                sub=subLines[1] or ""
+            }
+        elseif row.kind=="choice" then
+            local slotSize=math.floor(h*1.6)
+            local textW=math.max(1,list.width-slotSize-p*4)
+            local titleLines=Text.wrapLimited(row.label,textW,UIFont.Small,1)
+            return {
+                height=slotSize+math.floor(p/2),
+                icon=icon,
+                slotSize=slotSize,
+                title=titleLines[1] or ""
+            }
+        else
+            local lines=Text.wrapLimited(row.label,list.width-p*3,UIFont.Small,2)
+            return {height=math.max(h+p,#lines*h+math.floor(p/2)),lines=lines,icon=nil}
+        end
     end
     function style.draw(list,y,entry)
         local row,v=entry.item.value,entry.item.visual
-        if y+list:getYScroll()+entry.height<0 or y+list:getYScroll()>list.height then return y+entry.height end
-        local color=row.missing and Theme.accent or row.kind=="heading" and Theme.accent or Theme.textColor
-        if v.icon then list:drawTextureScaledAspect(v.icon,p,y+p/2,h*1.6,h*1.6,1,1,1,1) end
-        for i,line in ipairs(v.lines) do Theme.text(list,line,p+h*2,y+p/2+(i-1)*h,color) end
-        if row.kind=="input" then Theme.text(list,row.missing and "!" or row.known and "+" or "?",list.width-p-h,y+p/2,color) end
+        local visible=y+list:getYScroll()
+        if visible+entry.height<0 or visible>list.height then return y+entry.height end
+
+        if row.kind=="heading" then
+            Theme.rect(list,math.floor(p/2),y+entry.height-2,list.width-p,1,Theme.border)
+            Theme.text(list,row.label,p,y+math.floor(p/4),Theme.accent)
+            return y+entry.height
+        end
+
+        if row.kind=="output" or row.kind=="input" then
+            local slotSize=v.slotSize or math.floor(h*2.2)
+            local slotX=p
+            local slotY=y+math.floor((entry.height-slotSize)/2)
+
+            Theme.rect(list,slotX,slotY,slotSize,slotSize,Theme.panel)
+
+            local borderColor=Theme.border
+            if row.kind=="output" then
+                borderColor=Theme.accent
+            elseif row.kind=="input" then
+                if row.isTool then
+                    borderColor={r=0.94,g=0.73,b=0.36,a=1}
+                elseif row.missing then
+                    borderColor=Theme.status.ERROR
+                elseif row.known then
+                    borderColor=Theme.status.READY
+                end
+            end
+            Theme.rect(list,slotX,slotY,slotSize,slotSize,borderColor,true)
+
+            if v.icon then
+                list:drawTextureScaledAspect(v.icon,slotX+2,slotY+2,slotSize-4,slotSize-4,1,1,1,1)
+            end
+
+            local textX=slotX+slotSize+p
+            local titleY=slotY+math.floor(p/4)
+            local subY=titleY+h
+
+            Theme.text(list,v.title or "",textX,titleY,Theme.textColor)
+
+            local subColor=Theme.muted
+            if row.kind=="input" then
+                if row.missing then
+                    subColor=Theme.status.ERROR
+                elseif row.known then
+                    subColor=Theme.status.READY
+                end
+            end
+            Theme.text(list,v.sub or "",textX,subY,subColor)
+
+            if row.isTool then
+                local badgeText=text("toolBadge")
+                local bw=getTextManager():MeasureStringX(UIFont.Small,badgeText)+p
+                local bx=list.width-p-bw
+                Theme.rect(list,bx,titleY,bw,h,Theme.control)
+                Theme.rect(list,bx,titleY,bw,h,borderColor,true)
+                Theme.text(list,badgeText,bx+math.floor(p/2),titleY,borderColor)
+            elseif row.choices and #row.choices>1 then
+                local altText=text("altBadge").." "..#row.choices..(self.expanded[row.slot] and " ▲" or " ▼")
+                local bw=getTextManager():MeasureStringX(UIFont.Small,altText)+p
+                local bx=list.width-p-bw
+                Theme.rect(list,bx,titleY,bw,h,Theme.control)
+                Theme.rect(list,bx,titleY,bw,h,Theme.accent,true)
+                Theme.text(list,altText,bx+math.floor(p/2),titleY,Theme.accent)
+            end
+
+            return y+entry.height
+        end
+
+        if row.kind=="choice" then
+            local slotSize=v.slotSize or math.floor(h*1.6)
+            local slotX=p*2
+            local slotY=y+math.floor((entry.height-slotSize)/2)
+
+            Theme.rect(list,slotX,slotY,slotSize,slotSize,Theme.control)
+            Theme.rect(list,slotX,slotY,slotSize,slotSize,Theme.border,true)
+            if v.icon then
+                list:drawTextureScaledAspect(v.icon,slotX+1,slotY+1,slotSize-2,slotSize-2,1,1,1,1)
+            end
+
+            local textX=slotX+slotSize+p
+            local titleY=slotY+math.floor((slotSize-h)/2)
+            Theme.text(list,"• "..(v.title or ""),textX,titleY,Theme.accent)
+            return y+entry.height
+        end
+
+        local color=row.missing and Theme.status.ERROR or Theme.textColor
+        for i,line in ipairs(v.lines or {}) do
+            Theme.text(list,line,p,y+math.floor(p/4)+(i-1)*h,color)
+        end
         return y+entry.height
     end
     function self:activate(row)
         if not row then return end
-        if row.kind=="input" then
+        if row.kind=="input" and row.choices and #row.choices>1 then
             local expanded=not self.expanded[row.slot] self.expanded={} self.expanded[row.slot]=expanded owner:repaint()
         elseif row.kind=="choice" and row.fullType then owner:warehouse(row.fullType) end
     end
@@ -102,8 +246,41 @@ function Draft.new(owner,bounds)
             for _,worker in ipairs(snapshot.workers) do self.workerIds[#self.workerIds+1]=worker.id self.worker:addOption(worker.name) end
         end
         self.worker.selected=1 for i,id in ipairs(self.workerIds) do if id==value.npcId then self.worker.selected=i end end
-        local q=regions[index] index=index+1 self.quantityLabel={x=q.x,y=q.y+p/2}
-        position(self.quantity,{x=q.x+q.width-h*4,y=q.y,width=h*4,height=q.height})
+
+        local q=regions[index] index=index+1
+        self.quantityLabel={x=q.x,y=q.y+p/2}
+        local labelW=getTextManager():MeasureStringX(UIFont.Small,text("quantity"))+p
+        local available=q.width-labelW
+        local slotW=math.floor((available-p)/6)
+        if slotW>=math.floor(h*0.9) then
+            self.btnMinus10:setVisible(true)
+            self.btnMinus1:setVisible(true)
+            self.btnPlus1:setVisible(true)
+            self.btnPlus10:setVisible(true)
+            self.btnMax:setVisible(true)
+            local stepW=slotW
+            local entryW=math.max(10,available-stepW*5-math.floor(p/4)*5)
+            local stepperTracks={{basis=stepW},{basis=stepW},{basis=entryW},{basis=stepW},{basis=stepW},{basis=stepW}}
+            local sRegions=Layout.axis({x=q.x+labelW,y=q.y,width=available,height=q.height},stepperTracks,{gap=math.floor(p/4)})
+            if sRegions then
+                position(self.btnMinus10,sRegions[1])
+                position(self.btnMinus1,sRegions[2])
+                position(self.quantity,sRegions[3])
+                position(self.btnPlus1,sRegions[4])
+                position(self.btnPlus10,sRegions[5])
+                position(self.btnMax,sRegions[6])
+            else
+                position(self.quantity,{x=q.x+q.width-h*4,y=q.y,width=h*4,height=q.height})
+            end
+        else
+            self.btnMinus10:setVisible(false)
+            self.btnMinus1:setVisible(false)
+            self.btnPlus1:setVisible(false)
+            self.btnPlus10:setVisible(false)
+            self.btnMax:setVisible(false)
+            position(self.quantity,{x=q.x+q.width-h*4,y=q.y,width=h*4,height=q.height})
+        end
+
         self.conditionBounds=regions[index] index=index+1
         local action=assert(Layout.axis(regions[index],{{grow=2},{grow=1}},{gap=p/2}))
         position(self.run,action[1]) position(self.teach,action[2])
@@ -135,23 +312,59 @@ function Draft.new(owner,bounds)
         self.summary=recipe and recipe.supported and (text("batches").." "..units.."  |  "..text("extra").." "..(units*recipe.yield-(value.quantity or 1)).."  |  "..text(recipe.surface and "surface" or "hand")) or ""
         if recipe and not recipe.supported then add({kind="heading",label=Words.reason(recipe.reason or "RECIPE_MECHANISM_UNSUPPORTED")}) end
         for _,output in ipairs(recipe and recipe.outputs or {}) do
-            add({kind="output",fullType=output.fullType,label=output.name.." x"..(output.count*units).."  ("..text("batchOutput").." "..output.count..")"})
+            local totalCount=output.count*units
+            add({
+                kind="output",
+                fullType=output.fullType,
+                title=output.name.." x"..totalCount,
+                sub=text("batchOutput").." "..output.count.." ("..text("extra").." "..(totalCount-(value.quantity or 1))..")",
+                label=output.name.." x"..totalCount
+            })
         end
         for _,keep in ipairs({false,true}) do
             local headed=false
             for _,input in ipairs(recipe and recipe.inputs or {}) do
                 if input.keep==keep then
-                    if not headed then add({kind="heading",label=text(keep and "keptTools" or "orderMaterials").." | "..text("availableRequired")}) headed=true end
-                    local need=input.count*(keep and 1 or units) local count=preview and preview.counts and preview.counts[input.slot]
-                    local choices=input.choices or {} local first=choices[1]
-                    if count and count.fullType then for _,choice in ipairs(choices) do if choice.fullType==count.fullType then first=choice break end end end
-                    local available=count and tostring(count.available) or "?"
-                    local label=(first and first.name or input.names[1] or "?").."  "..available.." / "..need
-                    if #choices>1 then label=label.."  ["..text("alternatives").." "..#choices.."]" end
-                    add({kind="input",slot=input.slot,fullType=first and first.fullType,label=label,known=count~=nil,
-                        missing=count and count.available<count.required})
+                    if not headed then
+                        add({kind="heading",label=text(keep and "keptTools" or "orderMaterials")})
+                        headed=true
+                    end
+                    local need=input.count*(keep and 1 or units)
+                    local count=preview and preview.counts and preview.counts[input.slot]
+                    local choices=input.choices or {}
+                    local first=choices[1]
+                    if count and count.fullType then
+                        for _,choice in ipairs(choices) do
+                            if choice.fullType==count.fullType then first=choice break end
+                        end
+                    end
+                    local availNum=count and count.available or 0
+                    local isMissing=count and (count.available<need) or (count==nil)
+                    local stockSub=""
+                    if count==nil then
+                        stockSub=text("checking")
+                    elseif isMissing then
+                        stockSub=text("shortageBadge")..": "..availNum.." / "..need.." ("..text("extra").." "..(need-availNum)..")"
+                    else
+                        stockSub=text("readyBadge")..": "..availNum.." / "..need
+                    end
+                    local itemName=first and first.name or input.names[1] or "?"
+                    add({
+                        kind="input",
+                        slot=input.slot,
+                        fullType=first and first.fullType,
+                        title=itemName,
+                        sub=stockSub,
+                        label=itemName.." "..(count and tostring(availNum) or "?").." / "..need,
+                        known=count~=nil,
+                        missing=isMissing,
+                        isTool=keep,
+                        choices=choices
+                    })
                     if self.expanded[input.slot] then
-                        for _,choice in ipairs(choices) do add({kind="choice",label=choice.name,fullType=choice.fullType}) end
+                        for _,choice in ipairs(choices) do
+                            add({kind="choice",label=choice.name,fullType=choice.fullType})
+                        end
                     end
                 end
             end
@@ -175,7 +388,9 @@ function Draft.new(owner,bounds)
     function self:hide()
         if self.helpModal then self.helpModal:destroy() self.helpModal=nil end
         self.platform:hidePopup() self.worker:hidePopup() self.quantity:unfocus()
-        for _,control in ipairs({self.platform,self.surfaceHelp,self.worker,self.quantity,self.list,self.run,self.teach}) do Tooltip.clear(control) end
+        for _,control in ipairs({self.platform,self.surfaceHelp,self.worker,self.quantity,self.btnMinus10,self.btnMinus1,self.btnPlus1,self.btnPlus10,self.btnMax,self.list,self.run,self.teach}) do
+            Tooltip.clear(control)
+        end
     end
     return self
 end

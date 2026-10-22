@@ -79,7 +79,8 @@ function EmberRoutesCraftingBrowser:createChildren()
     self.unsupported=ISButton:new(r.x,r.y,r.width,r.height,text("supportedOnly"),self,function() self:change({unsupported=not self.store.value.unsupported,page=1}) end)
     self.unsupported:initialise() Theme.button(self.unsupported) self:addChild(self.unsupported)
     self.grid=Grid.new(self,regions[3],function(row) self:change({recipeId=row.id}) end)
-    local refreshWidth=getTextManager():MeasureStringX(UIFont.Small,text("button_refresh"))+p*2
+    local maxRefresh=math.floor(regions[4].width*0.35)
+    local refreshWidth=math.min(maxRefresh,getTextManager():MeasureStringX(UIFont.Small,text("button_refresh"))+p*2)
     local pages=assert(Layout.axis(regions[4],{{grow=1},{grow=2},{basis=refreshWidth},{grow=1}},{gap=p/2})) self.paging=pages[2]
     local function button(bounds,title,delta)
         local b=ISButton:new(bounds.x,bounds.y,bounds.width,bounds.height,title,self,function() self:turn(delta) end)
