@@ -1,0 +1,176 @@
+{
+  "date": "2026-10-22",
+  "status": "static-research-recommendation-awaiting-review",
+  "localHead": "a10c20bec68954df05822bccf2608e50ab9c1a77",
+  "branch": "experiment/modern-ae2-ui",
+  "worktree": "dirty; includes concurrent UI changes; no runtime edits by this research",
+  "gameVersion": "42.21.0",
+  "zombieBuddyVersion": "2.3.4",
+  "runtimeTestsRun": false,
+  "performanceTestsRun": false,
+  "buildRun": false,
+  "requirements": {
+    "url": "https://docs.google.com/document/d/1aTOBrzZvh_iCDkv045HNAV13i7vNf7OHk6E_sE7TWNM/export?format=txt",
+    "titleVersion": "v3.2",
+    "exportCache": "build/reference/npc-behavior-2026-10-22/requirements-current-export.txt",
+    "cacheFileSha256": "3D4319204D97B61FE5CE0A0F665DCD42F9B0BABDFD5533E24F8E4A2FA143C634",
+    "note": "UTF-8 evidence cache only; not a parallel requirements document"
+  },
+  "minecolonies": {
+    "repository": "https://github.com/ldtteam/minecolonies",
+    "ref": "version/main",
+    "commit": "d1573f78af389c66d3d673343e86ff3a32868561",
+    "files": [
+      {
+        "file": "AbstractAISkeleton.java",
+        "sha256": "F7D543864156A295F6B0FB3F2D2019B024AF28EE2543B47DD612A815EB88CEA6"
+      },
+      {
+        "file": "CitizenAI.java",
+        "sha256": "0B96DE5D10C3DE9B00D6024784566B3B8A4FDAF87A3DB70184FA9F3A6B8CA293"
+      },
+      {
+        "file": "EntityAIEatTask.java",
+        "sha256": "74045DF51AC08E9EF46152B6F83EED411BA74323CB01E601E437FCFFA4D4D711"
+      },
+      {
+        "file": "TickRateStateMachine.java",
+        "sha256": "D813B8431B0C25E1F4E67E2B3D53EA68C6BE6B9A7DD3CC8E5CAA308E9EA49C36"
+      }
+    ]
+  },
+  "rimworld": {
+    "source": "https://raw.githubusercontent.com/josh-m/RW-Decompile/master/Verse.AI/Pawn_JobTracker.cs",
+    "kind": "old public decompilation; not official source publication",
+    "currentVersionVerified": false,
+    "filesRead": [
+      "Pawn_JobTracker.cs",
+      "JobDriver.cs",
+      "Toil.cs",
+      "ThinkNode_Priority.cs"
+    ],
+    "newerRepositoryAccess": "Chillu1/RimWorldDecompiled returned repository access blocked; no current-version conclusion"
+  },
+  "artifacts": [
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua",
+      "sha256": "CC45D65835380151347DDEA8A3E9C8A4DDF42886ADA3E67F71298BB7F94A5AB0"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/LaborSchedule.lua",
+      "sha256": "B04A62600D743C10E8344508F1E293D52E91067BD30D9284E232ECB28B96CA0E"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/LaborSignals.lua",
+      "sha256": "F215E03736573E478D0FD23FF43299AB9E1FCAFAF86B4DB956400EB43504513D"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/LaborClaims.lua",
+      "sha256": "5DBCF36254C82413799D6DD0A0D24527561E76243EEFF04D3DD22DD32F04B891"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/LaborProducers.lua",
+      "sha256": "6B1393468A997F234C7B1342942131AE310B479617D1A1FFE5EBC164C29C8EFD"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/CraftRecord.lua",
+      "sha256": "53BCDEABD9AD5FE1896359B1B64C58C864912724984CD28ABA42F7992DB314AA"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work.lua",
+      "sha256": "3DAA3E7AA15988B06DCFFCD34AFCA277FF4E658DB65CFED371AFA1B93D973E66"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/WorkAgent.lua",
+      "sha256": "27F5817A5F7C59495F21092906A4CEDD1EC2616502549B280476D8019C793D74"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/WorkTransfer.lua",
+      "sha256": "F29082CDA8E5447B6CC56715B442F1A86CE7E2B8266384A9086BB2B1739C3D97"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Companion.lua",
+      "sha256": "B379072AAED0AB827C72EAF45C1738D477DA71197DEE276ED274A5777C27A86A"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/CompanionAgent.lua",
+      "sha256": "AF8DD41F18896F0DC265EE6E137682AD9A6E8E25EA2106B303091A6783CF8A9B"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Driver.lua",
+      "sha256": "B6226793D03DA97A2529EFAEE33F3CDA0F4D60B8F82B974B17E45827EF85ADE4"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Production.lua",
+      "sha256": "62A6E1256DE9003EBB39FD57993E199F1E2FC5993D56BDF84E890DC91000E0E2"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/ProductionActions.lua",
+      "sha256": "4C99AFC8179199EAB29E2EA94EBC86BA6868BAE1B641F028BC8FDCBC2659BA44"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/CraftProbe.lua",
+      "sha256": "E8F49A4009FE3D7979CF045D9D3477A7E109050AB66B74B528F823AC1E3C3F21"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/LaborStore.lua",
+      "sha256": "F22FDDB5B4FA202528DE5EF0A29956FAE640BEA45A2EAE8B75F6CCACCD4E4576"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/LogisticsService.lua",
+      "sha256": "E3870EB0B0460EEF150A5EC800172D362BC8F2E9BB1B5DDBB181233B3693E685"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Persistence.lua",
+      "sha256": "5B24B1C828346CB88809226526F07BFF7497DFD226B8B647FAD25E280ED6A9F9"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/ProductionChain.lua",
+      "sha256": "B8998D79F17DA106FB147E78D849D17142D28634E0F7E5DA4D987F02A8BFDB20"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeNpc.java",
+      "sha256": "BFC2C14F58AC26D0ECBFE1F9A74D1EBA9DADC9CB5C0714711A6C471C78CADDE5"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/CarrierRuntime.java",
+      "sha256": "EC03A440B9D9257D4B4E85B2640CC0F43C2EC6DCF2809C8C44A2C822D940AEA9"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRuntime.java",
+      "sha256": "E9329B9CFA67A428DD7E2CA57A3DD472EC473E5CF685227C60B0CA156E56163C"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/WorkerRoster.java",
+      "sha256": "802592EAB685F7D9F36306B5A4D3EC0858EBF9F89A680B1605BFCFCA6E38B37B"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/client/TimedActions/ISTimedActionQueue.lua",
+      "sha256": "23C98152728172B44CCB41BC8DDC97798FEE7A91B57B20620FB11D5F41E7792C"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/TimedActions/ISBaseTimedAction.lua",
+      "sha256": "AD72E57F976BD1564D59D08D98D06F8C8D4ACEA6386AACE48E0D99CE9D02A1F0"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/Entity/TimedActions/ISHandcraftAction.lua",
+      "sha256": "EC72BDF147613FEF617FBF57C88776FEE5A58C05BB8DC80CB05075C90B753E2E"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/TimedActions/ISEatFoodAction.lua",
+      "sha256": "76D6F2650000231F3917616356C37E4B2FD7BCABDFF5FCB5298E43223B681368"
+    },
+    {
+      "path": "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/TimedActions/ISDrinkFluidAction.lua",
+      "sha256": "D0E89B901ECD53321FEEAC1E3CC540652CA692AFB25CAB584F5A40D4453F2C0B"
+    }
+  ]
+}

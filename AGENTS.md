@@ -31,6 +31,7 @@
 - 首次接手先读 [接力说明](docs/HANDOFF.md)；历史对话只按需读取，不自动继承其中的旧事实。
 - 通用规则：[development-rules.md](docs/development-rules.md)，修改代码前读取相关约束；保留用户改动，CN/EN 成对翻译，按变更类型验证。
 - 当前方向与待办：[docs/BACKLOG.md](docs/BACKLOG.md)。每轮先看当前边界与相关事项，旧实现路线已搁置。
+- NPC 行为相关工作必读[已确认架构设计](docs/superpowers/specs/2026-10-22-npc-behavior-architecture-design.md)：唯一实施设计入口；上下文恢复先查 BACKLOG 的“NPC 架构执行记录”，按该设计续接。技术细节允许阶段细化，架构变更先经用户确认；不得把调研推荐或未验证能力当作已实现。
 - 唯一需求文档：[在线Google Docs](https://docs.google.com/document/d/1aTOBrzZvh_iCDkv045HNAV13i7vNf7OHk6E_sE7TWNM/edit)。用户于2026-10-19指定以此为唯一需求来源；评审/设计先读取当前在线版本。本地原文仅历史快照，不另行修改成平行需求；在线无法读取时须说明，不能宣称已同步。用户在对话中明确批准的阶段范围仍按决定记录执行。
 - 可行性与证据：[feasibility-review.md](docs/reviews/2026-10-18/feasibility-review.md)，同目录含基线、源码片段与动作扫描。
 - 旧设计和开发资料只按任务查阅，不作为当前批准方案，也不要求每轮全文加载。
