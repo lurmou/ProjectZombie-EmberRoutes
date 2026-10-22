@@ -1,0 +1,82 @@
+{
+  "target": "C:/Users/MuMu/Zomboid/Workshop/EmberRoutes",
+  "source_thread": "01a14f3b-9b3f-7b51-b2dd-82ddcca28b78",
+  "visible_chat_messages": 30,
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 45,
+      "sha256": "636f190245e32533091879dcf261efd551740fdfdf0a17fdafc0c75c1c766f8c"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 3029,
+      "sha256": "76b173140cc54850fb75211a588603f7173374f414150e553c5ff477b015f32a"
+    },
+    {
+      "path": "assets/workshop-cover.png",
+      "bytes": 2885437,
+      "sha256": "36e1aead1716568932018beeb784929abbe2d57c69c57b81c3350125fe56cf7c"
+    },
+    {
+      "path": "docs/BACKLOG.md",
+      "bytes": 978,
+      "sha256": "cfcbc074f20d32db4d4d9ed120fc69d5f8af83d3394f56d529156c1205c514c7"
+    },
+    {
+      "path": "docs/development-rules.md",
+      "bytes": 2931,
+      "sha256": "0d834773b60a420478cb8fce0d05f6a6450de7db553a0ea961472e636829f2cc"
+    },
+    {
+      "path": "docs/HANDOFF.md",
+      "bytes": 3349,
+      "sha256": "2c87a0a76e1e7a7b30e811a47b726058e5bab59d5e7433202a6fa43f818b93cc"
+    },
+    {
+      "path": "docs/history/conversation-2026-10-18.md",
+      "bytes": 14279,
+      "sha256": "ac17140b166a8a9e0373d3a553ef8b6c6ba2630a25f17c20feb2c53e6911b0ee"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/AGENTS-workshop-legacy.txt",
+      "bytes": 43511,
+      "sha256": "b875a1f8c7fbadcc43956b04770c01526cb0d63d7f2621ceefd8219c09f22d84"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/baseline.json",
+      "bytes": 1480,
+      "sha256": "128c7615511f069d2319ca00c9a7489a6d75b1924d260261db675071ae032ea9"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/feasibility-review.md",
+      "bytes": 32656,
+      "sha256": "433c451aec4a20f5fd6a0222434f3761b05a7ad8558838c1545d74528c6aa1b6"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/requirements-original.txt",
+      "bytes": 15127,
+      "sha256": "170dbdb72e2cefdf78a13dcf69b1ef33cafb7debc47518c723d0c1cc0f244cb7"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/source-evidence.txt",
+      "bytes": 83702,
+      "sha256": "2a969cf5f0ae346c101882fcee626e269b8665bfa6abb9d6e13879cc5878af71"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/timed-action-dependencies.csv",
+      "bytes": 34870,
+      "sha256": "648824104fa288f66c9cdc49f6d4bd1c590bd6bcc0798daacb693fededf01bf9"
+    },
+    {
+      "path": "docs/reviews/2026-10-18/timed-action-scan-summary.json",
+      "bytes": 441,
+      "sha256": "dee9d8f80c7e9b93114956687d5e576010bd560606e0d9a1557fbb749c3d793b"
+    },
+    {
+      "path": "README.md",
+      "bytes": 504,
+      "sha256": "2a56ea53058dbef6c801d301002aa9f264514458609a0c7ad7ac58a8aeb317c1"
+    }
+  ]
+}

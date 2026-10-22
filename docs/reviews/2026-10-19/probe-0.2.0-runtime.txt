@@ -1,0 +1,38 @@
+LOG  : General      f:0> [EmberRoutes v0.2.0] BOOT jar loaded; Lua API registered; runtime tests NOT RUN
+LOG  : General      f:0> [EmberRoutes v0.2.0] READY version=0.2.0 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+LOG  : General      f:9901> [EmberRoutes v0.2.0] SPAWNED id=26673c5c-6828-4de2-b269-c062b5138eef pos=2166.5,6070.5,0.0 attached=true world=true pending=false square=true updates=0 state=null target=0.0,0.0,0.0 pos=2166.5,6070.5,0.0 remaining=6445.517240687515 moving=false path=IDLE result=IDLE pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=null retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+LOG  : Lua          f:13709> :	[EmberRoutes v0.2.0] ACTION FIXTURES_READY cargoID=1546516700 food=-0.30000001192092896 fluid=1
+LOG  : Lua          f:13709> :	[EmberRoutes v0.2.0] ACTION BATCH_STARTED cases=10
+LOG  : Lua          f:13710> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION PACK_INSTANCE STARTED
+LOG  : Lua          f:14178> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION PACK_INSTANCE PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:14179> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION UNPACK_INSTANCE STARTED
+LOG  : Lua          f:14674> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION UNPACK_INSTANCE PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:14675> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION EAT_EFFECT STARTED
+LOG  : Lua          f:15553> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION EAT_EFFECT PASSED foodConsumed=0.07500000298023224 hungerReduced=0.07483702898025513
+LOG  : Lua          f:15554> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION DRINK_EFFECT STARTED
+LOG  : Lua          f:17218> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION DRINK_EFFECT PASSED fluidConsumed=0.25 thirstReduced=0.123707115650177
+LOG  : Lua          f:17219> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION CANCEL_TRANSFER STARTED
+LOG  : Lua          f:17406> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION CANCEL_TRANSFER PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:17407> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION CANCEL_EAT_PARTIAL STARTED
+LOG  : Lua          f:17770> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION CANCEL_EAT_PARTIAL PASSED foodConsumed=0.02633228898048401 hungerReduced=0.026240944862365723
+LOG  : Lua          f:17771> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION CANCEL_DRINK_PARTIAL STARTED
+LOG  : Lua          f:18355> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION CANCEL_DRINK_PARTIAL PASSED fluidConsumed=0.06563407182693481 thirstReduced=0.03233414888381958
+LOG  : Lua          f:18356> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION REPEAT_PACK STARTED
+LOG  : Lua          f:18826> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION REPEAT_PACK PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:18827> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION REPEAT_UNPACK STARTED
+LOG  : Lua          f:19285> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION REPEAT_UNPACK PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:19286> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION IDLE_NO_REPEAT STARTED
+LOG  : Lua          f:19616> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION IDLE_NO_REPEAT PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:19617> :	[EmberRoutesProbe] 	[EmberRoutes v0.2.0] ACTION BATCH PASSED cases=10
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT state=PASSED cases=10
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT PACK_INSTANCE PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT UNPACK_INSTANCE PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT EAT_EFFECT PASSED foodConsumed=0.07500000298023224 hungerReduced=0.07483702898025513
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT DRINK_EFFECT PASSED fluidConsumed=0.25 thirstReduced=0.123707115650177
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT CANCEL_TRANSFER PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT CANCEL_EAT_PARTIAL PASSED foodConsumed=0.02633228898048401 hungerReduced=0.026240944862365723
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT CANCEL_DRINK_PARTIAL PASSED fluidConsumed=0.06563407182693481 thirstReduced=0.03233414888381958
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT REPEAT_PACK PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT REPEAT_UNPACK PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : Lua          f:20022> :	[EmberRoutes v0.2.0] ACTION REPORT IDLE_NO_REPEAT PASSED cargoID=1546516700 copies=1 condition=1
+LOG  : General      f:24735> [EmberRoutes v0.2.0] REMOVAL_PENDING body retained until safe; id=26673c5c-6828-4de2-b269-c062b5138eef pos=2166.5,6070.5,0.0 attached=true world=true pending=false square=true updates=14834 state=IdleState target=0.0,0.0,0.0 pos=2166.5,6070.5,0.0 remaining=6445.517240687515 moving=false path=IDLE result=STOPPED pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=IdleState retiring=true retirement=WAITING clearedLinks=0 attackers=0 health=99.2225 failed=false reason=

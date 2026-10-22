@@ -1,0 +1,141 @@
+-- Logical coordination only. Tokens fence callbacks; no world assets are changed.
+local Claims={}
+local methods={} methods.__index=methods
+function Claims.new() return setmetatable({owners={},capacity={}},methods) end
+function methods:acquire(taskId,generation,resources)
+    local seen,previous={},nil
+    for _,key in ipairs(resources) do
+        if seen[key] then return nil,"RESOURCE_DUPLICATED" end seen[key]=true
+        local owner=self.owners[key]
+        if owner and owner.taskId~=taskId then return nil,"ITEM_RESERVED" end
+        previous=previous or owner
+    end
+    if previous then
+        for _,key in ipairs(previous.resources) do if not seen[key] then return nil,"RESOURCE_SET_CHANGED" end end
+        for _,key in ipairs(resources) do if self.owners[key]~=previous then return nil,"RESOURCE_SET_CHANGED" end end
+    end
+    local token={taskId=taskId,generation=generation,resources=resources}
+    for _,key in ipairs(resources) do self.owners[key]=token end
+    if previous and previous.capacityKey then
+        local bucket=self.capacity[previous.capacityKey]
+        local claim=bucket and bucket.entries[taskId]
+        if claim and claim.token==previous then
+            claim.token=token token.capacityKey=previous.capacityKey
+        end
+    end
+    return token
+end
+function methods:valid(token,key) return token and self.owners[key]==token end
+-- Validate both sets before mutation. Retained tools/surface never lose ownership.
+function methods:replace(token,resources)
+    if not token or token.capacityKey then return false,"STALE_CLAIM" end
+    local seen={}
+    for _,key in ipairs(token.resources) do if self.owners[key]~=token then return false,"STALE_CLAIM" end end
+    for _,key in ipairs(resources) do
+        if seen[key] then return false,"RESOURCE_DUPLICATED" end seen[key]=true
+        if self.owners[key] and self.owners[key]~=token then return false,"ITEM_RESERVED" end
+    end
+    for _,key in ipairs(token.resources) do if not seen[key] then self.owners[key]=nil end end
+    for _,key in ipairs(resources) do self.owners[key]=token end
+    token.resources=resources return true
+end
+-- Add freshly created original outputs without releasing inputs/tools in between.
+function methods:extend(token,resources)
+    if not token then return false,"STALE_CLAIM" end
+    local seen={}
+    for _,key in ipairs(token.resources) do
+        if self.owners[key]~=token then return false,"STALE_CLAIM" end seen[key]=true
+    end
+    local added={}
+    for _,key in ipairs(resources) do
+        if not seen[key] then
+            if self.owners[key] and self.owners[key]~=token then return false,"ITEM_RESERVED" end
+            added[#added+1]=key seen[key]=true
+        end
+    end
+    for _,key in ipairs(added) do token.resources[#token.resources+1]=key self.owners[key]=token end
+    return true
+end
+function methods:reserve(token,key,itemId,amount,free)
+    if not token or not self:valid(token,"item:"..itemId) then return false,"STALE_CLAIM" end
+    if type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge
+        or type(free)~="number" or free~=free or free<0 or free==math.huge then return false,"CAPACITY_UNAVAILABLE" end
+    if token.capacityKey and token.capacityKey~=key then return false,"CAPACITY_TARGET_CHANGED" end
+    local bucket=self.capacity[key] or {entries={},total=0,count=0}
+    local previous=bucket.entries[token.taskId]
+    local oldWeight=previous and previous.items[itemId] or 0
+    local proposed=bucket.total-oldWeight+amount
+    if proposed>free then return false,"CAPACITY_RESERVED" end
+    if not previous then bucket.count=bucket.count+1 end
+    local claim=previous or {token=token,items={},amount=0,count=0}
+    if claim.items[itemId]==nil then claim.count=claim.count+1 end
+    claim.items[itemId]=amount claim.amount=claim.amount-oldWeight+amount claim.token=token
+    bucket.entries[token.taskId]=claim bucket.total=proposed self.capacity[key]=bucket token.capacityKey=key
+    return true
+end
+function methods:releaseCapacity(token,itemId)
+    local key=token.capacityKey local bucket=key and self.capacity[key]
+    local claim=bucket and bucket.entries[token.taskId]
+    if claim and claim.token==token then
+        local amount
+        if itemId then amount=claim.items[itemId] else amount=claim.amount end
+        if amount==nil then return end
+        if itemId then claim.items[itemId]=nil claim.count=claim.count-1 else claim.count=0 end
+        claim.amount=math.max(0,claim.amount-amount) bucket.total=math.max(0,bucket.total-amount)
+        if claim.count==0 then
+            bucket.entries[token.taskId]=nil token.capacityKey=nil bucket.count=bucket.count-1
+            if bucket.count==0 then self.capacity[key]=nil end
+        end
+    end
+end
+function methods:release(token)
+    if not token then return end
+    for _,key in ipairs(token.resources) do if self.owners[key]==token then self.owners[key]=nil end end
+    self:releaseCapacity(token)
+end
+-- Loading conservative reservations does not assert that space still exists.
+-- The native capacity check is repeated before every effect.
+function methods:restore(token,key,itemId,amount)
+    if not self:valid(token,"item:"..itemId) or type(key)~="string" or key==""
+        or type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge then return false end
+    if token.capacityKey and token.capacityKey~=key then return false end
+    local bucket=self.capacity[key] or {entries={},total=0,count=0}
+    local previous=bucket.entries[token.taskId]
+    if not previous then bucket.count=bucket.count+1 end
+    local claim=previous or {token=token,items={},amount=0,count=0}
+    local before=claim.items[itemId] or 0
+    if claim.items[itemId]==nil then claim.count=claim.count+1 end
+    claim.items[itemId]=amount claim.amount=claim.amount-before+amount
+    bucket.total=bucket.total-before+amount bucket.entries[token.taskId]=claim
+    self.capacity[key]=bucket token.capacityKey=key
+    return true
+end
+function methods:available(key,free)
+    return math.max(0,free-(self.capacity[key] and self.capacity[key].total or 0))
+end
+function methods:availableFor(token,key,itemId,free)
+    local bucket=self.capacity[key] local claim=bucket and token and bucket.entries[token.taskId]
+    local own=claim and claim.token==token and claim.items[itemId] or 0
+    return self:available(key,free)+own
+end
+function methods:reserveMany(token,key,weights,free)
+    if not token or type(key)~="string" or key=="" or (token.capacityKey and token.capacityKey~=key) or type(free)~="number" or free~=free
+        or free<0 or free==math.huge then return false,"CAPACITY_UNAVAILABLE" end
+    local bucket=self.capacity[key] local old=bucket and bucket.entries[token.taskId]
+    local total,count=0,0
+    for itemId,amount in pairs(weights) do
+        count=count+1
+        if count>30 or not self:valid(token,"item:"..itemId) or type(amount)~="number" or amount~=amount
+            or amount<0 or amount==math.huge then return false,"STALE_CLAIM" end
+        total=total+amount
+    end
+    if count==0 or (bucket and bucket.total or 0)-(old and old.amount or 0)+total>free then return false,"CAPACITY_RESERVED" end
+    if old then for itemId in pairs(old.items) do if weights[itemId]==nil then return false,"RESOURCE_SET_CHANGED" end end end
+    -- All validation precedes mutation; at most 30 already claimed resources.
+    for itemId,amount in pairs(weights) do
+        local ok,reason=self:restore(token,key,itemId,amount)
+        if not ok then error(reason or "BATCH_RESERVATION_INVALID") end
+    end
+    return true
+end
+return Claims

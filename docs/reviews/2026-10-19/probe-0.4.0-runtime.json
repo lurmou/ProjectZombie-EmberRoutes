@@ -1,0 +1,31 @@
+{
+  "version": "0.4.0",
+  "observedOn": "2026-10-19",
+  "mode": "SP",
+  "userFeedback": "所有测试通过，日志已经打印",
+  "userReportedResult": "all tests passed",
+  "directLogEvidence": "FOLLOW, HOLD, HOME_SET, RETURNING, HOME_REACHED, REPORT failures=0",
+  "saveRetirement": "no REMOVED or REMOVAL_PENDING in captured current log",
+  "negativeAndPauseScenarios": "user reports passed; no independent scenario completion markers in captured log",
+  "runtimeLogSha256": "C43BE62451612CC1F512AFFDD7F83B91D743ADE97A689416E9240957330E0CE9",
+  "sourceIsLive": true,
+  "sourceConsoleSha256": null,
+  "sourceBytesAtInspection": 220150,
+  "events": [
+    "LOG  : General      f:0> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=WORLD_RESET npc=absent",
+    "LOG  : General      f:3588> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=COMPANION_ORDER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:3588> [EmberRoutes v0.4.0] COMPANION HOME_SET id=1fd815c0-de45-4787-9931-4f1f1c29aecb/home pos=2153.5,6046.5,0",
+    "LOG  : General      f:3588> [EmberRoutes v0.4.0] COMPANION STATE mode=FOLLOW reason=USER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:8401> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=COMPANION_ORDER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:8401> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=USER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:9785> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=COMPANION_ORDER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:9785> [EmberRoutes v0.4.0] COMPANION HOME_SET id=1fd815c0-de45-4787-9931-4f1f1c29aecb/home pos=2146.310546875,6051.4521484375,0",
+    "LOG  : General      f:9785> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=HOME_SET npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:10398> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=COMPANION_ORDER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:10398> [EmberRoutes v0.4.0] COMPANION STATE mode=FOLLOW reason=USER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:11205> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=COMPANION_ORDER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:11205> [EmberRoutes v0.4.0] COMPANION STATE mode=RETURNING reason=USER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:11863> [EmberRoutes v0.4.0] COMPANION STATE mode=HOLD reason=HOME_REACHED npc=1fd815c0-de45-4787-9931-4f1f1c29aecb",
+    "LOG  : General      f:11891> [EmberRoutes v0.4.0] COMPANION REPORT mode=HOLD reason=HOME_REACHED driver=SINGLE_PLAYER npc=1fd815c0-de45-4787-9931-4f1f1c29aecb home=1fd815c0-de45-4787-9931-4f1f1c29aecb/home motion=REACHED failures=0"
+  ]
+}

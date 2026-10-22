@@ -1,0 +1,444 @@
+PZ42.21.0 installed JAR, pinned hash in baseline.json; javap -c -p excerpts.
+
+  private static boolean isCurrentCraftActionPending(zombie.characters.IsoGameCharacter, se.krka.kahlua.vm.KahluaTable);
+    Code:
+         0: aload_0
+         1: invokevirtual #464                // Method zombie/characters/IsoGameCharacter.getCharacterActions:()Ljava/util/Stack;
+         4: invokevirtual #468                // Method java/util/Stack.isEmpty:()Z
+         7: ifeq          14
+        10: aconst_null
+        11: goto          25
+        14: aload_0
+        15: invokevirtual #464                // Method zombie/characters/IsoGameCharacter.getCharacterActions:()Ljava/util/Stack;
+        18: iconst_0
+        19: invokevirtual #471                // Method java/util/Stack.get:(I)Ljava/lang/Object;
+        22: checkcast     #472                // class zombie/characters/CharacterTimedActions/LuaTimedActionNew
+        25: astore_2
+        26: aload_1
+        27: ldc_w         #474                // String craftStarted
+        30: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+        35: checkcast     #481                // class java/lang/Boolean
+        38: astore_3
+        39: aload_2
+        40: ifnull        66
+        43: aload_2
+        44: invokevirtual #483                // Method zombie/characters/CharacterTimedActions/LuaTimedActionNew.getTable:()Lse/krka/kahlua/vm/KahluaTable;
+        47: aload_1
+        48: if_acmpne     66
+        51: aload_3
+        52: ifnull        62
+        55: aload_3
+        56: invokevirtual #487                // Method java/lang/Boolean.booleanValue:()Z
+        59: ifne          66
+        62: iconst_1
+        63: goto          67
+        66: iconst_0
+        67: ireturn
+
+  public static float itemGetQueuedAmount(zombie.characters.IsoGameCharacter, zombie.inventory.InventoryItem, zombie.entity.components.crafting.recipe.CraftRecipeData$CacheData);
+    Code:
+         0: getstatic     #511                // Field zombie/network/GameServer.server:Z
+         3: ifne          14
+         6: aload_0
+         7: ifnull        14
+        10: aload_1
+        11: ifnonnull     16
+        14: fconst_0
+        15: freturn
+        16: getstatic     #516                // Field zombie/Lua/LuaManager.env:Lse/krka/kahlua/vm/KahluaTable;
+        19: ldc_w         #522                // String ISTimedActionQueue
+        22: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+        27: checkcast     #477                // class se/krka/kahlua/vm/KahluaTable
+        30: astore_3
+        31: aload_3
+        32: ldc_w         #524                // String queues
+        35: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+        40: checkcast     #477                // class se/krka/kahlua/vm/KahluaTable
+        43: astore        4
+        45: aload         4
+        47: aload_0
+        48: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+        53: checkcast     #477                // class se/krka/kahlua/vm/KahluaTable
+        56: astore        5
+        58: aload         5
+        60: ifnonnull     65
+        63: fconst_0
+        64: freturn
+        65: aload         5
+        67: ldc_w         #526                // String queue
+        70: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+        75: checkcast     #477                // class se/krka/kahlua/vm/KahluaTable
+        78: astore        6
+        80: aload         6
+        82: ifnonnull     87
+        85: fconst_0
+        86: freturn
+        87: fconst_0
+        88: fstore        7
+        90: aload         6
+        92: invokeinterface #528,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.iterator:()Lse/krka/kahlua/vm/KahluaTableIterator;
+        97: astore        8
+        99: aload         8
+       101: invokeinterface #532,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTableIterator.advance:()Z
+       106: ifeq          506
+       109: aload         8
+       111: invokeinterface #537,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTableIterator.getValue:()Ljava/lang/Object;
+       116: checkcast     #477                // class se/krka/kahlua/vm/KahluaTable
+       119: astore        9
+       121: ldc_w         #541                // String ISHandcraftAction
+       124: aload         9
+       126: invokeinterface #543,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.getMetatable:()Lse/krka/kahlua/vm/KahluaTable;
+       131: ldc_w         #546                // String Type
+       134: invokeinterface #548,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.getString:(Ljava/lang/String;)Ljava/lang/String;
+       139: invokevirtual #163                // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+       142: ifeq          99
+       145: aload_0
+       146: aload         9
+       148: invokestatic  #551                // Method isCurrentCraftActionPending:(Lzombie/characters/IsoGameCharacter;Lse/krka/kahlua/vm/KahluaTable;)Z
+       151: ifeq          157
+       154: goto          99
+       157: aload         9
+       159: ldc_w         #555                // String manualInputs
+       162: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+       167: checkcast     #477                // class se/krka/kahlua/vm/KahluaTable
+       170: astore        10
+       172: aload         10
+       174: ifnonnull     180
+       177: goto          99
+       180: aload         9
+       182: ldc_w         #557                // String craftRecipe
+       185: invokeinterface #476,  2          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.rawget:(Ljava/lang/Object;)Ljava/lang/Object;
+       190: checkcast     #144                // class zombie/scripting/entity/components/crafting/CraftRecipe
+       193: astore        11
+       195: aload         10
+       197: invokeinterface #528,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTable.iterator:()Lse/krka/kahlua/vm/KahluaTableIterator;
+       202: astore        12
+       204: aload         12
+       206: invokeinterface #532,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTableIterator.advance:()Z
+       211: ifeq          503
+       214: aload         12
+       216: invokeinterface #537,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTableIterator.getValue:()Ljava/lang/Object;
+       221: checkcast     #128                // class java/util/List
+       224: astore        13
+       226: aload         13
+       228: ifnull        204
+       231: aload         13
+       233: invokeinterface #127,  1          // InterfaceMethod java/util/List.size:()I
+       238: iconst_1
+       239: if_icmpne     204
+       242: aload         13
+       244: aload_1
+       245: invokeinterface #559,  2          // InterfaceMethod java/util/List.contains:(Ljava/lang/Object;)Z
+       250: ifne          256
+       253: goto          204
+       256: aload         12
+       258: invokeinterface #561,  1          // InterfaceMethod se/krka/kahlua/vm/KahluaTableIterator.getKey:()Ljava/lang/Object;
+       263: checkcast     #564                // class java/lang/Double
+       266: astore        14
+       268: aload         14
+       270: ifnonnull     276
+       273: goto          204
+       276: aload         11
+       278: aload         14
+       280: invokevirtual #566                // Method java/lang/Double.doubleValue:()D
+       283: d2i
+       284: invokevirtual #570                // Method zombie/scripting/entity/components/crafting/CraftRecipe.getIOForIndex:(I)Lzombie/scripting/entity/components/crafting/CraftRecipe$IOScript;
+       287: checkcast     #308                // class zombie/scripting/entity/components/crafting/InputScript
+       290: astore        15
+       292: aload         15
+       294: ifnonnull     300
+       297: goto          204
+       300: aload         15
+       302: invokevirtual #408                // Method zombie/scripting/entity/components/crafting/InputScript.hasConsumeFromItem:()Z
+       305: ifeq          376
+       308: getstatic     #411                // Field zombie/entity/components/crafting/recipe/CraftRecipeManager$1.$SwitchMap$zombie$entity$components$resources$ResourceType:[I
+       311: aload         15
+       313: invokevirtual #574                // Method zombie/scripting/entity/components/crafting/InputScript.getConsumeFromItemScript:()Lzombie/scripting/entity/components/crafting/InputScript;
+       316: invokevirtual #310                // Method zombie/scripting/entity/components/crafting/InputScript.getResourceType:()Lzombie/entity/components/resources/ResourceType;
+       319: invokevirtual #417                // Method zombie/entity/components/resources/ResourceType.ordinal:()I
+       322: iaload
+       323: tableswitch   { // 1 to 3
+
+                       1: 348
+
+                       2: 363
+
+                       3: 348
+                 default: 373
+            }
+       348: fload         7
+       350: aload         15
+       352: invokevirtual #421                // Method zombie/scripting/entity/components/crafting/InputScript.getAmount:()F
+       355: f2i
+       356: i2f
+       357: fadd
+       358: fstore        7
+       360: goto          373
+       363: fload         7
+       365: aload         15
+       367: invokevirtual #421                // Method zombie/scripting/entity/components/crafting/InputScript.getAmount:()F
+       370: fadd
+       371: fstore        7
+       373: goto          204
+       376: aload         15
+       378: aload_1
+       379: invokestatic  #578                // Method consumesEntireItem:(Lzombie/scripting/entity/components/crafting/InputScript;Lzombie/inventory/InventoryItem;)Z
+       382: ifeq          389
+       385: ldc_w         #584                // float 3.4028235E38f
+       388: freturn
+       389: aload         15
+       391: invokevirtual #405                // Method zombie/scripting/entity/components/crafting/InputScript.isKeep:()Z
+       394: ifeq          400
+       397: goto          204
+       400: aload_2
+       401: ifnull        421
+       404: aload_2
+       405: invokevirtual #585                // Method zombie/entity/components/crafting/recipe/CraftRecipeData$CacheData.getRecipeData:()Lzombie/entity/components/crafting/recipe/CraftRecipeData;
+       408: ifnull        421
+       411: aload_2
+       412: invokevirtual #585                // Method zombie/entity/components/crafting/recipe/CraftRecipeData$CacheData.getRecipeData:()Lzombie/entity/components/crafting/recipe/CraftRecipeData;
+       415: invokevirtual #591                // Method zombie/entity/components/crafting/recipe/CraftRecipeData.getVariableInputRatio:()F
+       418: goto          422
+       421: fconst_1
+       422: fstore        16
+       424: aload         15
+       426: invokevirtual #594                // Method zombie/scripting/entity/components/crafting/InputScript.isVariableAmount:()Z
+       429: ifeq          444
+       432: aload         15
+       434: invokevirtual #438                // Method zombie/scripting/entity/components/crafting/InputScript.getIntAmount:()I
+       437: i2f
+       438: fload         16
+       440: fmul
+       441: goto          450
+       444: aload         15
+       446: invokevirtual #438                // Method zombie/scripting/entity/components/crafting/InputScript.getIntAmount:()I
+       449: i2f
+       450: fstore        17
+       452: fload         17
+       454: ldc_w         #597                // float 1.0E-5f
+       457: fcmpl
+       458: ifle          471
+       461: fload         17
+       463: f2d
+       464: invokestatic  #598                // Method java/lang/Math.ceil:(D)D
+       467: d2f
+       468: goto          472
+       471: fconst_0
+       472: fstore        18
+       474: aload         15
+       476: aload_1
+       477: invokevirtual #499                // Method zombie/inventory/InventoryItem.getScriptItem:()Lzombie/scripting/objects/Item;
+       480: invokevirtual #604                // Method zombie/scripting/objects/Item.getFullName:()Ljava/lang/String;
+       483: invokevirtual #607                // Method zombie/scripting/entity/components/crafting/InputScript.getRelativeScale:(Ljava/lang/String;)F
+       486: fstore        19
+       488: fload         7
+       490: fload         18
+       492: fload         19
+       494: fmul
+       495: f2i
+       496: i2f
+       497: fadd
+       498: fstore        7
+       500: goto          204
+       503: goto          99
+       506: fload         7
+       508: freturn
+
+
+  private boolean consumeInputFromItems(zombie.scripting.entity.components.crafting.InputScript, java.util.List<zombie.inventory.InventoryItem>, boolean, zombie.entity.components.crafting.recipe.CraftRecipeData$CacheData, boolean, zombie.characters.IsoGameCharacter);
+    Code:
+         0: aload_1
+         1: ifnull        14
+         4: aload_1
+         5: invokevirtual #270                // Method zombie/scripting/entity/components/crafting/InputScript.getResourceType:()Lzombie/entity/components/resources/ResourceType;
+         8: getstatic     #274                // Field zombie/entity/components/resources/ResourceType.Item:Lzombie/entity/components/resources/ResourceType;
+        11: if_acmpeq     16
+        14: iconst_0
+        15: ireturn
+        16: aload_2
+        17: invokeinterface #683,  1          // InterfaceMethod java/util/List.isEmpty:()Z
+        22: ifeq          27
+        25: iconst_0
+        26: ireturn
+        27: aload_1
+        28: invokevirtual #445                // Method zombie/scripting/entity/components/crafting/InputScript.getIntAmount:()I
+        31: i2f
+        32: fstore        7
+        34: aload_1
+        35: invokevirtual #769                // Method zombie/scripting/entity/components/crafting/InputScript.getIntMaxAmount:()I
+        38: i2f
+        39: fstore        8
+        41: aload_1
+        42: invokevirtual #217                // Method zombie/scripting/entity/components/crafting/InputScript.hasConsumeFromItem:()Z
+        45: ifeq          68
+        48: aload_1
+        49: invokevirtual #220                // Method zombie/scripting/entity/components/crafting/InputScript.getConsumeFromItemScript:()Lzombie/scripting/entity/components/crafting/InputScript;
+        52: astore        9
+        54: aload         9
+        56: invokevirtual #611                // Method zombie/scripting/entity/components/crafting/InputScript.getAmount:()F
+        59: fstore        7
+        61: aload         9
+        63: invokevirtual #772                // Method zombie/scripting/entity/components/crafting/InputScript.getMaxAmount:()F
+        66: fstore        8
+        68: fload         7
+        70: fconst_0
+        71: fcmpg
+        72: ifgt          77
+        75: iconst_0
+        76: ireturn
+        77: iload         5
+        79: ifeq          89
+        82: aload_0
+        83: getfield      #61                 // Field usedItems:Ljava/util/HashSet;
+        86: invokevirtual #177                // Method java/util/HashSet.clear:()V
+        89: new           #54                 // class java/util/HashSet
+        92: dup
+        93: invokespecial #56                 // Method java/util/HashSet."<init>":()V
+        96: astore        10
+        98: new           #54                 // class java/util/HashSet
+       101: dup
+       102: invokespecial #56                 // Method java/util/HashSet."<init>":()V
+       105: astore        11
+       107: new           #54                 // class java/util/HashSet
+       110: dup
+       111: invokespecial #56                 // Method java/util/HashSet."<init>":()V
+       114: astore        12
+       116: new           #54                 // class java/util/HashSet
+       119: dup
+       120: invokespecial #56                 // Method java/util/HashSet."<init>":()V
+       123: astore        13
+       125: fload         7
+       127: fstore        14
+       129: fload         8
+       131: fstore        15
+       133: aload_1
+       134: invokevirtual #775                // Method zombie/scripting/entity/components/crafting/InputScript.getPossibleInputItems:()Ljava/util/List;
+       137: astore        16
+       139: iconst_0
+       140: istore        17
+       142: iload         17
+       144: aload         16
+       146: invokeinterface #555,  1          // InterfaceMethod java/util/List.size:()I
+       151: if_icmpge     714
+       154: iconst_0
+       155: istore        18
+       157: iload         18
+       159: aload_2
+       160: invokeinterface #555,  1          // InterfaceMethod java/util/List.size:()I
+       165: if_icmpge     582
+       168: aload_2
+       169: iload         18
+       171: invokeinterface #556,  2          // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+       176: checkcast     #297                // class zombie/inventory/InventoryItem
+       179: astore        9
+       181: aload         9
+       183: invokevirtual #460                // Method zombie/inventory/InventoryItem.getScriptItem:()Lzombie/scripting/objects/Item;
+       186: invokevirtual #525                // Method zombie/scripting/objects/Item.getFullName:()Ljava/lang/String;
+       189: aload         16
+       191: iload         17
+       193: invokeinterface #556,  2          // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+       198: checkcast     #509                // class zombie/scripting/objects/Item
+       201: invokevirtual #525                // Method zombie/scripting/objects/Item.getFullName:()Ljava/lang/String;
+       204: invokevirtual #302                // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+       207: ifne          213
+       210: goto          576
+       213: aload_0
+       214: getfield      #61                 // Field usedItems:Ljava/util/HashSet;
+       217: aload         9
+       219: invokevirtual #761                // Method java/util/HashSet.contains:(Ljava/lang/Object;)Z
+       222: ifne          576
+       225: aload         10
+       227: aload         9
+       229: invokevirtual #761                // Method java/util/HashSet.contains:(Ljava/lang/Object;)Z
+       232: ifeq          238
+       235: goto          576
+       238: fconst_0
+       239: fstore        19
+       241: iload_3
+       242: ifne          298
+       245: aload_1
+       246: invokevirtual #217                // Method zombie/scripting/entity/components/crafting/InputScript.hasConsumeFromItem:()Z
+       249: ifeq          298
+       252: aload_1
+       253: invokevirtual #220                // Method zombie/scripting/entity/components/crafting/InputScript.getConsumeFromItemScript:()Lzombie/scripting/entity/components/crafting/InputScript;
+       256: astore        20
+       258: getstatic     #569                // Field zombie/entity/components/crafting/recipe/CraftRecipeData$1.$SwitchMap$zombie$entity$components$resources$ResourceType:[I
+       261: aload         20
+       263: invokevirtual #270                // Method zombie/scripting/entity/components/crafting/InputScript.getResourceType:()Lzombie/entity/components/resources/ResourceType;
+       266: invokevirtual #575                // Method zombie/entity/components/resources/ResourceType.ordinal:()I
+       269: iaload
+       270: lookupswitch  { // 1
+
+                       1: 288
+                 default: 298
+            }
+       288: aload         9
+       290: invokevirtual #481                // Method zombie/inventory/InventoryItem.getFluidContainer:()Lzombie/entity/components/fluids/FluidContainer;
+       293: invokevirtual #578                // Method zombie/entity/components/fluids/FluidContainer.getAmount:()F
+       296: fstore        19
+       298: aload_1
+       299: aload         9
+       301: iload_3
+       302: aload         4
+       304: aload         6
+       306: invokestatic  #779                // Method zombie/entity/components/crafting/recipe/CraftRecipeManager.consumeInputItem:(Lzombie/scripting/entity/components/crafting/InputScript;Lzombie/inventory/InventoryItem;ZLzombie/entity/components/crafting/recipe/CraftRecipeData$CacheData;Lzombie/characters/IsoGameCharacter;)Z
+       309: ifeq          576
+       312: aload         10
+       314: aload         9
+       316: invokevirtual #740                // Method java/util/HashSet.add:(Ljava/lang/Object;)Z
+       319: pop
+       320: aload_0
+       321: getfield      #81                 // Field allViableItems:Ljava/util/ArrayList;
+       324: aload         9
+       326: invokevirtual #330                // Method java/util/ArrayList.contains:(Ljava/lang/Object;)Z
+       329: ifne          340
+       332: aload         11
+       334: aload         9
+       336: invokevirtual #740                // Method java/util/HashSet.add:(Ljava/lang/Object;)Z
+       339: pop
+       340: iload_3
+       341: ifne          372
+       344: fload         14
+       346: ldc_w         #492                // float 1.0E-5f
+       349: fcmpl
+       350: ifle          364
+       353: aload         12
+       355: aload         9
+       357: invokevirtual #740                // Method java/util/HashSet.add:(Ljava/lang/Object;)Z
+       360: pop
+       361: goto          372
+       364: aload         13
+       366: aload         9
+       368: invokevirtual #740                // Method java/util/HashSet.add:(Ljava/lang/Object;)Z
+       371: pop
+       372: aload_1
+       373: invokevirtual #485                // Method zombie/scripting/entity/components/crafting/InputScript.isItemCount:()Z
+       376: ifeq          383
+       379: fconst_1
+       380: goto          389
+       383: aload         9
+       385: invokevirtual #513                // Method zombie/inventory/InventoryItem.getCurrentUses:()I
+       388: i2f
+       389: fstore        20
+       391: iload_3
+       392: ifeq          407
+       395: aload         6
+       397: aload         9
+       399: aload         4
+       401: invokestatic  #783                // Method zombie/entity/components/crafting/recipe/CraftRecipeManager.itemGetQueuedAmount:(Lzombie/characters/IsoGameCharacter;Lzombie/inventory/InventoryItem;Lzombie/entity/components/crafting/recipe/CraftRecipeData$CacheData;)F
+       404: goto          408
+       407: fconst_0
+       408: fstore        21
+       410: fload         21
+       412: ldc           #96                 // float 3.4028235E38f
+       414: fcmpl
+       415: ifne          421
+       418: goto          576
+       421: fload         20
+       423: fload         21
+       425: fsub
+       426: fconst_0
+       427: invokestatic  #787                // Method java/lang/Math.max:(FF)F
+       430: fstore        20
+
+[remaining instructions omitted]

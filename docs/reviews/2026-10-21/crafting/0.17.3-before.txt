@@ -1,0 +1,6 @@
+Exception in thread "main" java.lang.AssertionError: tests\lua\craft-probe-test.lua [false, craft action not reached, at error
+at toCraft:261
+at tests\lua\craft-probe-test.lua:266
+, se.krka.kahlua.vm.KahluaException: craft action not reached]
+	at KahluaLaborTest.run(KahluaLaborTest.java:53)
+	at KahluaLaborTest.main(KahluaLaborTest.java:43)

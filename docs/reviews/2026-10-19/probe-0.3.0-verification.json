@@ -1,0 +1,153 @@
+{
+  "version": "0.3.0",
+  "builtAtUtc": "2026-10-19T09:27:30.0861344Z",
+  "dependencies": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    }
+  ],
+  "java": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe",
+  "javac": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe",
+  "jarSha256": "43F4B15ADE2F18B8E0AD95025B1B0CE178119BA1DFC19FC90EA187755A974AAB",
+  "zipSha256": "7939596F354F718CB4C8726000D5D6994F3562D1AD31D479630D812EAA01CAE7",
+  "jarEntries": [
+    "META-INF/",
+    "META-INF/MANIFEST.MF",
+    "emberroutes/",
+    "emberroutes/probe/",
+    "emberroutes/probe/BuildInfo.class",
+    "emberroutes/probe/Main.class",
+    "emberroutes/probe/ProbeMovement$Outcome.class",
+    "emberroutes/probe/ProbeMovement$PathResult.class",
+    "emberroutes/probe/ProbeMovement.class",
+    "emberroutes/probe/ProbeNpc.class",
+    "emberroutes/probe/ProbeRetirement$Result.class",
+    "emberroutes/probe/ProbeRetirement.class",
+    "emberroutes/probe/ProbeRules.class",
+    "emberroutes/probe/ProbeRuntime.class",
+    "emberroutes/probe/ProbeSession.class",
+    "emberroutes/probe/ProbeWorldLinks.class"
+  ],
+  "runtimeTestsRun": false,
+  "checks": {
+    "javaBuild": "pass",
+    "javaLogicAssertions": 61,
+    "luaBatchAssertions": 16,
+    "luaOrchestrationAssertions": 14,
+    "luaWorldHaulAssertions": 42,
+    "totalAssertions": 133,
+    "preflight": "pass",
+    "luaLS": {
+      "warnings": 0,
+      "errors": 0
+    },
+    "doclink": "pass: 10 documents, 0 errors, 0 warnings",
+    "newRuntime": "not run",
+    "previousRuntime": "0.2.0 user confirms actions normal; runtime log ten cases passed",
+    "mpCarrier": "not implemented",
+    "saveRetirement": "manual REMOVED still required; 0.2.0 exit only logged PENDING"
+  },
+  "evidenceFiles": [
+    {
+      "sha256": "358B61197FA1FC61103C1FBAE186EC642AE6A45B22A66110A3CF2355E5A181D6",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe.lua"
+    },
+    {
+      "sha256": "54DE3EF8084675290AC1CA6A0219C500998DA8AEA72C9BBC59739B8693371E30",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Actions.lua"
+    },
+    {
+      "sha256": "9E5616FE14B1435ACC2272340915EBFDACB66B260DD0BE1B1D48AC5A7F45F4AA",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Batch.lua"
+    },
+    {
+      "sha256": "DFEFD13F04757F2E3D927FBE948E5A4CC094DAF48B2094AE2E9D155CB36996E8",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Haul.lua"
+    },
+    {
+      "sha256": "864FCBFD50A0C6FB7F2BEC8A373A64E7C4724AF65148C6859DC1B10662AA3C74",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/HaulRules.lua"
+    },
+    {
+      "sha256": "F7FE961EE13F734A9774C0577449D46EADF7DDFE0F49CE234FD8E92314CD10DE",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua"
+    },
+    {
+      "sha256": "3FF188B1D2D17E5CBD9C7540C21B482F79E9D07C68C634F96CB2A957282000DA",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Build.lua"
+    },
+    {
+      "sha256": "83E05F7D123C5E4AE25BA05E0A0717DCEAC79D5836474DFA60C2D28C6DB0C74E",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbeLoader.lua"
+    },
+    {
+      "sha256": "49E3404756BCFF63A8344CDFB2CBE5F13A537A5C9C457A14CC7371964635318F",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/IG_UI.json"
+    },
+    {
+      "sha256": "3A984E1918A072D9B12311CC376BB96DCB2CE70A04B39F5A191AB1522305D9A1",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/Sandbox.json"
+    },
+    {
+      "sha256": "368F900B0D6426AD56CD7D730458C1BA9DB91A71CBA884DC6A2D68EBDC47C9BD",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/IG_UI.json"
+    },
+    {
+      "sha256": "C7CA0069F4B01E10B8F20DBFCD9ADC31111123986E6CDF26151F807A02E8E0CE",
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/Sandbox.json"
+    },
+    {
+      "sha256": "4CD766B5092E5B506C2BDE02499206DCDF1421AB3B690994D14468DA708AFEDA",
+      "path": "java/src/main/java/emberroutes/probe/Main.java"
+    },
+    {
+      "sha256": "0492A49E2F5A9FE566BC50D76F7D8BB6E73D4059020E37922CF88D14619F302E",
+      "path": "java/src/main/java/emberroutes/probe/ProbeMovement.java"
+    },
+    {
+      "sha256": "D73467CC31AF92E9EED2C68D72C34054B5F7C3ED8036AC361C1B5D11EC112F91",
+      "path": "java/src/main/java/emberroutes/probe/ProbeNpc.java"
+    },
+    {
+      "sha256": "8D6E58460CF61F2D3D73D5EF1E48B0C409BE98B06D91564E3AED7BD3A161B18C",
+      "path": "java/src/main/java/emberroutes/probe/ProbeRetirement.java"
+    },
+    {
+      "sha256": "D857223E9A52C1C0A744A5CFC6723E6C84308030AA81E6C4D162AACC9AE67D78",
+      "path": "java/src/main/java/emberroutes/probe/ProbeRules.java"
+    },
+    {
+      "sha256": "7807CF0EABD192E04E8D22C9A789944EA1E3CC75F9EFFFB377954BA3D494CCFB",
+      "path": "java/src/main/java/emberroutes/probe/ProbeRuntime.java"
+    },
+    {
+      "sha256": "7E4A9BBEE17874CAC0E2DEE841D84378756CB70E8E4D6970AC3979B6980AB891",
+      "path": "java/src/main/java/emberroutes/probe/ProbeSession.java"
+    },
+    {
+      "sha256": "9A753270775888AF095BFE4A8685D70C1C310BCFEE752942EFF28AC625F3CF3C",
+      "path": "java/src/main/java/emberroutes/probe/ProbeWorldLinks.java"
+    },
+    {
+      "sha256": "E914E992CC0EA1731BB3DE83226FE16388698F8BC1F3D557BA8D137A357E45F8",
+      "path": "java/src/test/java/emberroutes/probe/ProbeLogicTest.java"
+    },
+    {
+      "sha256": "48E39F186C1409E91AE9CE9904D4BB44456F11A5C7BC5285A0D832A34B676095",
+      "path": "tests/lua/actions-test.lua"
+    },
+    {
+      "sha256": "73B71DE2D49A39165968C521CDA2B9435B41D6AB98E37DA7B37F5D126C782DE0",
+      "path": "tests/lua/batch-test.lua"
+    },
+    {
+      "sha256": "8475B641E2C04C958A3B91F54B262BE67CD2246F1E62D45EE980667F59995A6C",
+      "path": "tests/lua/haul-test.lua"
+    }
+  ]
+}

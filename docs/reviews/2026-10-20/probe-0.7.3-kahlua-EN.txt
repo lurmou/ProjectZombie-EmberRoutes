@@ -1,0 +1,6 @@
+PASS installed PZ Kahlua Chinese text preservation, wrap, newline and narrow width; renderer NOT RUN
+PASS UI state subscriptions/disposal, relative layout bounds and text regressions
+PASS 19 storage panel lifecycle/layout/interaction checks; native UI rendering NOT RUN
+PASS real Kahlua + actual translations: panel labels/heights at 1080p, 2K, 4K, 720p large font; ISUI host mocked
+PREVIEW build\qa\probe-ui-0.7.3-EN.png (captured component layout; not a game screenshot)
+PASS 18 storage sidebar adapter checks; vanilla/CleanUI runtime NOT RUN

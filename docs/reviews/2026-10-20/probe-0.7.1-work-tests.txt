@@ -1,0 +1,4 @@
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.7.0] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified

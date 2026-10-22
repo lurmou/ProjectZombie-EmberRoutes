@@ -1,0 +1,5 @@
+{
+    "Sandbox_EmberRoutes": "余烬商路探针",
+    "Sandbox_EmberRoutes_CarrierProbe": "启用临时 NPC 载体探针",
+    "Sandbox_EmberRoutes_CarrierProbe_tooltip": "仅用于 Phase 0 测试，启用右键探针菜单。多人载体模拟尚未实现，请使用临时测试存档。"
+}

@@ -1,0 +1,2 @@
+PASS installed ISHandcraftAction Lua contract: stop calls cancel AND complete; performRecipe returns nil on success AND failure. Java engine/native crafting NOT RUN.
+PASS installed Kahlua: ../../build/qa/crafting-contract-audit.lua; native host mocked

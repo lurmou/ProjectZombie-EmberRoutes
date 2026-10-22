@@ -1,0 +1,16 @@
+{
+  "version": "0.8.0",
+  "date": "2026-10-20",
+  "packageSHA256": "D9B32C8C7FD4AD6E4FE22E5B9279D3B5F07E51FDF67F064C4E69B9838AF212AA",
+  "packageSourceFilesMatched": 43,
+  "nativePZRenderer": "not run",
+  "newFeatureSinglePlayerAcceptance": "pending",
+  "previous0.7.3UserFeedback": "no issues",
+  "kahluaCN": "passed with ISUI host mocked",
+  "kahluaEN": "passed with ISUI host mocked",
+  "preflight": "passed; 0 errors/0 warnings",
+  "releaseCheck": "passed; 0 errors/0 notices",
+  "scope": "SP-only; ROOT_ONLY read model; no inventory writes/BOM/MP",
+  "mainAgentImplemented": true,
+  "subagentsUsed": false
+}

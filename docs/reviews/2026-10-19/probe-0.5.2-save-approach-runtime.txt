@@ -1,0 +1,19 @@
+1916: LOG  : General      f:14073> [EmberRoutes v0.5.2] HAUL JOB_STARTED cases=17 source=233e00c9-47df-49ac-b3ad-c2d7445da443 destination=a5e9f3f4-0651-410c-8983-abd546c1f5a1
+1973: LOG  : General      f:17118> [EmberRoutes v0.5.2] HAUL BATCH CANCELLED SAVE
+1976: LOG  : General      f:17118> [EmberRoutes v0.5.2] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4183 mode=HOLD home=true
+1992: LOG  : General      f:18302> [EmberRoutes v0.5.2] HAUL JOB_STARTED cases=17 source=233e00c9-47df-49ac-b3ad-c2d7445da443 destination=a5e9f3f4-0651-410c-8983-abd546c1f5a1
+1993: LOG  : General      f:18303> [EmberRoutes v0.5.2] INVALID_TILE loaded walkable floor required
+2067: LOG  : General      f:18303> [EmberRoutes v0.5.2] HAUL ERROR INVALID_TILE loaded walkable floor required
+2098: LOG  : General      f:19681> [EmberRoutes v0.5.2] HAUL ITEM_LOCATION itemID=1729276098 root=false source=true destination=false
+2099: LOG  : General      f:19681> [EmberRoutes v0.5.2] HAUL ITEM_LOCATION itemID=699389104 root=false source=true destination=false
+2100: LOG  : General      f:19681> [EmberRoutes v0.5.2] HAUL ITEM_LOCATION itemID=1082222137 root=false source=true destination=false
+2112: LOG  : General      f:20565> [EmberRoutes v0.5.2] HAUL JOB_STARTED cases=17 source=233e00c9-47df-49ac-b3ad-c2d7445da443 destination=a5e9f3f4-0651-410c-8983-abd546c1f5a1
+2113: LOG  : General      f:20566> [EmberRoutes v0.5.2] INVALID_TILE loaded walkable floor required
+2187: LOG  : General      f:20566> [EmberRoutes v0.5.2] HAUL ERROR INVALID_TILE loaded walkable floor required
+2228: LOG  : General      f:21720> [EmberRoutes v0.5.2] ACTION BATCH CANCELLED SAVE
+2231: LOG  : General      f:21720> [EmberRoutes v0.5.2] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4183 mode=HOLD home=true
+3779: LOG  : General      f:6074> [EmberRoutes v0.5.2] HAUL JOB_STARTED cases=17 source=233e00c9-47df-49ac-b3ad-c2d7445da443 destination=15625a51-24d5-435e-a8e2-7f831d09390b
+3780: LOG  : General      f:6075> [EmberRoutes v0.5.2] INVALID_TILE loaded walkable floor required
+3854: LOG  : General      f:6075> [EmberRoutes v0.5.2] HAUL ERROR INVALID_TILE loaded walkable floor required
+4160: LOG  : General      f:22445> [EmberRoutes v0.5.2] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4183 mode=HOLD home=true
+5787: LOG  : General      f:5263> [EmberRoutes v0.5.2] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4183 mode=HOLD home=true

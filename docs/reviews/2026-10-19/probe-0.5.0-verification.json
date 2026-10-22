@@ -1,0 +1,48 @@
+{
+  "version": "0.5.0",
+  "date": "2026-10-19",
+  "java": {
+    "checkpoint": 42,
+    "logic": 65,
+    "nativeRuntimeRun": false
+  },
+  "lua": {
+    "samples": 15,
+    "bootPause": 8,
+    "actions": 14,
+    "companion": 36,
+    "haul": 42,
+    "followPolicy": 29,
+    "persistence": 27,
+    "batch": 16,
+    "nativeRuntimeRun": false,
+    "handoff": 6
+  },
+  "uniqueAssertions": 300,
+  "preflight": {
+    "luaLsErrors": 0,
+    "passed": true,
+    "vanillaKnowledgeBaseParseFailures": 1,
+    "healthCheck": "not applicable: no client/EOL",
+    "luaFiles": 14,
+    "luaLsWarnings": 0
+  },
+  "releaseCheck": {
+    "notices": 0,
+    "passed": true,
+    "errors": 0
+  },
+  "doclink": {
+    "notices": 0,
+    "documents": 9,
+    "errors": 0
+  },
+  "runtime": {
+    "nativeSnapshotRoundTrip": "NOT RUN",
+    "performance": "NOT RUN",
+    "fullProcessReload": "NOT RUN",
+    "multiplayer": "NOT IMPLEMENTED",
+    "sameProcessWorldReload": "NOT RUN",
+    "faultRecovery": "NOT RUN"
+  }
+}

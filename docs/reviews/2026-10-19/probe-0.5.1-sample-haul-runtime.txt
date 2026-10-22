@@ -1,0 +1,27 @@
+1772: LOG  : General      f:0> [EmberRoutes v0.5.1] BASELINE_CHECK gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 IsoPlayerCodeSource=file:/D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/pzopt/aot/pzopt.jar
+1773: LOG  : General      f:0> [EmberRoutes v0.5.1] READY version=0.5.1 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+1822: LOG  : General      f:1243> [EmberRoutes v0.5.1] COMPANION STATE mode=HOLD reason=PERSISTENCE_SAMPLE npc=absent
+1824: LOG  : General      f:1243> [EmberRoutes v0.5.1] PERSISTENCE_SAMPLE PREPARED npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92 bag=693070104 pencil=1322296177 water=1437127019 health=100
+1848: LOG  : General      f:2936> [EmberRoutes v0.5.1] PERSISTENCE_SAMPLE SAMPLE_FAILED npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92 bag=693070104 pencil=1322296177 water=1437127019 healthBefore=100 healthNow=100
+2068: LOG  : General      f:17168> [EmberRoutes v0.5.1] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4045 mode=FOLLOW home=true
+2175: LOG  : General      f:23801> [EmberRoutes v0.5.1] ACTION BATCH CANCELLED INJURED
+2206: LOG  : General      f:27391> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=c617c634-c0ad-408d-89bc-d2b8461cfecb destination=9c24680f-ebf4-430a-8895-37311efdc815
+2207: LOG  : General      f:27392> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED
+2260: LOG  : General      f:33778> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=c617c634-c0ad-408d-89bc-d2b8461cfecb destination=9c24680f-ebf4-430a-8895-37311efdc815
+2261: LOG  : General      f:33779> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED
+2325: LOG  : General      f:41771> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=c617c634-c0ad-408d-89bc-d2b8461cfecb destination=e202725e-2ff8-44cc-bb19-de655760b8c2
+2326: LOG  : General      f:41772> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED
+2388: LOG  : General      f:45594> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=c617c634-c0ad-408d-89bc-d2b8461cfecb destination=e202725e-2ff8-44cc-bb19-de655760b8c2
+2389: LOG  : General      f:45595> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED
+2422: LOG  : General      f:48448> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=c617c634-c0ad-408d-89bc-d2b8461cfecb destination=e202725e-2ff8-44cc-bb19-de655760b8c2
+2423: LOG  : General      f:48449> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED
+2451: LOG  : General      f:51936> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=e202725e-2ff8-44cc-bb19-de655760b8c2 destination=c617c634-c0ad-408d-89bc-d2b8461cfecb
+2452: LOG  : General      f:51937> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED
+2469: LOG  : General      f:52631> [EmberRoutes v0.5.1] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4045 mode=HOLD home=true
+3955: LOG  : General      f:0> [EmberRoutes v0.5.1] DISPOSED_WORLD_RELEASED engine world disposal confirmed; no live entity detached
+3956: LOG  : General      f:0> [EmberRoutes v0.5.1] BASELINE_CHECK gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 IsoPlayerCodeSource=file:/D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/pzopt/aot/pzopt.jar
+3957: LOG  : General      f:0> [EmberRoutes v0.5.1] READY version=0.5.1 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+3966: LOG  : General      f:1> [EmberRoutes v0.5.1] CHECKPOINT_RESTORED items=3 mode=HOLD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11401.893,0.0 attached=true world=true pending=false square=true updates=0 state=null target=0.0,0.0,0.0 pos=7958.5,11401.893,0.0 remaining=13904.706994866952 moving=false path=IDLE result=STOPPED pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=null retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=74.31627 failed=false reason=
+3968: LOG  : General      f:1> [EmberRoutes v0.5.1] PERSISTENCE AUTO CHECKPOINT_RESTORED items=3 mode=HOLD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11401.893,0.0 attached=true world=true pending=false square=true updates=0 state=null target=0.0,0.0,0.0 pos=7958.5,11401.893,0.0 remaining=13904.706994866952 moving=false path=IDLE result=STOPPED pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=null retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=74.31627 failed=false reason=
+4013: LOG  : General      f:5611> [EmberRoutes v0.5.1] HAUL JOB_STARTED cases=17 source=e202725e-2ff8-44cc-bb19-de655760b8c2 destination=233e00c9-47df-49ac-b3ad-c2d7445da443
+4014: LOG  : General      f:5612> [EmberRoutes v0.5.1] HAUL BATCH CANCELLED CARRIER_UNAVAILABLE_OR_INJURED

@@ -1,0 +1,5 @@
+pz-release-check：EmberRoutes/Contents/mods/EmberRoutesProbe
+  扫描 28 个 lua，2 个翻译文件
+
+
+合计：error 0 / 提示 0

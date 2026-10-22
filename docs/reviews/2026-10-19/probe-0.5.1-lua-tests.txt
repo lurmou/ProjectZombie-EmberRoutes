@@ -1,0 +1,19 @@
+PASS 14 Lua action orchestration assertions; native fakes NOT runtime evidence
+PASS 16 Lua batch policy assertions; native engine NOT simulated
+TEST BOOT IGUI_EmberRoutesProbe_VersionMismatch
+TEST BOOT IGUI_EmberRoutesProbe_MissingJava
+PASS 15 boot pause/lifecycle assertions; engine event cadence NOT simulated
+PASS 14 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.5.1] ACTION FIXTURES_CLEANED
+PASS 42 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 6 real-controller handoff assertions; native fakes NOT runtime evidence
+PASS 36 companion/driver assertions; native fakes NOT runtime evidence
+PASS 29 follow policy assertions; native engine NOT simulated
+PASS 14 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.5.1] ACTION FIXTURES_CLEANED
+PASS 42 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 15 persistence sample assertions; native serialization NOT simulated
+PASS 14 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.5.1] ACTION FIXTURES_CLEANED
+PASS 42 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 27 persistence orchestration assertions; native save/load NOT RUN

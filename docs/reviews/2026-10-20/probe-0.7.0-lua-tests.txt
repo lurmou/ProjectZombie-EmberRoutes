@@ -1,0 +1,39 @@
+SUITE actions-test.lua
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+SUITE batch-test.lua
+PASS 19 Lua batch policy assertions; native engine NOT simulated
+SUITE boot-pause-test.lua
+TEST BOOT IGUI_EmberRoutesProbe_VersionMismatch
+TEST BOOT IGUI_EmberRoutesProbe_MissingJava
+PASS 15 boot pause/lifecycle assertions; engine event cadence NOT simulated
+SUITE companion-handoff-test.lua
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.7.0] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 6 real-controller handoff assertions; native fakes NOT runtime evidence
+SUITE companion-test.lua
+PASS 36 companion/driver assertions; native fakes NOT runtime evidence
+SUITE follow-policy-test.lua
+PASS 29 follow policy assertions; native engine NOT simulated
+SUITE haul-test.lua
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.7.0] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+SUITE persistence-samples-test.lua
+PASS 21 persistence sample assertions; native serialization NOT simulated
+SUITE persistence-test.lua
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.7.0] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 32 persistence orchestration assertions; native save/load NOT RUN
+SUITE storage-filter-test.lua
+PASS 32 storage filter/editor policy checks; engine UI NOT RUN
+SUITE storage-panel-test.lua
+PASS 13 storage panel lifecycle/layout/interaction checks; native UI rendering NOT RUN
+SUITE storage-tabs-test.lua
+PASS 9 storage sidebar adapter checks; vanilla/CleanUI runtime NOT RUN
+SUITE work-test.lua
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.7.0] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 59 real-haul policy/orchestration checks; engine runtime NOT verified

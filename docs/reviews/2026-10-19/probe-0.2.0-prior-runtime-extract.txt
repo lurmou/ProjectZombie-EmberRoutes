@@ -1,0 +1,6 @@
+LOG  : General      f:0> [EmberRoutes v0.1.2] BOOT jar loaded; Lua API registered; runtime tests NOT RUN
+LOG  : General      f:0> [NPCFW] Lua env detected, initializing...
+LOG  : General      f:0> [NPCFW] Injected 247 global functions. Framework READY.
+LOG  : General      f:0> [EmberRoutes v0.1.2] READY version=0.1.2 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+LOG  : General      f:0> [NPCFW] Lua env detected, initializing...
+LOG  : General      f:0> [NPCFW] Injected 247 global functions. Framework READY.

@@ -1,0 +1,103 @@
+148:LOG  : General      f:0> [EmberRoutes v0.5.3] BOOT jar loaded; Lua API registered; runtime tests NOT RUN
+1310:LOG  : General      f:0> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=WORLD_RESET npc=absent
+1311:LOG  : General      f:0> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+1943:LOG  : General      f:0> [EmberRoutes v0.5.3] BASELINE_CHECK gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 IsoPlayerCodeSource=file:/D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/pzopt/aot/pzopt.jar
+1944:LOG  : General      f:0> [EmberRoutes v0.5.3] READY version=0.5.3 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+1965:LOG  : General      f:1> [EmberRoutes v0.5.3] CHECKPOINT_EMPTY no saved NPC
+1966:LOG  : General      f:1> [EmberRoutes v0.5.3] PERSISTENCE AUTO CHECKPOINT_EMPTY no saved NPC
+1994:LOG  : General      f:1429> [EmberRoutes v0.5.3] CHECKPOINT_EMPTY no saved NPC
+2001:LOG  : General      f:1715> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=SAVE npc=absent
+2002:LOG  : General      f:1715> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+2003:LOG  : General      f:1715> [EmberRoutes v0.5.3] CHECKPOINT_RETAINED unresolved saved record left unchanged
+3113:LOG  : General      f:0> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=WORLD_RESET npc=absent
+3114:LOG  : General      f:0> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+3551:LOG  : General      f:0> [EmberRoutes v0.5.3] BASELINE_CHECK gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 IsoPlayerCodeSource=file:/D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/pzopt/aot/pzopt.jar
+3552:LOG  : General      f:0> [EmberRoutes v0.5.3] READY version=0.5.3 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+3562:LOG  : General      f:1> [EmberRoutes v0.5.3] CHECKPOINT_RESTORED items=3 mode=HOLD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7960.211,11405.789,0.0 attached=true world=true pending=false square=true updates=0 state=null target=0.0,0.0,0.0 pos=7960.211,11405.789,0.0 remaining=13908.881418278726 moving=false path=IDLE result=STOPPED pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=null retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3563:LOG  : General      f:1> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=RESTORED npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92
+3564:LOG  : General      f:1> [EmberRoutes v0.5.3] PERSISTENCE AUTO CHECKPOINT_RESTORED items=3 mode=HOLD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7960.211,11405.789,0.0 attached=true world=true pending=false square=true updates=0 state=null target=0.0,0.0,0.0 pos=7960.211,11405.789,0.0 remaining=13908.881418278726 moving=false path=IDLE result=STOPPED pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=null retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3593:LOG  : General      f:4451> [EmberRoutes v0.5.3] HAUL TAGGED role=source id=233e00c9-47df-49ac-b3ad-c2d7445da443
+3599:LOG  : General      f:5162> [EmberRoutes v0.5.3] HAUL TAGGED role=destination id=15625a51-24d5-435e-a8e2-7f831d09390b
+3603:LOG  : General      f:5829> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=HAUL_ORDER npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92
+3604:LOG  : General      f:5829> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+3605:LOG  : General      f:5829> [EmberRoutes v0.5.3] HAUL FIXTURE itemID=1021615200 type=Base.Pencil
+3606:LOG  : General      f:5829> [EmberRoutes v0.5.3] HAUL FIXTURE itemID=1463117032 type=Base.Screwdriver
+3607:LOG  : General      f:5829> [EmberRoutes v0.5.3] HAUL FIXTURE itemID=2062575330 type=Base.Spoon
+3608:LOG  : General      f:5829> [EmberRoutes v0.5.3] HAUL JOB_STARTED cases=17 source=233e00c9-47df-49ac-b3ad-c2d7445da443 destination=15625a51-24d5-435e-a8e2-7f831d09390b
+3609:LOG  : General      f:5830> [EmberRoutes v0.5.3] HAUL APPROACH_TARGET pos=7958,11400,0
+3610:LOG  : General      f:5830> [EmberRoutes v0.5.3] MOVE_TARGET origin=7960.211,11405.789,0.0 target=7958.5,11400.5,0.0 distance=5.558910797792361
+3611:LOG  : General      f:5830> [EmberRoutes v0.5.3] MOVE_REQUESTED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7960.211,11405.789,0.0 attached=true world=true pending=false square=true updates=5829 state=IdleState target=7958.5,11400.5,0.0 pos=7960.211,11405.789,0.0 remaining=5.558910797792361 moving=true path=REQUESTED result=MOVING pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3612:LOG  : General      f:5830> [EmberRoutes v0.5.3] HAUL OUTBOUND_APPROACH_SOURCE STARTED
+3613:LOG  : General      f:5842> [EmberRoutes v0.5.3] MOVE_PROGRESS target=7958.5,11400.5,0.0 pos=7960.211,11405.789,0.0 remaining=5.558910797792361 moving=true path=Working result=MOVING pathSteps=12 hasPath=true nextSet=true next=7960.5,11404.5 state=IdleState
+3615:LOG  : General      f:6006> [EmberRoutes v0.5.3] MOVE_PROGRESS target=7958.5,11400.5,0.0 pos=7960.451,11404.719,0.0 remaining=4.648109642455847 moving=true path=Working result=MOVING pathSteps=176 hasPath=true nextSet=true next=7960.5,11404.5 state=PlayerMovementState
+3619:LOG  : General      f:6171> [EmberRoutes v0.5.3] MOVE_PROGRESS target=7958.5,11400.5,0.0 pos=7959.2114,11403.213,0.0 remaining=2.804621576156053 moving=true path=Working result=MOVING pathSteps=341 hasPath=true nextSet=true next=7958.5,11402.5 state=PlayerMovementState
+3621:LOG  : General      f:6332> [EmberRoutes v0.5.3] MOVE_PROGRESS target=7958.5,11400.5,0.0 pos=7958.5,11401.462,0.0 remaining=0.9619140625 moving=true path=Working result=MOVING pathSteps=502 hasPath=true nextSet=true next=7958.5,11400.5 state=PlayerMovementState
+3622:LOG  : General      f:6377> [EmberRoutes v0.5.3] MOVE_REACHED target=7958.5,11400.5,0.0 pos=7958.5,11400.896,0.0 remaining=0.396484375 moving=false path=Working result=REACHED pathSteps=546 hasPath=false nextSet=false next=7958.5,11400.5 state=PlayerMovementState displacement=5.183109861669418
+3623:LOG  : General      f:6377> [EmberRoutes v0.5.3] HAUL OUTBOUND_APPROACH_SOURCE PASSED movement=REACHED reach checked
+3624:LOG  : General      f:6378> [EmberRoutes v0.5.3] HAUL OUTBOUND_TAKE_1 STARTED
+3626:LOG  : General      f:6707> [EmberRoutes v0.5.3] HAUL OUTBOUND_TAKE_1 PASSED itemID=1021615200 copies=1 condition=1
+3627:LOG  : General      f:6708> [EmberRoutes v0.5.3] HAUL OUTBOUND_TAKE_2 STARTED
+3630:LOG  : General      f:7046> [EmberRoutes v0.5.3] HAUL OUTBOUND_TAKE_2 PASSED itemID=1463117032 copies=1 condition=9
+3631:LOG  : General      f:7047> [EmberRoutes v0.5.3] HAUL OUTBOUND_TAKE_3 STARTED
+3633:LOG  : General      f:7381> [EmberRoutes v0.5.3] HAUL OUTBOUND_TAKE_3 PASSED itemID=2062575330 copies=1 condition=2
+3634:LOG  : General      f:7382> [EmberRoutes v0.5.3] HAUL APPROACH_TARGET pos=7958,11404,0
+3635:LOG  : General      f:7382> [EmberRoutes v0.5.3] MOVE_TARGET origin=7958.5,11400.896,0.0 target=7958.5,11404.5,0.0 distance=3.603515625
+3636:LOG  : General      f:7382> [EmberRoutes v0.5.3] MOVE_REQUESTED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11400.896,0.0 attached=true world=true pending=false square=true updates=7381 state=IdleState target=7958.5,11404.5,0.0 pos=7958.5,11400.896,0.0 remaining=3.603515625 moving=true path=REQUESTED result=MOVING pathSteps=0 hasPath=false nextSet=false next=7958.5,11400.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3637:LOG  : General      f:7382> [EmberRoutes v0.5.3] HAUL OUTBOUND_APPROACH_DESTINATION STARTED
+3638:LOG  : General      f:7516> [EmberRoutes v0.5.3] MOVE_PROGRESS target=7958.5,11404.5,0.0 pos=7958.5,11401.1455,0.0 remaining=3.3544921875 moving=true path=Working result=MOVING pathSteps=134 hasPath=true nextSet=true next=7958.5,11401.5 state=PlayerMovementState
+3643:LOG  : General      f:7681> [EmberRoutes v0.5.3] MOVE_PROGRESS target=7958.5,11404.5,0.0 pos=7958.5,11403.219,0.0 remaining=1.28125 moving=true path=Working result=MOVING pathSteps=299 hasPath=true nextSet=true next=7958.5,11403.5 state=PlayerMovementState
+3644:LOG  : General      f:7753> [EmberRoutes v0.5.3] MOVE_REACHED target=7958.5,11404.5,0.0 pos=7958.5,11404.111,0.0 remaining=0.388671875 moving=false path=Working result=REACHED pathSteps=370 hasPath=false nextSet=false next=7958.5,11404.5 state=PlayerMovementState displacement=3.21484375
+3645:LOG  : General      f:7753> [EmberRoutes v0.5.3] HAUL OUTBOUND_APPROACH_DESTINATION PASSED movement=REACHED reach checked
+3646:LOG  : General      f:7754> [EmberRoutes v0.5.3] HAUL OUTBOUND_PUT_1 STARTED
+3649:LOG  : General      f:8089> [EmberRoutes v0.5.3] HAUL OUTBOUND_PUT_1 PASSED itemID=1021615200 copies=1 condition=1
+3650:LOG  : General      f:8090> [EmberRoutes v0.5.3] HAUL OUTBOUND_PUT_2 STARTED
+3652:LOG  : General      f:8427> [EmberRoutes v0.5.3] HAUL OUTBOUND_PUT_2 PASSED itemID=1463117032 copies=1 condition=9
+3653:LOG  : General      f:8428> [EmberRoutes v0.5.3] HAUL OUTBOUND_PUT_3 STARTED
+3655:LOG  : General      f:8775> [EmberRoutes v0.5.3] HAUL OUTBOUND_PUT_3 PASSED itemID=2062575330 copies=1 condition=2
+3656:LOG  : General      f:8776> [EmberRoutes v0.5.3] HAUL RETURN_APPROACH_SOURCE STARTED
+3657:LOG  : General      f:8776> [EmberRoutes v0.5.3] HAUL RETURN_APPROACH_SOURCE PASSED already adjacent and reachable
+3658:LOG  : General      f:8777> [EmberRoutes v0.5.3] HAUL RETURN_TAKE_1 STARTED
+3662:LOG  : General      f:9129> [EmberRoutes v0.5.3] HAUL RETURN_TAKE_1 PASSED itemID=1021615200 copies=1 condition=1
+3663:LOG  : General      f:9130> [EmberRoutes v0.5.3] HAUL RETURN_TAKE_2 STARTED
+3668:LOG  : General      f:9423> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=SAVE npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92
+3669:LOG  : General      f:9423> [EmberRoutes v0.5.3] HAUL BATCH CANCELLED SAVE
+3670:LOG  : General      f:9423> [EmberRoutes v0.5.3] HAUL INTERRUPTED items retained in their actual containers
+3671:LOG  : General      f:9423> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+3672:LOG  : General      f:9423> [EmberRoutes v0.5.3] CHECKPOINT_SAVED id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 items=3 nativeBytes=4183 mode=HOLD home=true
+3673:LOG  : General      f:9423> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=RESTORED npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92
+3707:LOG  : General      f:10847> [EmberRoutes v0.5.3] CHECKPOINT_RECORD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 mode=HOLD home=true items=3 bytes=4183 equipment={primary=1322296177}
+3708:LOG  : General      f:10847> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=693070104, parent=0, type=Base.Bag_Schoolbag, condition=10]
+3709:LOG  : General      f:10847> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=1322296177, parent=0, type=Base.Pencil, condition=1]
+3710:LOG  : General      f:10847> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=1437127019, parent=693070104, type=Base.WaterBottle, condition=10]
+3711:LOG  : General      f:10847> [EmberRoutes v0.5.3] CHECKPOINT_REPORT record=LIVE gate=ACTIVE id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 attached=true world=true pending=false square=true updates=10846 state=IdleState target=7958.5,11404.5,0.0 pos=7958.5,11404.111,0.0 remaining=0.388671875 moving=false path=Working result=STOPPED pathSteps=370 hasPath=false nextSet=false next=7958.5,11404.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3736:LOG  : General      f:12456> [EmberRoutes v0.5.3] PERSISTENCE_SAMPLE SAMPLE_PASSED npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92 bag=693070104 pencil=1322296177 water=1437127019 healthBefore=100 healthNow=100 failures=0
+3757:LOG  : General      f:12953> [EmberRoutes v0.5.3] CHECKPOINT_RECORD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 mode=HOLD home=true items=3 bytes=4183 equipment={primary=1322296177}
+3758:LOG  : General      f:12953> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=693070104, parent=0, type=Base.Bag_Schoolbag, condition=10]
+3759:LOG  : General      f:12953> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=1322296177, parent=0, type=Base.Pencil, condition=1]
+3760:LOG  : General      f:12953> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=1437127019, parent=693070104, type=Base.WaterBottle, condition=10]
+3761:LOG  : General      f:12953> [EmberRoutes v0.5.3] CHECKPOINT_REPORT record=LIVE gate=ACTIVE id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 attached=true world=true pending=false square=true updates=12952 state=IdleState target=7958.5,11404.5,0.0 pos=7958.5,11404.111,0.0 remaining=0.388671875 moving=false path=Working result=STOPPED pathSteps=370 hasPath=false nextSet=false next=7958.5,11404.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3770:LOG  : General      f:14269> [EmberRoutes v0.5.3] CHECKPOINT_RECORD id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 mode=HOLD home=true items=3 bytes=4183 equipment={primary=1322296177}
+3771:LOG  : General      f:14269> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=693070104, parent=0, type=Base.Bag_Schoolbag, condition=10]
+3772:LOG  : General      f:14269> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=1322296177, parent=0, type=Base.Pencil, condition=1]
+3773:LOG  : General      f:14269> [EmberRoutes v0.5.3] CHECKPOINT_ITEM Item[id=1437127019, parent=693070104, type=Base.WaterBottle, condition=10]
+3774:LOG  : General      f:14269> [EmberRoutes v0.5.3] CHECKPOINT_REPORT record=LIVE gate=ACTIVE id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 attached=true world=true pending=false square=true updates=14268 state=IdleState target=7958.5,11404.5,0.0 pos=7958.5,11404.111,0.0 remaining=0.388671875 moving=false path=Working result=STOPPED pathSteps=370 hasPath=false nextSet=false next=7958.5,11404.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3784:LOG  : General      f:14944> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=PERSISTENCE_SAMPLE npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92
+3785:LOG  : General      f:14944> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+3805:LOG  : General      f:16584> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=REMOVE npc=8a52627b-1bba-42fd-8d2b-0f193e33cc92
+3806:LOG  : General      f:16584> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+3807:LOG  : General      f:16584> [EmberRoutes v0.5.3] REMOVAL_PENDING body retained until safe; id=8a52627b-1bba-42fd-8d2b-0f193e33cc92 pos=7958.5,11404.111,0.0 attached=true world=true pending=false square=true updates=16583 state=IdleState target=7958.5,11404.5,0.0 pos=7958.5,11404.111,0.0 remaining=0.388671875 moving=false path=Working result=STOPPED pathSteps=370 hasPath=false nextSet=false next=7958.5,11404.5 state=IdleState retiring=true retirement=WAITING clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+3808:LOG  : General      f:16584> [EmberRoutes v0.5.3] REMOVED owned carrier only; checkpoint gate=REMOVED
+3809:LOG  : General      f:16585> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=CARRIER_REMOVED npc=absent
+3824:LOG  : General      f:17125> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=SAVE npc=absent
+3825:LOG  : General      f:17125> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+3826:LOG  : General      f:17125> [EmberRoutes v0.5.3] CHECKPOINT_EMPTY explicit removal/death committed with next world save
+4882:LOG  : General      f:0> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=WORLD_RESET npc=absent
+4883:LOG  : General      f:0> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+5320:LOG  : General      f:0> [EmberRoutes v0.5.3] BASELINE_CHECK gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 IsoPlayerCodeSource=file:/D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/pzopt/aot/pzopt.jar
+5321:LOG  : General      f:0> [EmberRoutes v0.5.3] READY version=0.5.3 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+5331:LOG  : General      f:1> [EmberRoutes v0.5.3] CHECKPOINT_EMPTY no saved NPC
+5332:LOG  : General      f:1> [EmberRoutes v0.5.3] PERSISTENCE AUTO CHECKPOINT_EMPTY no saved NPC
+5357:LOG  : General      f:3788> [EmberRoutes v0.5.3] CHECKPOINT_EMPTY no saved NPC
+5399:LOG  : General      f:4066> [EmberRoutes v0.5.3] COMPANION STATE mode=HOLD reason=SAVE npc=absent
+5400:LOG  : General      f:4066> [EmberRoutes v0.5.3] HAUL FIXTURES_CLEANED
+5401:LOG  : General      f:4066> [EmberRoutes v0.5.3] CHECKPOINT_RETAINED unresolved saved record left unchanged

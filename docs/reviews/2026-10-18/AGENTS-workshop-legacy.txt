@@ -1,0 +1,329 @@
+# AGENTS.md — 僵毁 mod 工作区 · 每会话硬约束 + 项目指令全文
+
+
+> 项目根 = 就近含 `.git` 的目录 = 本目录；从项目根到 cwd 逐层加载，越具体的越优先；**改动本文件后自动重新注入**）。
+>
+> ★ **2026-10-15 结构变更（v2026-10-15.3）**：原 `.workbuddy/instructions.md` 全文已**并入本文件第二部分**，
+> 本文件自此刻起是**唯一必读文件**。`.workbuddy/instructions.md` 降级为**指针桩**（仓内多处按
+> `instructions.md §N` 引用它，桩里给映射表，避免制造断链）。
+>
+> - **第一部分** = 会话硬约束（编号 `§0`–`§5`，本文件原有内容，未改语义）。
+> - **第二部分** = 项目指令全文（原 instructions.md，编号改写为 **`I.0`–`I.11`**；`instructions.md §N` ⇄ `I.N` 一一对应）。
+> - **注入预算 64 KB**（插件配置 `maxBytes: 65536`）：本文件当前约 42 KB，**余量约 22 KB** —— 往里加内容前先算字节，
+>   超预算会被截断甚至整份省略（那等于一个会话什么都没读到）。资料仍放 `.workbuddy/`，用到再读。
+
+---
+
+# 第一部分 · 会话硬约束
+
+## 0. 会话必读顺序（读一次，之后按需回查章节，不要全文重读）
+
+> **查证入口调整：查 API / 引擎内部结构（地图、建筑、`Iso*` 类等）时，**直接 Grep/Read 游戏源码**——反编译 Java 源码（`D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/zombie反编译源码`）+ 游戏 Lua（`media/lua`）。**禁用 `pz.mjs ask` / `pz.mjs doc` / `docs-cache/` / `capabilities/` 作为查证入口**（对纯 Java 引擎类覆盖不到或给误导信号）。文档（NAVIGATION.md / capabilities 等）照常可看，不受影响。`pz-rank.mjs` / `pz-mine.mjs` / `preflight.js` / `pz-lint.mjs` 等规范与门禁工具照常使用。
+
+> **工具唯一入口（2026-10-15 用户裁定 · v2026-10-15.4）**：所有工具一律经 **`node .workbuddy/tools/pz.mjs <子命令> [参数]`** 调用 —— 44 个 `tools/pz-*.mjs` 按名自动派生（`rank`/`lint`/`gate`/`ask`/`mine`…）+ 7 个手工登记（`preflight`/`doc`/`hook`/`luaparse`…）；`pz.mjs list` 自描述，未知子命令报错退出 1。**禁止再直调** `tools/pz-*.mjs` / `preflight.js` / `hooks/gate.mjs`（本文历史写法已批量改写；`beifen/.workbuddy/` 是 2026-10-15 搬家事故的完整备份，**不是工作路径**）。canonical = `.workbuddy/tools/`（`.gitignore` 规定）；新增 `tools/pz-*.mjs` 零注册自动进入口。
+
+1. **本文件第二部分（`I.0`–`I.11`）** —— 项目指令全文：权威源优先级 `I.1` · 目录铁律 `I.2` · 联机 MP 铁律 `I.3` · 编码红线 `I.5` · 文档地图 `I.7`。
+2. **不知道某件事该怎么做时** → `node .workbuddy/tools/pz.mjs rank "<你要做的事>"`。
+   它从 **91 条规范**里按图排序反查最相关的那几条（不是关键词，所以「UI 面板」能带出
+   `minimumWidth`/`setMetatable` 这类字面不相关的约束）。**动手前先跑一次，比事后返工便宜。**
+   （每次提问时 harness 已自动注入 top-2，见 §4；这里是你主动深挖用的。）
+3. 改 **UI / 面板 / 窗口** → **`.workbuddy/checklists/ui-panel.md`**（可整段照做的断言清单，每条带 `file:line`）。
+4. 需要现成起点 → 直接复制 **`.workbuddy/templates/`** 里的骨架，不要手搓（`ui-panel-ispanel.lua` / `ui-window-iscollapsablewindow.lua`，已过 lint）。
+5. **要继承某个原版基类之前** → `node .workbuddy/tools/pz.mjs mine --brief <基类名>`。
+   它从原版语料里读出「继承这个基类你必须做什么」（必须做 / 惯例 / 帧里禁算三段，每条带比率与样本量）。
+   这与收工门禁**同一个来源**，比读散文规范快且不会过期。
+
+> **开工先扫一眼两级待办台账**：`.workbuddy/BACKLOG.md`（全工作区 = 未完事项 / 下一步的唯一真相源，**只收跨模组 / 工具链事项**）+ **当前模组的 `CommunityTrade/docs/BACKLOG.md` / `LivingSurvivors/docs/BACKLOG.md`**（模组级事项；Workshop 是全部模组所在地，待办按模组分——2026-10-15 裁定；新模组同规矩 `<mod>/docs/BACKLOG.md`）。模组级"下一步"只写模组台账，对话里只指向文件。
+> 我每轮的"下一步"只写进它，**对话里不再另行开清单**——避免"用户改了方向、原规划就丢"。
+
+## 1. 完成定义（DoD）：改过任何 `.lua` 就必须跑，并且必须把原文贴出来
+
+```powershell
+node .workbuddy/tools/pz.mjs preflight <mod 根目录>
+```
+
+**这一条就是全部门禁**，六层按序跑、失败累计、一次看完：
+
+| 层 | 查什么 |
+|---|---|
+| `lua_lint.js` | 语法 + 作用域 + 旧的行级规则 |
+| `pz.mjs lint` | 15 条**规范驱动**的结构性规则（捏造 API、手工塞 children、漏调父类…），**补 `luac`/`luals` 之盲**（官方工具不查"漏调父类"这类框架规则）；**非** `I.7` 里「禁自写 linter」所指的"替代官方的语法/类型检查器"，与该项裁定不冲突 ｜ **含所有默认关闭的规则**（名单现场读 `lint-rules.json`，不手抄） |
+| `pz.mjs mine --check` | **从原版语料挖出来的不变量**：漏 `setmetatable`（静默失效）、帧里现算可缓存 API、new 了窗口不 `addToUIManager`、new 完直接用没挂载 |
+| `check_health.js` | EOL 架构专用七类坑（无 `client/EOL` 时显式跳过） |
+| `pz.mjs luals` | lua-language-server + Umbrella 类型桩，抓 PZ API 误用 |
+| `pz.mjs fresh-smoke` | **预计算索引新鲜度**（★ 2026-10-14 新增第 5 层）：api-symbols / resolve-index / event-symbols 等产物比来源旧 = 「原版定义 0 处」这条铁律在读旧事实，前面四层会拿着过期判据下结论。定位不到游戏目录时显式跳过。修：`node .workbuddy/tools/pz.mjs index-rebuild`（7 个索引按依赖顺序一键重建，约 18s） |
+
+- **没有 preflight 输出 = 这次改动没完成**，不要直接说"做完了"。
+- **门禁路由（★ 2026-10-14 新增）**：不知道刚改的东西该跑哪条门禁时，用
+  `node .workbuddy/tools/pz.mjs gate <lua|md|publish|spec|regression|all> [mod 目录]`（`--list` 看类型与对应门禁）。
+  它是**路由层、不是新门禁** —— 只 spawn 上面这些既有工具，自身零检查逻辑；**`preflight.js` 仍是 Lua 门禁的唯一真相**（本条 DoD 不变）。
+  `--strict` 透传 release-check 核对零注释；`--fast` 透传 pz-test 跳过最慢套件；缺 mod 目录时需 mod 的步骤**显式跳过、不计失败**（照 check_health 的处理，环境前提不该有否决权）。
+- 命中的每一条：要么修，要么在回复里写明"为什么这是误报"。
+- 只想单跑结构规则时：`node .workbuddy/tools/pz.mjs lint <目录>`；单开某条默认关闭的规则用 `--rule <id>`。
+  ⚠️ `--all` **不是**"打开全部规则"，它只关掉扫描排除名单。**不要在任何地方手抄行号或规则名单**——本仓为手抄过期付过多次代价（这份文件自己就曾引用一个早已失效的 `pz-lint.mjs:1430`）。
+- **文档层（★ 2026-10-14 新增）**：改 `*.md` 也过门禁 —— `pz.mjs doclink` 查**断链 / 头部（H1 + 日期·状态）/ 顶层文档登记**。
+  单跑：`node .workbuddy/tools/pz.mjs doclink`（默认扫知识库；断链 = error 退出码 1，其余为提示不阻断）。
+- **发布门禁（★ 2026-10-14 新增）**：**发布副本前**跑 `node .workbuddy/tools/pz.mjs release-check <mod根目录>`
+  —— 查 debug 打印 / 注释残留 / **翻译键 CN·EN 成对** / 中文硬编码；加 `--strict` 核对"零注释"。**跨模组通用**（此前只有 RecipeModFilter 专用脚本）。
+- **Lua 逻辑自测（★ 2026-10-14 新增，LivingSurviviors 专属）**：改完 `shared/` 下 Lua 后，在 `LivingSurviviors/` 跑
+  `"C:/Program Files (x86)/Lua/5.1/lua.exe" tests/lua_selftest.lua`（系统 Lua 5.1，与 Kahlua 同版）。
+  它锁住 3 个数据表契约 + `LS_Facilities` 注册接口与 match 逻辑分支，非 0 退出即失败。**不能替代** preflight 的语法/类型/lint 门禁，是补充层。
+- **门禁有效性回归（★ 2026-10-15 新增）**：`pz-test.mjs` 里的 `pz-gateprobe-smoke` 套件用 `GateProbe/` 探针模组
+  （A 结构错 / B 逻辑错 / C 运行时错三层**故意埋错**）**双向**验证门禁：该抓的必须抓、不该抓的必须不报。
+  它防的是「规则声称能抓、实现抓不到」这类**静默失效** —— 2026-10-14 用它实测出两个真 bug 并已修：
+  LC02 抓不到链式 `getTextManager():getFontHeight`（自己 quote 里的形态）、LC87 抓不到
+  `ISTimedActionQueue:add(action)`（招牌案例，判据过宽放行）。
+  **与 `pz-lint-smoke` 的分工**：那个测「规则引擎本身对不对」，这个测「规则对真实形态覆盖得到吗」。
+  ⚠️ 改 `GateProbe/` 的埋错内容必须同步改 `pz.mjs gateprobe-smoke` 的期望值。
+
+## 2. 查证纪律（最贵的三次返工都出自这里）
+
+- 任何 API 先查：有 `pz_lookup` 工具时用它；**当前 WorkBuddy 环境无该工具**（它是 DSH 插件 `pz-spec-sidebar` 提供的）⇒ 用等价 CLI **`node .workbuddy/tools/pz.mjs ask <API>`**（含签名/继承/定义/真实调用点，与 `pz_lookup` 同结论）。
+  **返回"原版定义 0 处"= 这个 API 不存在**，不许凭记忆写。规范全文用 `pz_spec_read`，无该工具时**直接读** `.workbuddy/specs/<rel>`；原版源码片段用 `pz_source`，无该工具时用 Read 读对应文件行。
+- **最小宽高是字段不是方法**：`o.minimumWidth = 300` / `o.minimumHeight = 200`。
+  原版**没有** `setMinWidth` / `setMinHeight`（定义 0 处、调用点 0 处）；夹取在 `ISUIElement:onResize()`（`ISUIElement.lua:563`）。
+- 新增能力先搜原版 `<游戏目录>/media/lua`，有等价实现就复用并标出处（见 `I.5` 编码红线）。
+
+## 3. UI 生命周期速记（完整版见 `checklists/ui-panel.md`）
+
+- 两段式：`X:new(...)` → **必须** `:initialise()` → `:instantiate()`（后者内部自动调 `createChildren`，别手动再调一次）。
+- `new` 里 `Parent:new(...)` 之后**必须**补 `setmetatable(o, self); self.__index = self`；漏了 → 你写在子类里的 `render`/`createChildren`/`onClick` **全部不会被调用**（静默，不报错）。
+- 子控件只能 `self:addChild(child)`（禁止 `self.children[i] = child`）；重写 `prerender` 第一句必须调父类。
+
+## 4. 写盘门禁（自动生效，不需要你记得调用）
+
+`.lua` 与 `*.md` 一落盘，harness 就会跑一次检查（Lua = **完整档 lint**，含全部默认关闭的规则；
+Markdown = `pz-doclink` 断链 + 头部格式），结果在**下一次**工具调用时回注到你的上下文里，带「正确写法 + 后果 + 规范路径」。
+
+- 机制：`.claude/hooks.json` → `.workbuddy/hooks/gate.mjs`。配置在 DSH 的 `work` profile。
+- **它是异步的**：落盘后立刻返回（~200ms），后台跑完（~4s）下次才提示。所以
+  **看到提示时，问题已经在上一轮写下的文件里了** —— 直接修，别重新跑一遍检查。
+- 门禁失败一律 fail-open（不阻断你的工作）。**"没看到提示"不等于"没问题"**，
+  收工仍要跑 §1 的 `preflight.js`。
+- 自检（怀疑门禁失效时跑）：`node .workbuddy/tools/pz.mjs hook selftest`
+  ⚠️ 这条存在是因为门禁**出现过两次静默失效**：BOM 让解析器崩（规则全不跑但报"0 命中"）、
+  钩子读了一个不存在的环境变量。两次都不报错。
+
+## 5. 知识回写（踩过的坑要变成规范，而不是再写一份文档）
+
+```powershell
+node .workbuddy/tools/pz.mjs learn            # 看重复失败台账
+node .workbuddy/tools/pz.mjs learn --draft    # 产出候选 spec 草稿到 drafts/
+```
+
+同一 `(规则, 文件)` 被门禁拦到 **≥2 次**，说明"真的没记住"。台账会标出
+**「已有规范 ← 先确认是不是规范没写清楚」** —— 那意味着问题不在"文档不够"，
+而在规范写得不够具体、或检索命中不到。**不要再写一份新文档。**
+
+草稿走既有流程：`pz-spec-cli check --body-file` → 移入 `specs/` → `pz-backfill`。
+改过 spec 后**必须**重建索引：`node .workbuddy/tools/pz.mjs spec-index`
+（`--check` 可检出"spec 改了但索引没重跑"）。
+
+---
+
+# 第二部分 · 项目指令全文（原 `.workbuddy/instructions.md` · v2026-10-15.3）
+
+> **编号说明**：本节沿用原文件的章节顺序与内容，编号由 `§N` 改写为 **`I.N`**，与第一部分 `§0`–`§5` 区分。
+> 仓内既有的 `instructions.md §N` 引用 ⇄ 本节的 `I.N`（映射表见 `.workbuddy/instructions.md` 指针桩）。
+> 原文件 `§4` 缺号（历史遗留），本节保持原样不重排，以免破坏既有引用。
+
+## I.0 长期记忆服务（Hindsight）★ 开工/遇反直觉现象时先查
+
+本机跑着 **Hindsight 长期记忆服务**（vectorize-io 开源版）：
+
+```
+服务 http://127.0.0.1:8888    bank: projectZombie（tenant=default）
+读   POST /v1/default/banks/projectZombie/memories/recall  body {"query":"…"}
+写   POST /v1/default/banks/projectZombie/memories
+```
+
+**我这边没有它的 MCP 工具 ⇒ 用 curl/python 直接打 REST。** 详细纪律见 skill
+`hindsight-memory`（触发词：「之前做过 X」「这个坑踩过吗」「Hindsight 查一下」「记到长期记忆」）。
+
+- **开工前 / 遇反直觉现象 / 用户说"之前""上次"**：先 `recall` 再动手
+- **只 retain 耐用的**（引擎 API 实证、坑与根因、架构裁定、用户稳定偏好）；
+  **不写**本次任务流水账（那在 CHANGELOG 与日志里）—— 用户 2026-10-03 明确要求
+- 服务没起就静默继续，不要阻塞任务
+
+---
+
+开发流程.
+需求分析后,根据需求拆解需求需要的所有api.
+所有功能优先去原版游戏中找,并且还可以复用原版的api正确使用案例.
+否则去查询本地文档库中资料.
+最后去权威源优先级查询
+
+workshop发布模组文件夹中的文件发布前必须检查是否有非必要注释残留和正常游玩时打印debug的问题
+→ **工具（通用）**：`node .workbuddy/tools/pz.mjs release-check <mod根目录>` —— 查 debug 打印 / 注释残留 / **翻译键 CN·EN 成对** / 中文硬编码；`--strict` 核对「零注释」。
+并且更新日志不要写到workshop.txt中,我会自己到steam中发布更新日志,只需本地留一份更新日志即可
+
+僵毁本体D:\Software\GameApp\steam\steamapps\common\ProjectZomboid
+僵毁反编译源码D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\zombie反编译源码
+僵毁创意工坊文件夹D:\Software\GameApp\steam\steamapps\workshop\content\108600
+
+---
+
+## I.1 权威源优先级（核查任何 API / 事件 / 方法前先按此查）
+
+| 层级 | 源 | 说明 |
+|---|---|---|
+| **【顶级·首选】** | **PZ API Documentation** — https://pz-wiki-modding.github.io/PZ-API-Docs/index.html | PZwiki 官方 modding 团队（SimKDT 等）维护；自动从游戏真实脚本+Java 解析生成（`pz-scripts-data` / `pz-lua-parser` / `pz-java-parser` 等开源）；跟最新稳定版 **42.20.2 (2026-08-08)**，每日更新。整合 Lua+Java+Scripts（物品/实体/流体/标签/分发）于一体，**偏 Scripts-centric**。查物品/实体/流体 ID、item/entity 字段、物品 tag **首选此源**。 |
+| S2 | JavaDocs — https://albion.codeberg.page/PZ-JavaDocs/ | 反编译 Java 类方法。核心类方法签名若与顶级源对不上，**以此交叉验证**。 |
+| S1 | LuaDocs — https://demiurgequantified.github.io/ProjectZomboidLuaDocs/ | Lua 全局函数/事件；核心类收录不全（WIP）。 |
+| S4 | PZwiki — https://pzwiki.net/ | 散文指南；更新慢、有红链缺口（如 `entity` 页空）。 |
+
+> **检索入口统一路由** → **`.workbuddy/retrieval.md`**（"我要查 X → 用哪个工具"决策树：本地 `pzdoc.py search` / `pz-ask` / `pz-task` / `pz-rank` / `pz-mine` / 在线源；并区分"检索类"与"lint/构建/探针类" pz-*）。
+
+> **铁律**：任何 API/事件/方法先查出处再信，绝不凭记忆编。顶级源虽权威，仍属社区自动生成（非 TIS 官方），核心 Java 类异常时回 S2 校验。
+>
+> **★ 基线纪律（2026-10-01 新增）**：引 NPCFW / 引擎侧 Java 结论前，**先对 `../LivingSurvivors/docs/upstream/npcfw_version_baseline.md`**——游戏 jar 与 NPCFW 两个版本都会各自漂移（2026-10-01 就查明两处：举证 jar 落后 39 天、NPCFW 文档落后 67 个 class）。
+> 举证 jar = `_javatest/projectzomboid.jar`（当前 = **2026-09-28 实装版 / 23829 class**），其 `xxx_20260820.jar` 为历史参考。
+> 核验方法：`javap` 时用**中立目录 + 仅挂目标 jar**（防 classpath 污染）；并做污染检测 `unzip -l <jar> | grep -icE "npcfw|IsoNPC|zombiebuddy"` 应为 0。
+> 反编译 NPCFW：`java -jar cfr.jar <NPCFW.jar> --outputdir npc_src_v2 --silent true`（约 16 秒）。
+
+---
+
+## I.2 目录结构铁律（B42 规范）
+
+- `mod.info` **必须进版本文件夹 `42/`**（非 mod 根）。
+- **id 全局唯一且只一份**：删除 B41 残留的根 `mod.info`，避免与 `42/mod.info` 的 id 冲突——冲突会让 MP 命令的 `module` 串匹配不上，联机直接废。
+- lua 三端分目录：`42/lua/{client,server,shared}`。这是**加载域分隔**，不是三份拷贝；同一段逻辑只放它该在的那一侧。
+- 资源：贴图 `textures/`、UI `ui/`、音效 `sound/`、脚本 `scripts/`、翻译 `shared/Translate/{CN,EN}/`。
+- 版本文件夹 `42` ≡ 42.0；次要版本无效（`42.0.5` 视作 `42.0`）。
+  > ⚠️ **本条后半句已证伪（2026-09-08，见 `../KuKu'sWeapon/docs/weapon_mod_kit.md` §1.2）**：次要版本夹**有效且互相独立**。
+  > 反证：① pzwiki `Mod structure#Build_42` 目录树原文含 `42.1/` 与 `42.1.5/` 两个独立版本夹；② PZ-API-Docs `modinfo.md` 原文 "multiple versions of your mod (e.g., 42.12 and 42.13)"；③ 参考模组 Legendary Tactical Weapons 实装 `42.15/` + `42.20/`。
+  > **现行规则**：按「主版本.次版本」匹配，取不高于当前游戏版本的最高匹配夹（当前 42.20.4 → 用 `42.20/`）。`mod.info` 与 `media/` 同级、放版本夹内。
+
+---
+
+## I.3 联机（MP）架构铁律（从一开始就做）
+
+- **服务端权威**：物品的扣减/产出只在 **server** 端（`OnClientCommand` 回调里真正改），client 端改世界/物品在 MP 无效。
+- client 只发意图：`sendClientCommand(modId, "Cmd", args)`；`module` 串**必须 == mod id**。
+- server 文件顶部 `if isClient() then return end`；`Events.OnClientCommand.Add(fn)`，回调签名 `(module, command, playerObj, args)`。
+- **client→server 直接用回调第 4 参 `playerObj`**，通常不必塞 onlineID；仅 server→client 或指代第三人时才用 `getPlayerByOnlineID(id)`。
+- 改对象 ModData：`obj:getModData()` 写 → `obj:transmitModData()`（**大写 D**，必须在 `isServer()` 下调用；勿与 `IsoGridSquare.transmitModdata()` 小写 d 混淆）。
+- **服务端须用 `playerObj` 重查真实状态**（背包/世界），不依赖 args 声称——args 可能过时。
+
+---
+
+## I.5 编码红线
+
+- ★ **先查原版再动手（2026-10-01 立，走路返工教训）**：新增任何能力前，先在 `<游戏目录>/media/lua` 与 `zombie反编译源码/` 搜原版是否已有等价实现；**有则复用并在设计文档标注出处**。禁"未调研即自研"。写作顺序：需求 → 拆 API → **原版 Lua/Java 案例** → 本地文档库 → 权威源。
+
+- 所有玩家可见字符串走**翻译键**（CN/EN 成对），放 `shared/Translate/{CN,EN}/`，**禁中文硬编码**。
+- 引擎方法调用：`if obj.methodName then` **存在性守卫**，**禁 `pcall` 包 userdata**。
+- 更新必须**事件驱动 + 帧合并**，禁每帧轮询全量重算。
+
+---
+- 所有玩家 UI 字符串走翻译键 如上下文菜单前缀为ContextMenu,物品为ItemName.`42/media/lua/shared/Translate/{CN,EN}/ContextMenu.json`，命名 `ContextMenu_EOL_*`，CN/EN 成对；lua 内 `getText/txt/fmt`，fallback 不作常态中文源。
+- 魔法数字提取文件顶部 `local XXX=...` 常量(PANEL_W/ROW_H/sortKey…)。改动后 grep 中文硬编码即违规。
+
+## I.6 本地文档缓存（快速检索）· v2.0 · 2026-08-28
+
+> 让 AI 本地直接检索 modding 资料，免每次 WebFetch。**工具自包含**，本段仅为快速入口、非依赖。
+> 整个 `docs-cache/` 可复制到任意项目，运行 `python docs-cache/pzdoc.py` 即工作，无需本指令文件。
+
+- **检索工具（首选入口）**：`python .workbuddy/docs-cache/pzdoc.py search <正则>`（零依赖；源定义见 `sources.json`，排除见 `.cacheignore`）
+- **源定义（唯一真相源）**：`.workbuddy/docs-cache/sources.json`（加/调源只改这里，无需改工具代码）
+- **索引**：由 `pzdoc.py index` 自动生成（勿手改）；导航见 `docs-cache/README.md`
+- **重跑脚本**：`.workbuddy/docs-cache/fetch_docs.py`（内置完整 UA 绕过 pzwiki 403；勿裸 curl）。**重抓后自动覆写 `LAST_FETCH`**。
+  ⚠️ **本机直连被拒**（实测 WinError 10061），而系统代理开关是关的（注册表 `ProxyEnable=0`）⇒ 必须显式走代理：
+  `python .workbuddy/docs-cache/fetch_docs.py --proxy http://127.0.0.1:7890`（或设 `PZ_HTTP_PROXY`；2026-10-14 已给脚本加 `--proxy` 支持）。
+- **过期提醒（★ 2026-10-14 新增）**：`python .workbuddy/docs-cache/pzdoc.py cache-age` 显示距上次抓取天数，**>45 天提示重抓**；`search`/`stats` 也会在 stderr 输出过期提醒。⚠️ 本缓存抓于 **2026-08-28**，当时游戏约 42.20 早期；当前游戏已 **42.20.4**、jar 基线 **2026-09-28** —— 资料已落后，**建议重抓**（需联网，未擅自执行）。
+- **检索纪律**：查 modding 资料先 `pzdoc.py search`，被排除文件加 `--include-ignored`，无覆盖再回 WebFetch（按 `I.1` 优先级）。
+
+---
+
+## I.7 分模组文档速查
+
+> 本工作区为**多模组工作区**，改代码前先确认目标模组。各模组专题文档：
+
+| 模组 | 专题文档 | 说明 |
+|---|---|---|
+| **KuKu'sWeapon**（武器模组，在开发中） | **`../KuKu'sWeapon/docs/weapon_mod_kit.md`** | B42 武器模组开发资料手册 v1.0.0：模组结构（含版本夹修正）· 武器 item 参数全表（409 个原版武器实测）· 模型/贴图/动画/音效 · 配方与修理 · 战利品分布 · 挂载背挂 · 翻译 · OnBreak · 落地清单 |
+| **WardrobePreview**（衣橱预览，2026-09-11 立项规划中） | **`../WardrobePreview/docs/wardrobe_preview.md`** | 需求（5 格内已标记世界容器的衣物总览 + 3D 虚拟试穿）· 决策 D1–D6 · 原版复用点实锤（`ISInventoryPage.onBackpackRightMouseDown` / `ISUI3DModel` / `IsoSurvivor`+`setWornItem`）· P0–P6 任务分解 · 待确认项 |
+| MachineDemo | — | 见 `I.1` 权威源 / `I.5` 编码红线等通用部分 |
+| EOL / Table_Manners / MyRealMod | `NAVIGATION.md` 各分区 | 老模组，见导航表 |
+| **BFI→NeatCrafting 移植调研**（外部模组研究，2026-09-17） | **`../RecipeModFilter/docs/bfi_neatcrafting_port_report.md`** | Barotrauma 模组 BetterFabricatorUI「按内容包筛选配方」实现原理（DLL 实锤）· PZ 缺配方→模组原生绑定 · 启动期扫描重建映射方案 · 附属模组架构（铁律 11）· 待验证项 |
+| **RecipeModFilter**（配方按来源模组筛选，v0.8.12；单一副本） | **`../RecipeModFilter/docs/recipe_mod_filter_dev.md`** ＋ **`../RecipeModFilter/docs/recipe_mod_filter_prior_art.md`** | 开发文档：模组结构（★ 全部内容在 `common/`）· 四宿主挂点 · 翻译落地记录（0.7.9 修复 `UI.json`→`IG_UI.json`）· 双副本复核（★ 剥注释后逐字节相同）· 分类栏联动修复（0.7.10）· **§8 创意工坊文案（Steam BBCode）→ 产物 `RecipeModFilter/workshop_description_CN.txt` / `_EN.txt`** ｜ 同类调研：工坊竞品 `Neat XP & Mod Display`（3540503606）+ ★ 原版 `@模组名` 筛配方能力（反编译实证）· 定位建议 |
+| **RecipeModFilter 性能调研**（2026-09-18，只调研未改码） | **`../RecipeModFilter/docs/recipe_mod_filter_perf_review.md`** | 按调用次数排序的 11 项热点 + 实证依据（4554 craft 配方 / 141 包）· 头号热点 `packOf` 每次都问引擎要模组名 · NC 分类表每次重建（3 源 × 4554，且一次 refresh 可能跑两遍）· ★ NeatUI `NIScrollView:prerender` **每帧**遍历全部子控件做 2 次 Java `setX/setY`（面板开着时 ~400 次/帧） · 未做游戏内 profiling 的部分已明确标注 |
+| **RecipeModFilter 报障记录**（2026-09-21 起） | **`../RecipeModFilter/docs/recipe_mod_filter_bug_reports.md`** | 累积外部报障的定位：**BUG-001 筛选后左侧分类栏无法滚动** —— 证据链为 NIScrollView 高度一次性缓存（`setScrollHeight` 单向）+ 每帧 `updateScroll` 在 `scrollHeight <= 视图高` 时把偏移压 0 + 滚轮 `maxScroll=0`；我们的分类**补齐行在高度计算之后添加**（`NC_CategoryList_Panel:154-155` 先定高，我们在其后 `addCategoryItem`）⇒ 滑不动；顺带记录 `onCategoryChanged("")` 未带 `skipHistory` 污染导航历史。已排除原版两宿主（ISScrollingListBox 高度只累加不缩小） |
+| （通用）**翻译键位** | **`.workbuddy/translation_system.md`** | 翻译类型总表 + ★「键前缀强绑定」（2026-09-18 反编译实证：文件名决定键归属哪个桶，写错静默失效） |
+| **LivingSurvivors（自研 NPC 模组·ZB 版·当前焦点）** ★★★ | `Zomboid/Workshop/LivingSurvivors/` | **v0.19.0 · M2–M4 完成、M6 队伍进行中、M5 安全屋开工**：Java `com.mumu.livingsurvivors`（43 类 / 15248 行，约 30 个纯类可纯 JVM 自检 · `BtSelfTest` 引擎无关内核 + 纯 JVM 自检全绿）· ★ **入世四道闸门**（① 更新 `addMovingObject` / ② 渲染**唯 `setMovingSquareNow()`** / ③ 坐标 `setCurrentSquareFromPosition` / ④ **载体必须 `IsoPlayer` 子类**）· ★ **走路 = 自驱喂输入 + 引擎落位**（写 `AIBrainPlayerControlVars.strafeX/Y` + `playerMoveDir`；**每帧必须 `chr.setPath2(null)`**，否则 `doDeferredMovement` 走错分支、位移永不提交 —— NPCFW `NPCMovementUtil.manualMovement:191-198` 同款）· ★ **丝滑靠 direct steering**（走廊通畅时每帧朝目标现算方向，堵了才退回 `pfb2` 路径；`FollowRules.directStep`）· 编译需 **JDK ≥ 25** · ★ **Lua 语法/类型诊断只用官方工具**（2026-10-03 用户裁定：**禁自写「替代官方的语法/类型检查器」**——不得自造与 `luac -p` / `lua-language-server` 同功能的 linter；**例外**：工作区规范检查器 `pz-lint.mjs` / `pz-release-check.mjs` 查的是官方工具不覆盖的「结构/规范违反」（漏调父类·手工塞 children·捏造 API·debug 打印…），属第一部分 `§1` 门禁、不在禁止之列）：`luac -p`（系统 Lua 5.1，与 Kahlua 同版）做语法检查 + `lua-language-server --check` 配 `LivingSurvivors/.luarc.json`（引用 `.workbuddy/tools/Umbrella/library` 官方类型存根）做类型诊断 · **本模组文档地图 → `LivingSurvivors/docs/README.md`**（活文档 / 实施计划 / 调研档案三层分开，各文档状态与基线都在索引里） |
+| **CommunityTrade（社区网络 + 商队贸易 mod·调研验证阶段）** ★ | **`../CommunityTrade/docs/source_feasibility_verification.md`** | **B42 源码可行性验证报告 v1.0.0**（2026-10-15）：架构设计 16 个源码级问题 + 8 风险点全部对着本机反编译源实证（三档结论 + file:line）。要点：社区持久化用 `SGlobalObjects`（gos_*.bin）· 格子变更推送用 `transmitCompleteItemToClients`/AddItemToMap · **对象 modData 非服务端权威**（`ObjectModDataPacket` 只转发）· 无 `spawnBuilding`/story Lua 注册/metagame/tags/运行时加楼层 · 商队 `WorldMarkers` 画点不需要 IsoMovingObject · NPC 复用 LivingSurvivors 栈 · 10 处误判修正清单（`dontTransmitModData` 不存在、WorldDictionary 是物品注册表等）。上游需求 = `../调研报告-僵毁后期动力与环世界事件系统.md` |
+| **MyNPCFW 行为与决策层设计（自有 BT + LLM/Jev）** ★★★ | **`../LivingSurvivors/docs/upstream/mynpcfw_ai_design.md`** | v1.0（2026-10-01 待裁定）：三硬约束（**不抄 NPCFW** / 超高性能 / 决策可接 LLM）· 与 NPCFW **八项差异化目标**（以其实测弱点作反面基准）· **三档时间尺度 × 三层门禁**（计划层**事件唤醒默认休眠**＝性能第一来源）· **自有 BT 规范 v1**（11 类节点 + 三态 tick 契约 + 抖动/超时/Guard 复查）· 表驱动**编译扁平化** + 命名插入点 · **强类型黑板零分配** · **九个性能手法 + 复杂度承诺 + 度量指标 + 降级路径** · **`DecisionProvider` 四档**（反射/BT/Jev 快决策/LLM 慢规划，**默认全关**）· **LLM 协议**（封闭动作枚举 + `ActionValidator` 裁决 + 线程模型 + **预算/缓存/去重/超时/熔断/时效六件套** + 可解释 dump）· 参考索引（NVIDIA ACE / arXiv 2501.10106 / BT 形式语义，逐条标可信度）· **ADR-AI-01~10** · M2–M4 · V20–V25 ｜ ★ 本机实测 Ollama **0.34.4**：`/v1/systemone` **404**（需 ≥0.35）、`/api/chat` 200、仅 `qwen3:8b` |
+| **MyNPCFW 详细设计 v1.1（架构 v1.0 配套详细设计，演进中）** | **`../LivingSurvivors/docs/upstream/mynpcfw_detail_design.md`** | **整体架构详细设计** v1.1（2026-10-01）：**★ M0 已落地（代码+jar，待实机验证）**：`Api.java`（`@LuaMethod myNpcSpawn`）+ `MyNPCFW_DebugSpawn.lua`（世界右键菜单）+ CN/EN 翻译；🔴 **编译环境硬要求：JDK ≥ 25**（游戏 jar class major 69，JDK 21 报误导性「程序包不存在」）见 §12.1；🔴 **v1.3 新增 §3.5 驱动子系统 + §13.7 里程碑 M1「走一步」**（NPC 站住不动的解法：唯一入口 `controlVars.strafeX/strafeY`，`playerMoveDir` 对 NPC 无效）+ **v1.2 修正（M0 实机通过后复盘）**——**可见性 = 四道闸门**（更新①/渲染②/坐标③/**载体必须 `IsoPlayer` 子类④**），v1.0 原写"入世唯一关键=addMovingObject"与"M0 可直接用 new IsoPlayer"**均为错**，并新增 **§13.6 事后复盘 + 核实梯度四层（含★消费路径）**；v1.1 修正——`IsoSurvivor` 出局（**final + B42 死类**：零调用方/无 update/render/引擎不驱动 `survivorList`）· **入世唯一关键 = `IsoCell.addMovingObject():2754`**（非 `addToWorld`）· 原版入世规范序列 `AddCoopPlayer:153-171` · 引擎**自动 LOD**（`MovingObjectUpdateScheduler.startFrame()` 按到 `players[]` 距离 10/30/60/80 格分档）· **§13.5 里程碑 M0「调试入口生成可见 NPC（零功能）」**；覆盖 **L1 具象/驱动/patch + L2 数据表全集 + L3 NpcData/存档 + L4 三层门禁/档位循环/Job 阶段机/占用表 + L5 对话 + L6 接口 + 感知 + UI + 配置 + 时序 + 工程结构**；**环世界工作表**（优先级 0–4 栅格 + 同档 insertOrder + incapability）· **24 小时作息时间表**（ANY/WORK/RECREATION/SLEEP + 需求/威胁抢占）· 档位循环算法 · **Job＝Toil 式显式阶段机** · **Ollama 集成**（`POST /api/chat` + `stream:false`；`GET /api/version` 健康检查、`/api/tags` 列模型）· ★ **线程模型**（主线程组 prompt → worker HTTP → **`MainThread.queueInvokeOnMainThread`** 回主线程；先例 `ChunkSaveWorker:70`）· ★ **接口清单全部带出处坐标**（引擎 Java 27 条 + 原版 Lua 21 条 + 自研 `myNpc*` 14 条）· **接口总表 37 条引擎 Java（含 `IsoPlayer.players=new IsoPlayer[4]`:288 / `setNpc`:2769 / `isNpc`:14619 / `AIComponent` 5 方法 / 控制变量 8 字段 / `addToWorld`:4668 / `SurvivorFactory.InstansiateInCell`:87 / `MainThread.queueInvokeOnMainThread`:188 / `ModData` 静态 API / `SandboxOptions.getInstance`:277 / `DebugLog`）+ 23 条原版 Lua（含绘制原语 9 个、`OnCreateSurvivor`、沙盒选项自定义格式实读）+ 26 个 `myNpc*`**；**9 项 P0 验证**；★ 精度修正：`IsoCell.getObjectList()` 实为 `Set<IsoMovingObject>`（非全量 IsoObject） |
+| **MyNPCFW 架构（ZombieBuddy 版·当前焦点）** ★★★ | **`../LivingSurvivors/docs/upstream/mynpcfw_architecture.md`** | 自研 NPC 模组正式架构 v1.0（2026-10-01 裁定：不走 NPCFW 附属，框架用 ZombieBuddy）：★ ZB 四红利（**LLM 联网死结解开**〔java.net.http 后台线程〕/ 安装链正规 / @Patch 现成 / Lua 互通）+ 五硬约束（**单包零子包**〔C1〕/ Main 固定名 / 单 jar / **advice 内联 public 纪律**）· 六层职责表 · 工程布局（`MyNPCFW` + `com.mumu.mynpcfw`）· **patch 预算 ≤2 力争 0** · L5 对话四阶段管线 + 降级链 · **D1 载体待裁定**（IsoSurvivor vs IsoNPC，建议 P1 双案 smoke 定案）· 与 NPCFW 独立 · P0–P6 + P0 六项验证 · ADR-ZB-01~05 |
+| **NPC 框架架构 v3.1（重设计·最新）** ★★★ | **`../LivingSurvivors/docs/upstream/npc_framework_architecture_v3.md`** | 业界 12 项 + 引擎 5 项现有物的重设计（2026-10-01，待裁定）：**8 条不变量**（I-0 不自造引擎已有之物）· L1 唯一解码引擎 · **LOD 对齐引擎 5 档** · **社交层单列**（social practice + **§8.2.1 Lord 式群体执行骨架**）· 监督树熔断 · **ADR-NPC-13~24** · P0–P6 ｜ **v3.1-2 §0.1 立项理由分层**：社交＝唯一玩家可感差异点，**但不构成自研理由**（附属可自写）；自研唯一真理由＝不依赖 NPCFW；"钱不白花的路径"＝社交先做在附属里验证｜ **v3.1 环世界补课 §1.2/§1.3**：12 项机制全表 + **5 处修正**（**★ 目标占用 ReservationTable**〔原缺口〕/ 优先级栅格+Utility 双段 / Toil 式阶段契约 / 命名插入标签 / id 哈希错峰） |
+| **NPC 框架架构 v2.0（定稿建议）** ★ | **`../LivingSurvivors/docs/upstream/npc_framework_architecture_v2.md`** | 决策篇（2026-10-01，待裁定）：**七条不变量**（数据真源 / 引擎优先 / 感知共享 / 三层门禁 / 每帧预算 / 单 NPC 熔断 / 诊断先行）+ 可检验判据 · **首要决策 `LocomotionProvider`**（隔离"引擎 pfb2 ↔ 虚拟手柄"两条互斥驱动路线，默认先 B 后 A）· 6 层契约（承诺/禁止/必备）· **ADR-NPC-01~12** · 范围纪律（不做清单）· 阶段路线 P0–P6 |
+| **NPC 框架架构（评审与证据篇）** | **`../LivingSurvivors/docs/upstream/npc_framework_architecture.md`** | v1.0 逐条裁定 + **§3.6 引擎 AI 驱动 IsoPlayer 完整契约**（8 控制变量消费点、两条互斥移动路线、`LocomotionProvider` 决策依据）+ §11 取长补短 + **证据索引 E1–E37** |
+| **NPCFW 附属·自发 LLM 对话**（规划中） | **`../LivingSurvivors/docs/upstream/npcfw_spontaneous_llm_talk_dev.md`** | 让 NPC 自发开口且内容由 LLM 生成（参照 RimTalk）· ★ NPCFW 已有自发说话骨架（`NPCFW_Gibberish` 53 事件 + `NPCFW_GibberishData` 401 条台词，全局表可覆盖）· 缺 ②③（组 prompt + 调 LLM），卡在 **Lua 无网络** + `startTalk` 门禁 `players[0]` · 三拦截点可覆盖 · 路线 A/B/C（推荐 B 外部桥）· P0 六项 |
+| **NPCFW 附属·日常行为系统**（已定路线，规划中） | **`../LivingSurvivors/docs/upstream/npcfw_daily_behavior_dev.md`** | 走附属不自研 · 骨架三件（调度器/通道占用/行为表）· 行为表 schema · ★ 双通道占用（`safehouseJob=NONE` + `currentSafehouseTask`）· 扫地＝复用原版 `doCleanBlood` · 坑位 13 条 · P0–P4 |
+| **NPCFW 安全屋互动缺口**（需求侧依据） | **`../LivingSurvivors/docs/upstream/npcfw_safehouse_gap.md`** | 量化缺口（社交 Lua 38 行 vs 休闲 1719 行）· 社交=10 手势且 Java 独占 · 无社交开关 · A 类可附属 / B 类须自研 · 「自研 or 附属」决策判据 |
+| **NPCFW / 引擎 jar 版本基线**（引用前必读） | **`../LivingSurvivors/docs/upstream/npcfw_version_baseline.md`** | 当前基线 = 游戏 jar 2026-09-28 / 23829 class + NPCFW 2026-09-24 / 770 class（反编译 `_javatest/npc_src_v2/`）· 引擎侧复验全表（`MAX=4`、`isNpc` 17 处分布、`updateInternal2` 8 处分支语义、ECS 注册链、`removeSaveFile` 的 NPC 分支）· patch 清单（21 transformer / 24 目标类）· **v1→v2 坐标迁移表** · 复现命令 · 维护约定 |
+
+- **本机环境事实（游戏目录 / jar / JDK / Ollama / Umbrella 桩 / 反编译命令）** → `.workbuddy/env.md`（单一真相源，换机或升级 JDK/Ollama 先改这里）。
+- **完整文档地图** → `.workbuddy/NAVIGATION.md`；**新增/移动文档必须同步 `NAVIGATION.md`（指令正文已并入本文件，不再需要同步 instructions.md）**。
+
+---
+
+## I.8 能力参考层（`.workbuddy/capabilities/` · ★ 2026-10-14 新增）
+
+> **知识库的第二轴**：横轴 = 按「游戏能力域」组织的**原版/引擎能力参考**（跨 mod 共享）；纵轴 = 各 mod 自己的需求 / 设计 / 进度（留在各 mod 的 `docs/`，如 `LivingSurvivors/docs/`）。
+> **交叉用法**：做 NPC 时"创建"查 `capabilities/player.md` → 拿到接口坐标 + 规范序列 + 坑 → 回项目文档组合，标"出处 = `player.md` §X"。**"玩家怎么创建"只在能力层维护一份，项目文档只引用、不重写。**
+
+- 入口：**`capabilities/INDEX.md`**（轻索引：域 → 文档 → 接口范围，**不内联摘要**）
+- 已建：`capabilities/player.md`（人物域）· `capabilities/npc.md`（NPC 域）；其余域见 `INDEX.md`
+- **L2 项目文档下放（2026-10-14）**：mod 专题文档**放各 mod 自己的 `docs/`**，不再堆 `.workbuddy` 顶级——
+  `KuKu'sWeapon/docs/` · `WardrobePreview/docs/` · `RecipeModFilter/docs/` · `LivingSurvivors/docs/upstream/`（NPC 线研究档案）。
+  跨 mod 的**引擎/原版能力**才进 `capabilities/`；`.workbuddy` 顶级只留路由 / 规范 / 方法附录。
+- 纪律：① 只记原版 / 引擎能力，**不记某 mod 的具体实现**；② 每条接口带**出处坐标**（jar 行号 / 反编译 / 原版 Lua）；③ mod 踩到的新坑稳定后**回写对应能力文档「已知坑」节**，不新开 `_dev` 文档。
+- 分工：`b42_api_cache.md` 退化为「原始 API 速查」；`vanilla_lua_study.md` / `pz_java_modding.md` 保留为「怎么读原版」方法附录。
+- 导航登记：`NAVIGATION.md` §〇·甲。
+
+---
+
+## I.9 文档门禁（`pz-doclink` + 写盘门禁 · ★ 2026-10-14 新增）
+
+- 工具：**`node .workbuddy/tools/pz.mjs doclink`** —— 扫 Markdown 的**断链**（路径引用解析不到 = **error**）+ **头部格式**（缺 H1 / 缺「日期·状态」= 提示）+ **顶层文档登记**（`.workbuddy` 顶层 `.md` 未进路由表 = 提示）。
+- 口径：路径引用按「引用文件目录 / 所属项目根 / 仓库根 / `.workbuddy`」依次解析；裸 `doc.md` 引用只查 **`.md`** 且按**全仓同名**判定（本仓「逻辑引用」约定）；`media/…` 等游戏路径、`console.txt` 等数据文件不检；``` 围栏内不检。
+- 写盘门禁（`.workbuddy/hooks/gate.mjs`）已从「只认 `.lua`」扩到 **`.lua` + `.md`**：文档落盘即检、下一轮回注。
+- 自检：`node .workbuddy/tools/pz.mjs hook selftest`（含 doclink 三项断言）。
+
+---
+
+## I.10 待办台账 `BACKLOG.md`（★ 2026-10-14 新增 · 防规划漂移）
+
+- **两级台账（2026-10-15 起）**：
+  - **`.workbuddy/BACKLOG.md`（全局）** = 跨模组 / 工具链 / 基础设施事项的唯一真相源。
+  - **`<模组>/docs/BACKLOG.md`（模组级）** = 该模组「下一步 / 未完事项」的唯一真相源。AI 每轮涉及某模组的"下一步"提议**只写对应模组台账**，对话里只指向它。
+  - **分流规则**：只影响一个模组 → 落模组台账；影响多模组或工具链 → 落全局台账。当前已有：CommunityTrade（CT1–CT6）、LivingSurvivors（LS1）。
+- **会话开始先读两级台账**（已登记 `AGENTS.md` §0 · `NAVIGATION.md` §〇）。
+- **纪律**：用户改方向 → 被挂起项标「搁置 + 原因」，**不删**；完成标 `✅ 日期` 并沉淀结论；**不删行**（保留追溯）。模组间迁移事项在原行留「已迁至」指针，不删行。
+- 状态：`⏳待办` · `🔵进行中` · `⏸搁置` · `✅已完成`。
+
+---
+
+## I.11 预计算索引与门禁路由（★ 2026-10-14 新增）
+
+> 工具链把重活预计算成 JSON，侧边栏与 agent 工具**只读产物、不重算**。代价是**产物会静默过期**，
+> 而「原版定义 0 处」这条铁律读的正是它们 —— 过期时正确的代码会被判成不存在。
+
+- **发现过期**：`node .workbuddy/tools/pz.mjs fresh-smoke`（判据 = 产物 mtime ≥ 来源 mtime，不做内容比对）。
+  **已挂进 `preflight.js` 第 5 层**（2026-10-14）：发布前必过，只跑 preflight 的人从此能收到索引过期告警。
+- **一键重建**：`node .workbuddy/tools/pz.mjs index-rebuild`（7 个索引按依赖顺序跑完，实测全量约 18s）。
+  `--fast` 跳过 umbrella（最慢、最少变）· `--only resolve,coverage` 单跑几步 · `--list` 列步骤 · `--dry` 预演。
+  ⚠️ `pz_member_index.js`（Java 暴露面）由 DSH preset 生成，**不在** rebuild 职责内；它变了只需重跑 api-symbols 那步。
+- **Python 侧解释器**：rebuild 调 `build-lua-index.py` / `build-api-symbols.py` 时取 `PZ_PYTHON`，缺省 `python`。
+- **权威源优先级检索入口** → `.workbuddy/retrieval.md`（`I.1` 已挂指针）。
+- **门禁路由（★ 2026-10-14 新增）**：`node .workbuddy/tools/pz.mjs gate <lua|md|publish|spec|regression|all> [mod目录]`
+  —— 按改动类型一条命令跑对应门禁组合（`--list` 看类型、`--dry` 预演、`--strict` 核对零注释、`--fast` 跳过最慢回归）。
+  **它是路由层不是新门禁**（只 spawn 既有工具，自身零检查逻辑）；`preflight.js` 仍是 Lua 门禁的唯一真相。
+
+---
+
+**维护约定**：本文件 = **唯一必读指令文件**，只放"每会话必读 + 硬断言 + 入口"；资料仍放 `.workbuddy/`，用到再读。
+① 新增/移动文档时同步 **`NAVIGATION.md`**（指令正文已在本文件，无需再同步 instructions.md）；
+② 指令内容改动只改本文件 —— `.workbuddy/instructions.md` 只是指针桩，**不要在那里写正文**；
+③ 加内容前先算字节（预算 64 KB），超了会被注入层截断甚至整份省略。

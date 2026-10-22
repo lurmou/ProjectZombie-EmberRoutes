@@ -1,0 +1,53 @@
+LOG  : General      f:0> [EmberRoutes v0.1.1] READY version=0.1.1 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+LOG  : General      f:2941> [EmberRoutes v0.1.1] MOVE_REACHED target=2151.5,6097.5 pos=2151.5,6097.1035,0.0 remaining=0.396484375 moving=false path=Working result=REACHED pathSteps=547 hasPath=false nextSet=false next=2151.5,6097.5 state=PlayerMovementState displacement=5.692045973076741
+LOG  : General      f:4240> [EmberRoutes v0.1.1] MOVE_REACHED target=2145.5,6091.5 pos=2145.7798,6091.7803,0.0 remaining=0.39602138001110915 moving=false path=Working result=REACHED pathSteps=683 hasPath=false nextSet=false next=2145.5,6091.5 state=PlayerMovementState displacement=7.813946841733544
+LOG  : General      f:5132> [EmberRoutes v0.1.1] INVALID_POINT target too far from carrier
+LOG  : General      f:7375> [EmberRoutes v0.1.1] MOVE_REACHED target=2153.5,6094.5 pos=2153.1074,6094.5,0.0 remaining=0.392578125 moving=false path=Working result=REACHED pathSteps=749 hasPath=false nextSet=false next=2153.5,6094.5 state=PlayerMovementState displacement=7.816084215049204
+LOG  : General      f:8215> [EmberRoutes v0.1.1] MOVE_REACHED target=2151.5,6091.5 pos=2151.5,6091.891,0.0 remaining=0.39111328125 moving=false path=Working result=REACHED pathSteps=452 hasPath=false nextSet=false next=2151.5,6091.5 state=PlayerMovementState displacement=3.0643261894743934
+LOG  : General      f:8739> [EmberRoutes v0.1.1] INVALID_POINT target too far from carrier
+LOG  : General      f:9671> [EmberRoutes v0.1.1] INVALID_POINT finite same-floor point within 16 tiles required
+LOG  : General      f:10562> [EmberRoutes v0.1.1] MOVE_REACHED target=2149.5,6089.5 pos=2149.504,6089.8926,0.05547168 remaining=0.39259755859859613 moving=false path=Working result=REACHED pathSteps=346 hasPath=false nextSet=false next=2149.5,6089.5 state=PlayerMovementState displacement=2.8246297154771054
+LOG  : General      f:11301> [EmberRoutes v0.1.1] INVALID_POINT target too far from carrier
+LOG  : General      f:11849> [EmberRoutes v0.1.1] INVALID_POINT target too far from carrier
+LOG  : General      f:14032> [EmberRoutes v0.1.1] MOVE_REACHED target=2154.5,6089.5 pos=2154.5,6089.888,0.0 remaining=0.38818359375 moving=false path=Working result=REACHED pathSteps=587 hasPath=false nextSet=false next=2154.5,6089.5 state=PlayerMovementState displacement=5.167514126504119
+LOG  : General      f:15047> [EmberRoutes v0.1.1] MOVE_REACHED target=2156.5,6094.5 pos=2156.101,6094.5,0.0 remaining=0.39892578125 moving=false path=Working result=REACHED pathSteps=844 hasPath=false nextSet=false next=2156.5,6094.5 state=PlayerMovementState displacement=4.881832567684249
+LOG  : General      f:16673> [EmberRoutes v0.1.1] INVALID_POINT target too far from carrier
+LOG  : General      f:18978> [EmberRoutes v0.1.1] MOVE_REACHED target=2148.5,6099.5 pos=2148.7766,6099.224,0.0 remaining=0.39066993454932347 moving=false path=Working result=REACHED pathSteps=831 hasPath=false nextSet=false next=2148.5,6099.5 state=PlayerMovementState displacement=8.715794670857983
+LOG  : General      f:19375> [EmberRoutes v0.1.1] REMOVED temporary carrier only
+ERROR: General      f:19602> IngameState.updateInternal> Exception thrown
+	java.lang.NullPointerException: Cannot invoke "zombie.iso.IsoGridSquare.isInARoom()" because the return value of "zombie.characters.IsoGameCharacter.getCurrentSquare()" is null at BodyDamage.UpdateBoredom(BodyDamage.java:1994).
+	Stack trace:
+		zombie.characters.BodyDamage.BodyDamage.UpdateBoredom(BodyDamage.java:1994)
+		zombie.characters.BodyDamage.BodyDamage.Update(BodyDamage.java:2207)
+		zombie.ai.states.AttackState.triggerPlayerReaction(AttackState.java:282)
+		zombie.ai.states.AttackState.animEvent(AttackState.java:184)
+		zombie.ai.StateMachine.stateAnimEvent(StateMachine.java:217)
+		zombie.characters.IsoGameCharacter.pzoptDispatchAnimEvent(IsoGameCharacter.java:4110)
+		zombie.characters.IsoGameCharacter.pzoptRestFinish(IsoGameCharacter.java:10931)
+		pzopt.AnimParallel.apply(AnimParallel.java:313)
+		pzopt.ActionEval.applyPipelined(ActionEval.java:635)
+		pzopt.ActionEval.flush(ActionEval.java:613)
+		zombie.MovingObjectUpdateScheduler.postupdate(MovingObjectUpdateScheduler.java:335)
+		zombie.iso.IsoWorld.updateWorld(IsoWorld.java:3193)
+		zombie.iso.IsoWorld.updateInternal(IsoWorld.java:3363)
+		zombie.iso.IsoWorld.update(IsoWorld.java:3244)
+		zombie.gameStates.IngameState.updateInternal(IngameState.java:1550)
+		zombie.gameStates.IngameState.update(IngameState.java:1370)
+		zombie.gameStates.GameStateMachine.update(GameStateMachine.java:65)
+		zombie.GameWindow.logic(GameWindow.java:469)
+		zombie.GameWindow.frameStep(GameWindow.java:941)
+		zombie.GameWindow.mainThreadStep(GameWindow.java:685)
+		zombie.MainThread.mainLoop(MainThread.java:69)
+		java.base/java.lang.Thread.run(Unknown Source)
+#
+# A fatal error has been detected by the Java Runtime Environment:
+#
+#  Internal Error (archiveHeapWriter.cpp:758), pid=18264, tid=32368
+#  guarantee(ArchiveBuilder::current()->has_been_buffered((address)native_ptr)) failed: Metadata 0000000019068000 should have been archived
+#
+# JRE version: OpenJDK Runtime Environment Zulu25.30+17-CA (25.0.1+8) (build 25.0.1+8-LTS)
+# Java VM: OpenJDK 64-Bit Server VM Zulu25.30+17-CA (25.0.1+8-LTS, mixed mode, sharing, tiered, compressed oops, compressed class ptrs, shenandoah gc, windows-amd64)
+# Problematic frame:
+# V  [jvm.dll+0x10ed6a]
+#
+# CreateCoredumpOnCrash turned off, no core file dumped

@@ -1,0 +1,63 @@
+local Text=require "EmberRoutesProbe/UI/Text"
+local Theme=require "EmberRoutesProbe/UI/Theme"
+local Table={}
+function Table.columns(list,hasIcon)
+    if list.emberColumns then return list.emberColumns end
+    local h,p=list.emberFontHeight,list.emberPad
+    local quantityWidth=math.max(getTextManager():MeasureStringX(UIFont.Small,"20000"),
+        getTextManager():MeasureStringX(UIFont.Small,getText("IGUI_EmberRoutesProbe_Settlement_quantity")))+p*2
+    local icon=hasIcon and h*1.5 or 0
+    list.emberColumns={quantity=list.width-h-p-quantityWidth,name=p+icon+(icon>0 and p or 0),icon=icon}
+    list.emberNames={}
+    return list.emberColumns
+end
+function Table.style(presentation,name,secondary)
+    return {
+        emptyColor=Theme.muted,
+        prepare=function(list,value)
+            local h,p=list.emberFontHeight,list.emberPad
+            local columns=Table.columns(list,presentation~=nil)
+            local label=name(value)
+            local cached=list.emberNames[label]
+            if not cached then
+                cached=Text.wrapLimited(label,math.max(1,columns.quantity-p-columns.name),UIFont.Small,2)
+                list.emberNames[label]=cached
+            end
+            local sub=secondary and Text.wrapLimited(secondary(value),list.width-h-p*2,UIFont.Small,2) or {}
+            local quantity=value.pending and "..." or tostring(value.count)
+            local block=math.max(columns.icon,#cached*h)
+            return {lines=cached,secondary=sub,quantity=quantity,quantityX=list.width-h-p-getTextManager():MeasureStringX(UIFont.Small,quantity),
+                height=p+block+#sub*h,block=block,icon=presentation and presentation:icon(value.fullType) or nil,pending=value.pending}
+        end,
+        draw=function(list,y,entry)
+            local height=entry.height
+            local visible=y+list:getYScroll()
+            if visible+height<0 or visible>=list.height then return y+height end
+            local h,p=list.emberFontHeight,list.emberPad
+            local v,c=entry.item.visual,list.emberColumns
+            if list.selected==entry.index then
+                Theme.rect(list,0,y,list.width,height,Theme.selected)
+                Theme.rect(list,0,y,math.max(1,h/8),height,Theme.accent)
+            elseif list.mouseoverselected==entry.index then Theme.rect(list,0,y,list.width,height,Theme.hover) end
+            if c.icon>0 then
+                local iconY=y+p/2+(v.block-c.icon)/2
+                if v.icon then list:drawTextureScaledAspect(v.icon,p,iconY,c.icon,c.icon,1,1,1,1)
+                else
+                    Theme.rect(list,p,iconY,c.icon,c.icon,Theme.border,true)
+                    Theme.text(list,"?",p+c.icon/3,iconY+(c.icon-h)/2,Theme.muted)
+                end
+            end
+            for i,line in ipairs(v.lines) do Theme.text(list,line,c.name,y+p/2+(i-1)*h,Theme.textColor) end
+            Theme.text(list,v.quantity,v.quantityX,y+p/2+(v.block-h)/2,v.pending and Theme.muted or Theme.accent)
+            for i,line in ipairs(v.secondary) do Theme.text(list,line,p,y+p/2+v.block+(i-1)*h,Theme.muted) end
+            return y+height
+        end}
+end
+function Table.empty(owner,list,label)
+    if list.emberEmptyLabel~=label then
+        list.emberEmptyLabel=label list.emberEmptyLines=Text.wrap(label,list.width-owner.pad*2,UIFont.Small)
+        local capacity=math.max(0,math.floor((list.height-owner.pad*2)/owner.fontHeight))
+        while #list.emberEmptyLines>capacity do table.remove(list.emberEmptyLines) end
+    end
+end
+return Table

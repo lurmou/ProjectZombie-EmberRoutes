@@ -1,0 +1,2 @@
+PASS 19 storage panel lifecycle/layout/interaction checks; native UI rendering NOT RUN
+PASS 19 settlement UI lifecycle/input/layout checks; actual ISUI host NOT RUN

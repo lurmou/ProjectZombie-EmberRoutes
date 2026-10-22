@@ -1,0 +1,3 @@
+[EmberRoutes v0.1.2] Compiling against pinned local game dependencies
+[EmberRoutes v0.1.2] PASS 61 assertions
+[EmberRoutes v0.1.2] BUILD_OK C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\build\packages\EmberRoutesProbe-0.1.2.zip; runtime tests NOT RUN

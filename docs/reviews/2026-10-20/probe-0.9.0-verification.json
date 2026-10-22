@@ -1,0 +1,25 @@
+{
+  "version": "0.9.0",
+  "requirements_sha256": "794b68e2357a42451ba76ded8b266e707b94fd1c390acaee47aff5207a2c9ba4",
+  "package_sha256": "50bec16b79ad8e675b2e75ab052babe1a11ed8e38676001b72a88a686be9e070",
+  "package_source_exact_files": 45,
+  "storage_logic_standard_lua": 75,
+  "storage_logic_kahlua_CN": 75,
+  "storage_logic_kahlua_EN": 75,
+  "work_regression": 69,
+  "java_assertions": 65,
+  "checkpoint_assertions": 42,
+  "rollup_stress": {
+    "item_ids": 20000,
+    "types": 2048,
+    "budget": 17,
+    "units": 44577,
+    "slices": 2623,
+    "engine_timing": false
+  },
+  "preflight": "passed",
+  "release_check": "passed",
+  "doclink": "passed",
+  "game_runtime": "pending",
+  "subagents_used": false
+}

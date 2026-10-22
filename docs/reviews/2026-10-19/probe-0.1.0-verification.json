@@ -1,0 +1,111 @@
+{
+  "version": "0.1.0",
+  "builtAtUtc": "2026-10-19T05:34:56.5211491Z",
+  "dependencies": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    }
+  ],
+  "java": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe",
+  "javac": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe",
+  "jarSha256": "34D016CBB847028A9BF14BF9B8643F28D04019CF85367AF0305BCA04DF641F48",
+  "zipSha256": "01225995057D2254AC3372BA6C4C6E4276515D344188D7D7400312871E39C550",
+  "jarEntries": [
+    "META-INF/",
+    "META-INF/MANIFEST.MF",
+    "emberroutes/",
+    "emberroutes/probe/",
+    "emberroutes/probe/BuildInfo.class",
+    "emberroutes/probe/Main.class",
+    "emberroutes/probe/ProbeNpc.class",
+    "emberroutes/probe/ProbeRules.class",
+    "emberroutes/probe/ProbeRuntime.class",
+    "emberroutes/probe/ProbeSession.class"
+  ],
+  "runtimeTestsRun": false,
+  "sourceFiles": [
+    {
+      "path": "java/src/main/java/emberroutes/probe/Main.java",
+      "sha256": "35B8AE28470FB90940A587D1DDBB40E9D5FF5DDC2C4B3D18CED1D082B528E932"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeNpc.java",
+      "sha256": "0A9350CBD4B9EC2A46345F386790A81A1BFC7A552C74D36CB63ADF1F5EC0138A"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRules.java",
+      "sha256": "84769DFC31E265DE83C2FD1E24278DDCCBDC3F58CDCE94E0200EA3CEC4751091"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRuntime.java",
+      "sha256": "7A559E9F372C8AB29FC717948CB5F156CC2068AE4074CA4B5DDFB46991BC67A9"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeSession.java",
+      "sha256": "7E4A9BBEE17874CAC0E2DEE841D84378756CB70E8E4D6970AC3979B6980AB891"
+    },
+    {
+      "path": "java/src/test/java/emberroutes/probe/ProbeLogicTest.java",
+      "sha256": "C4192BD2602F297ADECE80EA5EAE990CA2A6DD86F2FE22227E45CD661D1BEE36"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe.lua",
+      "sha256": "C34FD1408C0F4DCDD8412D5122CCE872B195DA3EC13F950C4100685D9CFF4733"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbeLoader.lua",
+      "sha256": "83E05F7D123C5E4AE25BA05E0A0717DCEAC79D5836474DFA60C2D28C6DB0C74E"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua",
+      "sha256": "A7973C2D9BFD420BEE26D733D37F8E3F79603365A91F74866519EB6EF73A80B9"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Build.lua",
+      "sha256": "3D8C661C680AFE54E3E11D16DCECB9A20625D46FD6375808880421113E2FCB23"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/IG_UI.json",
+      "sha256": "7684C7D706DE1AC2B993074949F734BBF9240BA357D6B687C16B5AD97A3ED4B8"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/Sandbox.json",
+      "sha256": "3A984E1918A072D9B12311CC376BB96DCB2CE70A04B39F5A191AB1522305D9A1"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/IG_UI.json",
+      "sha256": "476E2B7744B99362418A116436D6DEB62F042A528C9A5FEC4B6BE196C645BDF3"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/Sandbox.json",
+      "sha256": "C7CA0069F4B01E10B8F20DBFCD9ADC31111123986E6CDF26151F807A02E8E0CE"
+    },
+    {
+      "path": "tools/build-probe.ps1",
+      "sha256": "9919E9269263B20B3B51B1B3886B4E30604AE95DFA83E0799F8ADE636EC38A0E"
+    },
+    {
+      "path": "packaging/probe-mod.info.in",
+      "sha256": "8420D0EA6C8543F969F53F80BD02C97E7FD0B51CC9A16E13A3A6C7EAA78EBF38"
+    }
+  ],
+  "checks": {
+    "javaBuild": "pass",
+    "logicAssertions": 29,
+    "preflight": "pass",
+    "luaLS": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "modscan": "no file replacement conflicts in four Lua files",
+    "spRuntime": "not run",
+    "mpCarrier": "not implemented",
+    "mpRuntime": "not run",
+    "gameStarted": false
+  }
+}

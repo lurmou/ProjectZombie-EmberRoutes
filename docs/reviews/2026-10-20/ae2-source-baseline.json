@@ -1,0 +1,97 @@
+{
+  "review_date": "2026-10-20",
+  "source_root": "D:\\Project\\Applied-Energistics-2-main",
+  "commit": "unavailable; git CLI directory access denied",
+  "configured_minecraft": "26.3",
+  "configured_java": "25",
+  "read_only": true,
+  "build_run": false,
+  "tests_run": false,
+  "source_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "ddae7f905bdca4e19177eb20068a09173228688a40dc62a5262cdd7c96bbf76f"
+    },
+    {
+      "path": "gradle.properties",
+      "sha256": "d4cdea98d386ddbe5d1f21503eb510388ed1c6c6dd3a531116babb30a59207a5"
+    },
+    {
+      "path": "README.md",
+      "sha256": "3f0c8638f6f418b570f9104603a29af5a584b833d9ee4b52536432a610635515"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "39676552fd16d3317f6e6af4cf810778060cda238f75dac9b27c0fcbe848d3d4"
+    },
+    {
+      "path": "src/main/java/appeng/api/LICENSE",
+      "sha256": "e4ad57dc487aec9e001ddc9e109d221e5780294ad64479bf391a21b5aec4d7dc"
+    },
+    {
+      "path": "src/main/java/appeng/api/storage/MEStorage.java",
+      "sha256": "e51a7955358b9271204217880ec732b39b26ae48c43948b695dcdaec0ebc100a"
+    },
+    {
+      "path": "src/main/java/appeng/api/stacks/AEItemKey.java",
+      "sha256": "61f4722743c070395621c545e02bc9f1322c2f8db4d832c19e0fc4c05b7794fe"
+    },
+    {
+      "path": "src/main/java/appeng/me/service/StorageService.java",
+      "sha256": "6ddd80cc6db86204935d0002f772f8e6b9785213433bf5fe804fb9a7cea08563"
+    },
+    {
+      "path": "src/main/java/appeng/me/storage/NetworkStorage.java",
+      "sha256": "67c0a31cac2ed2d82ff5d333b3f6b36eaac8450a10163acf0d340802ae179a5c"
+    },
+    {
+      "path": "src/main/java/appeng/me/storage/ExternalInventoryCache.java",
+      "sha256": "d1cd00c4e567f08735dc59a2b7fc427d5633cdc1155e152bf9beb79e404c0255"
+    },
+    {
+      "path": "src/main/java/appeng/me/helpers/InterestManager.java",
+      "sha256": "2acc4e1f0f01370350e19e54e42f6d08f40da5ebc63ab18923ee132d64ada1df"
+    },
+    {
+      "path": "src/main/java/appeng/me/service/TickManagerService.java",
+      "sha256": "d253d4660cd825b3e97b651ab25a5a874d8f02c13a1c303254bea11e0e0ef00c"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/CraftingCalculation.java",
+      "sha256": "5828fbdf2eec5f8ef83cc6620badc5a3663a1f84163be8b3b24db007aa6cf55a"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/CraftingPlan.java",
+      "sha256": "8b120f9ea9b08e4827517d5a335786280f3c73eac157258a878707e698151982"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/CraftingTreeNode.java",
+      "sha256": "42a06ac6518f7c25cc30973ea941a5b7e5c80a7f401816c1278a1ba35efd83a9"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/inv/NetworkCraftingSimulationState.java",
+      "sha256": "a41999aee3189f37b7b91da85ef68456f564f35666efc64df1129b17b25c5bbd"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/inv/CraftingSimulationState.java",
+      "sha256": "ca10fcc785d160d2b9f660471568daa2cc6d9fb07afb1325b4e4b6e22b72d01b"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/inv/ChildCraftingSimulationState.java",
+      "sha256": "ba54e2017374c3d33f6d2db7f7761ba2df7c93c07d53107f05b1671f3abef5fd"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/execution/CraftingCpuLogic.java",
+      "sha256": "db83a44fc08cae6402d0620df1b747a55bacb4a8adbc5c81cf144b449cbc9606"
+    },
+    {
+      "path": "src/main/java/appeng/crafting/execution/CraftingCpuHelper.java",
+      "sha256": "2a3272d7b4f8a654848ced0a7e9096291354a914b794338dbf8fc023971ea4de"
+    },
+    {
+      "path": "src/test/java/appeng/crafting/simulation/CraftingSimulationTest.java",
+      "sha256": "fc4a174c354bfd3dc85e4b02421c3709879e0ebe49c3e15f95c926bf5727bada"
+    }
+  ],
+  "file_set_sha256": "86fbd06d3eac17bef6301bdf34da40d9857c0d7084cdf139f78adbae8fc88eae"
+}

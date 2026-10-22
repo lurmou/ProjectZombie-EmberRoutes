@@ -1,0 +1,13 @@
+LOG  : General      f:0> [EmberRoutes v0.1.0] BOOT jar loaded; Lua API registered; runtime tests NOT RUN
+LOG  : General      f:0> [EmberRoutes v0.1.0] READY version=0.1.0 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+LOG  : General      f:1053> [EmberRoutes v0.1.0] SPAWNED id=4fc7a760-aaa6-4bad-af65-9e7c77aa95b3 pos=2151.5,6090.5,0.0 attached=true world=true pending=false square=true updates=0 state=null failed=false reason=
+LOG  : General      f:6320> [EmberRoutes v0.1.0] MOVE_REQUESTED id=4fc7a760-aaa6-4bad-af65-9e7c77aa95b3 pos=2149.3276,6091.8057,0.0 attached=true world=true pending=false square=true updates=5267 state=IdleState failed=false reason=
+LOG  : General      f:6321> [EmberRoutes v0.1.0] MOVE_REACHED displacement=0.0 updates=5268
+LOG  : General      f:6691> [EmberRoutes v0.1.0] MOVE_REQUESTED id=4fc7a760-aaa6-4bad-af65-9e7c77aa95b3 pos=2149.3276,6091.8057,0.0 attached=true world=true pending=false square=true updates=5638 state=IdleState failed=false reason=
+LOG  : General      f:7305> [EmberRoutes v0.1.0] REMOVED temporary carrier only
+LOG  : General      f:7654> [EmberRoutes v0.1.0] SPAWNED id=8ee35f42-82a0-4277-ae71-a6fd5974030a pos=2152.5,6090.5,0.0 attached=true world=true pending=false square=true updates=0 state=null failed=false reason=
+LOG  : General      f:7964> [EmberRoutes v0.1.0] MOVE_REQUESTED id=8ee35f42-82a0-4277-ae71-a6fd5974030a pos=2152.5,6090.5,0.0 attached=true world=true pending=false square=true updates=310 state=IdleState failed=false reason=
+LOG  : General      f:8677> [EmberRoutes v0.1.0] MOVE_REQUESTED id=8ee35f42-82a0-4277-ae71-a6fd5974030a pos=2149.4707,6090.5,0.0 attached=true world=true pending=false square=true updates=1023 state=PlayerMovementState failed=false reason=
+LOG  : General      f:8903> [EmberRoutes v0.1.0] MOVE_TIMEOUT displacement=0.0 updates=1249
+LOG  : General      f:9294> [EmberRoutes v0.1.0] INSPECT version=0.1.0 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 id=8ee35f42-82a0-4277-ae71-a6fd5974030a pos=2149.4707,6090.5,0.0 attached=true world=true pending=false square=true updates=1640 state=IdleState failed=false reason=
+LOG  : General      f:9433> [EmberRoutes v0.1.0] REMOVED temporary carrier only

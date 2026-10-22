@@ -1,0 +1,19 @@
+139: LOG  : General      f:0> [ZB]     emberroutes.probe        C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\java\EmberRoutesProbe.jar
+143: LOG  : General      f:0> [ZB] Excluded: D:\Software\GameApp\steam\steamapps\workshop\content\108600\3619862853\mods\ZombieBuddy\42\mod.info (loaded as Java agent, skipping normal mod loading) (version 2.3.4)
+145: LOG  : General      f:0> [ZB]     emberroutes.probe        C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\java\EmberRoutesProbe.jar
+146: LOG  : General      f:0> [ZB] added to classpath: C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\java\EmberRoutesProbe.jar
+147: LOG  : General      f:0> [ZB] trying to load emberroutes.probe.Main: class emberroutes.probe.Main
+148: LOG  : General      f:0> [EmberRoutes v0.5.0] BOOT jar loaded; Lua API registered; runtime tests NOT RUN
+149: LOG  : General      f:0> [ZB] class emberroutes.probe.Main: method main() invoked successfully
+150: LOG  : General      f:0> [ZB] Scanned 18 classes in package emberroutes.probe
+151: LOG  : General      f:0> [ZB] no patches in package emberroutes.probe
+987: LOG  : General      f:0> [ZB] Exposing class to Lua: ProbeRuntime as EmberRoutesProbeJava
+988: LOG  : General      f:0> [ZB] Exposing class to Lua: ProbeNpc as EmberRoutesProbeCarrier
+1112: LOG  : Lua          f:0> :	[ZombieBuddy] ZombieBuddy.getVersion() = 2.3.4
+1771: LOG  : General      f:0> [EmberRoutes v0.5.0] BASELINE_CHANGED current game JAR=BCE7EA210FC5C5392CA691A14345D90131B1D664D4D8A1876600A1AC46FD1D3D; re-review required
+1910: LOG  : General      f:0> [ZB] Exposing class to Lua: ProbeRuntime as EmberRoutesProbeJava
+1912: LOG  : General      f:0> [ZB] Exposing class to Lua: ProbeNpc as EmberRoutesProbeCarrier
+1919: LOG  : General      f:0> [ZB]     emberroutes.probe        C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\java\EmberRoutesProbe.jar
+1923: LOG  : General      f:0> [ZB] Excluded: D:\Software\GameApp\steam\steamapps\workshop\content\108600\3619862853\mods\ZombieBuddy\42\mod.info (loaded as Java agent, skipping normal mod loading) (version 2.3.4)
+1925: LOG  : General      f:0> [ZB]     emberroutes.probe        C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\java\EmberRoutesProbe.jar
+2769: LOG  : Lua          f:0> :	[ZombieBuddy] ZombieBuddy.getVersion() = 2.3.4

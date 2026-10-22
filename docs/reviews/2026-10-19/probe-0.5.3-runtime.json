@@ -1,0 +1,9 @@
+{
+  "source": "C:\\Users\\MuMu\\Zomboid\\console.txt",
+  "sourceBytes": 495550,
+  "sourceLastWriteTime": "2026-10-19T20:05:40.7463358+08:00",
+  "sourceSha256": "9653BB55E12CF73E2DCAFDF95D212C73E4B38A48E94B38A055F3118A2CFA6BE0",
+  "filter": "[EmberRoutes v0.5.3]",
+  "evidence": "console prefix lines with source line numbers; source may continue changing",
+  "version": "0.5.3"
+}

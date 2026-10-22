@@ -1,0 +1,1 @@
+PASS 18 storage sidebar adapter checks; vanilla/CleanUI runtime NOT RUN

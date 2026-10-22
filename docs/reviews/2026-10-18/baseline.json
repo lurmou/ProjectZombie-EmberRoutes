@@ -1,0 +1,34 @@
+{
+  "review_date": "2026-10-18",
+  "method": "Fresh CFR 0.152 decompilation of installed JARs; selected verbatim excerpts; no runtime tests",
+  "files": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "bytes": 65682033,
+      "sha256": "e1a69eb743ede60b213a0fe7f8b83d4fcab773036d256cc4543a336f3b058a33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "bytes": 13254999,
+      "sha256": "eb79b9876332010733a8e0d7ce4fe0377846059a9e28859029e2a0fb449f6cf2"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\.codex\\attachments\\9f5adcdd-1306-4f3e-a893-6af6f0e259ce\\已粘贴的文本.txt",
+      "bytes": 15127,
+      "sha256": "170dbdb72e2cefdf78a13dcf69b1ef33cafb7debc47518c723d0c1cc0f244cb7"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\AGENTS.md",
+      "bytes": 43511,
+      "sha256": "b875a1f8c7fbadcc43956b04770c01526cb0d63d7f2621ceefd8219c09f22d84"
+    }
+  ],
+  "projectzomboid.jar": {
+    "manifest": "Manifest-Version: 1.0\r\nMain-Class: zombie.gameStates.MainScreenState\r\nMulti-Release: true",
+    "class_count": 23829
+  },
+  "ZombieBuddy.jar": {
+    "manifest": "Manifest-Version: 1.0\r\nPremain-Class: me.zed_0xff.zombie_buddy.Agent\r\nCan-Redefine-Classes: true\r\nCan-Retransform-Classes: true\r\nImplementation-Version: 2.3.4\r\nMulti-Release: true",
+    "class_count": 8034
+  }
+}

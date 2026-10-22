@@ -1,0 +1,14 @@
+2114:LOG  : General      f:26847> [EmberRoutes v0.7.0] WORK INTENT command=run result=TASK_EXISTS_RESUME_OR_CLEAR
+2154:LOG  : General      f:32065> [EmberRoutes v0.7.0] WORK INTENT command=run result=TASK_EXISTS_RESUME_OR_CLEAR
+2192:LOG  : General      f:38246> [EmberRoutes v0.7.0] WORK INTENT command=run result=TASK_EXISTS_RESUME_OR_CLEAR
+4074:LOG  : General      f:15685> [EmberRoutes v0.7.0] WORK STATE task=25b809da-bd49-4759-b16c-da92c79c04aa npc=0e178df4-f264-4f12-89d1-b80011b105d1 state=RUNNING reason=EXPLICIT_START delivered=0/3
+4084:LOG  : General      f:16209> [EmberRoutes v0.7.0] WORK TRANSFER task=25b809da-bd49-4759-b16c-da92c79c04aa item=1990095597 phase=TAKE
+4102:LOG  : General      f:17407> [EmberRoutes v0.7.0] WORK TRANSFER task=25b809da-bd49-4759-b16c-da92c79c04aa item=1990095597 phase=DELIVER
+4119:LOG  : General      f:18638> [EmberRoutes v0.7.0] WORK TRANSFER task=25b809da-bd49-4759-b16c-da92c79c04aa item=533607419 phase=TAKE
+4137:LOG  : General      f:19932> [EmberRoutes v0.7.0] WORK TRANSFER task=25b809da-bd49-4759-b16c-da92c79c04aa item=533607419 phase=DELIVER
+4154:LOG  : General      f:21087> [EmberRoutes v0.7.0] WORK TRANSFER task=25b809da-bd49-4759-b16c-da92c79c04aa item=35760528 phase=TAKE
+4209:LOG  : General      f:22302> [EmberRoutes v0.7.0] WORK TRANSFER task=25b809da-bd49-4759-b16c-da92c79c04aa item=35760528 phase=DELIVER
+4214:LOG  : General      f:22601> [EmberRoutes v0.7.0] WORK STATE task=25b809da-bd49-4759-b16c-da92c79c04aa npc=0e178df4-f264-4f12-89d1-b80011b105d1 state=DONE reason=ALL_ORIGINAL_IDS_AT_DESTINATION delivered=3/3
+4301:LOG  : General      f:25287> [EmberRoutes v0.7.0] WORK INTENT command=run result=TASK_EXISTS_RESUME_OR_CLEAR
+4310:LOG  : General      f:26570> [EmberRoutes v0.7.0] WORK INTENT command=resume result=DONE
+4313:LOG  : General      f:27018> [EmberRoutes v0.7.0] WORK INTENT command=run result=TASK_EXISTS_RESUME_OR_CLEAR

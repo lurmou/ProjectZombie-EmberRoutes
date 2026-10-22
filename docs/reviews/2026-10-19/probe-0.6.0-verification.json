@@ -1,0 +1,17 @@
+{
+  "version": "0.6.0",
+  "date": "2026-10-19",
+  "build": "passed",
+  "luaRegression": "passed",
+  "latestWorkTests": "passed; 51 checks, native fakes only",
+  "preflight": "passed",
+  "luaLanguageServerErrors": 0,
+  "luaLanguageServerWarnings": 0,
+  "releaseCheck": "passed",
+  "doclink": "9 files; 0 errors",
+  "runtimeTestsRun": false,
+  "multiplayerImplemented": false,
+  "performanceMeasured": false,
+  "memoryWrite": "user-confirmed architecture requirement retained; source docs/development-rules.md",
+  "packageSha256": "EC5B8BB497D8CE4362C621F00569CE55286FC54050BE1B085744CB7A04428A8A"
+}

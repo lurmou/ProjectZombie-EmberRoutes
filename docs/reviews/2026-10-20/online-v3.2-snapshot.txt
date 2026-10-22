@@ -1,0 +1,317 @@
+﻿《Project Zomboid》EmberRoutes 社区网络与商队贸易系统设计规格与技术验证规范 (v3.2 修订稿)
+基准运行环境：Project Zomboid B42.21.0+ | ZombieBuddy 2.3.4+
+核心架构原则：服务端绝对权威、Kenshi 式物理实体映射、原版动作原生调用、数据驱动热插拔兼容
+0. 系统工程要求与架构规则 (System Engineering & Architecture Guidelines)
+* 高性能 (High Performance)：算力降载、AOI 视距剔除、紧凑二进制包、低频心跳插值，严格不阻塞主线程。
+* 高可扩展性 (High Extensibility)：数据驱动、注册表模式（城镇、动机、配方、工作台），新增内容 0 侵入。
+* 高可维护性 (High Maintainability)：模块严格解耦，契约化接口，内置防空指针熔断机制。
+* 多人适配与降级策略 (MP Adaptation & Fallback Strategy)：优先追求多人联机专服适配（Server-Authoritative + Client Puppet）；但如果多人适配在 Phase 0 原型验证阶段对底层引擎侵入过大、网络同步稳定性或开发成本严重失控，保留平滑降级为“单人模式完整首发适配（SP-First Fallback）”的架构灵活性，避免拖死整个项目。
+* 架构实证原则 (Candidate vs. Validated Boundaries)：严格区分“设计候选方案（Candidate Proposal）”与“已实测验证机制（Validated Architecture）”。所有涉及 PZ 底层 C++/Java 隐藏接口（如 vehicles.db 物理阻挡读取、VirtualZombieManager 密度检索、专服 NPC 载体解耦）的设计，在通过 Phase 0/1 探针代码验证前，均标定为候选验证目标，严禁在架构未落地前当作既成事实进行过度工程化封包。
+0.1 研发协作与实机测试工程规范 (Engineering & Collaboration Workflow)
+* 版本号绑定与调试日志规范 (Strict Versioning & Debug Logging)：由于 AI 无法直接进行游戏实机运行验证，必须依靠人类开发者进行实机测试。代码的每一次迭代与补丁修改，必须严格递增版本号（例如从 v0.1.0 递增至 v0.1.1）。同时，所有控制台日志输出（如 print 或 Logger 输出）必须强制带上当前精确的版本号前缀（例如：[EmberRoutes v0.1.0]），以严防测试人员在旧版本缓存或未生效代码上排查错误。
+* 批量完整功能交付策略 (Batched Feature Delivery)：为降低人类测试人员进出游戏与搭建测试环境的频率，AI 在开发过程中应尽量将逻辑自洽、相对完整的功能切片（如“完整的队伍招募与指令交互UI”、“完整的容器标签路由逻辑”）进行批量打包交付，避免频繁交付极其微小的代码碎片。
+* 探针验证例外原则 (Exception for PoC Probes)：批量交付策略的唯一例外为 Phase 0 / 高风险探索性技术探针（探针验证性质代码，如专服 NPC 注入、特定 Java 方法 Hook 试错等）。此类探针代码允许以极简的脚本形式提交，以便快速验证引擎底层边界。
+1. 项目愿景与核心循环
+* 项目定位：在《Project Zomboid》（PZ）中构建一个深度融合社区网络经营 + 商队贸易的长期玩法体系，解决中后期生存资源严重过盛、安全屋无威胁、目标感缺失的痛点。
+* 设计参考：
+   * 《颂钟长鸣》（Bellwright）：多据点协作、区域资源特化、商队大地图流转、村民分工。
+   * 《环世界》（RimWorld）：清单式双栏交易界面、0~4 级优先级工作表、按需插槽式营地布局。
+   * 《Kenshi》（剑士）：全物理真实库存（货架有物才可卖）、无欺骗偷窃反应、真实属性磨炼（搬砖长力量、锻炼长体魄）。
+* 核心闭环：
++------------------+      +------------------+      +------------------+
+|  真实建筑占领    | ---> |  物理工序生产    | ---> | 满足维生与身心需求|
++------------------+      +------------------+      +------------------+
+         ^                                                   |
+         |                                                   v
++------------------+      +------------------+      +------------------+
+| 周期防御战(热度) | <--- |  换取蓝图/稀缺品 | <--- | 组建商队调配特产  |
++------------------+      +------------------+      +------------------+
+2. 底层网络与实体架构 (MP 兼容性方案)
+2.1 专服 NPC 载体选型与虚构连接裁定 (NPC Carrier Selection & Engine Demarcation)
+* 源码审查裁定：
+   * PZ 专服底层基于 C++ RakNet，强校验 GUID、心跳包与分片队列。
+   * AntiCheatPlayer（Type 1~24）会主动抽查网络签名，伪造 UdpConnection 极易诱发底层断言崩溃或防作弊踢出。
+   * IsoPlayer 在专服中强绑定 IsoCamera 与客户端预测，直接继承并在服务端跑会导致客户端剧烈抖动与瞬移。
+* 落地技术正解：
+   * NPC 实体载体候选方案 (Phase 0 未验证探索目标)：在 Phase 0 原型评估中，优先验证继承自 IsoPlayer 并调用 setNpc(true) 的构建途径。明确引擎边界：setNpc(true) 仅为引擎内部切分 NPC 输入逻辑与挂载 AIComponent 的候选入口，并不直接等同于已证明其能在专服环境下完美解耦本地摄像机 (IsoCamera) 或完全脱离本地玩家绑定。若 Phase 0 验证发现 IsoPlayer 底层网络与客户端预测羁绊过深，平滑降级为继承 IsoGameCharacter 或在 ZombieBuddy 协助下挂载受控 AIComponent。严格保证服务端绝对权威与单人（SP）平滑降级能力。
+   * 客户端傀儡代理（Client Puppet）：服务端只同步物理关键帧，客户端作为纯表现层渲染骨骼与动画，不把 NPC 当作真实联网玩家注册到连接池。
+2.2 网络带宽 5 层降载契约 (Target Budgets to be Measured)
+层级
+	技术机制
+	策略与实现细节
+	L1
+	矢量航位推测 (Dead Reckoning)
+	仅在状态突变时发送目标路点与速度矢量；客户端本地模拟位移，服务端 1~2 秒低频心跳 Lerp 校准。
+	L2
+	视距分级同步 (AOI)
+	<=15格：10Hz 高精度（待实测目标）；15~35格：2Hz 路点校准；视线阻隔：0.5Hz 停算动画；>40格：0Hz 后台数据模拟。多观察者仲裁规则：当存在多个玩家时，取最近观察者距离作为 AOI 依据；只要有至少一名玩家在视距内（<=35格），NPC 绝不进入后台停算模式。
+	L3
+	动静分离
+	外观、模型、装备 ID 仅在进入区块或换装时单次下发，移动数据包彻底剥离静态信息。
+	L4
+	二进制紧凑编码
+	废除动态 Lua Table 广播，经由 ByteBufferWriter 写入定长数据包（目标控制在 16 Bytes 以内，待实测验证）。
+	L5
+	批量合并广播 (Bundling)
+	服务端以 100ms 窗口收集同区块所有 NPC 状态增量，打包合并广播。
+	2.3 数据持久化分工与选型建议 (Data Persistence Recommendation - Advisory Only)
+* 架构建议说明 (Advisory Notice)：本节为技术架构选型参考建议，并非强制绑定决议。实际开发中可根据工程进度与性能评估进行灵活调整。
+* ModData 适用场景：最适合轻量级、瞬态、高频及内存状态数据（如随从战术指令、工作台家具状态、临时工单队列、UI 交互状态等）。
+* SQLite 数据库 (引擎级 org.sqlite.JDBC) 适用场景：最适合跨区块持久化账本、重度商队历史明细、服务端阵营信誉额度及载具数据（vehicles.db）等复杂关联数据。
+* 阶段推进策略：建议项目早期阶段（Early Phases）优先使用原版标准的 GlobalModData 以保持低开发门槛；仅当后续跨区块复杂查询需求增加或存档膨胀（Save-bloat）成为性能瓶颈时，再考虑引入 SQLite 作为进阶解法。
+3. 领地与承载力系统
+* 3.1 独立领地账本与划区系统 (Independent Territory Ledger & Zone System)
+* 纯模组自建领地账本 (Custom Territory Ledger in ModData / SQLite)：彻底解耦原版 zombie.iso.areas.SafeHouse 对象。原版 SafeHouse 系统在单人模式下默认被引擎层硬性禁用且逻辑受限，依赖它会导致单人（SP）与多人（MP）代码逻辑分裂且极其脆弱。系统在 ModData / SQLite 中建立独立且统一的领地账本，直接存储边界坐标（x, y, w, h）、所有权、阵营归属及内部划区信息，实现单多人 100% 架构统一。
+* 右键框选划区 (Zone Designation)：
+   * 玩家直接右键地面/世界并选择“新建据点”。
+   * 界面进入框选/划区模式（类似原版 B42 畜牧区/划区工具的形式），玩家可自由拖拽框选所需的据点领地边界（自由覆盖建筑、外院、车道或自定义区域）。
+   * 框选完成后直接写入模组独立领地账本，无需安放任何市政无线电台或核心实体家具。
+   * 领地重叠与间隔规则：允许同阵营据点领地相互重叠与合并；但严禁与系统预设的 NPC 城镇重叠，且与系统城镇边界之间必须保持最小间隔距离。
+* 独立防刷新与生存规则：
+   * 取消生硬前置：不要求强制敲木板封窗，不要求清空地图上每一个死角的丧尸，存量僵尸由玩家在日常中自然清理。
+   * 统一防刷新排斥区机制 (Independent Repulsion Zone)：不依赖 server.ini 中的原版 Safehouse 刷新配置，模组在单人与多人模式下统一接管领地内的丧尸刷新逻辑（如 Hook 刷新检测或直接清除领地边界内新生成的丧尸），确保据点区域的安全稳定性。
+3.5 据点离线维持与维持状态 (Stasis Mode & Account Succession)
+* 据点离线维持模式 (Stasis Mode & 24h Threshold)：当据点所属阵营的所有玩家均处于离线状态时，据点自动进入“离线冻结维持模式（Stasis Mode）”。在 Stasis 模式下，NPC 停止高频物理 TimedAction 模拟与实时食物消耗，改为按小时进行离线数据快照扣减（食物/水存量）。若玩家持续离线超过 24 小时，据点自动触发“最低生存沉寂（Stasis Sleep）”，停止一切动态生产与热度值积累，避免玩家离线期间据点因无人维护而彻底毁损。
+* 基于服务端可信账户的阵营继承 (Account-Bound Succession)：阵营所有权与领导权强绑定至服务端可信账户（SteamID / 专服认证账号）。当队长玩家角色死亡或永久注销时，据点领地账本与 NPC 归属权限不会丢失，系统自动提示并允许同阵营中拥有合法账户权限的其他玩家继承队长职位；若为单人模式，则自动继承至玩家创建的下一个新角色。
+3.6 容器标签化路由与访问权限 (Container Tagging & Exclusive Access)
+* 环世界式树状存储过滤体系 (RimWorld-Style Storage Filter System)：废除“单选死标签”与“职业定向访问锁（如仅厨师可开食品箱）”。NPC 访问容器完全基于 Layer 2 效用动机与容器内实际有效物品自然触发。存储分配全面转向多选树状过滤器（Storage Filter）：支持大类一键全选/取消（【食物】、【军械】、【原材料】、【医疗】、【工具】、【废品/待拆解】等），并支持细粒度子分类与细项勾选（例如同时勾选【枪械】+【弹药】，或在食物箱中勾选【罐头/耐存食品】并取消勾选【易腐生鲜】）。通过原版与第三方 Mod 物品底层的 DisplayCategory、Type 及属性标签自动分类，实现对第三方 Mod 物品的 0 侵入自适应兼容。
+* 原版 ISInventoryPage 交互与侧边栏角标 (ISInventoryPage Integration & Badge UI)：在原版物品栏侧边栏（ISInventoryPage Container Tabs）右键容器图标，弹出【存储过滤设置 (EmberRoutes)】树状配置面板（类似 RimWorld 存储设置界面）。已被配置的容器，其侧边栏图标角标处会自动渲染对应的主存储分类微缩彩色图标（Tab Badge），方便玩家一目了然把握容器用途。
+* 顶层隐私铁律与私人专属容器 (Private Container Guardrail)：保留顶层总开关【私人专属/Private】以及默认未配置（Untagged）状态。凡标记为私人专属或未参与存储配置的容器，NPC 绝对严禁从中检索、翻动、拿取或存入任何物品，彻底杜绝 NPC 乱动或打乱玩家私人物资。
+3.2 三维有机生态评分
+彻底放弃"必须升到 X 级大本营"的手游化设定，系统动态测算三维分值：
+
+
+* 安全性（Security Index，0~100）：
+   * 测算依据：外围是否有封闭闭环（门窗、卷帘门、围墙均可，不限材质）；瞭望台数量；哨卫武器与弹药配置。
+   * 影响：决定 NPC 士气底线与商队遭遇伏击时的后台自卫胜率。
+* 承载力（Habitability Index，0~100）：
+   * 测算依据：领地内登记的舒适床位数、洁净储水量、口粮多样性。
+   * 影响：决定无惩罚容纳人口与工作效率。
+* 工业与物流（Logistics & Industry Index）：
+   * 工作台家具扫描 (Plug & Play Workstations)：对齐 PZ 原版（尤其是 B42 锻造、陶艺等系统）及模组机制。工业生产线与配方解锁严格受领地内物理存在的工作台家具（如铁砧 Anvil、窑炉 Kiln/Furnace、复装台 Reloading Bench 等）支配，废除死板的静态大本营等级或硬编码解锁逻辑。
+      * 区域通电/发电机 -> 激活高级冷藏与电动加工设施；
+      * 划定车库且停有合格载具 -> 激活机动商队槽位；
+      * 扫描到特定物理工作台 -> 解锁对应工种生产线（含模组自定义家具与配方）。
+3.3 人口超额软性惩罚
+* 无硬上限：允许招募任意数量的 NPC，人口调度纳入第 10 节 Layer 1 宏观 HFSM 管理。
+* 床位挂钩软惩罚：设床位数为 B，实际人口为 N。超额人数 $\Delta N = N - B$ 无法分配床位。
+   * 无床位惩罚：睡眠时若无专有床位，可沿用原版 PZ 休息机制使用沙发、长椅或单人沙发椅（Sofas, Couches, Armchairs）等替代休息设施。若完全无合适设施只能睡地上，将触发原版“睡地板”惩罚（保留 0.4f 疲劳，强制累加 15.0f 不幸度），导致工作效率降低 40%。
+* 永久删除叛逃逻辑：整个系统不包含背叛、卷款潜逃、倒戈敌对设定。身心崩溃时（Unhappiness >= 80 且 Stress >= 0.8），NPC 仅表现为生理停工：拒绝繁重工单，自主坐下发呆、抽烟、翻看休闲小说或在床上休息，直到身心指数恢复。
+3.4 招募、初始开局与阵营扩张 (Recruitment & Starting Companions)
+* 开局初始队员创角流程 (New Game Starting Party Creation)：
+   * 在世界创建前（玩家自建角色加点形象之前），新增开局选人面板，允许玩家自选初始携带几名随从（0 ~ 3 名，最多携带 3 个 NPC）。
+   * 采用轮询创角流程：若玩家选择了携带 N 名随从，系统将连续引导玩家进行 N 次完整的原版角色创建流程（自由配置特质加点、职业、形象发型与服装）。
+* 据点中后期招募 (Settlement & Town Recruitment)：游戏中后期的阵营扩张可通过前往地图固定的 NPC 城镇据点（如西点、罗斯伍德等贸易站）进行人员招募。招募机制表现为通过提供安置物资（食物、药品、工具等）接纳流亡者或游荡幸存者，将其吸收入据点。
+3.7 据点废弃与解散生命周期 (Decommission & Dissolution Lifecycle)
+* 账本与标签注销：当据点被玩家主动解散或因灾难废弃时，系统自动注销领地账本及对应的防刷新排斥区，并一键清除据点内所有容器的用途标签。
+* 留守人员流转：据点解散后，留守的 NPC 可由玩家收编为随身随从小队成员；未被分配的 NPC 将平滑转为大地图游荡幸存者。
+3.8 据点物理热度与声源防御战 (Settlement Heat & Siege Mechanics)
+* 物理热度计算模型 (Lightweight Heat Model)：结合低频心跳契约与离散事件驱动，严禁每帧空间音频轮询或物理射线检测。持续源（运作中的发电机）按低频心跳每小时累加热度；离散突发源在重型生产动作（锻造、打铁、锯木、伐木、拆解等）完成（Server Commit）及枪械开火时触发一次性热度增量。
+* 自然衰减 (Silent Cooling)：据点热度具备恒定每小时消退速率，停工与无噪音状态下热度将自然归零。
+* 原生声源引怪 (Vanilla Meta-Sound Attraction - NO Free Spawning)：绝对不凭空刷怪。当据点热度突破警戒阈值时，调用原版 Meta-Sound 全球虚拟声源机制（类似原版直升机事件）向据点坐标发送声源吸引信号，将周边未加载蜂窝及附近森林中的存量丧尸吸引并向据点汇聚，形成自发尸潮。
+* 离线绝对冻结豁免 (Stasis Freeze Exemption)：当据点全员离线处于 Stasis 维持模式时，据点热度累加完全冻结，绝对不会在无人在线期间触发声源引流防御战。
+4. NPC 拟真生活与身心属性
+4.1 原版底层身心数值复用
+可以直接读写 IsoGameCharacter 的原生属性字段，以保障原生机制的平滑兼容：
+
+
+* 疲劳与耐力：getStats().fatigue, getStats().endurance
+* 抑郁与不幸：getBodyDamage().unhappinessLevel
+* 压力与恐慌：getStats().stress, getStats().panic
+4.2 属性成长与空闲生活
+                   +------------------------+
+
+
+                   |  NPC 空闲/无紧急工单   |
+
+
+                   +------------------------+
+
+
+                               |
+
+
+         +---------------------+---------------------+
+
+
+         |                     |                     |
+
+
+         v                     v                     v
+
+
++------------------+  +------------------+  +------------------+
+
+
+|  锻炼 (Fitness)  |  |  阅读 (Learning) |  |  社交 (Social)   |
+
+
+| - 做俯卧撑/深蹲  |  | - 阅读技能书     |  | - 视听/抽烟      |
+
+
+| - 按帧增加力量/体魄|  | - 降低 Boredom   |  | - 触发 Say 气泡  |
+
+
+| - 次日肌肉酸痛    |  | - 挂载经验加成   |  | - 恢复身心数值   |
+
+
++------------------+  +------------------+  +------------------+
+4.3 NPC 自主维生与个人卫生需求 (Autonomous Self-Care & Hygiene)
+* 饮食自理 (Hunger & Thirst Management - 原生机制直接挂载)：并非新建自定义系统，而是直接接管原版原生 Hunger/Thirst 属性与吃喝 TimedAction（如 ISEatFoodAction 等）。NPC 实时监测原版数值，当触发饥饿或口渴时，自主检索自身背包、指定的食物储存箱、冰箱或水瓶/洗手池，真实消耗原版食物与水源物品。
+* 个人卫生与血迹/污垢清洗 (Hygiene & Cleanliness - 100% 原生机制调用)：在原版 PZ 中，战斗与日常劳动会自然积累身体与衣物的血迹及污垢（原生 VisualAppearance、bloodLevel、dirtLevel）。当达到不适阈值时，NPC 仅需调用原版原生清洗动作（ISWashClothing、ISWashYourself），使用原版水源、肥皂与毛巾清除原生血迹与脏污，从而预防原版伤口感染、不幸度上升及负面社交反应。
+* 需求中断与日常节奏 (Routine & Need Interrupts - 衔接 3 层 AI 架构)：完全依赖原版 Project Zomboid 内置的状态与后果逻辑。其触发与仲裁直接由第 10 节 Layer 2（效用动机仲裁层）接管：当维生或卫生需求跨越阈值时，自动打断常规工单，通过 Layer 3 派发对应的原生 TimedAction 动作链。
+4.4 丧尸病毒感染与阵亡处置 (Infection & Post-Mortem)
+* 诺克斯病毒隐性感染与验伤检测 (Knox Infection & Health Panel Diagnosis)：当 NPC 遭遇咬伤感染诺克斯病毒后，不会主动通过语音或广播透露感染状态，仅表现为发烧、恶心等隐性生理反应。必须由玩家或医护 NPC 主动打开原版身体检查菜单（Health Panel）进行验伤诊断，方可确诊其病毒感染状态。
+* 处置决策与超时尸变规则 (Quarantine, Euthanasia & Post-Mortem Zombification)：确诊后系统允许通过对话菜单进行决策：赐予安息（Euthanasia）、驱逐流放（Exile）或单间/地牢隔离（Quarantine）。若玩家在感染致死前未做任何干预决策，NPC 死亡时将直接就地尸变为具有完整物理威胁的原生丧尸（后果由玩家自负）。若正常阵亡，同伴可使用铲子掩埋（调用 ISDigGrave）或焚化尸体，以消除尸体病（Corpse Sickness）风险并缓解同伴的不幸度负面 Buff。
+4.5 据点活动与仪式系统 (Community Activities & Ritual System)
+* 自由度与高扩展性 (RimWorld-Style Modular Architecture)：参考《环世界》（RimWorld）的仪式与聚会机制，构建高度模块化与开箱即用的活动系统。核心逻辑完全解耦，暴露标准的活动注册表（Activity Registry），第三方模组或后续扩展无需修改核心代码即可自由注册全新的社区活动与仪式类型。
+* 核心运行机制 (Core Mechanics & Execution Flow)：
+   * 活动注册表 (Activity Registry)：提供 EmberRoutes.registerActivity(def) 接口，定义包含唯一 ID、前置条件（所需物资/设施，如音响、篝火、桌椅）、聚集地点类型（Campfire, Dining Table, Grave, Music Player, Open Yard）以及执行动作序列与效果。
+   * 自然聚集与行为流转 (Organic Flow)：当活动触发时（玩家手动发起或定时日程调度），指定一名组织者（Organizer），符合条件的空闲 NPC 将自然向目标地点移动聚集，并调用原版原生动画（如坐下、饮酒、鼓掌、演讲）与气泡对话（Say Bubbles），活动结束后根据完成度赋予负面情绪清除与士气加成 Buff。
+* 开箱即用内置活动类型 (Out-of-the-Box Dynamic Types)：
+   * 追思葬礼 (Funeral / Memorial Service)：于坟墓或纪念碑前举行，大幅抚平同伴阵亡带来的悲伤与不幸度，消除丧亲创伤。
+   * 围炉夜话/聚餐 (Campfire Feast / Gathering)：于篝火或餐桌旁举行，消耗部分食物与饮品，快速缓解压力、疲劳与孤独感。
+   * 庆功/演讲活动 (Celebration / Rally)：于据点广场或讲台举行，在成功击退尸潮战役或商队满载归来后发起，显著提升全员士气与团队凝聚力。
+   * 自定义扩展支持 (Custom Extension API)：开放注册接口，支持轻松接入如音乐会（结合吉他/音响）、节日庆典、射击比赛等自定义模组活动。
+5. 生产工作流、白名单动作契约与故障恢复 (Production Workflow & Action Whitelist)
+5.0 配方知识同步与委托制作规则 (Recipe Knowledge Synchronization)
+* 配方知识与独立技能三要素判定：NPC 拥有独立的已知配方库与物理技能等级（如 Carpentry, Farming 等）。派发工单时，系统执行三要素前置校验：① 物理工作台存在；② NPC 已掌握目标配方；③ NPC 物理技能等级达到配方最低要求。若玩家已掌握某种配方而 NPC 技能达标但未掌握配方，允许玩家向 NPC 传授该配方；若 NPC 未达到最低技能等级，即使获得配方也无法执行制作，必须先通过日常基础工作训练提升技能。
+* 委托制作两要素前置判定：当玩家向 NPC 派发或委托某种物品制作工单时，必须同时满足物理工作台存在（领地扫描确认）与玩家配方解锁（玩家已掌握对应知识）两个条件，才允许生成有效任务。
+* 据点管理中心无缝整合存储与委托制作 (Settlement Dashboard Storage & Crafting Integration - Tom's Simple Storage Style)：彻底取消建造或摆放任何物理“管理终端”或“调度台”家具的前置硬性要求。只要玩家处于已占领的据点领地内，即可随时通过主【据点管理中心面板】（Settlement Dashboard UI）直接访问整个据点的仓储与委托制作系统。该界面无缝集成据点内所有打标签容器的物品汇总浏览、分类筛选与搜索功能，并提供类似于 Tom's Simple Storage 风格的物料清单（BOM）驱动委托制作面板，玩家可在此直接下达、管理与追踪全自动化生产工单。
+* 模组扩展兼容：对于弹药复装等非原版或模组拓展内容，遵循完全一致的规则——只要扫描到模组工作台家具且玩家掌握对应模组配方，即可直接委托 NPC 生产。
+5.1 环世界式优先级工作表
+放弃死板的固定大工种，改为 0~4 级优先级动态矩阵。该工作表受第 10 节 Layer 2 效用动机仲裁层高频调度：
+
+
+$$\text{优先级顺序}: \text{急救医疗 (P1)} \rightarrow \text{自卫/交战 (P2)} \rightarrow \text{日常维生} \rightarrow \text{工农业生产} \rightarrow \text{后勤搬运}$$
+
+
+* 急救医疗强制打断：据点内出现流血、骨折、感染伤员时，最高优先级医护 NPC 立即中断一切劳作，抓取消毒水、缝合针与绷带赶往病榻。
+5.2 原版动作逐动作白名单适配与故障熔断 (Action-by-Action Whitelist Adaptation)
+严禁假设“完全复用所有原版动作”或“任意第三方模组动作自动无缝兼容”。所有由 NPC 执行的 TimedAction 必须经过逐动作白名单适配（Whitelist Verification），逐一实测校验其物品消耗真实性、服务端状态提交（Server Commit）、失败/恐慌打断时的状态回滚（Panic Rollback）以及客户端插值表现：
+
+
+* 农夫：ISDigAction, ISPlantAction, ISWaterPlantAction, ISHarvestPlantAction（需持铲、种子包、水桶，真实修改 IsoPlant 水分与状态）。
+* 厨师：ISSliceBreadAction, ISCraftAction, ISPutItemInWorldAction（需厨刀、食材、通电/生火炉灶、锅具，调用原版营养与温度合成料理）。
+* 工匠：ISChopTreeAction, ISSawLogAction, ISDisassembleAction, ISBuildAction（需斧、手锯、大锤、锤钉，树木倒下、原木成板、工具掉耐久）。
+* 哨卫：ISReloadWeaponAction, ISEquipWeaponAction，原生射击/近战判定（消耗真实弹药与武器磨损，留下真实尸体）。
+* 杂工：ISTransferAction, ISTakeWaterAction（受自身负重与目标容器容积约束）。
+5.3 据点自动化生产与调度策略 (Automated Orders & Production Chain)
+* 农牧目标配额与产量预估 (Crop Yield-Quota Strategy)：在据点管理面板中，玩家可配置目标农作物配额（例如：土豆 100 个）。农夫在评估可耕作土地时，会自动计算预计产量：$\text{预计产量} = (\text{已种植数量} + \text{计划播种数}) \times \text{平均单株产量}$。当预估总产量达到或超过目标配额（$\ge 100$）时，农夫会自动转为按优先级播种其他已设定的作物。
+* 颂钟长鸣式全自动产业链反向推导 (Recursive Supply Chain)：参考《颂钟长鸣》（Bellwright）与《我的世界》AE2（Applied Energistics 2）的自动化逻辑。当系统或玩家下达下游成品需求（例如：10 根木棍）时，系统会自动递归拆解物料清单（BOM：木棍 $\rightarrow$ 木板 $\rightarrow$ 原木）。伐木工伐木获取原木 $\rightarrow$ 锯木工/伐木工将原木锯成木板 $\rightarrow$ 工匠将木板制作成木棍。
+* 颂钟长鸣式全自动产业链反向推导与死锁恢复 (Recursive Supply Chain & Deadlock Recovery)：参考《颂钟长鸣》（Bellwright）与《我的世界》AE2（Applied Energistics 2）的自动化逻辑。当系统或玩家下达下游成品需求（例如：10 根木棍）时，系统会自动递归拆解物料清单（BOM：木棍 $\rightarrow$ 木板 $\rightarrow$ 原木）。伐木工伐木获取原木 $\rightarrow$ 锯木工/伐木工将原木锯成木板 $\rightarrow$ 工匠将木板制作成木棍。当自动化任务遭遇瓶颈或被阻塞（例如：缺少锯子）时，系统将明确通知玩家缺少的具体物料或工具。若缺失的工具或前置物品本身拥有已知制作配方且领地内具备可用工作台（例如：缺少锯子，但已解锁制作锯子的配方与设施），系统会自动向下递归生成制作缺失工具的子工单（如：制作锯子），优先自动补全前置工具链以保证生产循环连续；仅当无法递归解包或彻底缺乏基础原料时，才正式标记为完全阻塞并挂起任务。
+* 崩溃幂等与节点检查点恢复 (Crash Recovery & Checkpoint Rollback)：长链生产任务（如连续制作 50 件家具或多步流水线）必须具备检查点（Checkpoint）机制。每完成一个独立子动作或单件物品制作，服务端立即提交脏标记并写入 ModData 存储检查点。若服务器突发崩溃或重启，系统根据最后提交的检查点状态恢复生产队列，避免任务重复执行或物料凭空消失，确保状态转换的幂等性。
+* 季节气候适应性 (Seasonal Climate Adaptability)：
+   * 无硬性禁种：冬季或非适宜季节不进行硬性禁止（保持对温室及冬季作物模组的兼容）；若处于严寒天气，仅在 UI 界面上显示警告提示。
+   * 智能自动选种：当玩家未显式指定目标农作物种类时，农夫 NPC 会根据当前游戏季节与实时气温，自动筛选并优先播种最适宜当前气候的作物。
+   * 最低安全存量模式 (Maintain Stock / Threshold Mode)：设定安全库存底线（例如：维持 50 块木板）。当库存数量低于该阈值时，系统会自动生成生产工单并派发给对应工种的 NPC 补齐。
+   * 委派/点单模式 (On-Demand Crafting / AE2 Order Mode)：单次按需点单（例如：制作 20 把木矛）。系统将其加入生产队列，通过递归树请求所有前置子零部件，制作完成并交付后自动结束工单。
+5.4 据点核心工种作业规格与边界红线规范 (Job Specifications & Guardrails)
+* 厨师工种规范 (Chef)：支持单次点单与维持安全存量双模式；遵循生鲜优先与防腐败原则（优先消耗临界生鲜 > 新鲜 > 耐存物资）；严格执行刀具、碗锅等工具与容器的闭环校验与缺失警报；烹饪结束后强制触发关火/关闭烤箱机制，严防明火引发火灾；烹饪完成的成品食物必须及时搬运至冷藏容器入库。
+* 物流与分拣工规范 (Hauler & Logistics)：周期性扫描出入库箱与临时卸货箱；严格基于容器标签路由分流规则，将物资分门别类归库（军械/医疗/食品/工具等）；根据自身负重上限分批次搬运，严禁超载；严禁触碰或拿取任何未标记（Untagged）的玩家私人专属容器内物品。
+* 农夫工种规范 (Farmer)：实现整地、播种、浇水、除病、收获及清茬全周期自动化闭环；雨天自动挂起浇水任务；根据季节与气候温度自适应选择最佳作物种子；收获的农作物与残留种子自动搬运归仓。
+* 哨卫与警卫规范 (Sentry & Guard)：严格绑定指定的哨位与巡逻路线；当弹药不足或武器耐久降至低阈值时，自主前往军械库补充弹药与换装；结合疲劳值与夜间视线风险，自动进行轮岗与避险休整。
+* 工匠、拆解与机电维保规范 (Scrapper, Crafting & Generator Maintenance)：支持递归 BOM 拆解与自动化生产；恪守大件世界家具设施绝对防误拆铁律（仅允许拆解放入【待拆解箱】内的散落废品，或由玩家显式框选标记待拆除的建筑结构）。同时兼任据点发电机与机电设施巡检职责：燃油低于 25% 时自主取油桶为发电机补油并归还空桶；当发电机耐久降至 40% 时（远高于原版 20% 起火爆炸线），触发最高优先级关机检修，消耗废金属/电子元件修复至 95% 以上后再重新开机，杜绝起火爆炸风险。
+6. Kenshi 式物理经济与动态商队网络
+6.1 全物理实体库存 (Physicalized Store Inventory)
+* 交易面板展示的商品在加载区块内实时抓取 NPC 城镇仓库区内全部物理箱子；在未加载区块则通过持久化容器元数据（Container Metadata Snapshots）读取。
+* 买入真实从 NPC 货架扣除，卖出真实塞入 NPC 箱子。支持夜间偷窃；被目击偷窃触发全镇敌对交火；赃物带标签防原店销赃。
+6.2 交易并发与并发保护
+* 未加载世界跨边界写缓冲与租约锁（Lease Lock & Pending Transaction Buffer）：对于未加载区块（Unloaded Chunks）的商店，客户端申请 RequestTradeLock(townId) 获取 90 秒独占租约锁。租约锁必须强绑定容器版本号（Inventory Version Tag）与预扣预留机制（Item Reservation）。当对未加载商店进行交易或偷窃时，所有变更先写入“未加载写缓冲队列（Pending Transaction Queue）”并更新快照版本号。区块加载时，服务端依据写缓冲队列进行原子化幂等校验与真实物品实体扣除/填充，防范竞争条件（Race Conditions）与物品刷取漏洞。
+* 动态供需价格衰减与阶梯计价 (Supply-Demand Elasticity & Step-Decay Pricing)：商品交易价格引入局部供需弹性系数与阶梯衰减算法。当某种物资（如子弹、罐头）在特定城镇被连续大量卖出时，其收购价格将随着交易数量呈阶梯式衰减（单次交易内按阶梯分段计价）；反之，长期缺货的物资收购价格将动态上浮，防止玩家利用单一高价值物品无限刷取货币/硬通货。
+6.4 以物易物双轨制与末日硬通货结算 (Apocalyptic Barter & Hard Currency)
+* 主交易池物料对冲 (Barter Valuation Pool)：采用双栏物料价值对冲机制，由自适应估值器自动折算商品的生存实用点数，买卖双方放入交易栏的物品总估值等值即可完成对冲交易。
+* 末日硬通货找零与微额流通 (Hard Currency Change & Loose Bullets)：彻底废除无价值的纸币钞票，全面采用高价值末日消耗品（散装子弹 Loose Bullets/Ammo、香烟 Cigarettes、未开封抗生素）作为物理找零与微额流通介质。找零与出货均真实从物理背包与容器中扣除/塞入，无凭空数据生成。
+6.3 商队双模流转与 GTA 式动态跑图架构 (Dual-Mode Locomotion & Materialization Architecture)
+* 模式 A：玩家亲驾领航 / 随车押运 (Player-Led Convoy - 100% 物理真实跑图)：玩家可直接坐上驾驶位亲自开车，或随车护送。沿途区块随玩家自然加载，路面车祸残骸、僵尸阻拦由玩家手动驾驶绕行或清障；完全复用原版车辆后备箱负重、燃油与物理引擎。车队跟车与编队行进直接参考开源模组 npcfw 的成熟算法，无需重造轮子。
+* 模式 B：无人自主商队 (Autonomous Dispatch - Candidate Materialization Architecture)：
+   * 宏观虚空流转 (Virtual Node Traversal)：在未加载区块，商队沿公路节点网格进行纯数学推算（坐标 = 起点 + 速度 * 时间），不强制加载世界区块、不唤醒僵尸物理实体，杜绝内存与 CPU 负载雪崩。
+   * 动态近景具象化候选方案 (Proximity Materialization - Phase 1 待验证目标)：仅当任意真实玩家靠近该商队（进入视距加载半径）时，系统依据数据状态在道路上动态无缝实例化物理车辆与随行 NPC。明确架构边界：GTA 式动态具象化与流式加载属于 Phase 1 未验证候选方案，必须在 Phase 1 建立独立探针验证其在专服环境下的实体生成稳定性与客户端卡顿影响。
+* 动态环境感知与路况阻碍判定 (Dynamic World & Obstacle Awareness)：
+   * 动态残留尸群感知：商队经过未加载路段时，后台仅向原版 VirtualZombieManager / 蜂窝网格读取该区域的虚拟僵尸密度计数。若玩家此前引怪逃跑留有高密度尸群，后台自动按真实风险判定减速、消耗弹药或触发被困 (BESIEGED)。
+   * 道路阻挡与探针验证 (vehicles.db Probing - Phase 1 待验证目标)：商队推算节点前，计划对原版 vehicles.db 发起轻量 SQL 查询扫描废弃车辆。明确架构边界：读取 vehicles.db 并不自动证明其能够准确判定咽喉点物理完全阻挡（如废墟木墙、自定义障碍物）。该机制作为 Phase 1 离线探针进行专项测试，未通过前不作为系统硬性依赖。
+* 局部避障与航线回正 (Context-Steering Evasion & Path Recovery)：遭遇短距局部阻挡（如散落丧尸、临时障碍）时，拒绝重算全图 A* 寻路。采用类似 GTA 5 的局部切向偏置向量 (Context-Steering Offset): 主向量永远锚定下一个公路节点，在前方障碍探测触发时施加轻微侧向位移绕行，脱离障碍后立即回正切回主车道。
+* 商队航线覆盖范围：商队贸易航线贯穿运行于“玩家据点 $\leftrightarrow$ 系统预设 NPC 城镇”以及“系统预设 NPC 城镇 $\leftrightarrow$ 系统预设 NPC 城镇”之间，形成完整的区域资源互通网络。
+6.5 商队遇险求救与防守窗口机制 (Caravan Distress SOS & Holdout Mechanics)
+* 无线电求救与坚守窗口：当商队在大地图流转中触发突发遭遇战时，系统将通过无线电频道向玩家发送求救信号（SOS）。商队在现场的坚守等待时长（Holdout Window）动态受其随行载具防御等级（装甲/车况）及护卫弹药储备量影响。玩家可在窗口期内选择亲自赶往现场支援或通过指令远程调配救援。
+6.6 虚拟长途行程损耗结算 (Trip Depreciation & Prerequisites)
+* 模式 B（无人商队）流转时，依据行驶里程与沿途虚拟僵尸密度，后台等比扣除车辆燃油、轮胎/引擎磨损，并按护卫人数扣除干粮与饮水；发车前执行前置检查，物资不满足单程安全阈值时禁止发车。
+6.7 遇险死锁与安全返航 (Deadlock Abort & Return to Origin)
+* 当航线遭遇完全阻断、极端尸群阻碍且救援超时时，商队状态机切入“中止任务/原路返航（Abort & Return）”，将未售出货物安全运回始发据点入库，防止卡死在公路虚空节点。
+7. 随从同伴系统
+7.1 战术编队与站位策略 (Tactical Formations & Player-Assigned Positions)
+* 玩家显式槽位指定 (NO Automatic Auto-Sorting)：废除自动排序逻辑。阵型站位由玩家在 UI 中显式指派（如：近战在前，远程在后）。移动时结合 Layer 1 跟随上下文与弹簧阻尼吸附向量保持编队几何结构。
+* 武装与战斗策略规则 (Combat Strategy Discipline)：玩家可独立设定武装战术模式——强制纯近战、强制纯远程 或 自由切换。指令直接约束 Layer 2 在交战状态下的动作选择。
+* 交战准则 (Rules of Engagement)：开火许可受规则控制：主动迎敌 (Fire at Will)、受击还击 (Return Fire/Defensive)、绝对停火/避战 (Hold Fire/Pacifist)。
+7.2 镜像跟随与载具同乘协同
+* 按键输入镜像 + 伴随吸附模型：玩家按下 WASD，NPC 第一帧同步输出同向输入；玩家按 Shift 冲刺/潜行，NPC 同步镜像。随从偏置在玩家侧后方 1.5 格，叠加入弹簧阻尼吸附向量校准距离。行人编队跟随（Formation Following）与主动礼让避让（Courtesy Yielding/Avoidance）技术实现直接参考开源模组 npcfw (Project Remnants / Project Rename 系列 NPC 模组架构) 的已有成熟解法与数学模型，AI 在实现时应直接继承并扩展其代码库架构。
+* 载具同乘协同 (Vehicle Mounting)：玩家上车点火广播 MOUNT_VEHICLE，随从立即冲刺至空车门顺序上车，杜绝肉身追车。
+* 友伤与碰撞规则 (Friendly Fire & Collision Mechanics)：
+   * 关闭友军伤害：玩家与随从/同伴之间彻底免疫彼此的枪械与近战伤害。
+   * 关闭推挤绊倒物理效果：彻底关闭被随从撞倒、绊倒、冲撞摔倒的原版物理踉跄效果（No bumping/tripping/falling over NPCs）。
+   * 物理阻挡与 AI 拟真主动让路 (Retain Collision + Active Step-Aside / Yielding)：
+      * 坚决拒绝“无形力场推开/空气墙排斥/滑步漂移”的假象。
+      * 当玩家迎面走近或在狭窄通道（门框、走廊）朝随从方向行走时，随从 AI 主动检测侧方或后方的空闲通行格子。
+      * 随从自主迈步走动（主动挪步、侧移迈步或后退靠墙）让出过道，做出自然的“侧身借过/主动让行”步行行为。
+      * 玩家通过后，随从自然归队。100% 走原版正常的肢体走动与脚步位移，完全模拟现实中两人过道借过的真实活人感。
+7.3 随从队伍自我照顾 (Party Autonomous Self-Care during Downtime)
+* 完全遵循第 4.3 节与第 10 节（Layer 2 效用仲裁）的自理机制。当队伍处于脱战且安全的探索间隙时，随从自动评估维生与伤口状态，调取背包食物、水源或绷带，通过 Layer 3 驱动原版 TimedAction（如 ISEatFoodAction、ISApplyBandage）完成自我照顾。
+7.4 随从断线与归属流转保障机制 (Companion Disconnect & Ownership Transfer Safeguards)
+* 多人连线队长断线处理 (Party Leader Disconnect Resolution)：针对多人模式下队长玩家突发掉线或离线导致随从被绑架或永久遗留野外的问题，系统建立如下三重保障流转机制：
+7.5 战术系留半径与强制脱战 (Tactical Leash Radius)
+* 随从战斗时受限于硬性距离警戒圈（如 15 格），严禁无限远距离追击边缘散怪；一旦脱离系留半径，强制中断攻击动作，最高优先级冲刺归队回正。
+7.6 武器破损应急与避战后撤 (Weapon Breakage Fallback)
+* 主手武器损坏时，优先顺位切换背带或背包中的备用副武器；若完全无可用武器，在“主动迎敌/交战”准则下严禁直接绝对停火避战，随从将无缝切换为原版徒手战斗机制（利用推击 Shove 推倒丧尸并执行脚踩 Stomp 践踏处决）；仅当交战准则本身设定为“绝对停火/避战”、玩家显式下达撤退指令或处于极端被围困状态时，才主动借过撤至玩家身后寻求掩护。
+7.7 环形战术轮盘与极简指令集 (Radial Tactical Wheel & Commands)
+* 交互入口 (Shortcut Entrance)：长按快捷键（默认 R 键）瞬时呼出环形战术轮盘（Radial Tactical Wheel），玩家滑动鼠标光标即可快速向随从或队伍下达战术指令。
+* 极简白名单指令集 (Minimalist Command Whitelist)：轮盘仅包含高频核心战术指令：【跟随归队 (Regroup)】、【原地坚守 (Hold Ground)】、【指定行进 (Move To)】、【自由迎击 (Fire at Will)】、【防卫还击 (Defensive)】、【全员上车 (Mount Up)】。
+   * 场景 A (无同据点玩家在场)：当小队队长断线且周边无其他同据点阵营玩家时，随从立即触发安全回撤机制，直接安全传送/返回据点大本营。
+   * 场景 B (存在同据点玩家)：若附近存在同一据点的阵营成员，随从的控制权与跟随权限自动平滑转移给该附近阵营成员。
+   * 场景 C (接管玩家小队已满/溢出)：若附近的同据点玩家小队随从数量已达上限（小队满员溢出），无法接管新随从，则随从无法加入其小队，直接安全传送回据点大本营。
+8. 多模组生态与扩展性架构
+* 效用动机注册表 (Utility Action Registry)：核心代码暴露 EmberRoutes.registerReliefAction(def)，第三方模组（如坐下哭泣、弹吉他、瑜伽）独立编写注册文件接入。
+* 城镇注册表 (Town Registry)：第三方地图 Mod 调用 EmberRoutes.registerTown 自动并入大地图商队网格。
+* 自适应估值器 (Item Valuation Pipeline)：责任链自动反射第三方枪械、食物属性计算合理以物易物价格。
+9. 阶段性开发路线图
+
+
+阶段
+	核心目标
+	主要交付功能
+	Phase 0
+	底层技术探针 (PoC)
+	专服 NPC 驱动与轻量发包、TimedAction 向下转型兼容扫描、并肩按键镜像跟随、多人适配可行性评估（若 MP 侵入度或开发成本严重失控则平滑降级为 SP 首发）。
+	Phase 1
+	经济与商队骨架
+	环世界交易台、Kenshi 物理货架扫描、抽象运力商队状态机、缺货任务。
+	Phase 2
+	领地生态与生活拟真
+	独立领地账本与划区系统注册 (Independent Territory Ledger)、三维评分与床位软惩罚、原版 Fitness/阅读接入、0~4 级工作表。
+	Phase 3
+	动作流全量执行与高级特性
+	农/厨/工/哨全量 TimedAction 实装、商队遭遇战现场救援、车辆方案 A 攻坚、开放 Mod API。
+	10. AI 行为决策架构 (Hybrid AI Decision Architecture)
+针对 Project Zomboid 多人专服高负载与复杂的动态生存环境，采用三层混合 AI 决策架构（Hybrid AI Architecture），将宏观状态控制、效用动机仲裁与微观原版动作执行严格分层解耦：
+
+
+* Layer 1 - 宏观层：分层有限状态机 (Macro HFSM)：决定 NPC 顶层工作上下文（据点工作 Settlement Working、队伍跟随 Party Following、商队护送 Caravan Duty、原地驻守 Hold/Guard）。该层由玩家指令与宏观日程显式驱动，避免高频状态震荡。
+* Layer 2 - 动机仲裁层：效用评分机制 (Utility Need Arbiter)：在当前宏观状态内部，高频评估即时需求与动机响应。优先级判定公式为：
+
+
+$$\text{致命自保 (即时致死威胁/受击)} > \text{战术交战/自我防卫} > \text{紧急战场/伤患救治 (急救 triage)} > \text{安全期自理} > \text{常规工单}$$
+* 自卫与救治优先级仲裁规则：当 NPC 受到直接致命威胁（如被僵尸近身包围受击）时，优先触发致命自保与战术交战；一旦即时致死压力解除（如脱离危险或僵尸被击退），急救医疗（Triage）立即上升为最高优先级，打断一切常规工单与日常自理。
+
+
+* Layer 3 - 微观执行叶：行为树与原生 TimedAction 队列 (Micro Behavior Tree & TimedAction Leaves)：负责具体动作链的展开与执行（如：检索背包 -> 拿取食物 -> 发起 ISEatFoodAction）。叶子节点具备优雅熔断与平滑打断机制，在受到受击、恐慌或遭遇突袭时立即清除动作队列并回退至 Layer 2 重新仲裁。
+11. 现代前端思维导向的 ISUI 界面工程规范 (Modern Frontend-Driven UI Architecture)
+将现代 Web/App 前端工程化设计理念引入 Project Zomboid 原生 ISUI 框架研发中，在 100% 契约并延续 PZ 原版经典暗沉冰霜质感与视觉美学的前提下，构建高内聚、高响应、多分辨率自适应的 UI 体系：
+
+
+* 组件化思想 (Component-Based Architecture)：彻底废除单体巨型 UI 文件（Monolithic UI Class）。所有界面均由高复用的原子级与分子级组件拼装而成（如：ButtonWithIcon、ItemSlotGrid、ProgressBar、DynamicModal、TabContainer），各组件自负其责，具备独立的生命周期与渲染逻辑。
+* 响应式流式布局 Engine (Flex/Grid-Inspired Layout Engine)：严禁写死像素坐标与硬编码魔数（摒弃 x=240, y=150 等极易出现高分屏错位的做法）。引入基于容器相对计算的布局辅助库（支持 padding、margin、gap、flex-grow、wrap），完美自适应 1080p、2K 及 4K 各种屏幕分辨率与 UI 缩放比例。
+* 状态驱动与响应式单向数据流 (State-Driven Reactive Flow)：实现视图层与数据层的彻底解耦。UI 视图组件仅订阅状态表（State Table），通过调用 setState(newState) 触发局部脏标记更新与视图重绘。网络数据包仅需更新本地 UI State 镜像，即可平滑驱动界面响应。
+* 人机工程与原版视觉契合 (Ergonomics & Vanilla Aesthetics)：严格沿用原版 PZ 磨砂半透明暗色背景、金色与高对比度文字排版（UIFont）、清晰的 Tooltip 动态挂载、平滑渐变过度动画，并原生支持键盘与手柄导航选中。
+* 据点管理中心仓储与委托制作组件 (Settlement Dashboard Storage & Crafting Component)：在主面板中深度集成 Tom's Simple Storage 风格的仓储与制作 UI 组件。无需依赖任何物理终端家具，直接跨容器聚合展示据点内所有打标签容器的物资库存，提供高响应性的实时搜索与分类筛选，并无缝对接 BOM 树形委托制作下单面板。
+* 随从队伍微缩状态栏性能与事件驱动设计 (Party HUD Widget Architecture)：为解决 UI 高频轮询引发的帧率大幅波动与卡顿，彻底废除每帧逐次轮询生命值、耐力、饥渴等高频数值的做法。
+   * 极简常驻数据：常驻 HUD 控件仅展示离散低频的基础信息——【随从头像】、【随从姓名】、【当前主副手装备/武器图标】。
+   * 100% 纯事件驱动刷新 (Event-Driven UI Updates)：只有发生特定离散事件（如更换主副手武器 OnEquipPrimary/Secondary、换装或状态切换）时，才触发单次局部脏标记重绘。平时每帧绝对不进行数据同步与渲染计算，实现近乎零 CPU 额外开销。

@@ -1,0 +1,5 @@
+Exception in thread "main" java.lang.AssertionError: [false, Chinese label characters were lost, at error
+at assert:8
+at ui-text-regression:19
+, se.krka.kahlua.vm.KahluaException: Chinese label characters were lost]
+	at KahluaUiTextTest.main(KahluaUiTextTest.java:65)

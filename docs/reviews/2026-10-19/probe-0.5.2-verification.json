@@ -1,0 +1,17 @@
+{
+  "version": "0.5.2",
+  "userFeedback": "Step 1 sample FAILED; step 4 haul STARTED but inactive; others reported no issue",
+  "observedInPreviousRuntime": [
+    "READY",
+    "SAMPLE_FAILED",
+    "ACTION cancellation INJURED",
+    "HAUL next-tick cancellation",
+    "same UUID and three-item CHECKPOINT_RESTORED"
+  ],
+  "localRegression": "PASS",
+  "preflight": "PASS: LuaLS 0 errors / 0 warnings",
+  "releaseCheck": "PASS",
+  "doclink": "PASS",
+  "nativeRetest": "NOT RUN",
+  "healthRecovery": "explicit menu click only; clears injuries and resets needs"
+}

@@ -1,0 +1,5 @@
+{
+    "Sandbox_EmberRoutes": "EmberRoutes probe",
+    "Sandbox_EmberRoutes_CarrierProbe": "Enable temporary NPC carrier probe",
+    "Sandbox_EmberRoutes_CarrierProbe_tooltip": "Phase 0 test only. Enables the right-click probe menu. MP carrier simulation is unavailable. Use a disposable test world."
+}

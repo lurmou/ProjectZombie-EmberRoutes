@@ -1,0 +1,13 @@
+{
+  "lua_files_scanned": 1407,
+  "timed_action_files_via_derive_closure": 279,
+  "files_matching": {
+    "player_slot": 43,
+    "local_player": 1,
+    "global_player_lookup": 8,
+    "network_side": 152,
+    "network_command": 17,
+    "ui_inventory": 7
+  },
+  "limits": "Text scan and derive closure; comments can match; dynamic definitions may be omitted; counts are candidates, not verified bugs or MP compatibility claims."
+}

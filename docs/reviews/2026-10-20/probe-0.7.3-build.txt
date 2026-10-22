@@ -1,0 +1,9 @@
+[EmberRoutes v0.7.3] Compiling against pinned local game dependencies
+[EmberRoutes v0.7.3] PASS 65 assertions
+PASS 42 checkpoint/gate assertions; native PZ serialization NOT RUN
+PASS installed-file baseline regression: exact game JAR, strict hash, no override fallback
+gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 overridePresent=true; PZ engine NOT RUN
+PASS real override-first class loading: IsoPlayerCodeSource=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\pzopt\aot\pzopt.jar; installation baseline remains accepted; IsoPlayer NOT initialized
+PASS installed-file baseline regression: exact game JAR, strict hash, no override fallback
+gameJar=D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\projectzomboid.jar sha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33 overridePresent=true; PZ engine NOT RUN
+[EmberRoutes v0.7.3] BUILD_OK C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\build\packages\EmberRoutesProbe-0.7.3.zip; runtime tests NOT RUN

@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-20",
+  "timezone": "Asia/Shanghai",
+  "source": "https://docs.google.com/document/d/1aTOBrzZvh_iCDkv045HNAV13i7vNf7OHk6E_sE7TWNM/edit",
+  "format": "Google Docs UTF-8 text export",
+  "status": 200,
+  "version": "v3.2",
+  "bytes": 49255,
+  "sha256": "794B68E2357A42451BA76DED8B266E707B94FD1C390ACAEE47AFF5207A2C9BA4",
+  "role": "read-only audit snapshot; online document remains sole requirement source",
+  "progress": "local docs only"
+}

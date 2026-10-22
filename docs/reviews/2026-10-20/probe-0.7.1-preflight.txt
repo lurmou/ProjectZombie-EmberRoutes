@@ -1,0 +1,94 @@
+
+=== [lua_lint] node lua_lint.js C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe ===
+
+=== EOL Lua static lint ===
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Actions.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Batch.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Companion.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ContainerRegistry.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Driver.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FollowPolicy.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Haul.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulRules.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Persistence.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PersistenceSamples.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StorageFilterPanel.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StorageTabs.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UIFlow.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Work.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\WorkTransfer.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Boot.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Build.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\FilterEditor.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\InventoryPolicy.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\InventoryView.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Log.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\StorageFilter.lua
+  OK    C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbeLoader.lua
+
+Summary: 24 file(s), 0 error(s), 0 warning(s)
+
+✓ lua_lint 通过
+
+=== [pz_lint] node tools/pz-lint.mjs C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua ===
+扫描目标 24 个文件 / 知识库 1407 个 / 6169 ms
+建模：derive 类 1136 个，方法 17447 个｜解析覆盖 99.93%（1430/1431），其中 72 个修过 break;，失败 1 个
+  解析失败的文件不产出任何结论（静默跳过），清单见 --json 的 parse.failed_files：
+    D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\media\lua\shared\Fluids\ISFluidEmptyAction.lua:[48:65] 'then' expected near 'f'
+      if self.container:getFluidContainer():getTransferRate() > 0.0f then
+
+未发现问题。
+✓ pz_lint 通过
+
+=== [pz_lint --rule LC01-prerender-must-reach-ancestor] node tools/pz-lint.mjs C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua --rule LC01-prerender-must-reach-ancestor ===
+扫描目标 24 个文件 / 知识库 1407 个 / 4785 ms
+建模：derive 类 1136 个，方法 17447 个｜解析覆盖 99.93%（1430/1431），其中 72 个修过 break;，失败 1 个
+  解析失败的文件不产出任何结论（静默跳过），清单见 --json 的 parse.failed_files：
+    D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\media\lua\shared\Fluids\ISFluidEmptyAction.lua:[48:65] 'then' expected near 'f'
+      if self.container:getFluidContainer():getTransferRate() > 0.0f then
+
+未发现问题。
+✓ pz_lint --rule LC01-prerender-must-reach-ancestor 通过
+
+=== [pz_mine] node tools/pz-mine.mjs --check C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe\42\media\lua --candidates C:\Users\MuMu\Zomboid\Workshop\.workbuddy\tools\invariant-candidates.json ===
+
+用 88 条候选（support ≥ 90.0%）检查 24 个文件 → 0 条命中
+✓ pz_mine 通过
+
+=== [check_health] ⏭ 跳过：无 client/EOL 目录（非 EOL 架构，本项不适用） ===
+
+=== [pz_luals] node tools/pz-luals.mjs C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\Contents\mods\EmberRoutesProbe ===
+
+=== EmberRoutesProbe ===
+  lua 根: EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua
+  0 error(s) [阻塞] · 0 warning(s) [信息性]
+  自动识别 1 个宿主注入全局（Java 侧注册，源码里查不到）
+
+=== 汇总 ===
+  EmberRoutesProbe: 0 error / 0 warning
+
+无 LSP 级 Error。Warning 含结构性噪音（动态字段 / Java 注入全局），真信号看 undefined-field 里 Umbrella 已覆盖的名字。
+✓ pz_luals 通过
+
+=== [pz_fresh] node tools/pz-fresh-smoke.mjs  ===
+
+[1] 产物存在（少了哪份，哪条路由就开始说「读不到」）
+  PASS  符号索引 api-symbols.json  2026-10-17 10:06:08
+  PASS  事件索引 event-symbols.json  2026-10-17 10:06:10
+  PASS  Umbrella 签名索引  2026-10-17 10:06:26
+  PASS  调用解析索引  2026-10-17 10:06:20
+  PASS  缺口榜 coverage-gaps.json  2026-10-17 10:06:21
+
+[2] 新鲜度（产物 mtime >= 来源 mtime）
+  PASS  符号索引 不早于其来源（没过期）  产物 2026-10-17 10:06:08 ← pz_member_index.js 2026-08-10 16:35:21 · _s1_search 2026-09-12 11:50:35 · lua-source-symbols.json 2026-10-17 10:06:07
+  PASS  事件索引 不早于其来源（没过期）  产物 2026-10-17 10:06:10 ← lua 2026-10-16 17:25:57
+  PASS  Umbrella 签名索引 不早于其来源（没过期）  产物 2026-10-17 10:06:26 ← library 2026-10-04 17:04:36
+  PASS  调用解析索引 不早于其来源（没过期）  产物 2026-10-17 10:06:20 ← lua 2026-10-16 17:25:57
+  PASS  缺口榜 不早于其来源（没过期）  产物 2026-10-17 10:06:21 ← resolve-index.json 2026-10-17 10:06:20
+
+合计 10 项：PASS 10 / FAIL 0
+全部通过 —— 预计算产物与来源同代
+✓ pz_fresh 通过
+
+=== preflight 全部通过 ✅ ===

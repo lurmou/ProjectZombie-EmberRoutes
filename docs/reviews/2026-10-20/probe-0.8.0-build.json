@@ -1,0 +1,45 @@
+{
+  "version": "0.8.0",
+  "builtAtUtc": "2026-10-20T03:44:34.6890403Z",
+  "dependencies": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    }
+  ],
+  "java": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe",
+  "javac": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe",
+  "jarSha256": "E85C6A7DF1E40FA610BE6CB742EB3F3DA0EE53A4C110588D20211C329C4ED581",
+  "zipSha256": "D9B32C8C7FD4AD6E4FE22E5B9279D3B5F07E51FDF67F064C4E69B9838AF212AA",
+  "jarEntries": [
+    "META-INF/",
+    "META-INF/MANIFEST.MF",
+    "emberroutes/",
+    "emberroutes/probe/",
+    "emberroutes/probe/BuildInfo.class",
+    "emberroutes/probe/Main.class",
+    "emberroutes/probe/ProbeBaseline$Check.class",
+    "emberroutes/probe/ProbeBaseline.class",
+    "emberroutes/probe/ProbeCheckpoint$Data.class",
+    "emberroutes/probe/ProbeCheckpoint$Item.class",
+    "emberroutes/probe/ProbeCheckpoint.class",
+    "emberroutes/probe/ProbeMovement$Outcome.class",
+    "emberroutes/probe/ProbeMovement$PathResult.class",
+    "emberroutes/probe/ProbeMovement.class",
+    "emberroutes/probe/ProbeNpc.class",
+    "emberroutes/probe/ProbePersistence.class",
+    "emberroutes/probe/ProbeRestoreGate$State.class",
+    "emberroutes/probe/ProbeRestoreGate.class",
+    "emberroutes/probe/ProbeRetirement$Result.class",
+    "emberroutes/probe/ProbeRetirement.class",
+    "emberroutes/probe/ProbeRules.class",
+    "emberroutes/probe/ProbeRuntime.class",
+    "emberroutes/probe/ProbeSession.class",
+    "emberroutes/probe/ProbeWorldLinks.class"
+  ],
+  "runtimeTestsRun": false
+}

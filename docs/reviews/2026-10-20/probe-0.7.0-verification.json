@@ -1,0 +1,24 @@
+{
+  "version": "0.7.0",
+  "date": "2026-10-20",
+  "requirementVersion": "online v3.2",
+  "build": "passed after sandbox JDK resource failure; identical build succeeded outside sandbox",
+  "luaTests": "all passed; native fakes only",
+  "preflight": "passed",
+  "luaLanguageServerErrors": 0,
+  "luaLanguageServerWarnings": 0,
+  "reviewedScopedDiagnostics": [
+    "chain-preserving ISInventoryPage method replacement; duplicate-set-field",
+    "vanilla nil-target setJoypadFocus close path; deprecated overload"
+  ],
+  "releaseCheck": "0 errors",
+  "doclink": "8 documents; 0 errors",
+  "modFileReplacementConflicts": 0,
+  "nativeUiRuntimeVerified": false,
+  "cleanUiRuntimeVerified": false,
+  "newPersistenceRuntimeVerified": false,
+  "performanceMeasured": false,
+  "progressLocation": "local docs",
+  "packageSha256": "822A14BB6F99762C6D7A6A518233B2804EFAC17AD85EF52D4FDF21FE66BD9682",
+  "sourceHash": "794B68E2357A42451BA76DED8B266E707B94FD1C390ACAEE47AFF5207A2C9BA4"
+}

@@ -1,0 +1,13 @@
+{
+  "version": "0.5.1",
+  "regression": "0.5.0 misidentified pzopt IsoPlayer CodeSource as original game JAR",
+  "jarLoading": "0.5.0 success directly confirmed by ZombieBuddy log",
+  "fix": "check ZomboidFileSystem.base/projectzomboid.jar; preserve real boot rejection code",
+  "installedFileSmoke": "PASS",
+  "overrideFirstClassOriginSmoke": "PASS (IsoPlayer not initialized)",
+  "javaLogic": "PASS",
+  "luaRegression": "PASS",
+  "engineRestartRetest": "NOT RUN",
+  "saveRestore": "NOT RUN",
+  "approvalOrLaunchConfigChanged": false
+}

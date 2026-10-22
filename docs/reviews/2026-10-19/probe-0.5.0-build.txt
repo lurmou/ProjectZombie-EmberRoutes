@@ -1,0 +1,4 @@
+[EmberRoutes v0.5.0] Compiling against pinned local game dependencies
+[EmberRoutes v0.5.0] PASS 65 assertions
+PASS 42 checkpoint/gate assertions; native PZ serialization NOT RUN
+[EmberRoutes v0.5.0] BUILD_OK C:\Users\MuMu\Zomboid\Workshop\EmberRoutes\build\packages\EmberRoutesProbe-0.5.0.zip; runtime tests NOT RUN

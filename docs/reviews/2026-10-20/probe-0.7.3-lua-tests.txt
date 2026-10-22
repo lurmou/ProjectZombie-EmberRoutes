@@ -1,0 +1,3 @@
+PASS UI state subscriptions/disposal, relative layout bounds and text regressions
+PASS 18 storage sidebar adapter checks; vanilla/CleanUI runtime NOT RUN
+PASS 19 storage panel lifecycle/layout/interaction checks; native UI rendering NOT RUN

@@ -1,0 +1,2 @@
+PASS craft-probe native-Lua contracts: 69 checks; Java engine, NPC animation and real saves NOT RUN
+PASS installed Kahlua: craft-probe-test.lua; native host mocked

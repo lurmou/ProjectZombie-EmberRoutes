@@ -1,0 +1,97 @@
+{
+  "version": "0.1.2",
+  "builtAtUtc": "2026-10-19T07:23:10.7108981Z",
+  "dependencies": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    }
+  ],
+  "java": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe",
+  "javac": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe",
+  "jarSha256": "003D6692F8E001591C81F986CA2E8282B959F878D1225DEDF9B702689C4A7B01",
+  "zipSha256": "940BB9635061DDFF8CEA3BCAD591212EDAF5E0212D7BBCF2CFFFD2E4B69A44FD",
+  "jarEntries": [
+    "META-INF/",
+    "META-INF/MANIFEST.MF",
+    "emberroutes/",
+    "emberroutes/probe/",
+    "emberroutes/probe/BuildInfo.class",
+    "emberroutes/probe/Main.class",
+    "emberroutes/probe/ProbeMovement$Outcome.class",
+    "emberroutes/probe/ProbeMovement$PathResult.class",
+    "emberroutes/probe/ProbeMovement.class",
+    "emberroutes/probe/ProbeNpc.class",
+    "emberroutes/probe/ProbeRetirement$Result.class",
+    "emberroutes/probe/ProbeRetirement.class",
+    "emberroutes/probe/ProbeRules.class",
+    "emberroutes/probe/ProbeRuntime.class",
+    "emberroutes/probe/ProbeSession.class",
+    "emberroutes/probe/ProbeWorldLinks.class"
+  ],
+  "runtimeTestsRun": false,
+  "checks": {
+    "javaBuild": "pass",
+    "logicAssertions": 61,
+    "preflight": "pass",
+    "luaLS": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "previousUserRuntime": "0.1.1 moves; cross-floor rejected; removal during attack caused null-square exception",
+    "newRuntime": "not run",
+    "mpCarrier": "not implemented",
+    "nativeAotExitError": "separate; unchanged",
+    "doclink": "pass: 5 documents, 0 broken links, 0 warnings"
+  },
+  "evidenceFiles": [
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRules.java",
+      "sha256": "D857223E9A52C1C0A744A5CFC6723E6C84308030AA81E6C4D162AACC9AE67D78"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeMovement.java",
+      "sha256": "0492A49E2F5A9FE566BC50D76F7D8BB6E73D4059020E37922CF88D14619F302E"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRetirement.java",
+      "sha256": "8D6E58460CF61F2D3D73D5EF1E48B0C409BE98B06D91564E3AED7BD3A161B18C"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeWorldLinks.java",
+      "sha256": "9A753270775888AF095BFE4A8685D70C1C310BCFEE752942EFF28AC625F3CF3C"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeNpc.java",
+      "sha256": "1C14DBB3B83F58643F7A65C36A549837574F58FFA7428F61A7EAE7A8BACC418E"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRuntime.java",
+      "sha256": "0627010AF697E4BFE287FB3D873D538EAB041ED1445278B224D6FE8E981780D2"
+    },
+    {
+      "path": "java/src/test/java/emberroutes/probe/ProbeLogicTest.java",
+      "sha256": "E914E992CC0EA1731BB3DE83226FE16388698F8BC1F3D557BA8D137A357E45F8"
+    },
+    {
+      "path": "build/reference/pz-current/zombie/characters/IsoZombie.java",
+      "sha256": "440E28020C74AA8EDD4904DAE243259FA9CFE2026E0CF38086037631E7989EC3"
+    },
+    {
+      "path": "build/reference/pz-current/zombie/ai/states/AttackState.java",
+      "sha256": "BECE78BFA64CA6C1F8B5BBE14D4F4060C79855A3792793D5504A0AF3C34E8919"
+    },
+    {
+      "path": "build/reference/pz-current/zombie/core/skinnedmodel/BaseGrappleable.java",
+      "sha256": "3939E714FDD7005DC6D3828CEDA86F5F80F2C2CD8DB7CEB826374E57120CC33B"
+    },
+    {
+      "path": "docs/reviews/2026-10-19/probe-0.1.1-stairs-removal-runtime.txt",
+      "sha256": "8528E6DA427BAAFC1BF8C2D0B038AB9EDE31695EC55080F93B3050D32E169FF0"
+    }
+  ]
+}

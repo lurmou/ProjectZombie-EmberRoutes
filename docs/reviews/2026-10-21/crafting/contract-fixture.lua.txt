@@ -1,0 +1,18 @@
+package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
+ISBaseTimedAction={derive=function() return {} end,stop=function(self) self.baseStopped=true end}
+package.loaded['TimedActions/ISBaseTimedAction']=true
+dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/Entity/TimedActions/ISHandcraftAction.lua')
+local cancel,complete,created=0,0,0
+local action=setmetatable({clearItemsProgressBar=function() end,onCancelFunc=function() cancel=cancel+1 end,
+ onCompleteFunc=function() complete=complete+1 end},{__index=ISHandcraftAction})
+action:stop()
+assert(action.baseStopped and cancel==1 and complete==1,'stop must demonstrate both callbacks')
+local success=false
+local data={luaCallOnCreate=function() created=created+1 end,processDestroyAndUsedItems=function() end}
+action.logic={performCurrentRecipe=function() return success end,getCreatedOutputItems=function() end,getRecipeData=function() return data end}
+ArrayList={new=function() return {size=function() return 0 end} end}
+local failedReturn=action:performRecipe()
+success=true
+local successfulReturn=action:performRecipe()
+assert(failedReturn==nil and successfulReturn==nil and created==1,'performRecipe nil return is not a success indicator')
+print('PASS installed ISHandcraftAction Lua contract: stop calls cancel AND complete; performRecipe returns nil on success AND failure. Java engine/native crafting NOT RUN.')

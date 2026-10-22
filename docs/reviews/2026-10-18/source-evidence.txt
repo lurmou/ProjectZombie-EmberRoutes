@@ -1,0 +1,1661 @@
+Current JAR evidence excerpts — 2026-10-18
+Installed game Core: 42.21.0; old decompiled tree: 42.20.4.
+Numbers at the left are line numbers in the fresh CFR output, not in the old source tree.
+Use baseline.json SHA-256 to identify the binary. Excerpts prove static behavior only.
+
+===== E01 | zombie/core/Core.java =====
+CFR source SHA256: e9e43970240b77ecfebd89d3ebc867cb8a905953e99f68f39054e0c8e53550db
+--- public String getGameAndBuildVersion() ---
+ 3071: 
+ 3072:     public String getGameAndBuildVersion() {
+ 3073:         return String.valueOf(gameVersion) + ".0";
+ 3074:     }
+ 3075: 
+ 3076:     public String getBulletVersion() {
+--- gameVersion = new GameVersion ---
+ 5093:     static {
+ 5094:         gameVersion = new GameVersion(42, 21, "");
+ 5095:         optionModsEnabled = true;
+ 5096:         difficulty = "Hardcore";
+
+===== E02 | zombie/characters/component/AIComponent.java =====
+CFR source SHA256: 4c1936b2c3d687a6b9cacb10793d41cf228688778893df5804a10e3aefdd36db
+--- public class AIComponent ---
+    9: 
+   10: public class AIComponent
+   11: extends ECSComponent {
+   12:     private final AIBrainPlayerControlVars humanControlVars = new AIBrainPlayerControlVars();
+   13: 
+   14:     public boolean doUpdatePlayerControls(IsoPlayer ownerPlayer) {
+   15:         ownerPlayer.bannedAttacking = this.humanControlVars.bannedAttacking;
+   16:         return this.humanControlVars.melee;
+   17:     }
+   18: 
+   19:     public void update() {
+   20:     }
+   21: 
+   22:     public void postUpdatePlayer(IsoPlayer ownerPlayer) {
+   23:         ownerPlayer.setInitiateAttack(this.humanControlVars.initiateAttack);
+   24:         ownerPlayer.setRunning(this.humanControlVars.running);
+   25:         ownerPlayer.setJustMoved(this.humanControlVars.justMoved);
+   26:         ownerPlayer.updateMovementRates();
+   27:     }
+   28: 
+   29:     public IsoPlayer getPlayer() {
+   30:         return this.getECSOwnerEntity(IsoPlayer.class);
+   31:     }
+   32: 
+   33:     public AIBrainPlayerControlVars getHumanControlVars() {
+   34:         return this.humanControlVars;
+   35:     }
+   36: }
+   37: 
+
+===== E03 | zombie/characters/IsoPlayer.java =====
+CFR source SHA256: 8e5a1082f286c52f8ec48e43f6ed4e6133869b1a4b9277ebc87cb400594d411c
+--- public void setNpc( ---
+ 2570: 
+ 2571:     public void setNpc(boolean isNpc) {
+ 2572:         if (this.isNpc() == isNpc) {
+ 2573:             return;
+ 2574:         }
+ 2575:         if (isNpc) {
+ 2576:             this.setECSComponent(new AIComponent());
+ 2577:         } else {
+ 2578:             this.removeECSComponent(AIComponent.class);
+ 2579:         }
+ 2580:     }
+ 2581: 
+ 2582:     @Override
+ 2583:     protected void handleLandingImpact(FallDamage fallDamage) {
+--- private void updateMovementFromInput( ---
+ 2611: 
+ 2612:     private void updateMovementFromInput(MoveVars moveVars) {
+ 2613:         moveVars.moveX = 0.0f;
+ 2614:         moveVars.moveY = 0.0f;
+ 2615:         moveVars.strafeX = 0.0f;
+ 2616:         moveVars.strafeY = 0.0f;
+ 2617:         moveVars.newFacing = this.getForwardIsoDirection();
+ 2618:         if (TutorialManager.instance.stealControl) {
+ 2619:             return;
+ 2620:         }
+ 2621:         if (this.isBlockMovement()) {
+ 2622:             return;
+ 2623:         }
+ 2624:         if (this.getWrappedGrappleable().isPickingUpBody() || this.getWrappedGrappleable().isPuttingDownBody()) {
+ 2625:             return;
+ 2626:         }
+ 2627:         if (this.isNpc()) {
+ 2628:             return;
+ 2629:         }
+ 2630:         if (MPDebugAI.updateMovementFromInput(this, moveVars)) {
+ 2631:             return;
+ 2632:         }
+ 2633:         if (this.fallTime > 2.0f) {
+ 2634:             return;
+ 2635:         }
+--- ai.postUpdatePlayer(this) ---
+ 2537:             AIComponent ai = this.getECSComponent(AIComponent.class);
+ 2538:             ai.postUpdatePlayer(this);
+ 2539:             strafeX = ai.getHumanControlVars().strafeX;
+ 2540:             strafeY = ai.getHumanControlVars().strafeY;
+ 2541:         }
+ 2542:         this.isPlayerMoving = this.isJustMoved() || this.hasPath() && this.getPathFindBehavior2().shouldBeMoving();
+ 2543:         boolean inTrees = this.isInTrees();
+ 2544:         if (inTrees) {
+ 2545:             this.setVariable("WalkSpeedTrees", this.calculateInTreesSpeed());
+--- players = new IsoPlayer[4] ---
+ 8264:         numPlayers = 1;
+ 8265:         players = new IsoPlayer[4];
+ 8266:         instanceLock = "IsoPlayer.instance Lock";
+ 8267:         testHitPosition = new Vector2();
+--- public UpdateSchedulerSimulationLevel getMinimumSimulationLevel() ---
+ 3702:     @Override
+ 3703:     public UpdateSchedulerSimulationLevel getMinimumSimulationLevel() {
+ 3704:         return UpdateSchedulerSimulationLevel.FULL;
+ 3705:     }
+ 3706: 
+ 3707:     @Override
+ 3708:     public boolean allowsTwist() {
+
+===== E04 | zombie/characters/IsoGameCharacter.java =====
+CFR source SHA256: 928cbfe1fae4ec2c981e751f803249e02056242da78471e9ed1b39e7ae7ed537
+--- protected void doDeferredMovement() ---
+ 1370: 
+ 1371:     protected void doDeferredMovement() {
+ 1372:         if (!this.hasAnimationPlayer()) {
+ 1373:             return;
+ 1374:         }
+ 1375:         if (GameClient.client && HitReactionNetworkAI.isEnabled(this) && this.getHitReactionNetworkAI() != null) {
+ 1376:             if (this.getHitReactionNetworkAI().isStarted()) {
+ 1377:                 this.getHitReactionNetworkAI().move();
+ 1378:                 this.animPlayer.resetDeferredMovementAccum();
+ 1379:                 return;
+ 1380:             }
+ 1381:             if (this.isDead() && this.getHitReactionNetworkAI().isDoSkipMovement()) {
+ 1382:                 this.animPlayer.resetDeferredMovementAccum();
+ 1383:                 return;
+ 1384:             }
+ 1385:         }
+ 1386:         if (!GameServer.server && !this.isAnimationUpdatingThisFrame()) {
+ 1387:             return;
+ 1388:         }
+ 1389:         Vector2 dMovement = tempo;
+ 1390:         this.getDeferredMovement(dMovement, true);
+ 1391:         if (this.getPath2() != null && !this.isCurrentState(ClimbOverFenceState.instance()) && !this.isCurrentState(ClimbThroughWindowState.instance())) {
+ 1392:             if (this.isCurrentState(WalkTowardState.instance()) || this.isCurrentState(AnimalWalkState.instance()) && !this.getNetworkCharacterAI().usePathFind) {
+ 1393:                 DebugType.General.warn("WalkTowardState but path2 != null");
+ 1394:                 this.setPath2(null);
+ 1395:             }
+ 1396:             return;
+ 1397:         }
+ 1398:         if (this.isCurrentState(WalkTowardState.instance())) {
+ 1399:             Vector2 targetVec = BaseVehicle.allocVector2();
+ 1400:             targetVec.x = this.getPathFindBehavior2().getTargetX();
+ 1401:             targetVec.y = this.getPathFindBehavior2().getTargetY();
+ 1402:             targetVec.x -= this.getX();
+ 1403:             targetVec.y -= this.getY();
+ 1404:             if (targetVec.getLengthSquared() < dMovement.getLengthSquared()) {
+ 1405:                 dMovement.setLength(targetVec.getLength());
+ 1406:             }
+ 1407:             BaseVehicle.releaseVector2(targetVec);
+ 1408:         }
+ 1409:         if (GameClient.client) {
+ 1410:             IsoZombie zombie;
+ 1411:             IsoGameCharacter isoGameCharacter = this;
+ 1412:             if (isoGameCharacter instanceof IsoZombie && (zombie = (IsoZombie)isoGameCharacter).isRemoteZombie() && !this.isBeingGrappled() && !zombie.isReanimatedForGrappleOnly()) {
+ 1413:                 if (this.getCurrentState() != ClimbOverFenceState.instance() && this.getCurrentState() != ClimbThroughWindowState.instance() && this.getCurrentState() != ClimbOverWallState.instance() && this.getCurrentState() != StaggerBackState.instance() && this.getCurrentState() != ZombieHitReactionState.instance() && this.getCurrentState() != ZombieFallDownState.instance() && this.getCurrentState() != ZombieFallingState.instance() && this.getCurrentState() != ZombieOnGroundState.instance() && this.getCurrentState() != AttackNetworkState.instance()) {
+ 1414:                     this.animPlayer.resetDeferredMovementAccum();
+ 1415:                     return;
+ 1416:                 }
+ 1417:             } else if (this instanceof IsoAnimal && !((IsoAnimal)this).isLocalPlayer() ? !this.isCurrentState(AnimalIdleState.instance()) && !((IsoAnimal)this).isHappy() : this instanceof IsoPlayer && !((IsoPlayer)this).isLocalPlayer() && !this.isCurrentState(CollideWithWallState.instance()) && !this.isCurrentState(PlayerGetUpState.instance()) && !this.isCurrentState(BumpedState.instance())) {
+ 1418:                 return;
+ 1419:             }
+ 1420:         }
+ 1421:         if (this.isGrappling() || this.isBeingGrappled()) {
+ 1422:             Vector3 grappleOffset = new Vector3();
+ 1423:             this.getGrappleOffset(grappleOffset);
+ 1424:             dMovement.x += grappleOffset.x;
+ 1425:             dMovement.y += grappleOffset.y;
+ 1426:         }
+ 1427:         if (GameClient.client && this instanceof IsoZombie && this.isCurrentState(StaggerBackState.instance())) {
+ 1428:             float len = dMovement.getLength();
+ 1429:             dMovement.set(this.getHitDir());
+ 1430:             dMovement.setLength(len);
+ 1431:         }
+ 1432:         if (this.isDeferredMovementEnabled()) {
+ 1433:             if (this.isAnimationRecorderActive()) {
+ 1434:                 this.setVariable("deferredMovement.x", dMovement.x);
+ 1435:                 this.setVariable("deferredMovement.y", dMovement.y);
+ 1436:             }
+ 1437:             this.moveUnmodded(dMovement.x, dMovement.y);
+ 1438:         } else if (this.isAnimationRecorderActive()) {
+ 1439:             this.setVariable("deferredMovement.x", 0.0f);
+ 1440:             this.setVariable("deferredMovement.y", 0.0f);
+ 1441:         }
+ 1442:     }
+ 1443: 
+ 1444:     public void doDeferredMovementFromRagdoll(Vector3 dMovement) {
+ 1445:         if (!this.isRagdoll()) {
+ 1446:             return;
+ 1447:         }
+ 1448:         if (!this.hasAnimationPlayer()) {
+ 1449:             return;
+ 1450:         }
+ 1451:         if (!GameServer.server && !this.isAnimationUpdatingThisFrame()) {
+ 1452:             return;
+--- public boolean isNpc() ---
+12829: 
+12830:     public boolean isNpc() {
+12831:         return this.hasECSComponent(AIComponent.class);
+12832:     }
+12833: 
+12834:     public void setMetabolicTarget(Metabolics m) {
+
+===== E05 | zombie/pathfind/PathFindBehavior2.java =====
+CFR source SHA256: 87434bc73f0724dd88fad70c4d3828086a9d21b19e06c6205afa519fdaff30df
+--- public void pathToLocation( ---
+  237: 
+  238:     public void pathToLocation(int x, int y, int z) {
+  239:         this.isCancel = false;
+  240:         this.startedMoving = false;
+  241:         this.goal = Goal.Location;
+  242:         this.setData((float)x + 0.5f, (float)y + 0.5f, z);
+  243:     }
+  244: 
+  245:     public void pathToLocationF(float x, float y, float z) {
+  246:         this.isCancel = false;
+  247:         this.startedMoving = false;
+  248:         this.goal = Goal.Location;
+  249:         this.setData(x, y, z);
+  250:     }
+  251: 
+  252:     public void pathToSound(int x, int y, int z) {
+  253:         this.isCancel = false;
+  254:         this.startedMoving = false;
+  255:         this.goal = Goal.Sound;
+  256:         this.setData((float)x + 0.5f, (float)y + 0.5f, z);
+  257:     }
+--- public void moveToPoint( ---
+  896: 
+  897:     public void moveToPoint(float x, float y, float speedMul) {
+  898:         if (this.chr instanceof IsoPlayer && this.chr.getCurrentState() == CollideWithWallState.instance()) {
+  899:             return;
+  900:         }
+  901:         IsoZombie zombie = Type.tryCastTo(this.chr, IsoZombie.class);
+  902:         Vector2 dir = tempVector2.set(x - this.chr.getX(), y - this.chr.getY());
+  903:         if (PZMath.fastfloor(x) == PZMath.fastfloor(this.chr.getX()) && PZMath.fastfloor(y) == PZMath.fastfloor(this.chr.getY()) && dir.getLength() <= 0.1f) {
+  904:             return;
+  905:         }
+  906:         dir.normalize();
+  907:         this.chr.getDeferredMovement(tempVector2_2);
+  908:         float speed = tempVector2_2.getLength();
+  909:         speed *= speedMul;
+  910:         boolean isRemoteZombieWithTarget = false;
+  911:         if (zombie != null) {
+  912:             zombie.running = SandboxOptions.instance.lore.speed.getValue() == 1;
+  913:             boolean bl = isRemoteZombieWithTarget = GameClient.client && zombie.isRemoteZombie() && zombie.getTarget() != null && zombie.isCurrentState(LungeNetworkState.instance());
+  914:         }
+  915:         if (speed <= 0.0f) {
+  916:             return;
+  917:         }
+  918:         tempVector2_2.set(dir);
+  919:         tempVector2_2.setLength(speed);
+  920:         this.chr.moveUnmodded(PathFindBehavior2.tempVector2_2.x, PathFindBehavior2.tempVector2_2.y);
+  921:         if (isRemoteZombieWithTarget) {
+  922:             return;
+  923:         }
+  924:         this.chr.faceLocation(x - 0.5f, y - 0.5f);
+  925:         this.chr.setForwardDirection(x - this.chr.getX(), y - this.chr.getY());
+  926:         this.chr.getForwardDirection().normalize();
+  927:     }
+  928: 
+  929:     public void moveToDir(IsoMovingObject target, float speedMul) {
+  930:         Vector2 dir = tempVector2.set(target.getX() - this.chr.getX(), target.getY() - this.chr.getY());
+  931:         if (dir.getLength() <= 0.1f) {
+  932:             return;
+  933:         }
+  934:         dir.normalize();
+  935:         this.chr.getDeferredMovement(tempVector2_2);
+  936:         float speed = tempVector2_2.getLength();
+
+===== E06 | zombie/characters/IsoSurvivor.java =====
+CFR source SHA256: d214e1439daf6a1fc57bd2031c6bf5786cd6be4f6b9435543c47427b5d8b8d69
+--- public final class IsoSurvivor ---
+   16: @UsedFromLua
+   17: public final class IsoSurvivor
+   18: extends IsoLivingCharacter {
+   19:     public boolean noGoreDeath;
+   20:     public boolean draggable;
+   21:     public IsoGameCharacter following;
+   22:     public boolean dragging;
+   23:     private final int repathDelay = 0;
+   24:     public int nightsSurvived;
+   25:     private int ping;
+   26:     public IsoPushableObject collidePushable;
+   27:     private final boolean tryToTeamUp = true;
+   28:     private int neightbourUpdate = 20;
+   29:     private final int neightbourUpdateMax = 20;
+   30: 
+   31:     @Override
+   32:     public void Despawn() {
+   33:         if (this.descriptor != null) {
+   34:             this.descriptor.setInstance(null);
+   35:         }
+   36:     }
+
+===== E07 | zombie/network/fields/character/PlayerID.java =====
+CFR source SHA256: b57d800c40796d8eaa0cae7e0db5e4ccfa78323fa4141d9edcd37173fe52232b
+--- public void set(IsoPlayer ---
+   25: 
+   26:     public void set(IsoPlayer player) {
+   27:         this.setID(player.onlineId);
+   28:         this.playerIndex = (byte)(player.isLocal() ? (int)player.getIndex() : -1);
+   29:         this.player = player;
+   30:     }
+   31: 
+   32:     public void setPlayerIndex(byte playerIndex) {
+   33:         this.playerIndex = playerIndex;
+   34:     }
+   35: 
+   36:     public void clear() {
+   37:         this.setID((short)-1);
+   38:         this.playerIndex = (byte)-1;
+   39:         this.player = null;
+   40:     }
+--- private void parsePlayer( ---
+   41: 
+   42:     private void parsePlayer(IConnection connection) {
+   43:         this.player = GameServer.server ? (connection != null && this.playerIndex != -1 ? GameServer.getPlayerFromConnection(connection, this.playerIndex) : GameServer.IDToPlayerMap.get(this.getID())) : (GameClient.client ? GameClient.IDToPlayerMap.get(this.getID()) : IsoPlayer.getPlayer(this.playerIndex));
+   44:     }
+   45: 
+   46:     @Override
+   47:     public void parse(ByteBufferReader b, IConnection connection) {
+   48:         super.parse(b, connection);
+
+===== E08 | zombie/network/anticheats/AntiCheatPlayer.java =====
+CFR source SHA256: 45543dba3d21970ee73e1c6cc575e5b16596c8718749155003d3407dae6f9295
+--- public String validate( ---
+   26:     @Override
+   27:     public String validate(UdpConnection connection, INetworkPacket packet) {
+   28:         String result = super.validate(connection, packet);
+   29:         connection.getValidator().playerUpdateTimeoutReset();
+   30:         if (!(packet instanceof IAntiCheat)) {
+   31:             DebugType.Multiplayer.error("Invalid packet-type=%s for anti-cheat=%s", packet.getClass().getSimpleName(), this.getClass().getSimpleName());
+   32:             return "";
+   33:         }
+   34:         IAntiCheat field = (IAntiCheat)((Object)packet);
+   35:         short playerId = field.getPlayerId();
+   36:         if (GameServer.IDToPlayerMap.containsKey(playerId) && !connection.hasPlayer(playerId)) {
+   37:             return String.format("connection=[%s] tries to update not belonging player id=%d belonging to connection=[%s]", AntiCheatPlayer.getConnectionUsernamesIds(connection), playerId, AntiCheatPlayer.getConnectionUsernamesIds(GameServer.getConnectionByPlayerOnlineID(playerId)));
+   38:         }
+   39:         return result;
+   40:     }
+   41: 
+   42:     public static interface IAntiCheat {
+   43:         public short getPlayerId();
+   44:     }
+   45: }
+   46: 
+
+===== E09 | zombie/characters/CharacterTimedActions/LuaTimedActionNew.java =====
+CFR source SHA256: 9566e8a95165e66774ba2ed90e92e9aa65c914732e356a81892f29631bd80034
+--- public LuaTimedActionNew( ---
+   38: 
+   39:     public LuaTimedActionNew(KahluaTable table, IsoGameCharacter chr) {
+   40:         super(chr);
+   41:         this.table = table;
+   42:         Object maxTime = table.rawget("maxTime");
+   43:         this.maxTime = LuaManager.converterManager.fromLuaToJava(maxTime, Integer.class);
+   44:         Object stopOnWalk = table.rawget("stopOnWalk");
+   45:         Object stopOnRun = table.rawget("stopOnRun");
+   46:         Object stopOnAim = table.rawget("stopOnAim");
+   47:         Object caloriesModifier = table.rawget("caloriesModifier");
+   48:         Object useProgressBar = table.rawget("useProgressBar");
+   49:         Object forceProgressBar = table.rawget("forceProgressBar");
+   50:         Object loopedAction = table.rawget("loopedAction");
+   51:         Object allowedWhileDraggingCorpses = table.rawget("allowedWhileDraggingCorpses");
+   52:         if (stopOnWalk != null) {
+   53:             this.stopOnWalk = LuaManager.converterManager.fromLuaToJava(stopOnWalk, Boolean.class);
+   54:         }
+   55:         if (stopOnRun != null) {
+   56:             this.stopOnRun = LuaManager.converterManager.fromLuaToJava(stopOnRun, Boolean.class);
+   57:         }
+   58:         if (stopOnAim != null) {
+   59:             this.stopOnAim = LuaManager.converterManager.fromLuaToJava(stopOnAim, Boolean.class);
+   60:         }
+   61:         if (caloriesModifier != null) {
+   62:             this.caloriesModifier = LuaManager.converterManager.fromLuaToJava(caloriesModifier, Float.class).floatValue();
+   63:         }
+   64:         if (useProgressBar != null) {
+   65:             this.useProgressBar = LuaManager.converterManager.fromLuaToJava(useProgressBar, Boolean.class);
+   66:         }
+   67:         if (forceProgressBar != null) {
+   68:             this.forceProgressBar = LuaManager.converterManager.fromLuaToJava(forceProgressBar, Boolean.class);
+   69:         }
+   70:         if (loopedAction != null) {
+   71:             this.loopAction = LuaManager.converterManager.fromLuaToJava(loopedAction, Boolean.class);
+   72:         }
+   73:         if (allowedWhileDraggingCorpses != null) {
+   74:             this.setAllowedWhileDraggingCorpses(LuaManager.converterManager.fromLuaToJava(allowedWhileDraggingCorpses, Boolean.class));
+   75:         }
+   76:         if (table.getMetatable().rawget("complete") == null) {
+   77:             this.useCustomRemoteTimedActionSync = true;
+   78:         }
+   79:     }
+   80: 
+   81:     @Override
+--- public void start() ---
+  119:     @Override
+  120:     public void start() {
+  121:         DebugType.Action.trace("%s: start", this.table.rawget("Type"));
+  122:         super.start();
+  123:         this.currentTime = 0.0f;
+  124:         LuaManager.caller.pcall(LuaManager.thread, this.table.rawget("start"), (Object)this.table);
+  125:         if (GameClient.client && !this.useCustomRemoteTimedActionSync) {
+  126:             this.setWaitForFinished(true);
+  127:             this.transactionId = ActionManager.getInstance().createNetTimedAction((IsoPlayer)this.chr, this.table);
+  128:             this.playerId.set((IsoPlayer)this.chr);
+  129:             this.started = true;
+  130:         }
+  131:         if (GameClient.client && DebugLog.isLogEnabled(DebugType.Action, LogSeverity.Trace)) {
+  132:             ChatManager.getInstance().showServerChatMessage(" -> " + String.valueOf(this.table.rawget("Type")));
+  133:         }
+  134:     }
+  135: 
+  136:     @Override
+  137:     public void stop() {
+--- public void complete() ---
+  157:     @Override
+  158:     public void complete() {
+  159:         DebugType.Action.trace("%s: complete", this.table.rawget("Type"));
+  160:         super.complete();
+  161:         if (!GameClient.client) {
+  162:             LuaManager.caller.pcall(LuaManager.thread, this.table.rawget("complete"), (Object)this.table);
+  163:         }
+  164:     }
+  165: 
+  166:     @Override
+  167:     public void Failed(Mover mover) {
+
+===== E10 | zombie/core/ActionManager.java =====
+CFR source SHA256: 15f5dfc7b1e9214cd4aea02a08a90d9a84229b30703cdb0aa8578a506b9504d4
+--- public static void update() ---
+   68: 
+   69:     public static void update() {
+   70:         block7: {
+   71:             block6: {
+   72:                 if (!GameServer.server) break block6;
+   73:                 for (Action action : actions) {
+   74:                     if (action.state == Transaction.TransactionState.Accept && action.endTime <= GameTime.getServerTimeMills()) {
+   75:                         ByteBufferWriter bbw2;
+   76:                         UdpConnection connection;
+   77:                         DebugType.Action.debugln("ActionManager complete %s", action.getDescription());
+   78:                         if (action.perform()) {
+   79:                             action.state = Transaction.TransactionState.Done;
+   80:                             connection = GameServer.getConnectionFromPlayer(action.playerId.getPlayer());
+   81:                             if (connection == null || !connection.isFullyConnected()) continue;
+   82:                             if (action instanceof BuildAction) {
+   83:                                 bbw2 = connection.startPacket();
+   84:                                 PacketTypes.PacketType.BuildAction.doPacket(bbw2);
+   85:                                 action.write(bbw2);
+   86:                                 PacketTypes.PacketType.BuildAction.send(connection);
+   87:                             }
+   88:                             if (!(action instanceof NetTimedAction)) continue;
+   89:                             bbw2 = connection.startPacket();
+   90:                             PacketTypes.PacketType.NetTimedAction.doPacket(bbw2);
+   91:                             action.write(bbw2);
+   92:                             PacketTypes.PacketType.NetTimedAction.send(connection);
+   93:                             continue;
+   94:                         }
+   95:                         action.state = Transaction.TransactionState.Reject;
+   96:                         DebugType.Action.noise("ActionManager reject %s", action.getDescription());
+   97:                         connection = GameServer.getConnectionFromPlayer(action.playerId.getPlayer());
+   98:                         if (connection == null || !connection.isFullyConnected() || !(action instanceof NetTimedAction)) continue;
+   99:                         bbw2 = connection.startPacket();
+  100:                         PacketTypes.PacketType.NetTimedAction.doPacket(bbw2);
+  101:                         action.write(bbw2);
+  102:                         PacketTypes.PacketType.NetTimedAction.send(connection);
+  103:                         continue;
+  104:                     }
+  105:                     action.update();
+  106:                 }
+  107:                 List transactionForDelete = actions.stream().filter(r -> r.state == Transaction.TransactionState.Done || r.state == Transaction.TransactionState.Reject).collect(Collectors.toList());
+  108:                 actions.removeAll(transactionForDelete);
+  109:                 for (Action action : transactionForDelete) {
+  110:                     DebugType.Action.debugln("ActionManager clear action %s", action.getDescription());
+  111:                     if (!(action instanceof NetTimedAction)) continue;
+  112:                     NetTimedAction netTimedAction = (NetTimedAction)action;
+  113:                     AnimEventEmulator.getInstance().remove(netTimedAction);
+  114:                 }
+  115:                 break block7;
+
+===== E11 | zombie/network/packets/NetTimedActionPacket.java =====
+CFR source SHA256: 4d521fa09ac5e11220c0c239efc9d9d91fe24c2a545309020820aa5890d12a6e
+--- public static void createNewAndSend( ---
+   26: implements INetworkPacket {
+   27:     public static void createNewAndSend(String actionName, IsoPlayer owner, Object ... values2) {
+   28:         Object classObject = LuaManager.get(actionName);
+   29:         Object functionObject = LuaManager.getFunctionObject(actionName + ".new");
+   30:         Object[] arguments = new Object[values2.length + 1];
+   31:         arguments[0] = classObject;
+   32:         for (int i = 0; i < values2.length; ++i) {
+   33:             arguments[i + 1] = values2[i];
+   34:         }
+   35:         LuaReturn result = LuaManager.caller.protectedCall(LuaManager.thread, functionObject, arguments);
+   36:         if (!result.isSuccess() || result.getFirst() == null) {
+   37:             DebugType.General.error("ERROR GETTING LUATABLE!!!");
+   38:             return;
+   39:         }
+   40:         ActionManager.getInstance().createNetTimedAction(owner, (KahluaTable)result.getFirst());
+   41:     }
+   42: 
+   43:     @Override
+   44:     public void setData(Object ... values2) {
+   45:         this.set((IsoPlayer)values2[0], (KahluaTable)values2[1]);
+   46:     }
+--- public void processServer( ---
+   62:     @Override
+   63:     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+   64:         if (this.state == Transaction.TransactionState.Request) {
+   65:             if (this.isConsistent(connection) && this.action != null) {
+   66:                 DebugType.Action.trace("NetTimedAction accepted %s", this.getDescription());
+   67:                 ActionManager.stopPlayerActions(this.playerId);
+   68:                 NetTimedAction act = this.getAction();
+   69:                 ActionManager.start(act);
+   70:                 act.setState(Transaction.TransactionState.Accept);
+   71:                 ByteBufferWriter bbw = connection.startPacket();
+   72:                 PacketTypes.PacketType.NetTimedAction.doPacket(bbw);
+   73:                 act.write(bbw);
+   74:                 PacketTypes.PacketType.NetTimedAction.send(connection);
+   75:             } else {
+   76:                 DebugType.Action.trace("NetTimedAction rejected %s", this.getDescription());
+   77:                 NetTimedAction act = this.getAction();
+   78:                 act.setState(Transaction.TransactionState.Reject);
+   79:                 ByteBufferWriter bbw = connection.startPacket();
+   80:                 PacketTypes.PacketType.NetTimedAction.doPacket(bbw);
+   81:                 act.write(bbw);
+   82:                 PacketTypes.PacketType.NetTimedAction.send(connection);
+   83:             }
+   84:         } else if (Transaction.TransactionState.Reject == this.state) {
+   85:             NetTimedAction act = this.getAction();
+   86:             DebugType.Action.trace("NetTimedAction reject %s", this.getDescription());
+   87:             ActionManager.stop(act);
+   88:         }
+   89:     }
+   90: }
+   91: 
+
+===== E12 | zombie/network/GameServer.java =====
+CFR source SHA256: 97e991130ddfb5fd4991c049671e2c08662fc3900803ec4f1088509eece898e0
+--- LuaEventManager.triggerEvent("OnClientCommand" ---
+ 2156:         }
+ 2157:         LuaEventManager.triggerEvent("OnClientCommand", module, command, player, tbl);
+ 2158:     }
+ 2159: 
+ 2160:     static void receiveWorldMap(ByteBufferReader bb, UdpConnection connection, short packetType) throws IOException {
+--- public static IsoPlayer getPlayerFromConnection( ---
+ 2171: 
+ 2172:     public static IsoPlayer getPlayerFromConnection(IConnection connection, int playerIndex) {
+ 2173:         if (playerIndex >= 0 && playerIndex < 4) {
+ 2174:             return connection.getPlayerAt(playerIndex);
+ 2175:         }
+ 2176:         return null;
+ 2177:     }
+ 2178: 
+ 2179:     public static IsoPlayer getPlayerByRealUserName(String username) {
+ 2180:         for (int n = 0; n < GameServer.udpEngine.connections.size(); ++n) {
+ 2181:             UdpConnection c = GameServer.udpEngine.connections.get(n);
+ 2182:             for (int playerIndex = 0; playerIndex < 4; ++playerIndex) {
+ 2183:                 IsoPlayer player = c.players[playerIndex];
+ 2184:                 if (player == null || !player.username.equals(username)) continue;
+ 2185:                 return player;
+--- public static void sendServerCommandToRelevant( ---
+ 3263: 
+ 3264:     public static void sendServerCommandToRelevant(float x, float y, String module, String command, KahluaTable args2) {
+ 3265:         for (int n = 0; n < GameServer.udpEngine.connections.size(); ++n) {
+ 3266:             UdpConnection c = GameServer.udpEngine.connections.get(n);
+ 3267:             if (!c.isFullyConnected() || !c.isRelevantTo(x, y)) continue;
+ 3268:             GameServer.sendServerCommand(module, command, args2, c);
+ 3269:         }
+ 3270:     }
+ 3271: 
+ 3272:     public static void sendServerCommandV(String module, String command, Object ... objects) {
+
+===== E13 | zombie/world/moddata/GlobalModData.java =====
+CFR source SHA256: 43cb725c0a01f6be01a7fdccfc782d8c41e0c3036c6884764ae69b60f2bb0612
+--- public void init( ---
+   52: 
+   53:     public void init() throws IOException {
+   54:         this.reset();
+   55:         this.load();
+   56:         LuaEventManager.triggerEvent("OnInitGlobalModData", WorldDictionary.isIsNewGame());
+   57:     }
+   58: 
+   59:     public void reset() {
+   60:         lastBlockSize = -1;
+   61:         this.modData.clear();
+   62:     }
+   63: 
+   64:     public void collectTableNames(List<String> list) {
+   65:         list.clear();
+   66:         for (Map.Entry<String, KahluaTable> entry : this.modData.entrySet()) {
+   67:             list.add(entry.getKey());
+--- public void transmit( ---
+  110: 
+  111:     public void transmit(String tag) {
+  112:         KahluaTable table = this.get(tag);
+  113:         if (table != null) {
+  114:             if (GameClient.client) {
+  115:                 GlobalModDataPacket packet = new GlobalModDataPacket();
+  116:                 packet.set(tag, table);
+  117:                 ByteBufferWriter bbw = GameClient.connection.startPacket();
+  118:                 PacketTypes.PacketType.GlobalModData.doPacket(bbw);
+  119:                 try {
+  120:                     packet.write(bbw);
+  121:                     PacketTypes.PacketType.GlobalModData.send(GameClient.connection);
+  122:                 }
+  123:                 catch (RuntimeException e) {
+  124:                     GameClient.connection.cancelPacket();
+  125:                 }
+  126:             } else if (GameServer.server) {
+  127:                 try {
+  128:                     GlobalModDataPacket packet = new GlobalModDataPacket();
+  129:                     packet.set(tag, table);
+  130:                     for (int n = 0; n < GameServer.udpEngine.connections.size(); ++n) {
+  131:                         UdpConnection c = GameServer.udpEngine.connections.get(n);
+  132:                         ByteBufferWriter bbw = c.startPacket();
+  133:                         PacketTypes.PacketType.GlobalModData.doPacket(bbw);
+  134:                         try {
+  135:                             packet.write(bbw);
+  136:                             PacketTypes.PacketType.GlobalModData.send(c);
+  137:                             continue;
+  138:                         }
+  139:                         catch (RuntimeException e) {
+  140:                             c.cancelPacket();
+  141:                         }
+  142:                     }
+  143:                 }
+  144:                 catch (Exception e) {
+  145:                     DebugLog.log(e.getMessage());
+  146:                 }
+  147:             }
+  148:         } else {
+  149:             DebugLog.log("GlobalModData -> cannot transmit moddata not found: " + tag);
+  150:         }
+  151:     }
+  152: 
+  153:     public void request(String tag) {
+--- File path = new File ---
+  258:             bb.flip();
+  259:             File path = new File(ZomboidFileSystem.instance.getFileNameInCurrentSave("global_mod_data.tmp"));
+  260:             FileOutputStream output = new FileOutputStream(path);
+  261:             output.getChannel().truncate(0L);
+  262:             output.write(bb.array(), 0, bb.limit());
+  263:             output.flush();
+  264:             output.close();
+  265:             File pathFinal = new File(ZomboidFileSystem.instance.getFileNameInCurrentSave("global_mod_data.bin"));
+  266:             Files.copy(path, pathFinal);
+  267:             path.delete();
+  268:         }
+  269:         catch (Exception e) {
+  270:             DebugType.General.printException(e, LogSeverity.Error, "Error saving GlobalModData.", new Object[0]);
+  271:             throw new IOException("Error saving GlobalModData.", e);
+  272:         }
+
+===== E14 | zombie/network/packets/service/GlobalModDataPacket.java =====
+CFR source SHA256: 97926cba7d9a00d92959e45ec0dfbef61b867fc4786819e9cc4dbf0a2db6822c
+--- public void parse( ---
+   42:     @Override
+   43:     public void parse(ByteBufferReader b, IConnection connection) {
+   44:         try {
+   45:             String tag = b.getUTF();
+   46:             if (!b.getBoolean()) {
+   47:                 LuaEventManager.triggerEvent("OnReceiveGlobalModData", tag, false);
+   48:                 return;
+   49:             }
+   50:             KahluaTable table = LuaManager.platform.newTable();
+   51:             table.load(b.bb, 249);
+   52:             LuaEventManager.triggerEvent("OnReceiveGlobalModData", tag, table);
+   53:         }
+   54:         catch (Exception e) {
+   55:             DebugType.General.printException(e, LogSeverity.Error);
+   56:         }
+   57:     }
+   58: }
+   59: 
+
+===== E15 | zombie/globalObjects/SGlobalObjectSystem.java =====
+CFR source SHA256: a0287fc2dfcb30161babda673b49c8e1be0fa0d1eac094da4f08473dff78f25e
+--- public void setObjectModDataKeys( ---
+   66: 
+   67:     public void setObjectModDataKeys(KahluaTable keys2) {
+   68:         this.objectModDataKeys.clear();
+   69:         if (keys2 == null) {
+   70:             return;
+   71:         }
+   72:         KahluaTableIterator iterator2 = keys2.iterator();
+   73:         while (iterator2.advance()) {
+   74:             Object value = iterator2.getValue();
+   75:             if (!(value instanceof String)) {
+   76:                 throw new IllegalArgumentException("expected string but got \"" + String.valueOf(value) + "\"");
+   77:             }
+   78:             String s = (String)value;
+   79:             this.objectModDataKeys.add(s);
+   80:         }
+   81:     }
+   82: 
+   83:     public void setObjectSyncKeys(KahluaTable keys2) {
+   84:         this.objectSyncKeys.clear();
+   85:         if (keys2 == null) {
+   86:             return;
+   87:         }
+   88:         KahluaTableIterator iterator2 = keys2.iterator();
+   89:         while (iterator2.advance()) {
+   90:             Object value = iterator2.getValue();
+   91:             if (!(value instanceof String)) {
+   92:                 throw new IllegalArgumentException("expected string but got \"" + String.valueOf(value) + "\"");
+   93:             }
+   94:             String s = (String)value;
+   95:             this.objectSyncKeys.add(s);
+   96:         }
+   97:     }
+   98: 
+   99:     public void update() {
+  100:     }
+--- public void save(ByteBuffer ---
+  215: 
+  216:     public void save(ByteBuffer bb) throws IOException {
+  217:         if (tempTable == null) {
+  218:             tempTable = LuaManager.platform.newTable();
+  219:         }
+  220:         tempTable.wipe();
+  221:         KahluaTableIterator iterator2 = this.modData.iterator();
+  222:         while (iterator2.advance()) {
+  223:             Object key = iterator2.getKey();
+  224:             if (!this.modDataKeys.contains(key)) continue;
+  225:             tempTable.rawset(key, this.modData.rawget(key));
+  226:         }
+  227:         if (tempTable.isEmpty()) {
+  228:             bb.put((byte)0);
+  229:         } else {
+  230:             bb.put((byte)1);
+  231:             tempTable.save(bb);
+  232:         }
+  233:         bb.putInt(this.objects.size());
+  234:         for (int i = 0; i < this.objects.size(); ++i) {
+  235:             SGlobalObject object = Type.tryCastTo((GlobalObject)this.objects.get(i), SGlobalObject.class);
+  236:             object.save(bb);
+  237:         }
+  238:     }
+  239: 
+  240:     /*
+  241:      * WARNING - Removed try catching itself - possible behaviour change.
+  242:      */
+  243:     public void load() {
+
+===== E16 | zombie/vehicles/BaseVehicle.java =====
+CFR source SHA256: ab070831ce912d0a3a19395037bf698e2083857125798f62e8de13cef0663d12
+--- public void save(ByteBuffer ---
+ 2568:     @Override
+ 2569:     public void save(ByteBuffer output, boolean isDebugSave) throws IOException {
+ 2570:         float origX = this.getX();
+ 2571:         float origY = this.getY();
+ 2572:         if (this.square != null) {
+ 2573:             float d = 5.0E-4f;
+ 2574:             this.setX(PZMath.clamp(this.getX(), (float)this.square.x + 5.0E-4f, (float)this.square.x + 1.0f - 5.0E-4f));
+ 2575:             this.setY(PZMath.clamp(this.getY(), (float)this.square.y + 5.0E-4f, (float)this.square.y + 1.0f - 5.0E-4f));
+ 2576:         }
+ 2577:         super.save(output, isDebugSave);
+ 2578:         this.setX(origX);
+ 2579:         this.setY(origY);
+ 2580:         Quaternionf q = this.savedRot;
+ 2581:         Transform xfrm = this.getWorldTransform(BaseVehicle.allocTransform());
+ 2582:         output.putFloat(xfrm.origin.y);
+ 2583:         xfrm.getRotation(q);
+ 2584:         BaseVehicle.releaseTransform(xfrm);
+ 2585:         output.putFloat(q.x);
+ 2586:         output.putFloat(q.y);
+ 2587:         output.putFloat(q.z);
+ 2588:         output.putFloat(q.w);
+ 2589:         GameWindow.WriteString(output, this.scriptName);
+ 2590:         output.putInt(this.skinIndex);
+ 2591:         output.put((byte)(this.isEngineRunning() ? 1 : 0));
+ 2592:         output.putInt(this.frontEndDurability);
+ 2593:         output.putInt(this.rearEndDurability);
+ 2594:         output.putInt(this.currentFrontEndDurability);
+ 2595:         output.putInt(this.currentRearEndDurability);
+ 2596:         output.putInt(this.getEngineLoudness());
+ 2597:         output.putInt(this.getEngineQuality());
+ 2598:         output.putInt(this.keyId);
+ 2599:         output.put(this.keySpawned);
+ 2600:         output.put((byte)(this.headlightsOn ? 1 : 0));
+--- public void load(ByteBuffer ---
+ 2667:     @Override
+ 2668:     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {
+ 2669:         super.load(input, worldVersion, isDebugSave);
+ 2670:         float physicsZ = input.getFloat();
+ 2671:         int level = PZMath.fastfloor(this.getZ());
+ 2672:         float f = 2.44949f;
+ 2673:         this.savedPhysicsZ = PZMath.clamp(physicsZ, (float)level * 2.44949f, ((float)level + 0.995f) * 2.44949f);
+ 2674:         float x = input.getFloat();
+ 2675:         float y = input.getFloat();
+ 2676:         float z = input.getFloat();
+ 2677:         float w = input.getFloat();
+ 2678:         this.savedRot.set(x, y, z, w);
+ 2679:         this.jniTransform.origin.set(this.getX() - WorldSimulation.instance.offsetX, Float.isNaN(this.savedPhysicsZ) ? this.getZ() : this.savedPhysicsZ, this.getY() - WorldSimulation.instance.offsetY);
+ 2680:         this.jniTransform.setRotation(this.savedRot);
+ 2681:         this.scriptName = GameWindow.ReadString(input);
+ 2682:         this.skinIndex = input.getInt();
+ 2683:         boolean isEngineRunning = input.get() != 0;
+ 2684:         this.frontEndDurability = input.getInt();
+ 2685:         this.rearEndDurability = input.getInt();
+ 2686:         this.currentFrontEndDurability = input.getInt();
+ 2687:         this.currentRearEndDurability = input.getInt();
+ 2688:         int engineLoudness = input.getInt();
+ 2689:         int engineQuality = input.getInt();
+ 2690:         engineQuality = PZMath.clamp(engineQuality, 0, 100);
+--- public void permanentlyRemove( ---
+ 7260: 
+ 7261:     public void permanentlyRemove() {
+ 7262:         for (int i = 0; i < this.getMaxPassengers(); ++i) {
+ 7263:             IsoGameCharacter chr = this.getCharacter(i);
+ 7264:             if (chr == null) continue;
+ 7265:             if (GameServer.server) {
+ 7266:                 chr.sendObjectChange(IsoObjectChange.EXIT_VEHICLE);
+ 7267:             }
+ 7268:             this.exit(chr);
+ 7269:         }
+ 7270:         this.breakConstraint(true, false);
+ 7271:         this.removeFromWorld();
+ 7272:         this.removeFromSquare();
+ 7273:         if (this.chunk != null) {
+ 7274:             this.chunk.vehicles.remove(this);
+ 7275:         }
+ 7276:         VehiclesDB2.instance.removeVehicle(this);
+ 7277:     }
+ 7278: 
+ 7279:     @Override
+ 7280:     public void setEngineFeature(int quality, int loudness, int engineForce) {
+ 7281:         this.getVehicleEngine().setFeatures(quality, loudness, engineForce);
+
+===== E17 | zombie/vehicles/VehiclesDB2.java =====
+CFR source SHA256: fd8f20a5f19d87c03eb34d9064028185a99e7bddf5b0625f9ef1cec8e6a63762
+--- void removeVehicle(BaseVehicle ---
+  138: 
+  139:     public void removeVehicle(BaseVehicle vehicle) {
+  140:         this.main.removeVehicle(vehicle);
+  141:     }
+  142: 
+  143:     public void updateVehicle(BaseVehicle vehicle) {
+  144:         try {
+  145:             this.main.updateVehicle(vehicle);
+--- this.worldVersion = IsoWorld.getWorldVersion() ---
+ 1136:             this.y = vehicle.getY();
+ 1137:             this.worldVersion = IsoWorld.getWorldVersion();
+ 1138:             this.inMeta = vehicle.shouldUpdateInMeta();
+ 1139:             ByteBuffer bb = TL_SliceBuffer.get();
+ 1140:             bb.clear();
+ 1141:             while (true) {
+ 1142:                 try {
+ 1143:                     vehicle.save(bb);
+ 1144:                 }
+ 1145:                 catch (BufferOverflowException ex) {
+ 1146:                     if (bb.capacity() >= 0x200000) {
+ 1147:                         DebugType.General.error("the vehicle %d cannot be saved", vehicle.sqlId);
+ 1148:                         throw ex;
+ 1149:                     }
+ 1150:                     bb = ByteBuffer.allocate(bb.capacity() + 32768);
+ 1151:                     TL_SliceBuffer.set(bb);
+ 1152:                     continue;
+
+===== E18 | zombie/characters/Faction.java =====
+CFR source SHA256: 69411e9f49a96c901dc8bb5c15b4aeb30d78191cd6d4498077c281e329cf2520
+--- public final class Faction ---
+   21: @UsedFromLua
+   22: public final class Faction
+   23: extends Invite {
+   24:     private String name;
+   25:     private String owner;
+   26:     private String tag;
+   27:     private ColorInfo tagColor;
+   28:     private final ArrayList<String> players = new ArrayList();
+   29:     public static ArrayList<Faction> factions = new ArrayList();
+   30: 
+   31:     public Faction() {
+   32:     }
+   33: 
+   34:     public Faction(String name, String owner) {
+   35:         this.setName(name);
+   36:         this.setOwner(owner);
+   37:         this.tagColor = new ColorInfo(Rand.Next(0.3f, 1.0f), Rand.Next(0.3f, 1.0f), Rand.Next(0.3f, 1.0f), 1.0f);
+   38:     }
+   39: 
+   40:     public static ArrayList<Faction> getFactions() {
+   41:         return factions;
+--- public static Faction getPlayerFaction( ---
+  108: 
+  109:     public static Faction getPlayerFaction(IsoPlayer player) {
+  110:         for (int i = 0; i < factions.size(); ++i) {
+  111:             Faction fact = factions.get(i);
+  112:             if (fact.getOwner().equals(player.getUsername())) {
+  113:                 return fact;
+  114:             }
+  115:             for (int x = 0; x < fact.getPlayers().size(); ++x) {
+  116:                 if (!fact.getPlayers().get(x).equals(player.getUsername())) continue;
+  117:                 return fact;
+  118:             }
+  119:         }
+  120:         return null;
+  121:     }
+  122: 
+  123:     public static Faction getPlayerFaction(String username) {
+  124:         for (int i = 0; i < factions.size(); ++i) {
+  125:             Faction fact = factions.get(i);
+  126:             if (fact.getOwner().equals(username)) {
+  127:                 return fact;
+  128:             }
+
+===== E19 | zombie/iso/areas/SafeHouse.java =====
+CFR source SHA256: b7611f4dd1e0e47d07999ebc357da2fb182d3b2e2de96f1c9d4fd57df70843ba
+--- public static boolean isSafehouseAllowInteract( ---
+  227: 
+  228:     public static boolean isSafehouseAllowInteract(IsoGridSquare square, IsoPlayer player) {
+  229:         if (square == null) {
+  230:             return true;
+  231:         }
+  232:         if (player == null) {
+  233:             return true;
+  234:         }
+  235:         SafeHouse found = SafeHouse.findSafeHouse(square);
+  236:         if (found == null) {
+  237:             return true;
+  238:         }
+  239:         if (player.role != null && player.role.hasCapability(Capability.CanGoInsideSafehouses)) {
+  240:             return true;
+  241:         }
+  242:         if (WarManager.isWarStarted(found.getOnlineID(), player.getUsername())) {
+  243:             return true;
+  244:         }
+  245:         return found.playerAllowed(player.getUsername());
+  246:     }
+  247: 
+  248:     public static boolean isSafehouseAllowLoot(IsoGridSquare square, IsoPlayer player) {
+  249:         if (ServerOptions.getInstance().safehouseAllowLoot.getValue()) {
+  250:             return true;
+  251:         }
+  252:         return SafeHouse.isSafehouseAllowInteract(square, player);
+  253:     }
+--- public void checkTrespass( ---
+  464: 
+  465:     public void checkTrespass(IsoPlayer player) {
+  466:         if (GameServer.server && player.getVehicle() == null && !SafeHouse.isSafehouseAllowTrepass(player.getCurrentSquare(), player)) {
+  467:             GameServer.sendTeleport(player, this.x - 1, this.y - 1, 0.0f);
+  468:             player.updateDisguisedState();
+  469:             if (player.isAsleep()) {
+  470:                 player.setAsleep(false);
+  471:                 player.setAsleepTime(0.0f);
+  472:                 INetworkPacket.sendToAll(PacketTypes.PacketType.WakeUpPlayer, player);
+  473:             }
+  474:         }
+  475:     }
+  476: 
+
+===== E20 | zombie/network/packets/StartFirePacket.java =====
+CFR source SHA256: a8e14b86456860de9f13200a14cc56f4b99e2a86470677366b17d92e50bf74f0
+--- public void processServer( ---
+   98:     @Override
+   99:     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+  100:         IsoFire newFire = this.smoke ? new IsoFire(this.square.getSquare().getCell(), this.square.getSquare(), this.ignite, this.fireEnergy, this.life, true) : new IsoFire(this.square.getSquare().getCell(), this.square.getSquare(), this.ignite, this.fireEnergy, this.life);
+  101:         IsoFireManager.Add(newFire);
+  102:         this.spreadDelay = newFire.getSpreadDelay();
+  103:         this.numParticles = newFire.numFlameParticles;
+  104:         this.square.getSquare().getObjects().add(newFire);
+  105:     }
+  106: 
+  107:     @Override
+  108:     public boolean isConsistent(IConnection connection) {
+  109:         return this.square.getSquare() != null && this.life <= 3000;
+  110:     }
+--- public boolean isConsistent( ---
+  107:     @Override
+  108:     public boolean isConsistent(IConnection connection) {
+  109:         return this.square.getSquare() != null && this.life <= 3000;
+  110:     }
+  111: }
+  112: 
+
+===== E21 | zombie/network/packets/SledgehammerDestroyPacket.java =====
+CFR source SHA256: dbee8cf54c226f586c8df17b9a41e79c737fb25aefafc33e882a73c28310d4e5
+--- public void processServer( ---
+   19:     @Override
+   20:     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+   21:         if (!ServerOptions.instance.allowDestructionBySledgehammer.getValue()) {
+   22:             DebugType.Multiplayer.error("destruction by sledgehammer is not allowed on the server");
+   23:             return;
+   24:         }
+   25:         SledgehammerDestroyPacket.removeItemFromMap(connection, this.x, this.y, this.z, this.index);
+   26:         this.sendToRelativeClients(PacketTypes.PacketType.SledgehammerDestroy, null, this.x, this.y);
+   27:     }
+   28: }
+   29: 
+
+===== E22 | zombie/network/packets/ItemTransactionPacket.java =====
+CFR source SHA256: 1f6a5f018f8fb9d8d22999348f1dcc4fb687cd89c7978ef02e653436e6600586
+--- public void write( ---
+   29:     @Override
+   30:     public void write(ByteBufferWriter b) {
+   31:         b.putByte(this.id);
+   32:         b.putEnum(this.state);
+   33:         if (Transaction.TransactionState.Reject != this.state) {
+   34:             this.playerId.write(b);
+   35:             b.putInt(this.entries.size());
+   36:             for (Transaction.TransactionEntry entry : this.entries) {
+   37:                 b.putInt(entry.itemId);
+   38:                 entry.sourceId.write(b);
+   39:                 entry.destinationId.write(b);
+   40:             }
+   41:             byte flags = 0;
+   42:             if (this.extra != null) {
+   43:                 flags = (byte)(flags | 1);
+   44:             }
+   45:             if (this.direction != null) {
+--- public void processServer( ---
+  127:     @Override
+  128:     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+  129:         byte consistent = 1;
+  130:         for (Transaction.TransactionEntry entry : this.entries) {
+  131:             consistent = TransactionManager.isConsistent(entry.itemId, null, entry.sourceId.getContainer(), entry.destinationId.getContainer(), this.extra, this, this.playerId.getPlayer());
+  132:             if (consistent == 0) continue;
+  133:             break;
+  134:         }
+  135:         if (this.state == Transaction.TransactionState.Request) {
+  136:             if (consistent == 0) {
+  137:                 this.setTimeData();
+  138:                 TransactionManager.add(this);
+  139:                 this.setState(Transaction.TransactionState.Accept);
+  140:                 bbw = connection.startPacket();
+  141:                 PacketTypes.PacketType.ItemTransaction.doPacket(bbw);
+  142:                 this.write(bbw);
+  143:                 PacketTypes.PacketType.ItemTransaction.send(connection);
+  144:             } else {
+  145:                 this.setState(Transaction.TransactionState.Reject);
+  146:                 bbw = connection.startPacket();
+  147:                 PacketTypes.PacketType.ItemTransaction.doPacket(bbw);
+  148:                 this.write(bbw);
+  149:                 PacketTypes.PacketType.ItemTransaction.send(connection);
+  150:             }
+  151:         } else if (Transaction.TransactionState.Reject == this.state) {
+  152:             TransactionManager.removeItemTransaction(this.id, true);
+  153:         }
+  154:     }
+  155: 
+  156:     @Override
+  157:     public void setDuration(long duration) {
+  158:         super.setDuration(duration);
+  159:         this.duration = duration;
+  160:     }
+  161: }
+  162: 
+
+===== E23 | zombie/GameTime.java =====
+CFR source SHA256: a9254a06bda3a862aaf4714594afc3d8d499a087fc5da991791f79dc3c647fd9
+--- LuaEventManager.triggerEvent("EveryHours" ---
+  553:         if (this.getHour() != previousHour) {
+  554:             LuaEventManager.triggerEvent("EveryHours");
+  555:         }
+  556:         if (GameServer.server && this.getHour() < previousHour) {
+--- LuaEventManager.triggerEvent("EveryOneMinute" ---
+  578:         if (this.previousMinuteStamp != this.minutesStamp) {
+  579:             LuaEventManager.triggerEvent("EveryOneMinute");
+  580:             this.previousMinuteStamp = this.minutesStamp;
+  581:         }
+--- LuaEventManager.triggerEvent("EveryDays" ---
+  598:         this.updateCalendar(this.getYear(), this.getMonth(), this.getDay(), (int)this.getTimeOfDay(), this.getMinutes());
+  599:         LuaEventManager.triggerEvent("EveryDays");
+  600:     }
+  601: 
+
+===== E24 | zombie/radio/ZomboidRadio.java =====
+CFR source SHA256: c051f7903d95890607d4affda43efb27835f7b71a5a5c1be547b41212614dedb
+--- public void SendTransmission(long ---
+  769: 
+  770:     public void SendTransmission(long source2, int sourceX, int sourceY, int channel, String msg, String guid, String codes, float r, float g, float b, int signalStrength, boolean isTV) {
+  771:         GameMode mode = this.getGameMode();
+  772:         if (!(isTV || mode != GameMode.Server && mode != GameMode.SinglePlayer)) {
+  773:             this.hasAppliedInterference = false;
+  774:             msg = this.applyWeatherInterference(msg, signalStrength);
+  775:             if (this.hasAppliedInterference) {
+  776:                 r = 0.5f;
+  777:                 g = 0.5f;
+  778:                 b = 0.5f;
+  779:                 codes = "";
+  780:             }
+  781:         }
+  782:         if (mode == GameMode.SinglePlayer) {
+  783:             this.DistributeTransmission(sourceX, sourceY, channel, msg, guid, codes, r, g, b, signalStrength, isTV);
+  784:         } else if (mode == GameMode.Server) {
+  785:             this.DistributeTransmission(sourceX, sourceY, channel, msg, guid, codes, r, g, b, signalStrength, isTV);
+  786:             GameServer.sendIsoWaveSignal(source2, sourceX, sourceY, channel, msg, guid, codes, r, g, b, signalStrength, isTV);
+  787:         } else if (mode == GameMode.Client) {
+  788:             GameClient.sendIsoWaveSignal(sourceX, sourceY, channel, msg, guid, codes, r, g, b, signalStrength, isTV);
+  789:         }
+  790:     }
+  791: 
+  792:     public void PlayerListensChannel(int channel, boolean listenmode, boolean isTV) {
+
+===== E25 | zombie/iso/WorldMarkers.java =====
+CFR source SHA256: a3f715b1494db6dea7051f92340a1cc37d98a769192b7d374500250f281bc3f3
+--- public PlayerHomingPoint addPlayerHomingPoint ---
+  103: 
+  104:     public PlayerHomingPoint addPlayerHomingPoint(IsoPlayer player, int x, int y) {
+  105:         return this.addPlayerHomingPoint(player, x, y, "arrow_triangle", 1.0f, 1.0f, 1.0f, 1.0f, true, 20);
+  106:     }
+  107: 
+  108:     public PlayerHomingPoint addPlayerHomingPoint(IsoPlayer player, int x, int y, float r, float g, float b, float a) {
+  109:         return this.addPlayerHomingPoint(player, x, y, "arrow_triangle", r, g, b, a, true, 20);
+  110:     }
+  111: 
+  112:     public PlayerHomingPoint addPlayerHomingPoint(IsoPlayer player, int x, int y, String texname, float r, float g, float b, float a, boolean homeOnTarget, int homeOnDist) {
+  113:         if (GameServer.server) {
+  114:             return null;
+  115:         }
+
+===== E26 | me/zed_0xff/zombie_buddy/Patch.java =====
+CFR source SHA256: ede081b03f9e7eedd12db00338a8dd821173b8d529931d5f25ab18f8cb96f09d
+--- public static @interface OnEnter ---
+  100:     @Target(value={ElementType.METHOD})
+  101:     public static @interface OnEnter {
+  102:         public boolean skipOn() default false;
+  103:     }
+  104: }
+  105: 
+--- public static @interface OnExit ---
+   92:     @Target(value={ElementType.METHOD})
+   93:     public static @interface OnExit {
+   94:         public Class<? extends Throwable> onThrowable() default NoException.class;
+   95: 
+   96:         public Class<? extends Throwable> suppress() default NoException.class;
+   97:     }
+   98: 
+   99:     @Retention(value=RetentionPolicy.RUNTIME)
+  100:     @Target(value={ElementType.METHOD})
+
+===== E27 | me/zed_0xff/zombie_buddy/PatchEngine.java =====
+CFR source SHA256: 8ec0dd6954f2a2c902bf021720ea8cd6ff5695a90d69bb7ae3bcd64821207a86
+--- if (!classPackage.equals(packageName)) ---
+  533:                     String string = classPackage = patchClass.getPackage() != null ? patchClass.getPackage().getName() : "";
+  534:                     if (!classPackage.equals(packageName)) continue;
+  535:                     Logger.info("Found patch class: " + patchClass.getName(), new Object[0]);
+  536:                     patches.add(patchClass);
+  537:                 }
+  538:                 catch (Exception e) {
+  539:                     Logger.error("Error loading patch class " + classInfo.getName() + ": " + e.getMessage(), new Object[0]);
+  540:                     e.printStackTrace();
+--- if (!classInfo.getPackageName().equals(packageName)) ---
+  544:             for (ClassInfo classInfo : scanResult.getAllClasses()) {
+  545:                 if (!classInfo.getPackageName().equals(packageName)) continue;
+  546:                 try {
+  547:                     Class<?> cls = classInfo.loadClass();
+  548:                     if (!Exposer.hasGlobalLuaMethod(cls)) continue;
+  549:                     Exposer.addClassWithGlobalLuaMethod(cls);
+  550:                 }
+
+===== E28 | zombie/ai/states/SwipeStatePlayer.java =====
+CFR source SHA256: d1648bc6f88f0e0e4bc5c895b26cd2535fd0f46742f11ee2093192dda4e54547
+--- IsoPlayer.isLocalPlayer(owner) ---
+  282:         }
+  283:         if (!owner.get(ATTACKED).booleanValue() && IsoPlayer.isLocalPlayer(owner)) {
+  284:             DebugType.Combat.debugln("AttackType: %s", attackTypeModifier.toString());
+  285:             CombatManager.getInstance().attackCollisionCheck(owner, weapon, this, attackTypeModifier);
+  286:         }
+  287:     }
+  288: 
+  289:     private void OnAnimEvent_GrappleGrabCollisionCheck(IsoGameCharacter owner, String grappleType) {
+  290:         if (!IsoPlayer.isLocalPlayer(owner)) {
+  291:             return;
+  292:         }
+  293:         HandWeapon weapon = CombatManager.getInstance().getWeapon(owner);
+  294:         if (owner.get(ATTACKED).booleanValue()) {
+
+===== E29 | zombie/worldMap/symbols/WorldMapSymbolsV2.java =====
+CFR source SHA256: 296f3af9c2319ae2cfb859ac252d41c41df6075db02e6de95e5dfff19b90533b
+--- public  ---
+   43: @UsedFromLua
+   44: public final class WorldMapSymbolsV2
+   45: extends WorldMapSymbolsAPI {
+   46:     private static final Pool<WorldMapTextSymbolV2> s_textPool = new Pool<WorldMapTextSymbolV2>(WorldMapTextSymbolV2::new);
+   47:     private static final Pool<WorldMapTextureSymbolV2> s_texturePool = new Pool<WorldMapTextureSymbolV2>(WorldMapTextureSymbolV2::new);
+   48:     private final UIWorldMap ui;
+   49:     private final WorldMapSymbols uiSymbols;
+   50:     private final ArrayList<WorldMapBaseSymbolV2> symbols = new ArrayList();
+   51:     private final Listener listener = new Listener(this);
+   52:     static final ThreadLocal<TextLayout> TL_textLayout = ThreadLocal.withInitial(TextLayout::new);
+   53: 
+   54:     public WorldMapSymbolsV2(UIWorldMap ui, WorldMapSymbols symbols) {
+   55:         Objects.requireNonNull(ui);
+   56:         this.ui = ui;
+   57:         this.uiSymbols = symbols;
+   58:         this.uiSymbols.addListener(this.listener);
+   59:         this.reinit();
+   60:     }
+   61: 
+   62:     public WorldMapTextSymbolV2 addTranslatedText(String text, UIFont font, float x, float y) {
+   63:         return this.addTranslatedText(text, WorldMapSymbols.getDefaultTextLayerID(), x, y);
+   64:     }
+   65: 
+   66:     public WorldMapTextSymbolV2 addUntranslatedText(String text, UIFont font, float x, float y) {
+   67:         return this.addUntranslatedText(text, WorldMapSymbols.getDefaultTextLayerID(), x, y);
+   68:     }
+   69: 
+   70:     public WorldMapTextSymbolV2 addTranslatedText(String text, String layerID, float x, float y) {
+   71:         WorldMapTextSymbol symbol = this.uiSymbols.addTranslatedText(text, layerID, x, y, 1.0f, 1.0f, 1.0f, 1.0f);
+   72:         return (WorldMapTextSymbolV2)this.symbols.get(this.uiSymbols.indexOf(symbol));
+   73:     }
+   74: 
+   75:     public WorldMapTextSymbolV2 addUntranslatedText(String text, String layerID, float x, float y) {
+   76:         WorldMapTextSymbol symbol = this.uiSymbols.addUntranslatedText(text, layerID, x, y, 1.0f, 1.0f, 1.0f, 1.0f);
+   77:         return (WorldMapTextSymbolV2)this.symbols.get(this.uiSymbols.indexOf(symbol));
+   78:     }
+   79: 
+   80:     public WorldMapTextureSymbolV2 addTexture(String symbolID, float x, float y) {
+   81:         WorldMapTextureSymbol symbol = this.uiSymbols.addTexture(symbolID, x, y, 1.0f, 1.0f, 1.0f, 1.0f);
+   82:         return (WorldMapTextureSymbolV2)this.symbols.get(this.uiSymbols.indexOf(symbol));
+   83:     }
+   84: 
+   85:     public int hitTest(float uiX, float uiY) {
+   86:         return this.uiSymbols.hitTest(this.ui, uiX, uiY);
+   87:     }
+   88: 
+   89:     public int getSymbolCount() {
+   90:         return this.symbols.size();
+   91:     }
+   92: 
+   93:     public WorldMapBaseSymbolV2 getSymbolByIndex(int index) {
+   94:         return this.symbols.get(index);
+   95:     }
+   96: 
+   97:     public void removeSymbolByIndex(int index) {
+   98:         this.uiSymbols.removeSymbolByIndex(index);
+   99:     }
+  100: 
+  101:     public void removeSymbol(WorldMapBaseSymbolV2 symbol) {
+  102:         int index = this.uiSymbols.indexOf(symbol.symbol);
+  103:         if (index == -1) {
+
+===== E30 | zombie/iso/objects/IsoFireManager.java =====
+CFR source SHA256: 94d1e51092315377d94296e48822349d19b69d304dc7b19454f5ba7eebf86850
+--- public static void StartFire( ---
+  177: 
+  178:     public static void StartFire(IsoCell cell, IsoGridSquare gridSquare, boolean igniteOnAny, int fireStartingEnergy, int life) {
+  179:         if (fireStartingEnergy <= 0) {
+  180:             return;
+  181:         }
+  182:         if (gridSquare.getFloor() != null && gridSquare.getFloor().getSprite() != null) {
+  183:             fireStartingEnergy -= gridSquare.getFloor().getSprite().firerequirement;
+  184:         }
+  185:         if (fireStartingEnergy < 5) {
+  186:             fireStartingEnergy = 5;
+  187:         }
+  188:         if (!IsoFire.CanAddFire(gridSquare, igniteOnAny)) {
+  189:             return;
+  190:         }
+  191:         if (GameClient.client) {
+  192:             DebugType.General.warn("The StartFire function was called on Client");
+  193:             return;
+  194:         }
+  195:         IsoFire newFire = new IsoFire(cell, gridSquare, igniteOnAny, fireStartingEnergy, life);
+  196:         if (GameServer.server) {
+  197:             INetworkPacket.sendToRelative(PacketTypes.PacketType.StartFire, gridSquare.getX(), (float)gridSquare.getY(), gridSquare, igniteOnAny, fireStartingEnergy, newFire.life, false, newFire.spreadDelay, newFire.numFlameParticles);
+  198:         }
+  199:         IsoFireManager.Add(newFire);
+  200:         gridSquare.getObjects().add(newFire);
+  201:         if (Rand.Next(5) == 0) {
+  202:             WorldSoundManager.instance.addSound(newFire, gridSquare.getX(), gridSquare.getY(), gridSquare.getZ(), 20, 20);
+
+===== L01 | media/lua/shared/TimedActions/ISBaseTimedAction.lua =====
+SHA256: ad72e57f976bd1564d59d08d98d06f8c8d4acea6386aace48e0d99ce9d02a1f0
+   74: function ISBaseTimedAction:getDuration()
+   75: 	return self.maxTime;
+   76: end
+   77: 
+   78: function ISBaseTimedAction:create()
+   79: 	self.maxTime = self:adjustMaxTime(self.maxTime);
+   80: 	self.action = LuaTimedActionNew.new(self, self.character);
+   81: end
+   82: 
+   83: function ISBaseTimedAction:begin()
+   84: 	if not self.retriggerLastAction then
+   85: 		self.character:setTimedActionToRetrigger(nil);
+  170: function ISBaseTimedAction:getDeltaModifiers(deltas)
+  171: end
+  172: 
+  173: function ISBaseTimedAction:new (character)
+  174: 	local o = {}
+  175: 	setmetatable(o, self)
+  176: 	self.__index = self
+  177: 	o.character = character;
+  178: 	o.stopOnWalk = true;
+  179: 	o.stopOnRun = true;
+  180: 	o.stopOnAim = true;
+  181:     o.caloriesModifier = 1;
+  182: 	o.maxTime = -1;
+  183: 	return o
+  184: end
+
+===== L02 | media/lua/client/TimedActions/ISTimedActionQueue.lua =====
+SHA256: 23c98152728172b44ccb41bc8ddc97798fee7a91b57b20620fb11d5f41e7792c
+    1: require "ISBaseObject"
+    2: 
+    3: ISTimedActionQueue = ISBaseObject:derive("ISTimedActionQueue");
+    4: 
+    5: ISTimedActionQueue.IDMax = 1;
+    6: 
+    7: ISTimedActionQueue.queues = {}
+    8: 
+    9: function ISTimedActionQueue:addToQueue (action)
+   10:     local count = #self.queue;
+   11:     table.insert(self.queue, action );
+   12: 
+   13:     -- none in queue, so go!
+   14:     if count == 0 then
+   15:         self.current = action;
+   16:         action:begin();
+   17:     end
+   18: 
+   19: end
+
+===== L03 | media/lua/client/TimedActions/ISInventoryTransferAction.lua =====
+SHA256: 96ee554609f9ae029809643d50e4f31dbc5a7d21a558934be0804fd909c345b4
+  140:     if self.character and self.character:hasTrait(CharacterTrait.HEMOPHOBIC) and self.item and self.item:getBloodLevel() > 0 then
+  141:         local rate =  self.item:getBloodLevelAdjustedLow() * getGameTime():getMultiplier()
+  142:         local stats = self.character:getStats();
+  143:         stats:add(CharacterStat.STRESS, rate/10000);
+  144:     end
+  145: 
+  146: 	-- reopen the correct container
+  147: 	if self.selectedContainer then
+  148: 		if self.selectedContainer:getParent() and not self.character:isSittingOnFurniture() then
+  149: 			self.character:faceThisObject(self.selectedContainer:getParent())
+  150: 		end
+  151: 		if self.character:shouldBeTurning() then
+  152: 			getPlayerLoot(self.character:getPlayerNum()):setForceSelectedContainer(self.selectedContainer)
+  153: 		end
+  154: 		getPlayerLoot(self.character:getPlayerNum()):selectButtonForContainer(self.selectedContainer)
+  155: 	end
+  156: 
+  157: 	self.item:setJobDelta(self.action:getJobDelta());
+  480: 	if not isClient() then
+  481: 	    self:checkQueueList()
+  482: 	end
+  483: 
+  484: 	self.item:setJobDelta(0.0)
+  485: --	print("perform on item", self.item, self.item:getDisplayName())
+  486: 	-- take the next item in our queue list
+  487: 	local queuedItem = table.remove(self.queueList, 1);
+  488: 	-- reopen the correct container
+  489: 	if self.selectedContainer then
+  490: 		getPlayerLoot(self.character:getPlayerNum()):selectButtonForContainer(self.selectedContainer)
+  491: 	end
+  492: 
+  493:     if queuedItem ~= nil then
+  845: 	if character:isTimedActionInstant() then
+  846: 		o.maxTime = 1;
+  847: 	end
+  848: 	
+  849: 	if item then -- kludge to fix error when filling gas bottles out of backpack
+  850: 		if item:isFavorite() and not o.destContainer:isInCharacterInventory(o.character) then o.maxTime = 0; end
+  851: 	end
+  852: 
+  853: 	if item then -- kludge to fix error when filling gas bottles out of backpack
+  854: 		if isClient() then -- The client completes the transfer after receiving packet ItemTransactionPacket from the server
+  855: 			o.maxTime  = -1
+  856: 		end
+  857: 		o.queueList = {};
+  858: 		local queuedItem = {items = {o.item}, time = o.maxTime, type = o.item:getFullType()};
+  859: 		table.insert(o.queueList, queuedItem);
+  860: 		o.loopedAction = true
+  861: 	end
+
+===== L04 | media/lua/shared/Farming/TimedActions/ISSeedActionNew.lua =====
+SHA256: e4c963279539355e1e99f5e500a1ac42c3cd070861933c216f87bcb75f000343
+   49: 		self.character:getEmitter():stopOrTriggerSound(self.sound)
+   50: 	end
+   51: 
+   52:     -- needed to remove from queue / start next.
+   53: 	ISBaseTimedAction.perform(self);
+   54: end
+   55: 
+   56: function ISSeedActionNew:complete()
+   57:     local skill = self.character:getPerkLevel(Perks.Farming)
+   58:     self.character:addBackMuscleStrain(1 - (skill * 0.05))
+   59: 	self.character:getInventory():Remove(self.seed);
+   60: 	sendRemoveItemFromContainer(self.character:getInventory(), self.seed);
+   61: 
+   62: 	local plant = SFarmingSystem.instance:getLuaObjectAt(self.plant.x, self.plant.y, self.plant.z);
+   63: 	if plant and plant.state == "plow" then
+   64: 		plant:seed(self.typeOfSeed, self.character:getPerkLevel(Perks.Farming));
+   65: 		if isClient() then
+   66: 			plant.owner = self.character:getOnlineID()
+   67: 		else
+   68: 			plant.owner = self.character:getPlayerNum()
+   69: 		end
+   70: 	end
+   71: 
+
+===== L05 | media/lua/shared/TimedActions/ISChopTreeAction.lua =====
+SHA256: 5e0765f487700f48c410030daef504ac9d79262a346dd61aa98f9bcd793b317c
+   63: end
+   64: 
+   65: function ISChopTreeAction:animEvent(event, parameter)
+   66: 	if not isClient() then
+   67: 		-- check for self.axe here. If spamming the tree chop button, we can receive the ChopTree event before having called Start() or serverStart()
+   68: 		if event == 'ChopTree' and self.axe then
+   69: 			self.tree:WeaponHit(self.character, self.axe)
+   70: 			local modifier = 1
+   71: 			if (self.character:getDescriptor():isCharacterProfession(CharacterProfession.LUMBERJACK)) then modifier = 0.5 end
+   72:             self.character:addCombatMuscleStrain(self.axe, 1, modifier)
+   73: 
+   74: 			self:useEndurance()
+   75: 			-- all of this is handled by tree:WeaponHit in java
+   76: 			-- 		if ZombRand(self.axe:getConditionLowerChance() * 2 + self.character:getMaintenanceMod() * 2) == 0 then
+   77: 			-- 			self.axe:setCondition(self.axe:getCondition() - 1)
+   78: 			-- 			ItemUtils.checkWeapon(self.character);
+   79: 			-- 		else
+   80: 			-- 			self.character:getXp():AddXP(Perks.Maintenance, 1)
+   81: 			-- 		end
+   82: 			if self.tree:getObjectIndex() == -1 then
+   83: 				if isServer() then
+   84: 					self.netAction:forceComplete()
+   85: 				else
+   86: 					self:forceComplete()
+   87: 				end
+   88: 			end
+   89: 		end
+   90: 	else
+   91: 		if event == 'ChopTree' then
+   92: 			self.tree:WeaponHitEffects(self.character, self.axe)
+  115: 	local o = ISBaseTimedAction.new(self, character)
+  116: 	o.tree = tree
+  117: 	o.maxTime = o:getDuration()
+  118: 	o.spriteFrame = 0
+  119:     o.caloriesModifier = 8;
+  120: 	o.forceProgressBar = true;
+  121: 	return o
+  122: end
+
+===== L06 | media/lua/server/Farming/SFarmingSystem.lua =====
+SHA256: 28576002bbab0e0561c713bc6b8e2d829d6cd7b917f5b8a702cbfcef46b39914
+   87: function SFarmingSystem:EveryTenMinutes()
+   88: 	local sec = math.floor(getGameTime():getTimeOfDay() * 3600)
+   89: 	local currentHour = math.floor(sec / 3600)
+   90: 	local day = getGameTime():getDay()
+   91: 	-- an hour has passed
+   92: 	if currentHour ~= self.previousHour then
+   93: 		self.hoursElapsed = self.hoursElapsed + 1
+   94: 		self.previousHour = currentHour
+   95: 		self.hourElapsedForWater = self.hourElapsedForWater + 1
+   96: 		-- every 2 hours, we lover the water lvl of all plant by 1
+  135:             luaObject:upDisease()
+  136:         end
+  137: 	end
+  138: end
+  139: 
+  140: -- up or low the health of our plant, depending on weather, if they are well watered, etc.
+  141: function SFarmingSystem:changeHealth()
+  142: --     print("Change Health")
+  143:     local seasons = getSandboxOptions():getOptionByName("PlantGrowingSeasons"):getValue() == true
+  144:     local noInside = getSandboxOptions():getOptionByName("KillInsideCrops"):getValue() == true
+  145: 
+  146: 
+  147:     for i=1,self:getLuaObjectCount() do
+  148:         local luaObject = self:getLuaObjectByIndex(i)
+  149:         if luaObject:isAlive() and luaObject.state ~= "plow" then
+  150: --             print("Plant " .. tostring(i))
+  151:             -- if the square is available we check the inside/outside status
+  152:             local greenhouse = false
+  153:             local luaObjectSquare = luaObject:getSquare()
+  154:             if luaObjectSquare then
+  155: --                 print("Plant Square" .. tostring(i))
+  156:                 luaObject.exterior = luaObjectSquare:isOutside()
+  157:                 -- and we will also calculate the weed level
+  158:                 -- look for grass, bushes, plants, etc. that aren't the plant itself
+  159:                 luaObject.hasWeeds = SFarmingSystem:hasWeeds(luaObjectSquare)
+  160:                 -- if the plant has enough of a pest flies infestation we apply flies to the square
+  161:                 if luaObject:hasVisibleFlies() then luaObjectSquare:setHasFlies(true) end
+  162:                 local room = luaObjectSquare:getRoom()
+  163:                 if not luaObject.exterior and room and room:getRoomDef() then
+  164:                     local roomDef = string.lower(room:getRoomDef():getName())
+
+===== L07 | media/lua/server/BuildingObjects/ISBuildIsoEntity.lua =====
+SHA256: 6f485b0a90b9b8583fc8112aeddcb3f50a50bf7d1c0c6bc369138ee781deda38
+    1: --[[
+    2:     To build iso objects via entity script.
+    3:     Objects require a EntityScript and SpriteConfig component.
+    4: --]]
+    5: local table_insert = table.insert;
+    6: 
+    7: ISBuildIsoEntity = ISBuildingObject:derive("ISBuildIsoEntity");
+    8: 
+    9: function ISBuildIsoEntity:walkTo(x, y, z)
+   10: 	local playerObj = self.character
+   11: 	local square = getCell():getGridSquare(x, y, z)
+   12: 
+   13: 	-- find all tiles the constructed entity will use, so we can avoid standing on them
+   14: 	local excludeTiles = self:getOccupiedTiles(square)
+   15: 
+   16: 	-- We should path to the bottom end of stairs, not the top end
+   17:     local name = self.objectInfo:getScript():getName();
+
+===== E31 | zombie/characters/IsoPlayer.java =====
+CFR source SHA256: 8e5a1082f286c52f8ec48e43f6ed4e6133869b1a4b9277ebc87cb400594d411c
+ 2155:         if (this.updateRemotePlayer()) {
+ 2156:             if (this.updateWhileDead()) {
+ 2157:                 return true;
+ 2158:             }
+ 2159:             this.updateAttackLoopSound();
+ 2160:             this.updateBringToBearSound();
+ 2161:             this.updateHeartSound();
+ 2162:             this.updateDraggingCorpseSounds();
+ 2163:             this.checkIsNearWall();
+ 2164:             this.checkIsNearVehicle();
+ 2165:             this.updateExt();
+ 2166:             this.setBeenMovingSprinting();
+ 2167:             this.updateAimingDelay();
+ 2168:             if (GameServer.server) {
+ 2169:                 this.updateMovementRates();
+ 2170:             }
+ 2171:             if (this.getVehicle() != null) {
+ 2172:                 this.updateEnduranceWhileInVehicle();
+ 2173:             } else {
+ 2174:                 this.updateEndurance();
+ 2175:             }
+ 2176:             return true;
+ 2177:         }
+ 2178:         assert (!GameServer.server);
+ 2179:         assert (!this.remote);
+ 2180:         assert (!GameClient.client || this.isLocalPlayer());
+ 2181:         IsoCamera.setCameraCharacter(this);
+ 2182:         instance = this;
+ 2183:         if (this.isLocalPlayer()) {
+ 2184:             IsoCamera.cameras[this.playerIndex].update();
+ 6269:     protected boolean updateRemotePlayer() {
+ 6270:         NetworkPlayerAI networkAi;
+ 6271:         if (!this.remote) {
+ 6272:             return false;
+ 6273:         }
+ 6274:         if (this.isSeatedInVehicle()) {
+ 6275:             this.updateRemotePlayerInVehicle();
+ 6276:         }
+ 6277:         if (GameServer.server) {
+ 6278:             ServerLOS.instance.doServerZombieLOS(this);
+ 6279:             ServerLOS.instance.updateLOS(this);
+ 6280:             if (this.isDead()) {
+ 6281:                 return true;
+ 6282:             }
+ 6283:             networkAi = this.getNetworkCharacterAI();
+ 6284:             this.isPlayerMoving = networkAi.moving;
+ 6285:             if (this.isCurrentState(PlayerSitOnFurnitureState.instance()) || this.isSeatedInVehicle()) {
+ 6286:                 this.isPlayerMoving = false;
+ 6287:             }
+ 6288:             this.currentSpeed = this.isPlayerMoving ? (this.isSprinting() ? 1.5f : (this.isRunning() ? 1.0f : 0.5f)) : 0.0f;
+ 6289:             if (this.isJustMoved() && !this.isNpc()) {
+ 6290:                 LuaEventManager.triggerEvent("OnPlayerMove", this);
+ 6291:             }
+ 6292:             this.removeFromSquare();
+ 6293:             this.setForceX(this.realx);
+ 6294:             this.setForceY(this.realy);
+ 6295:             this.setZ(this.realz);
+ 6296:             this.setLastZ(this.realz);
+ 6297:             this.ensureOnTile();
+ 6298:             this.setMovingSquareNow();
+ 6299:             if (this.slowTimer > 0.0f) {
+ 6300:                 this.slowTimer -= GameTime.instance.getRealworldSecondsSinceLastUpdate();
+ 6301:                 this.slowFactor -= GameTime.instance.getMultiplier() / 100.0f;
+ 6302:                 if (this.slowFactor < 0.0f) {
+ 6303:                     this.slowFactor = 0.0f;
+ 6304:                 }
+ 6305:             } else {
+ 6306:                 this.slowFactor = 0.0f;
+ 6307:             }
+ 6308:         }
+ 6309:         if (GameClient.client) {
+ 6310:             float distance;
+ 6311:             boolean isAnimalStuck;
+ 6312:             if (this.isCurrentState(BumpedState.instance())) {
+
+===== E32 | zombie/iso/fboRenderChunk/FBORenderCell.java =====
+CFR source SHA256: e0498a409f9749028c16260a7c570a4acdb3e542784e63f8970ca3dd291cbbb1
+ 3375:         int playerIndex = IsoCamera.frameState.playerIndex;
+ 3376:         if (isoMovingObject.getClass() == IsoPlayer.class) {
+ 3377:             return;
+ 3378:         }
+ 3379:         if (isoMovingObject.getCurrentSquare() == null) {
+ 3380:             return;
+ 3381:         }
+ 3382:         if (!isoMovingObject.isOnScreen()) {
+ 3383:             return;
+ 3384:         }
+ 3385:         if (isoMovingObject.getCurrentSquare().getLightInfo(playerIndex) == null) {
+ 3386:             return;
+ 3387:         }
+ 3388:         if (!this.shouldRenderSquare(isoMovingObject.getCurrentSquare())) {
+
+===== E33 | zombie/Lua/LuaManager.java =====
+CFR source SHA256: 7805eb436f10a3574f25e8b4aabd63ecde32ab08028959dd07a2aa54afe58de8
+--- public static void spawnHorde( ---
+ 4396:         public static void spawnHorde(float x, float y, float x2, float y2, float z, int count) {
+ 4397:             for (int spawned = 0; spawned < count; ++spawned) {
+ 4398:                 VirtualZombieManager.instance.choices.clear();
+ 4399:                 IsoGridSquare g = IsoWorld.instance.currentCell.getGridSquare(Rand.Next(x, x2), Rand.Next(y, y2), z);
+ 4400:                 if (g == null) continue;
+ 4401:                 VirtualZombieManager.instance.choices.add(g);
+ 4402:                 IsoZombie zombie = VirtualZombieManager.instance.createRealZombieAlways(IsoDirections.getRandom(), false);
+ 4403:                 zombie.dressInRandomOutfit();
+ 4404:                 ZombieSpawnRecorder.instance.record(zombie, "LuaManager.spawnHorde");
+ 4405:             }
+ 4406:         }
+ 4407: 
+ 4408:         @LuaMethod(name="createZombie", global=true)
+ 4409:         public static IsoZombie createZombie(float x, float y, float z, SurvivorDesc desc, int palette, IsoDirections dir) {
+ 4410:             VirtualZombieManager.instance.choices.clear();
+ 4411:             IsoGridSquare g = IsoWorld.instance.currentCell.getGridSquare(x, y, z);
+ 4412:             VirtualZombieManager.instance.choices.add(g);
+--- public static ArrayList<IsoZombie> addZombiesInOutfit(int x ---
+ 8356:         public static ArrayList<IsoZombie> addZombiesInOutfit(int x, int y, int z, int totalZombies, String outfit, Integer femaleChance) {
+ 8357:             return GlobalObject.addZombiesInOutfit(x, y, z, totalZombies, outfit, femaleChance, false, false, false, false, false, false, 1.0f);
+ 8358:         }
+ 8359: 
+ 8360:         @LuaMethod(name="addZombiesInOutfit", global=true)
+ 8361:         public static ArrayList<IsoZombie> addZombiesInOutfit(int x, int y, int z, int totalZombies, String outfit, Integer femaleChance, boolean isCrawler, boolean isFallOnFront, boolean isFakeDead, boolean isKnockedDown, boolean isInvulnerable, boolean isSitting, float health) {
+ 8362:             return GlobalObject.addZombiesInOutfit(x, y, z, totalZombies, outfit, femaleChance, isCrawler, isFallOnFront, isFakeDead, isKnockedDown, isInvulnerable, isSitting, health, false);
+ 8363:         }
+ 8364: 
+ 8365:         @LuaMethod(name="addZombiesInOutfit", global=true)
+--- public static BaseVehicle addVehicleDebug( ---
+ 8506:         public static BaseVehicle addVehicleDebug(String scriptName, IsoDirections dir, Integer skinIndex, IsoGridSquare sq) {
+ 8507:             if (dir == null) {
+ 8508:                 dir = IsoDirections.getRandom();
+ 8509:             }
+ 8510:             BaseVehicle v = new BaseVehicle(IsoWorld.instance.currentCell);
+ 8511:             if (!StringUtils.isNullOrEmpty(scriptName)) {
+ 8512:                 v.setScriptName(scriptName);
+ 8513:                 v.setScript();
+ 8514:                 if (skinIndex != null) {
+ 8515:                     v.setSkinIndex(skinIndex);
+ 8516:                 }
+ 8517:             }
+ 8518:             v.setDir(dir);
+ 8519:             float angle = dir.toAngle() + (float)Math.PI + Rand.Next(-0.2f, 0.2f);
+ 8520:             while ((double)angle > Math.PI * 2) {
+ 8521:                 angle = (float)((double)angle - Math.PI * 2);
+ 8522:             }
+ 8523:             v.savedRot.setAngleAxis(angle, 0.0f, 1.0f, 0.0f);
+ 8524:             v.jniTransform.setRotation(v.savedRot);
+ 8525:             v.setX(sq.x);
+ 8526:             v.setY(sq.y);
+ 8527:             v.setZ(sq.z);
+ 8528:             if (IsoChunk.doSpawnedVehiclesInInvalidPosition(v)) {
+ 8529:                 v.setSquare(sq);
+ 8530:                 sq.chunk.vehicles.add(v);
+ 8531:                 v.chunk = sq.chunk;

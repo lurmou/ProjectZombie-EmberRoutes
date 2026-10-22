@@ -1,0 +1,37 @@
+{
+  "version": "0.3.0",
+  "observedOn": "2026-10-19",
+  "mode": "SP",
+  "userFeedback": "测试成功，日志已经打印，没有什么问题",
+  "batch": "PASSED",
+  "casesPassed": 17,
+  "runtimeLogSha256": "549138DFB2115AD236F5B04CB2B28838C01C7E2BC9AA13D81F79D03E65F2D894",
+  "sourceConsoleSha256": "9CA2B20BCB50F9E2CAE6A6F80BC36F639EAE616CD9AF7AE0F3FF85F1011DDE52",
+  "saveRetirement": "PENDING observed; REMOVED not observed; final frame 30008",
+  "negativeScenarios": "no independent runtime log result observed",
+  "mp": "not tested",
+  "results": [
+    "LOG  : Lua          f:24404> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_APPROACH_SOURCE PASSED already adjacent and reachable",
+    "LOG  : Lua          f:24732> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_1 PASSED itemID=1577720200 copies=1 condition=1",
+    "LOG  : Lua          f:25072> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_2 PASSED itemID=978995276 copies=1 condition=9",
+    "LOG  : Lua          f:25423> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_3 PASSED itemID=737495034 copies=1 condition=2",
+    "LOG  : Lua          f:25648> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_APPROACH_DESTINATION PASSED movement=REACHED reach checked",
+    "LOG  : Lua          f:25998> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_1 PASSED itemID=1577720200 copies=1 condition=1",
+    "LOG  : Lua          f:26331> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_2 PASSED itemID=978995276 copies=1 condition=9",
+    "LOG  : Lua          f:26671> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_3 PASSED itemID=737495034 copies=1 condition=2",
+    "LOG  : Lua          f:26672> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_APPROACH_SOURCE PASSED already adjacent and reachable",
+    "LOG  : Lua          f:27025> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_TAKE_1 PASSED itemID=1577720200 copies=1 condition=1",
+    "LOG  : Lua          f:27363> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_TAKE_2 PASSED itemID=978995276 copies=1 condition=9",
+    "LOG  : Lua          f:27688> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_TAKE_3 PASSED itemID=737495034 copies=1 condition=2",
+    "LOG  : Lua          f:27895> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_APPROACH_DESTINATION PASSED movement=REACHED reach checked",
+    "LOG  : Lua          f:28247> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_PUT_1 PASSED itemID=1577720200 copies=1 condition=1",
+    "LOG  : Lua          f:28584> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_PUT_2 PASSED itemID=978995276 copies=1 condition=9",
+    "LOG  : Lua          f:28906> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL RETURN_PUT_3 PASSED itemID=737495034 copies=1 condition=2",
+    "LOG  : Lua          f:29231> :\t[EmberRoutesProbe] \t[EmberRoutes v0.3.0] HAUL VERIFY_RETURNED_NO_REPEAT PASSED three original items returned; queues empty"
+  ],
+  "finalLocations": [
+    "LOG  : Lua          f:29563> :\t[EmberRoutes v0.3.0] HAUL ITEM_LOCATION itemID=1577720200 root=false source=true destination=false",
+    "LOG  : Lua          f:29563> :\t[EmberRoutes v0.3.0] HAUL ITEM_LOCATION itemID=978995276 root=false source=true destination=false",
+    "LOG  : Lua          f:29563> :\t[EmberRoutes v0.3.0] HAUL ITEM_LOCATION itemID=737495034 root=false source=true destination=false"
+  ]
+}

@@ -1,0 +1,40 @@
+LOG  : General      f:13026> [EmberRoutes v0.16.0] LOGISTICS START settlement=b35561f3-9986-4aab-acd0-f10fc0575f8e workers=1
+LOG  : General      f:13043> [EmberRoutes v0.16.0] WORK STATE task=c5017951-8117-44fc-a3a9-7f05f3bddf76 npc=3fab1830-ea4d-4d65-bb85-73f47858841a state=RUNNING reason=EXPLICIT_START delivered=0/6
+LOG  : General      f:13214> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=923173822 phase=TAKE
+LOG  : General      f:13537> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=1664463051 phase=TAKE
+LOG  : General      f:13876> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=1087195940 phase=TAKE
+LOG  : General      f:14214> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=2017588447 phase=TAKE
+LOG  : General      f:14554> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=1322609019 phase=TAKE
+LOG  : General      f:14892> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=556432044 phase=TAKE
+LOG  : General      f:15445> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=923173822 phase=DELIVER
+LOG  : General      f:15784> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=1664463051 phase=DELIVER
+LOG  : General      f:16121> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=1087195940 phase=DELIVER
+LOG  : General      f:16427> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=2017588447 phase=DELIVER
+LOG  : General      f:16747> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=1322609019 phase=DELIVER
+LOG  : General      f:17087> [EmberRoutes v0.16.0] WORK TRANSFER task=c5017951-8117-44fc-a3a9-7f05f3bddf76 item=556432044 phase=DELIVER
+LOG  : General      f:17427> [EmberRoutes v0.16.0] WORK STATE task=c5017951-8117-44fc-a3a9-7f05f3bddf76 npc=3fab1830-ea4d-4d65-bb85-73f47858841a state=DONE reason=ALL_ORIGINAL_IDS_AT_DESTINATION delivered=6/6
+LOG  : General      f:17427> [EmberRoutes v0.16.0] WORK STATE task=85ed7011-a36c-4ab1-955a-d6ec7baad46c npc=3fab1830-ea4d-4d65-bb85-73f47858841a state=RUNNING reason=EXPLICIT_START delivered=0/4
+LOG  : General      f:17582> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=1974034824 phase=TAKE
+LOG  : General      f:17913> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=992499915 phase=TAKE
+LOG  : General      f:18235> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=2138315906 phase=TAKE
+LOG  : General      f:18536> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=1807032142 phase=TAKE
+LOG  : General      f:18876> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=1974034824 phase=DELIVER
+LOG  : General      f:19214> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=992499915 phase=DELIVER
+LOG  : General      f:19550> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=2138315906 phase=DELIVER
+LOG  : General      f:19884> [EmberRoutes v0.16.0] WORK TRANSFER task=85ed7011-a36c-4ab1-955a-d6ec7baad46c item=1807032142 phase=DELIVER
+LOG  : General      f:20221> [EmberRoutes v0.16.0] WORK STATE task=85ed7011-a36c-4ab1-955a-d6ec7baad46c npc=3fab1830-ea4d-4d65-bb85-73f47858841a state=DONE reason=ALL_ORIGINAL_IDS_AT_DESTINATION delivered=4/4
+LOG  : General      f:20221> [EmberRoutes v0.16.0] WORK STATE task=b128f540-9aaf-4110-b079-469015ba881f npc=3fab1830-ea4d-4d65-bb85-73f47858841a state=RUNNING reason=EXPLICIT_START delivered=0/6
+LOG  : General      f:20646> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=1055442122 phase=TAKE
+LOG  : General      f:20972> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=848902635 phase=TAKE
+LOG  : General      f:21292> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=2108877258 phase=TAKE
+LOG  : General      f:21624> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=2064777679 phase=TAKE
+LOG  : General      f:21949> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=879293365 phase=TAKE
+LOG  : General      f:22286> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=1517675832 phase=TAKE
+LOG  : General      f:23124> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=1055442122 phase=DELIVER
+LOG  : General      f:23425> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=848902635 phase=DELIVER
+LOG  : General      f:23760> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=2108877258 phase=DELIVER
+LOG  : General      f:24099> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=2064777679 phase=DELIVER
+LOG  : General      f:24436> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=879293365 phase=DELIVER
+LOG  : General      f:24756> [EmberRoutes v0.16.0] WORK TRANSFER task=b128f540-9aaf-4110-b079-469015ba881f item=1517675832 phase=DELIVER
+LOG  : General      f:25055> [EmberRoutes v0.16.0] WORK STATE task=b128f540-9aaf-4110-b079-469015ba881f npc=3fab1830-ea4d-4d65-bb85-73f47858841a state=DONE reason=ALL_ORIGINAL_IDS_AT_DESTINATION delivered=6/6
+LOG  : General      f:25055> [EmberRoutes v0.16.0] LOGISTICS WAIT settlement=b35561f3-9986-4aab-acd0-f10fc0575f8e npc=3fab1830-ea4d-4d65-bb85-73f47858841a reason=ONLY_PROTECTED_OR_SORTED accessible=4 inputs=2 storage=2 scanned=20 candidates=0 protected=1 claimed=0

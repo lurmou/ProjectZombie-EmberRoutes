@@ -1,0 +1,1 @@
+PASS 28 companion/driver assertions; native fakes NOT runtime evidence

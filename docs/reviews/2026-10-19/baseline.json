@@ -1,0 +1,98 @@
+{
+  "date": "2026-10-19",
+  "status": "static-review-only",
+  "runtimeTestsRun": false,
+  "artifacts": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "bytes": 65682033,
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "bytes": 13254999,
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    },
+    {
+      "path": "D:\\Project\\ProjectRemnants\\NPCFW.jar",
+      "bytes": 2263333,
+      "sha256": "5229EB5A6871514DE274FEB91E8DB353FDBDE8FB42FD9741493D40CDE85BA19E"
+    },
+    {
+      "path": "D:\\Project\\ProjectRemnants\\_decompiled\\NPCFW.jar",
+      "bytes": 1146606,
+      "sha256": "2A5FCA40046773DCFF3995D44A304D4952E53C1C6F5A9557B7A5A10937A38D2C"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\docs\\requirements\\2026-10-19-v3.1-original.txt",
+      "bytes": 37996,
+      "sha256": "2233992DD09971023A6547E9E59915D33D6FF9D69E4D54F92972528571C09A17"
+    }
+  ],
+  "method": "CFR 0.152 selective fresh decompilation of root NPCFW.jar; javap -c -p for IsoNPC, PhasingSystem, NPCDirectOrderController",
+  "generatedSources": [
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\ai\\leaves\\FollowLeaf.java",
+      "sha256": "40D926FF58FBAE4BB7F92404DF76520DA8AF58C438CA192D6DC2D4D1F3AF33C5"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\conversation\\NPCDirectOrderController.java",
+      "sha256": "3249832685098A685A20E0A74E7A699FCB77C26C003F80538E474ABB50E7881F"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\IsoNPC.java",
+      "sha256": "E7B52B7D52BB9C47C1E1DEB7A308334C5CD7304C32A0889E4FFE48EEED1F96A6"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\NPCBootstrap.java",
+      "sha256": "9981780F4BDA527F3AD510957E97E688769795A61309A42EEE915ADD7CA70CC5"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\NPCController.java",
+      "sha256": "EB2CFAC0EF8C2D5B196F44B126001BDC47119909E0EADE70456212941C7DD836"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\NPCFWAgent.java",
+      "sha256": "62925DE630A22F49404A9BE5850E0C33B0AB09789D638E415DCC7FE28A8DCB37"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\NPCManager.java",
+      "sha256": "7E7499D8D7BB6A006FEC85A7AC3FE2A7693EAF5182FC3940CB8FADAB349FABD2"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\NPCPlayerFactory.java",
+      "sha256": "6ACCFD25347F53D671A1DFE0828F90FAC34F0176A226DEAA2B181D5630F443D4"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\PhasingSystem.java",
+      "sha256": "9506FEB4580B739DA45F4B60A5542610E478FF0DF94E965FDF72B3F1137F83D4"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\core\\SelfCareCoordinator.java",
+      "sha256": "276BD6263553C0F7E8F65A755C511D3A611B99CAD7EDEC62C6B5DD426873B461"
+    },
+    {
+      "path": "C:\\Users\\MuMu\\Zomboid\\Workshop\\EmberRoutes\\build\\reference\\npcfw-current\\npcfw\\patch\\IsoPlayerPatch.java",
+      "sha256": "B94F15F9B63038E8C4B0FF4EF12ACE310E22537EBE56AA02D3FBB23AD34D9984"
+    }
+  ],
+  "referenceCopies": "Local ignored build/reference only; no upstream implementation copied into product",
+  "javaTools": [
+    {
+      "Name": "java.exe",
+      "Source": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe"
+    },
+    {
+      "Name": "javac.exe",
+      "Source": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe"
+    },
+    {
+      "Name": "javap.exe",
+      "Source": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javap.exe"
+    },
+    {
+      "Name": "jar.exe",
+      "Source": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\jar.exe"
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "version": "0.2.0",
+  "builtAtUtc": "2026-10-19T07:45:54.9958242Z",
+  "dependencies": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    }
+  ],
+  "java": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe",
+  "javac": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe",
+  "jarSha256": "ED4B3AAA199FF4C29BB05FD2D944415093376FCBAD234039F2E1F81DF20B8ED9",
+  "zipSha256": "109A68EDBA314A3385214E5778BA60F5ADCDAFF876E21FEF915849A544C7E2C5",
+  "jarEntries": [
+    "META-INF/",
+    "META-INF/MANIFEST.MF",
+    "emberroutes/",
+    "emberroutes/probe/",
+    "emberroutes/probe/BuildInfo.class",
+    "emberroutes/probe/Main.class",
+    "emberroutes/probe/ProbeMovement$Outcome.class",
+    "emberroutes/probe/ProbeMovement$PathResult.class",
+    "emberroutes/probe/ProbeMovement.class",
+    "emberroutes/probe/ProbeNpc.class",
+    "emberroutes/probe/ProbeRetirement$Result.class",
+    "emberroutes/probe/ProbeRetirement.class",
+    "emberroutes/probe/ProbeRules.class",
+    "emberroutes/probe/ProbeRuntime.class",
+    "emberroutes/probe/ProbeSession.class",
+    "emberroutes/probe/ProbeWorldLinks.class"
+  ],
+  "runtimeTestsRun": false,
+  "checks": {
+    "javaBuild": "pass",
+    "javaLogicAssertions": 61,
+    "luaBatchAssertions": 16,
+    "luaOrchestrationAssertions": 14,
+    "totalAssertions": 91,
+    "preflight": "pass",
+    "luaLS": {
+      "warnings": 0,
+      "errors": 0
+    },
+    "doclink": "pass: 8 documents, 0 errors, 0 warnings",
+    "newRuntime": "not run",
+    "mpCarrier": "not implemented",
+    "previousUserFeedback": "0.1.2: 可以了; no per-scenario acceptance record",
+    "yellowCircle": "no renderer in this package; specific source unconfirmed; external NPCFW injection present"
+  },
+  "evidenceFiles": [
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe.lua",
+      "sha256": "C88A3BD2DFEB7E10E5F082972B7A20BC97CFCE4CE53F2E12C022AB047B150752"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Actions.lua",
+      "sha256": "5E2F0B07A909DFDB80C48C5AE850A967B4A2FF27964E75952DB37EDA2E6E0BDA"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Batch.lua",
+      "sha256": "9E5616FE14B1435ACC2272340915EBFDACB66B260DD0BE1B1D48AC5A7F45F4AA"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua",
+      "sha256": "337FD5319775C4AC15D33D05DD7A92FA991FF99EE0566C446B6680B11064A43B"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Build.lua",
+      "sha256": "3B236B9FC9FCD5713003A11230BAD70208010D34B49BE53A54F7AAC35856C228"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbeLoader.lua",
+      "sha256": "83E05F7D123C5E4AE25BA05E0A0717DCEAC79D5836474DFA60C2D28C6DB0C74E"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/IG_UI.json",
+      "sha256": "D38895688D63C74C23B27FA33A48FA32F217B315AAC6AD804708FF272184508A"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/Sandbox.json",
+      "sha256": "3A984E1918A072D9B12311CC376BB96DCB2CE70A04B39F5A191AB1522305D9A1"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/IG_UI.json",
+      "sha256": "F55180309E48303E6A846C194CA323B1BAA978905EACED6F400EA956AA37F4BB"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/Sandbox.json",
+      "sha256": "C7CA0069F4B01E10B8F20DBFCD9ADC31111123986E6CDF26151F807A02E8E0CE"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/Main.java",
+      "sha256": "4CD766B5092E5B506C2BDE02499206DCDF1421AB3B690994D14468DA708AFEDA"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeMovement.java",
+      "sha256": "0492A49E2F5A9FE566BC50D76F7D8BB6E73D4059020E37922CF88D14619F302E"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeNpc.java",
+      "sha256": "2EC688D78F17ECE4160194124AC21757EBA483A19B0732470FC9ED2B4829FA43"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRetirement.java",
+      "sha256": "8D6E58460CF61F2D3D73D5EF1E48B0C409BE98B06D91564E3AED7BD3A161B18C"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRules.java",
+      "sha256": "D857223E9A52C1C0A744A5CFC6723E6C84308030AA81E6C4D162AACC9AE67D78"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRuntime.java",
+      "sha256": "F28D085E6A5B68ED352F5370D2571CECEBD72CC5319EF3BD137FE659AFF17A72"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeSession.java",
+      "sha256": "7E4A9BBEE17874CAC0E2DEE841D84378756CB70E8E4D6970AC3979B6980AB891"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeWorldLinks.java",
+      "sha256": "9A753270775888AF095BFE4A8685D70C1C310BCFEE752942EFF28AC625F3CF3C"
+    },
+    {
+      "path": "java/src/test/java/emberroutes/probe/ProbeLogicTest.java",
+      "sha256": "E914E992CC0EA1731BB3DE83226FE16388698F8BC1F3D557BA8D137A357E45F8"
+    },
+    {
+      "path": "tests/lua/actions-test.lua",
+      "sha256": "EA899BFEFFF9723F023F29BE21327B18968B27587BD334867D7398A11FF967E9"
+    },
+    {
+      "path": "tests/lua/batch-test.lua",
+      "sha256": "73B71DE2D49A39165968C521CDA2B9435B41D6AB98E37DA7B37F5D126C782DE0"
+    }
+  ]
+}

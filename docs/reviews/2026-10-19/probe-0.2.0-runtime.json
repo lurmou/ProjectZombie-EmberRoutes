@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "observedOn": "2026-10-19",
+  "mode": "SP",
+  "userFeedback": "测试完毕，日志已经打印，动作没有问题",
+  "batch": "PASSED",
+  "casesPassed": 10,
+  "runtimeLogSha256": "19521806E361B5CE1FB51AD5BEF79D94214F1058C090722AE77E688007E67F3C",
+  "sourceConsoleSha256": "DB2C22C4C26AD3F36C34B5DCFB1B3AB00782DA967919E937B7D2094727BB3265",
+  "saveRetirement": "PENDING followed by GameThread exited; REMOVED not observed",
+  "mp": "not tested",
+  "results": [
+    "LOG  : Lua          f:14178> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION PACK_INSTANCE PASSED cargoID=1546516700 copies=1 condition=1",
+    "LOG  : Lua          f:14674> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION UNPACK_INSTANCE PASSED cargoID=1546516700 copies=1 condition=1",
+    "LOG  : Lua          f:15553> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION EAT_EFFECT PASSED foodConsumed=0.07500000298023224 hungerReduced=0.07483702898025513",
+    "LOG  : Lua          f:17218> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION DRINK_EFFECT PASSED fluidConsumed=0.25 thirstReduced=0.123707115650177",
+    "LOG  : Lua          f:17406> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION CANCEL_TRANSFER PASSED cargoID=1546516700 copies=1 condition=1",
+    "LOG  : Lua          f:17770> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION CANCEL_EAT_PARTIAL PASSED foodConsumed=0.02633228898048401 hungerReduced=0.026240944862365723",
+    "LOG  : Lua          f:18355> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION CANCEL_DRINK_PARTIAL PASSED fluidConsumed=0.06563407182693481 thirstReduced=0.03233414888381958",
+    "LOG  : Lua          f:18826> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION REPEAT_PACK PASSED cargoID=1546516700 copies=1 condition=1",
+    "LOG  : Lua          f:19285> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION REPEAT_UNPACK PASSED cargoID=1546516700 copies=1 condition=1",
+    "LOG  : Lua          f:19616> :\t[EmberRoutesProbe] \t[EmberRoutes v0.2.0] ACTION IDLE_NO_REPEAT PASSED cargoID=1546516700 copies=1 condition=1"
+  ]
+}

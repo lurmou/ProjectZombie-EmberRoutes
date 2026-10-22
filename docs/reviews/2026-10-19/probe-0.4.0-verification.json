@@ -1,0 +1,198 @@
+{
+  "version": "0.4.0",
+  "builtAtUtc": "2026-10-19T09:57:04.205471Z",
+  "dependencies": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+      "sha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\ZombieBuddy.jar",
+      "sha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2"
+    }
+  ],
+  "java": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\java.exe",
+  "javac": "C:\\Users\\MuMu\\.jdks\\azul-25.0.3\\bin\\javac.exe",
+  "jarSha256": "C3C43ABEDF5B59E076AA6495103674B2BAFA1B63C9BD1B38B03034D980B08237",
+  "zipSha256": "6033863750CF164EB49FB51D376D089DC882DFBE72757B26E430BCD260B9C81A",
+  "jarEntries": [
+    "META-INF/",
+    "META-INF/MANIFEST.MF",
+    "emberroutes/",
+    "emberroutes/probe/",
+    "emberroutes/probe/BuildInfo.class",
+    "emberroutes/probe/Main.class",
+    "emberroutes/probe/ProbeMovement$Outcome.class",
+    "emberroutes/probe/ProbeMovement$PathResult.class",
+    "emberroutes/probe/ProbeMovement.class",
+    "emberroutes/probe/ProbeNpc.class",
+    "emberroutes/probe/ProbeRetirement$Result.class",
+    "emberroutes/probe/ProbeRetirement.class",
+    "emberroutes/probe/ProbeRules.class",
+    "emberroutes/probe/ProbeRuntime.class",
+    "emberroutes/probe/ProbeSession.class",
+    "emberroutes/probe/ProbeWorldLinks.class"
+  ],
+  "runtimeTestsRun": false,
+  "checks": {
+    "javaBuild": "pass",
+    "javaLogicAssertions": 65,
+    "luaFollowAssertions": 29,
+    "luaCompanionDriverAssertions": 28,
+    "luaPauseLifecycleAssertions": 8,
+    "luaBatchAssertions": 16,
+    "luaActionAssertions": 14,
+    "luaWorldHaulAssertions": 42,
+    "luaRealControllerHandoffAssertions": 6,
+    "totalUniqueAssertions": 208,
+    "preflight": "pass",
+    "luaLS": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "releaseCheck": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "doclink": "pass: 13 documents, 0 errors, 0 warnings",
+    "newRuntime": "not run",
+    "productDirection": "User decided single-player first; multiplayer adaptation interface retained, MP implementation deferred",
+    "persistence": "not implemented; temporary NPC must be removed before save"
+  },
+  "evidenceFiles": [
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe.lua",
+      "sha256": "DA8F0EB80002A22B7C2F504D60E5BC83CA4936872B048A7A0CB94BB79867DAC4"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Actions.lua",
+      "sha256": "7B8672990CA7CB76596F01555E8718AD9190BEA7FB1E117DD82BE8A07AFF4740"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Batch.lua",
+      "sha256": "9E5616FE14B1435ACC2272340915EBFDACB66B260DD0BE1B1D48AC5A7F45F4AA"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Companion.lua",
+      "sha256": "BE366BBD96A5E71AEF82B801FBFD38B2F7C3C268A35FAC94D684316443D562FA"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Driver.lua",
+      "sha256": "7D217332EDF7C0457A6812ECB29C5413E12585BAA569A9279A0E3466B29E4F88"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/FollowPolicy.lua",
+      "sha256": "97534E9FB75EE9576FC1E7D1EE04FA767107712982D74C9BCCDE81A33C64E36D"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Haul.lua",
+      "sha256": "5A366649C193D17BD8F87656ABF232852C1403FA5441A2C9B9DE1451B6889C76"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/HaulRules.lua",
+      "sha256": "864FCBFD50A0C6FB7F2BEC8A373A64E7C4724AF65148C6859DC1B10662AA3C74"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua",
+      "sha256": "C58A1C2AFE01B04C1C6087C3A71F2A9EFD9AE009482F1F5F8F10882CC45D1FE1"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Build.lua",
+      "sha256": "FDEE690C64430B279E17F0FA154E60D1BFC6008A720EAD19BA0C92D61E188E39"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Log.lua",
+      "sha256": "F04D6E2314CC524E08988251E34039DCBB8134DE8042BC28CE29498F816D7A7D"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbeLoader.lua",
+      "sha256": "83E05F7D123C5E4AE25BA05E0A0717DCEAC79D5836474DFA60C2D28C6DB0C74E"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/IG_UI.json",
+      "sha256": "B48BF2CA35BE47CF5FEA6C1698F835F8156F1C98BBF79489F8DCA69F1AFBB81E"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/CN/Sandbox.json",
+      "sha256": "3A984E1918A072D9B12311CC376BB96DCB2CE70A04B39F5A191AB1522305D9A1"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/IG_UI.json",
+      "sha256": "A73980C74591E78E118B140A814F9ABFED868FE6B2AF3DFD006E3981D3B5E8B4"
+    },
+    {
+      "path": "Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/EN/Sandbox.json",
+      "sha256": "C7CA0069F4B01E10B8F20DBFCD9ADC31111123986E6CDF26151F807A02E8E0CE"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/Main.java",
+      "sha256": "4CD766B5092E5B506C2BDE02499206DCDF1421AB3B690994D14468DA708AFEDA"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeMovement.java",
+      "sha256": "581F1FE769FE3E4E28DEE3AEAC9B32821AFEF1FFEA41A11DBFECA61705358C97"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeNpc.java",
+      "sha256": "8DB203388C36CFEA1E1D47554F29D739E632D022D22458618EB9A96D5845BF96"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRetirement.java",
+      "sha256": "8D6E58460CF61F2D3D73D5EF1E48B0C409BE98B06D91564E3AED7BD3A161B18C"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRules.java",
+      "sha256": "D857223E9A52C1C0A744A5CFC6723E6C84308030AA81E6C4D162AACC9AE67D78"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeRuntime.java",
+      "sha256": "42A4D0B50B30E78F83A86F7B077613F6314A43154030795F542832AA776CDE74"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeSession.java",
+      "sha256": "7E4A9BBEE17874CAC0E2DEE841D84378756CB70E8E4D6970AC3979B6980AB891"
+    },
+    {
+      "path": "java/src/main/java/emberroutes/probe/ProbeWorldLinks.java",
+      "sha256": "9A753270775888AF095BFE4A8685D70C1C310BCFEE752942EFF28AC625F3CF3C"
+    },
+    {
+      "path": "java/src/test/java/emberroutes/probe/ProbeLogicTest.java",
+      "sha256": "74E34C55648111C5397321151B77433DDA9B0999D39F76F54FF73ABC1381470C"
+    },
+    {
+      "path": "tests/lua/actions-test.lua",
+      "sha256": "7C3E585C87512702F4F41C637F4B1985706CE916501E9D6B1FB79123F8ECDE4A"
+    },
+    {
+      "path": "tests/lua/batch-test.lua",
+      "sha256": "73B71DE2D49A39165968C521CDA2B9435B41D6AB98E37DA7B37F5D126C782DE0"
+    },
+    {
+      "path": "tests/lua/boot-pause-test.lua",
+      "sha256": "A26FCA3608745AECF10923AA415FB93E86733CF187C8300FC9C64309CBD4B215"
+    },
+    {
+      "path": "tests/lua/companion-handoff-test.lua",
+      "sha256": "EBD3DC10472EA3E56D88EC741D9CA780C0D4B5A8F9096E978332229FB620ECDE"
+    },
+    {
+      "path": "tests/lua/companion-test.lua",
+      "sha256": "AAF72A016F6BA932B9A289C0D5A0E5B6663F34A904E1A02AB5BFC033AA0C01FC"
+    },
+    {
+      "path": "tests/lua/follow-policy-test.lua",
+      "sha256": "24190CDC39DC4EA6E03E4E673AFEA7B7EDBA23C4B75CEF7F32D33769D4DAC5DD"
+    },
+    {
+      "path": "tests/lua/haul-test.lua",
+      "sha256": "4B805A7C28B31D8D21D51106E125BA3DDF66139F79A33EA5E634D9101A9AC9FA"
+    }
+  ],
+  "enginePauseEvidence": {
+    "decompiler": "CFR 0.152",
+    "luaEventManagerSha256": "0F222118ACD490E983513692A1D51719D143CDE744CC0D23FFC37EF7DE5CEB53",
+    "method": "GameWindow normal logic: doUpdate = !GameTime.isGamePaused(); paused in-game branch triggers OnTickEvenPaused",
+    "gameWindowSha256": "660CF64158E9DBC6F8914101F93A2C08D9E377B2F8888655323B1010B17C6CAC"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "version": "0.5.2",
+  "gameVersion": "42.21.0",
+  "gameJarSha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33",
+  "excerpts": [
+    {
+      "file": "zombie/inventory/InventoryItem.java",
+      "start": 2166,
+      "lines": [
+        "    public String getName() {",
+        "        return this.getName(null);",
+        "    }",
+        "",
+        "    public String getName(IsoPlayer player) {",
+        "        if (this.getFluidContainer() != null) {",
+        "            return this.getFluidContainer().getUiName();",
+        "        }",
+        "        if (this.getWorldItem() != null && this.getWorldItem().getFluidContainer() != null) {",
+        "            return this.getWorldItem().getFluidUiName();"
+      ]
+    },
+    {
+      "file": "zombie/inventory/InventoryItem.java",
+      "start": 2943,
+      "lines": [
+        "    public String getDisplayName() {",
+        "        return this.name;",
+        "    }",
+        ""
+      ]
+    },
+    {
+      "file": "zombie/characters/BodyDamage/BodyDamage.java",
+      "start": 1565,
+      "lines": [
+        "    public void RestoreToFullHealth() {",
+        "        for (int i = 0; i < BodyPartType.ToIndex(BodyPartType.MAX); ++i) {",
+        "            this.getBodyParts().get(i).RestoreToFullHealth();",
+        "        }",
+        "        if (this.parentChar != null && this.parentChar.getStats() != null) {",
+        "            this.stats.resetStats();",
+        "        }",
+        "        if (this.parentChar != null) {",
+        "            this.parentChar.setCorpseSicknessRate(0.0f);",
+        "        }",
+        "        this.setInfected(false);",
+        "        this.setIsFakeInfected(false);",
+        "        this.setOverallBodyHealth(100.0f);",
+        "        this.setCatchACold(0.0f);",
+        "        this.setHasACold(false);",
+        "        this.setColdStrength(0.0f);",
+        "        this.setSneezeCoughActive(0);",
+        "        this.setSneezeCoughTime(0);",
+        "        this.setInfectionTime(-1.0f);",
+        "        this.setInfectionMortalityDuration(-1.0f);",
+        "        if (this.thermoregulator != null) {",
+        "            this.thermoregulator.reset();",
+        "        }",
+        "        MusicIntensityConfig.getInstance().restoreToFullHealth(this.parentChar);"
+      ]
+    },
+    {
+      "file": "zombie/characters/BodyDamage/BodyDamage.java",
+      "start": 1949,
+      "lines": [
+        "        if (this.parentChar.getMoodles().getMoodleLevel(MoodleType.HUNGRY) == 4) {",
+        "            hungryDamage = this.getHealthReductionFromSevereBadMoodles() / 50.0f * GameTime.instance.getMultiplier();",
+        "            reductionAmmount += hungryDamage;",
+        "        }",
+        "        if (this.parentChar.getMoodles().getMoodleLevel(MoodleType.SICK) == 4) {",
+        "            if (this.stats.get(CharacterStat.FOOD_SICKNESS) > this.stats.get(CharacterStat.ZOMBIE_INFECTION)) {",
+        "                sickDamage = this.getHealthReductionFromSevereBadMoodles() * GameTime.instance.getMultiplier();",
+        "                reductionAmmount += sickDamage;",
+        "            } else if (SandboxOptions.instance.woundInfectionFactor.getValue() > 0.0 && this.getGeneralWoundInfectionLevel() > this.stats.get(CharacterStat.ZOMBIE_INFECTION)) {",
+        "                sickDamage = this.getHealthReductionFromSevereBadMoodles() * GameTime.instance.getMultiplier();",
+        "                reductionAmmount += sickDamage;",
+        "            }",
+        "        }",
+        "        if (this.parentChar.getMoodles().getMoodleLevel(MoodleType.BLEEDING) == 4) {",
+        "            bleedingDamage = this.getHealthReductionFromSevereBadMoodles() * GameTime.instance.getMultiplier();",
+        "            reductionAmmount += bleedingDamage;",
+        "        }",
+        "        if (this.parentChar.getMoodles().getMoodleLevel(MoodleType.THIRST) == 4) {",
+        "            thirstDamage = this.getHealthReductionFromSevereBadMoodles() / 10.0f * GameTime.instance.getMultiplier();",
+        "            reductionAmmount += thirstDamage;",
+        "        }"
+      ]
+    }
+  ],
+  "nativeRepairRun": false
+}

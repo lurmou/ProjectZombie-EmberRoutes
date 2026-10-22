@@ -1,0 +1,98 @@
+LOG  : General      f:0> [EmberRoutes v0.3.0] BOOT jar loaded; Lua API registered; runtime tests NOT RUN
+LOG  : Lua          f:0> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL FIXTURES_CLEANED
+LOG  : General      f:0> [EmberRoutes v0.3.0] READY version=0.3.0 game=42.21.0 4a0e9546ec zb=2.3.4 client=false server=false enabled=true driver=SP_NATIVE_CANDIDATE buildGameSha256=E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33
+LOG  : General      f:4023> [EmberRoutes v0.3.0] SPAWNED id=690eaefa-f1b2-4de4-8881-76ba680d5059 pos=2166.5,6069.5,0.0 attached=true world=true pending=false square=true updates=0 state=null target=0.0,0.0,0.0 pos=2166.5,6069.5,0.0 remaining=6444.575432097913 moving=false path=IDLE result=IDLE pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=null retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+LOG  : General      f:10596> [EmberRoutes v0.3.0] MOVE_TARGET origin=2166.5,6069.5,0.0 target=2162.5,6056.5,0.0 distance=13.601470508735444
+LOG  : General      f:10596> [EmberRoutes v0.3.0] MOVE_REQUESTED id=690eaefa-f1b2-4de4-8881-76ba680d5059 pos=2166.5,6069.5,0.0 attached=true world=true pending=false square=true updates=6573 state=IdleState target=2162.5,6056.5,0.0 pos=2166.5,6069.5,0.0 remaining=13.601470508735444 moving=true path=REQUESTED result=MOVING pathSteps=0 hasPath=false nextSet=false next=0.0,0.0 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+LOG  : General      f:10762> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2165.7625,6068.762,0.0 remaining=12.688786739720449 moving=true path=Working result=MOVING pathSteps=166 hasPath=true nextSet=true next=2165.5,6068.5 state=PlayerMovementState
+LOG  : General      f:10927> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2164.316,6067.316,0.0 remaining=10.967298645334605 moving=true path=Working result=MOVING pathSteps=331 hasPath=true nextSet=true next=2163.5,6066.5 state=PlayerMovementState
+LOG  : General      f:11093> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2162.8633,6065.863,0.0 remaining=9.369838069159787 moving=true path=Working result=MOVING pathSteps=497 hasPath=true nextSet=true next=2162.5,6065.5 state=PlayerMovementState
+LOG  : General      f:11220> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2162.5,6064.3555,0.0 remaining=7.85546875 moving=true path=Working result=MOVING pathSteps=624 hasPath=true nextSet=true next=2162.5,6063.5 state=PlayerMovementState
+LOG  : General      f:11376> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2162.5,6062.464,0.0 remaining=5.9638671875 moving=true path=Working result=MOVING pathSteps=780 hasPath=true nextSet=true next=2162.5,6061.5 state=PlayerMovementState
+LOG  : General      f:11536> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2162.5,6060.2925,0.0 remaining=3.79248046875 moving=true path=Working result=MOVING pathSteps=940 hasPath=true nextSet=true next=2162.5,6059.5 state=PlayerMovementState
+LOG  : General      f:11694> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2162.5,6056.5,0.0 pos=2162.5,6058.28,0.0 remaining=1.77978515625 moving=true path=Working result=MOVING pathSteps=1098 hasPath=true nextSet=true next=2162.5,6057.5 state=PlayerMovementState
+LOG  : General      f:11794> [EmberRoutes v0.3.0] MOVE_REACHED target=2162.5,6056.5,0.0 pos=2162.5,6056.891,0.0 remaining=0.39111328125 moving=false path=Working result=REACHED pathSteps=1197 hasPath=false nextSet=false next=2162.5,6056.5 state=PlayerMovementState displacement=13.22815271631947
+LOG  : Lua          f:19547> :	[EmberRoutes v0.3.0] HAUL TAGGED role=source id=ef0faf2a-b2b9-4c5f-8b90-998290091df8
+LOG  : Lua          f:21437> :	[EmberRoutes v0.3.0] HAUL TAGGED role=destination id=2e22d528-43f6-48bb-aae8-92a3286f97dd
+LOG  : General      f:22364> [EmberRoutes v0.3.0] MOVE_TARGET origin=2162.5,6056.891,0.0 target=2155.5,6047.5,0.0 distance=11.71294193024409
+LOG  : General      f:22364> [EmberRoutes v0.3.0] MOVE_REQUESTED id=690eaefa-f1b2-4de4-8881-76ba680d5059 pos=2162.5,6056.891,0.0 attached=true world=true pending=false square=true updates=18341 state=IdleState target=2155.5,6047.5,0.0 pos=2162.5,6056.891,0.0 remaining=11.71294193024409 moving=true path=REQUESTED result=MOVING pathSteps=0 hasPath=false nextSet=false next=2162.5,6056.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+LOG  : General      f:22494> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2161.9307,6056.1016,0.0 remaining=10.73966096886374 moving=true path=Working result=MOVING pathSteps=130 hasPath=true nextSet=true next=2161.5,6055.5 state=PlayerMovementState
+LOG  : General      f:22623> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2161.5,6054.516,0.0 remaining=9.231784528211902 moving=true path=Working result=MOVING pathSteps=259 hasPath=true nextSet=true next=2161.5,6054.5 state=PlayerMovementState
+LOG  : General      f:22787> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2160.7903,6052.7896,0.0 remaining=7.4810723721060866 moving=true path=Working result=MOVING pathSteps=423 hasPath=true nextSet=true next=2160.5,6052.5 state=PlayerMovementState
+LOG  : General      f:22951> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2159.5,6051.2754,0.0 remaining=5.50032493325057 moving=true path=Working result=MOVING pathSteps=587 hasPath=true nextSet=true next=2159.5,6050.5 state=PlayerMovementState
+LOG  : General      f:23080> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2158.5334,6050.5005,0.0 remaining=4.266700392486724 moving=true path=Working result=MOVING pathSteps=716 hasPath=true nextSet=true next=2158.5,6050.5 state=PlayerMovementState
+LOG  : General      f:23245> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2156.5205,6050.5,0.0 remaining=3.1688225250672426 moving=true path=Working result=MOVING pathSteps=881 hasPath=true nextSet=true next=2156.5,6050.5 state=PlayerMovementState
+LOG  : General      f:23375> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2155.5754,6050.081,0.0 remaining=2.582156929962531 moving=true path=Working result=MOVING pathSteps=1011 hasPath=true nextSet=true next=2155.5,6049.5 state=PlayerMovementState
+LOG  : General      f:23540> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2155.5,6048.206,0.0 remaining=0.7060546875 moving=true path=Working result=MOVING pathSteps=1176 hasPath=true nextSet=true next=2155.5,6047.5 state=PlayerMovementState
+LOG  : General      f:23566> [EmberRoutes v0.3.0] MOVE_REACHED target=2155.5,6047.5,0.0 pos=2155.5,6047.8887,0.0 remaining=0.388671875 moving=false path=Working result=REACHED pathSteps=1201 hasPath=false nextSet=false next=2155.5,6047.5 state=PlayerMovementState displacement=11.403681478933217
+LOG  : Lua          f:24403> :	[EmberRoutes v0.3.0] HAUL FIXTURES_CLEANED
+LOG  : Lua          f:24403> :	[EmberRoutes v0.3.0] HAUL FIXTURE itemID=1577720200 type=Base.Pencil
+LOG  : Lua          f:24403> :	[EmberRoutes v0.3.0] HAUL FIXTURE itemID=978995276 type=Base.Screwdriver
+LOG  : Lua          f:24403> :	[EmberRoutes v0.3.0] HAUL FIXTURE itemID=737495034 type=Base.Spoon
+LOG  : Lua          f:24403> :	[EmberRoutes v0.3.0] HAUL JOB_STARTED cases=17 source=ef0faf2a-b2b9-4c5f-8b90-998290091df8 destination=2e22d528-43f6-48bb-aae8-92a3286f97dd
+LOG  : Lua          f:24404> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_APPROACH_SOURCE STARTED
+LOG  : Lua          f:24404> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_APPROACH_SOURCE PASSED already adjacent and reachable
+LOG  : Lua          f:24405> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_1 STARTED
+LOG  : Lua          f:24732> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:24733> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_2 STARTED
+LOG  : Lua          f:25072> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:25073> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_3 STARTED
+LOG  : Lua          f:25423> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_TAKE_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : General      f:25424> [EmberRoutes v0.3.0] MOVE_TARGET origin=2155.5,6047.8887,0.0 target=2157.5,6047.5,0.0 distance=2.037416458757516
+LOG  : General      f:25424> [EmberRoutes v0.3.0] MOVE_REQUESTED id=690eaefa-f1b2-4de4-8881-76ba680d5059 pos=2155.5,6047.8887,0.0 attached=true world=true pending=false square=true updates=21401 state=IdleState target=2157.5,6047.5,0.0 pos=2155.5,6047.8887,0.0 remaining=2.037416458757516 moving=true path=REQUESTED result=MOVING pathSteps=0 hasPath=false nextSet=false next=2155.5,6047.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+LOG  : Lua          f:25424> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_APPROACH_DESTINATION STARTED
+LOG  : General      f:25554> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2157.5,6047.5,0.0 pos=2155.9705,6047.796,0.0 remaining=1.5578997412523368 moving=true path=Working result=MOVING pathSteps=130 hasPath=true nextSet=true next=2157.5,6047.5 state=PlayerMovementState
+LOG  : General      f:25648> [EmberRoutes v0.3.0] MOVE_REACHED target=2157.5,6047.5,0.0 pos=2157.1118,6047.5703,0.0 remaining=0.3945001268858035 moving=false path=Working result=REACHED pathSteps=223 hasPath=false nextSet=false next=2157.5,6047.5 state=PlayerMovementState displacement=1.6429561220881876
+LOG  : Lua          f:25648> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_APPROACH_DESTINATION PASSED movement=REACHED reach checked
+LOG  : Lua          f:25649> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_1 STARTED
+LOG  : Lua          f:25998> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:25999> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_2 STARTED
+LOG  : Lua          f:26331> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:26332> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_3 STARTED
+LOG  : Lua          f:26671> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL OUTBOUND_PUT_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : Lua          f:26672> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_APPROACH_SOURCE STARTED
+LOG  : Lua          f:26672> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_APPROACH_SOURCE PASSED already adjacent and reachable
+LOG  : Lua          f:26673> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_TAKE_1 STARTED
+LOG  : Lua          f:27025> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_TAKE_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:27026> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_TAKE_2 STARTED
+LOG  : Lua          f:27363> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_TAKE_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:27364> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_TAKE_3 STARTED
+LOG  : Lua          f:27688> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_TAKE_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : General      f:27689> [EmberRoutes v0.3.0] MOVE_TARGET origin=2157.1118,6047.5703,0.0 target=2155.5,6047.5,0.0 distance=1.613349303502783
+LOG  : General      f:27689> [EmberRoutes v0.3.0] MOVE_REQUESTED id=690eaefa-f1b2-4de4-8881-76ba680d5059 pos=2157.1118,6047.5703,0.0 attached=true world=true pending=false square=true updates=23666 state=IdleState target=2155.5,6047.5,0.0 pos=2157.1118,6047.5703,0.0 remaining=1.613349303502783 moving=true path=REQUESTED result=MOVING pathSteps=0 hasPath=false nextSet=false next=2157.5,6047.5 state=IdleState retiring=false retirement=IDLE clearedLinks=0 attackers=0 health=100.0 failed=false reason=
+LOG  : Lua          f:27689> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_APPROACH_DESTINATION STARTED
+LOG  : General      f:27819> [EmberRoutes v0.3.0] MOVE_PROGRESS target=2155.5,6047.5,0.0 pos=2156.8162,6047.558,0.0 remaining=1.3174440950769435 moving=true path=Working result=MOVING pathSteps=130 hasPath=true nextSet=true next=2155.5,6047.5 state=PlayerMovementState
+LOG  : General      f:27895> [EmberRoutes v0.3.0] MOVE_REACHED target=2155.5,6047.5,0.0 pos=2155.888,6047.521,0.0 remaining=0.388507213888858 moving=false path=Working result=REACHED pathSteps=205 hasPath=false nextSet=false next=2155.5,6047.5 state=PlayerMovementState displacement=1.224870158145731
+LOG  : Lua          f:27895> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_APPROACH_DESTINATION PASSED movement=REACHED reach checked
+LOG  : Lua          f:27896> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_PUT_1 STARTED
+LOG  : Lua          f:28247> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_PUT_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:28248> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_PUT_2 STARTED
+LOG  : Lua          f:28584> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_PUT_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:28585> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_PUT_3 STARTED
+LOG  : Lua          f:28906> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL RETURN_PUT_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : Lua          f:28907> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL VERIFY_RETURNED_NO_REPEAT STARTED
+LOG  : Lua          f:29231> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL VERIFY_RETURNED_NO_REPEAT PASSED three original items returned; queues empty
+LOG  : Lua          f:29232> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL BATCH PASSED cases=17
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT state=PASSED cases=17
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_APPROACH_SOURCE PASSED already adjacent and reachable
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_TAKE_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_TAKE_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_TAKE_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_APPROACH_DESTINATION PASSED movement=REACHED reach checked
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_PUT_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_PUT_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT OUTBOUND_PUT_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_APPROACH_SOURCE PASSED already adjacent and reachable
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_TAKE_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_TAKE_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_TAKE_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_APPROACH_DESTINATION PASSED movement=REACHED reach checked
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_PUT_1 PASSED itemID=1577720200 copies=1 condition=1
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_PUT_2 PASSED itemID=978995276 copies=1 condition=9
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT RETURN_PUT_3 PASSED itemID=737495034 copies=1 condition=2
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL REPORT VERIFY_RETURNED_NO_REPEAT PASSED three original items returned; queues empty
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL ITEM_LOCATION itemID=1577720200 root=false source=true destination=false
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL ITEM_LOCATION itemID=978995276 root=false source=true destination=false
+LOG  : Lua          f:29563> :	[EmberRoutes v0.3.0] HAUL ITEM_LOCATION itemID=737495034 root=false source=true destination=false
+LOG  : Lua          f:30008> :	[EmberRoutesProbe] 	[EmberRoutes v0.3.0] HAUL FIXTURES_CLEANED
+LOG  : General      f:30008> [EmberRoutes v0.3.0] REMOVAL_PENDING body retained until safe; id=690eaefa-f1b2-4de4-8881-76ba680d5059 pos=2155.888,6047.521,0.0 attached=true world=true pending=false square=true updates=25985 state=IdleState target=2155.5,6047.5,0.0 pos=2155.888,6047.521,0.0 remaining=0.388507213888858 moving=false path=Working result=STOPPED pathSteps=205 hasPath=false nextSet=false next=2155.5,6047.5 state=IdleState retiring=true retirement=WAITING clearedLinks=0 attackers=0 health=100.0 failed=false reason=

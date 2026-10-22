@@ -1,0 +1,15 @@
+{
+  "version": "0.5.3",
+  "previousRuntime": "SAVE cancellation/cleanup/checkpoint succeeded; later haul restart threw INVALID_TILE",
+  "localChecks": {
+    "javaBuild": "PASS",
+    "saveThenRestart": "PASS",
+    "releaseCheck": "PASS",
+    "luaRegression": "PASS",
+    "doclink": "PASS",
+    "preflight": "PASS (LuaLS 0 errors, 0 warnings)"
+  },
+  "currentEngineRetest": "NOT RUN",
+  "approachPolicy": "vanilla exclusions; max 8; no loaded floor/solid/solidtrans gate relaxation",
+  "expectedRejection": "FAILED step with reason, not Lua error"
+}

@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-21",
+  "kind": "read-only crafting review",
+  "gameVersion": "42.21.0",
+  "projectzomboidJarSha256": "E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33",
+  "zombieBuddyVersion": "2.3.4",
+  "zombieBuddyJarSha256": "EB79B9876332010733A8E0D7CE4FE0377846059A9E28859029E2A0FB449F6CF2",
+  "requirementsSha256": "3A179F1907B8971E0DD13F8FC2FFA300F0661E6F68C7AA0E7EC3E37202499834",
+  "sources": [
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\media\\scripts\\generated\\recipes\\recipes_carving.txt",
+      "sha256": "76C4A9E7B8FDC2BA3CE75739BC2A173207103EA809A7234E7153DCD321D7C324"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\media\\scripts\\generated\\entities\\outdoors\\entity_chopping_block.txt",
+      "sha256": "0E85A6D0A6F347F72F695BC0A272F5095664ABF9DE7C12A6CB3E8E70A92B1E6A"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\media\\lua\\shared\\Entity\\TimedActions\\ISHandcraftAction.lua",
+      "sha256": "EC72BDF147613FEF617FBF57C88776FEE5A58C05BB8DC80CB05075C90B753E2E"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\media\\lua\\shared\\ActionManager.lua",
+      "sha256": "1D79E44A1861916D9173845625A7794308AB9F6E4783909246623148653D12AA"
+    },
+    {
+      "path": "D:\\Software\\GameApp\\steam\\steamapps\\common\\ProjectZomboid\\media\\lua\\client\\Entity\\ISUI\\ISBaseEntityWindow.lua",
+      "sha256": "757F5BEC561F557D0BC7DFD4CB72E953A79C3626B953636ABB9E7D87E78C884D"
+    }
+  ],
+  "gameEngineRun": false,
+  "kahluaContractAudit": "stop invokes cancel and complete; performRecipe returns nil on success/failure; native host mocked",
+  "pzoptJarSha256": "BCE7EA210FC5C5392CA691A14345D90131B1D664D4D8A1876600A1AC46FD1D3D",
+  "pzoptOverridesAmongReviewedClasses": [
+    "zombie/characters/IsoGameCharacter.class",
+    "zombie/characters/IsoPlayer.class"
+  ],
+  "pzoptKnowledgeMethodsMatchVanillaIgnoringConstantPoolIndices": false,
+  "pzoptKnowledgeSemanticReview": "Manual branch review: CraftRecipe knowledge predicate and learnRecipe(String,boolean) retain the reviewed vanilla semantics; raw comparison differs because control flow is reshaped. Static inference only, not an engine compatibility test.",
+  "pzoptReviewClasspath": "pzopt/aot/pzopt.jar before projectzomboid.jar; runtime class origin not instrumented"
+}

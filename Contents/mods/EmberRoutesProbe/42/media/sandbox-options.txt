@@ -1,0 +1,8 @@
+VERSION = 1,
+
+option EmberRoutes.CarrierProbe = {
+    type = boolean,
+    default = false,
+    page = EmberRoutes,
+    translation = EmberRoutes_CarrierProbe,
+}
