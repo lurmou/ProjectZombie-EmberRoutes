@@ -1,5 +1,7 @@
 # EmberRoutes 接力说明
 
+当前实验分支（experiment/modern-ae2-ui，commit 60ed243）：[制作草稿交互与全局滚动越界修复]。已修正缺料“0/1 (多出 1)”反向文案与无富余强制显示问题；CachedList/FilterList彻底封堵原版ISScrollingListBox滚到底部未截断并在平滑结束帧越界穿透1帧的引擎级Bug；增加数量步进器与Max测算。483项Kahlua双语测试、Preview绘制及Java逻辑与检查点构建全绿。真·AE2工作台矩阵方案待用户确认后可重构Slot组件，随时可一键checkout main干净回退。详细交接见brain中的[handoff-summary.md](file:///C:/Users/MuMu/.gemini/antigravity/brain/31cde183-606b-48ef-b8f0-ad9a63b50f5b/handoff-summary.md)。
+
 当前0.21.0：[配方浏览与条件适配](reviews/2026-10-22/probe-0.21.0-crafting-browser.md)。原版目录分片加载、搜索分类/图标分页、动态平台/材料工具、只读有界预检、独立工单视图已接入；草稿与工单隔离，隐藏释放，原制作效果和认领权威保留。相关Kahlua检查通过，新增实机未验，见[短使用](testing/single-player-crafting-browser.md)。最低存量/BOM/专用台仍后续。
 
 当前0.20.2：[制作页说明修正](reviews/2026-10-22/probe-0.20.2-crafting-clarity.md)。用户确认0.20.1锯原木正常，之前原木未实际入箱；本轮只修UI：手持隐藏平台、展示每批材料/保留工具/产物、区分目标与实际产量、工人暂停状态缓存。双语宿主检查通过，新UI实机未验。
