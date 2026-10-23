@@ -30,14 +30,32 @@ function Cards.rows()
         local lines={Cards.title(row),text('worker',row.name),Cards.reason(row.state)..' · '..Cards.reason(row.phase),
             text('delivered',row.delivered or 0,row.target or 0)}
         for i,line in ipairs(lines) do lines[i]=Text.wrapLimited(line,width,UIFont.Small,1)[1] or '' end
-        return {lines=lines,height=h*4+p*2,state=state(row)}
+        return {lines=lines,height=h*4+p*2+4,state=state(row)}
     end,draw=function(list,y,entry)
         local v=entry.item.visual local h,p=list.emberFontHeight,list.emberPad
         if y+list:getYScroll()+v.height<0 or y+list:getYScroll()>=list.height then return y+v.height end
         if list.selected==entry.index then Theme.rect(list,0,y,list.width,v.height,Theme.selected)
         elseif list.mouseoverselected==entry.index then Theme.rect(list,0,y,list.width,v.height,Theme.hover) end
-        Theme.rect(list,0,y,math.max(2,p/4),v.height,Visual.colors[v.state])
-        for i,line in ipairs(v.lines) do Theme.text(list,line,p,y+p/2+(i-1)*h,i==1 and Theme.textColor or Theme.muted) end
+        Theme.rect(list,0,y,math.max(3,p/3),v.height,Visual.colors[v.state] or Theme.accent)
+        for i,line in ipairs(v.lines) do Theme.text(list,line,p+4,y+p/2+(i-1)*h,i==1 and Theme.textColor or Theme.muted) end
+
+        -- Progress bar at card bottom
+        local target=entry.item.value.target or 0
+        local delivered=entry.item.value.delivered or 0
+        if target>0 then
+            local ratio=math.max(0,math.min(1,delivered/target))
+            local barW=list.width-p*2-8
+            local barH=math.max(3,math.floor(p/2.5))
+            local barY=y+v.height-barH-3
+            Theme.rect(list,p+4,barY,barW,barH,Theme.control)
+            if ratio>0 then
+                local fillColor=ratio>=1.0 and (Theme.status.READY or {r=0.35,g=0.88,b=0.60,a=1}) or Theme.accent
+                Theme.rect(list,p+4,barY,math.floor(barW*ratio),barH,fillColor)
+            end
+        end
+        -- Bottom subtle separator
+        Theme.rect(list,0,y+v.height-1,list.width,1,{r=0.20,g=0.28,b=0.35,a=0.5})
+
         return y+v.height
     end}
 end
@@ -58,9 +76,9 @@ function Cards.details(owner,bounds)
         end
         if not row then add(text('selectOrder'),Theme.muted)
         else
-            add(Cards.title(row),Theme.accent)
+            add(Cards.title(row),Theme.gold)
             add(text('identity',row.jobId),Theme.muted)
-            add(Cards.reason(row.state)..' · '..Cards.reason(row.phase),Visual.colors[state(row)])
+            add(Cards.reason(row.state)..' · '..Cards.reason(row.phase),Visual.colors[state(row)] or Theme.accent)
             add(text('worker',row.name))
             local activity=getTextOrNull('IGUI_EmberRoutesProbe_Monitor_body_'..row.bodyMode) or Cards.reason(row.bodyMode)
             add(text('body',activity),Theme.muted)
