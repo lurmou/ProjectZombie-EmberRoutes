@@ -780,5 +780,16 @@
   "IGUI_EmberRoutesProbe_Settlement_pin": "★ 收藏置顶",
   "IGUI_EmberRoutesProbe_Settlement_unpin": "取消置顶",
   "IGUI_EmberRoutesProbe_Settlement_pinHint": "将此物品无条件固定在列表最上方",
-  "IGUI_EmberRoutesProbe_Public_maintainPreview": "产物：%1 · 存量低于阈值时自动委托公共池"
+  "IGUI_EmberRoutesProbe_Public_maintainPreview": "产物：%1 · 存量低于阈值时自动委托公共池",
+  "IGUI_EmberRoutesProbe_Public_blueprintTitle": "工艺蓝图与配方链检查",
+  "IGUI_EmberRoutesProbe_Public_statusReady": "✓ 据点物料齐备，派发后工人可立即开工",
+  "IGUI_EmberRoutesProbe_Public_statusChain": "ℹ 检测到前置物料需求，已自动生成多步链式制作蓝图",
+  "IGUI_EmberRoutesProbe_Public_statusShortage": "⚠ 关键物料短缺，发布后将进入待补料排队状态",
+  "IGUI_EmberRoutesProbe_Public_statusChecking": "正在核对据点仓储库存与配方链…",
+  "IGUI_EmberRoutesProbe_Public_chainStepsHeading": "【 制作链步骤规划 (%1 步流水线) 】",
+  "IGUI_EmberRoutesProbe_Public_materialsHeading": "【 所需物料与据点库存 】",
+  "IGUI_EmberRoutesProbe_Public_toolsHeading": "【 所需工具 】",
+  "IGUI_EmberRoutesProbe_Public_outputHeading": "【 预期产出 】",
+  "IGUI_EmberRoutesProbe_Public_batchCount": "每批产出 %1 件 (共 %2 批)",
+  "IGUI_EmberRoutesProbe_Public_chainSupplyTag": "前置制作"
 }

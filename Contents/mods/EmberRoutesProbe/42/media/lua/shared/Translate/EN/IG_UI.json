@@ -780,5 +780,16 @@
   "IGUI_EmberRoutesProbe_Settlement_pin": "★ Pin to Top",
   "IGUI_EmberRoutesProbe_Settlement_unpin": "Unpin",
   "IGUI_EmberRoutesProbe_Settlement_pinHint": "Keep this item pinned to the top of the list",
-  "IGUI_EmberRoutesProbe_Public_maintainPreview": "Yield: %1 · Auto-dispatches to public pool when below threshold"
+  "IGUI_EmberRoutesProbe_Public_maintainPreview": "Yield: %1 · Auto-dispatches to public pool when below threshold",
+  "IGUI_EmberRoutesProbe_Public_blueprintTitle": "Crafting Blueprint & Chain Inspection",
+  "IGUI_EmberRoutesProbe_Public_statusReady": "✓ Materials ready, workers will execute immediately upon claim",
+  "IGUI_EmberRoutesProbe_Public_statusChain": "ℹ Precursors required, multi-step production chain automatically planned",
+  "IGUI_EmberRoutesProbe_Public_statusShortage": "⚠ Materials insufficient, order will queue until restocked",
+  "IGUI_EmberRoutesProbe_Public_statusChecking": "Checking settlement inventory and dependency chain...",
+  "IGUI_EmberRoutesProbe_Public_chainStepsHeading": "【 Production Chain Plan (%1 Steps) 】",
+  "IGUI_EmberRoutesProbe_Public_materialsHeading": "【 Required Materials & Stock 】",
+  "IGUI_EmberRoutesProbe_Public_toolsHeading": "【 Required Tools 】",
+  "IGUI_EmberRoutesProbe_Public_outputHeading": "【 Expected Output 】",
+  "IGUI_EmberRoutesProbe_Public_batchCount": "%1 per batch (%2 batches total)",
+  "IGUI_EmberRoutesProbe_Public_chainSupplyTag": "Precursor Craft"
 }
