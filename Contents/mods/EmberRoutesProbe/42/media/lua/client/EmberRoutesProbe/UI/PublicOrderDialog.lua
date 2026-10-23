@@ -161,10 +161,11 @@ function EmberRoutesPublicOrderDialog:createChildren()
     end
     self:addChild(self.quantity)
 
-    local function makeStepper(label,r,delta,targetBox)
+    local function makeStepper(label,r,delta,targetBox,minVal)
+        minVal=minVal or 1
         local btn=ISButton:new(r.x,r.y,r.width,r.height,label,self,function()
             local cur=tonumber(targetBox:getText()) or 0
-            local n=math.max(1,math.min(9999,cur+delta))
+            local n=math.max(minVal,math.min(9999,cur+delta))
             targetBox:setText(tostring(n))
             self.requestId=Registry.id()
             self:describe()
@@ -175,10 +176,10 @@ function EmberRoutesPublicOrderDialog:createChildren()
         return btn
     end
 
-    self.qStepDec5=makeStepper('-5',qCols[3],-5,self.quantity)
-    self.qStepDec1=makeStepper('-1',qCols[4],-1,self.quantity)
-    self.qStepInc1=makeStepper('+1',qCols[5],1,self.quantity)
-    self.qStepInc5=makeStepper('+5',qCols[6],5,self.quantity)
+    self.qStepDec5=makeStepper('-5',qCols[3],-5,self.quantity,1)
+    self.qStepDec1=makeStepper('-1',qCols[4],-1,self.quantity,1)
+    self.qStepInc1=makeStepper('+1',qCols[5],1,self.quantity,1)
+    self.qStepInc5=makeStepper('+5',qCols[6],5,self.quantity,1)
 
     -- B. Stock Thresholds (Maintain Stock)
     local minCols=assert(Layout.axis({x=self.formRegion.x,y=self.formRegion.y+p/4,width=self.formRegion.width,height=h+p/2},
@@ -186,22 +187,26 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.minimumLabel=minCols[1]
     self.minimum=ISTextEntryBox:new('0',minCols[2].x,minCols[2].y,minCols[2].width,minCols[2].height)
     self.minimum:initialise()
+    self.minimum.target=self
+    self.minimum.onTextChangeFunction=function() self:describe() end
     self:addChild(self.minimum)
-    self.minStepDec5=makeStepper('-5',minCols[3],-5,self.minimum)
-    self.minStepDec1=makeStepper('-1',minCols[4],-1,self.minimum)
-    self.minStepInc1=makeStepper('+1',minCols[5],1,self.minimum)
-    self.minStepInc5=makeStepper('+5',minCols[6],5,self.minimum)
+    self.minStepDec5=makeStepper('-5',minCols[3],-5,self.minimum,0)
+    self.minStepDec1=makeStepper('-1',minCols[4],-1,self.minimum,0)
+    self.minStepInc1=makeStepper('+1',minCols[5],1,self.minimum,0)
+    self.minStepInc5=makeStepper('+5',minCols[6],5,self.minimum,0)
 
     local batchCols=assert(Layout.axis({x=self.formRegion.x,y=self.formRegion.y+h+p,width=self.formRegion.width,height=h+p/2},
         {{basis=h*8},{basis=h*5},{basis=h*3},{basis=h*3},{basis=h*3},{basis=h*3}},{gap=p/3}))
     self.batchLabel=batchCols[1]
     self.batch=ISTextEntryBox:new('10',batchCols[2].x,batchCols[2].y,batchCols[2].width,batchCols[2].height)
     self.batch:initialise()
+    self.batch.target=self
+    self.batch.onTextChangeFunction=function() self:describe() end
     self:addChild(self.batch)
-    self.bStepDec10=makeStepper('-10',batchCols[3],-10,self.batch)
-    self.bStepDec5=makeStepper('-5',batchCols[4],-5,self.batch)
-    self.bStepInc5=makeStepper('+5',batchCols[5],5,self.batch)
-    self.bStepInc10=makeStepper('+10',batchCols[6],10,self.batch)
+    self.bStepDec10=makeStepper('-10',batchCols[3],-10,self.batch,1)
+    self.bStepDec5=makeStepper('-5',batchCols[4],-5,self.batch,1)
+    self.bStepInc5=makeStepper('+5',batchCols[5],5,self.batch,1)
+    self.bStepInc10=makeStepper('+10',batchCols[6],10,self.batch,1)
 
     -- 6. Main Action Button
     self.actionButton=ISButton:new(self.actionRegion.x,self.actionRegion.y,self.actionRegion.width,self.actionRegion.height,text('submit'),self,function()

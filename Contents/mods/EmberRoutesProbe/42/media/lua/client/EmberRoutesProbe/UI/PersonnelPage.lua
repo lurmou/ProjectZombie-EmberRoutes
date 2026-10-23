@@ -97,6 +97,9 @@ function EmberRoutesPersonnelPage:createChildren()
     local listBounds=matrixParts[2]
     local listStyle={
         emptyColor=Theme.muted,
+        prepare=function(list,value)
+            return {height=math.floor(h*2.2)}
+        end,
         draw=function(list,y,entry)
             local item=entry.item.value
             local rowH=entry.height
