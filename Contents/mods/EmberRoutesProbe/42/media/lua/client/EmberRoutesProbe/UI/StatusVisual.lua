@@ -25,20 +25,18 @@ function Visual.badge(label,state,width,h,p)
         state=state,color=Visual.colors[state] or Theme.muted,width=width,height=h+p,h=h,p=p}
 end
 function Visual.drawBadge(owner,x,y,badge)
-    local r=(Theme.radius and Theme.radius>0) and math.floor(badge.height/2) or 0
-    Theme.rect(owner,x,y,badge.width,badge.height,Theme.control,false,r)
-    Theme.rect(owner,x,y,badge.width,badge.height,badge.color,true,r)
+    Theme.rect(owner,x,y,badge.width,badge.height,Theme.control)
+    Theme.rect(owner,x,y,badge.width,badge.height,badge.color,true)
     Visual.mark(owner,x+badge.p/2,y+badge.p/2+badge.h/4,badge.h/2,badge.state,badge.color)
     Theme.text(owner,badge.label,x+badge.h,y+badge.p/2,badge.color)
 end
 function Visual.meter(owner,x,y,width,height,fraction,color)
-    local r=(Theme.radius and Theme.radius>0) and math.max(1,math.floor(height/2)) or 0
-    Theme.rect(owner,x,y,width,height,Theme.control,false,r)
+    Theme.rect(owner,x,y,width,height,Theme.control)
     if fraction and fraction>0 then
-        local fillW=math.max(r*2,width*math.min(1,fraction))
-        Theme.rect(owner,x,y,fillW,height,color or Theme.accent,false,r)
+        local fillW=math.max(1,math.floor(width*math.min(1,fraction)))
+        Theme.rect(owner,x,y,fillW,height,color or Theme.accent)
     end
-    Theme.rect(owner,x,y,width,height,Theme.border,true,r)
+    Theme.rect(owner,x,y,width,height,Theme.border,true)
 end
 function Visual.steps(labels,width,h,p,index,state)
     local cells={} local slot=width/#labels

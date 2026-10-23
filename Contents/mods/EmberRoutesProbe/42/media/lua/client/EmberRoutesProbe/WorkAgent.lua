@@ -10,6 +10,7 @@ local Store=require "EmberRoutesProbe/LaborStore"
 local Driver=require "EmberRoutesProbe/Driver"
 local Producers=require "EmberRoutesProbe/LaborProducers"
 local Batch=require "EmberRoutesProbe/WorkBatch"
+local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Factory={}
 function Factory.new(npcId)
 local Work = { context = nil, step = nil, nextTick = 0 }
@@ -51,22 +52,70 @@ local function setState(record, state, reason)
 end
 
 function Work.busy() return Work.context ~= nil end
+function Work.stopAdapter(controller,ticket)
+    local c=Work.context
+    if not c then return nil,'NO_ACTIVE_TRANSFER' end
+    local record,root,generation=c.job,Registry.data(),c.job.generation
+    return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=c.npc,npcId=npcId,jobId=record.id,
+        same=function(paused)
+            if root~=Registry.data() or Store.record(npcId)~=record then return false end
+            if c.completed then return record.generation==c.closedGeneration end
+            if c.stopped then return record.generation==c.stoppedGeneration and record.state=='PAUSED' end
+            return not paused and record.generation==generation and Work.context==c
+        end,
+        pause=function(reason) if c.completed then return true end return Work.pause(reason,c) end,
+        effects=function()
+            if record.controlUncertain then return 'UNKNOWN' end
+            if c.completed then return 'KNOWN' end -- All originals were verified delivered before closing.
+            if not Registry.revalidate(c.source,'take',record.scopeId)
+                or not Registry.revalidate(c.destination,'put',record.scopeId) then return 'UNKNOWN' end
+            local index=View.index({c.source.container,c.npc:getInventory(),c.destination.container})
+            if not index then return 'UNKNOWN' end
+            for _,id in ipairs(record.items) do if not View.find(index,id) then return 'UNKNOWN' end end
+            return 'KNOWN'
+        end,
+        -- Physical transfers remain original IDs. Resume re-indexes actual containers;
+        -- no asset/quantity is declared delivered or freed by this adapter.
+        persist=function(fact)
+            if fact.effects=='UNKNOWN' then record.controlUncertain=true record.reason='RECONCILE_REQUIRED' Signals.changed(npcId) end
+            return c.completed or record.state=='PAUSED' and record.generation==c.stoppedGeneration
+        end})
+end
 
-function Work.pause(reason)
-    local context = Work.context
-    if not context then return end
+function Work.pause(reason,owned)
+    local context = owned or Work.context
+    if not context then
+        if Work.pendingJob then
+            local runtime=Runtime.current()
+            if runtime then runtime:stopJob(npcId,Work.pendingJob,reason or 'USER') end
+            Work.pendingJob=nil
+        end
+        return
+    end
+    if context.body and not owned then return context.body.requestStop(reason or 'USER') end
     -- Invalidate effect closures before clearing native queues.
-    Work.context, Work.step = nil, nil
-    local token=Store.pause(context.job)
-    setState(context.job, "PAUSED", reason or "USER")
-    ISTimedActionQueue.clear(context.npc)
-    ISTimedActionQueue.queues[context.npc]=nil
-    EmberRoutesProbeJava.stopCarrier(context.npc)
+    if not context.body then Work.context,Work.step=nil,nil end
+    if not context.stopped then
+        context.stopped=true
+        context.pauseToken=Store.pause(context.job)
+        setState(context.job, "PAUSED", reason or "USER")
+        context.stoppedGeneration=context.job.generation
+    end
+    local token=context.pauseToken
+    if context.body then
+        if not context.body.clear() or not context.body.stop() then return false end
+    else
+        ISTimedActionQueue.clear(context.npc)
+        ISTimedActionQueue.queues[context.npc]=nil
+        EmberRoutesProbeJava.stopCarrier(context.npc)
+    end
+    if Work.context==context then Work.context, Work.step = nil, nil end
     local ok,held=pcall(Work.hasCargo,context.actor)
     if ok and not held then Store.releaseCapacity(token) end
     if not context.job.producer and context.actor and not context.actor:isDead() then
         say(context.actor, "PAUSED", context.job.reason)
     end
+    return true
 end
 
 local function endpoints(record)
@@ -80,6 +129,7 @@ local function endpoints(record)
 end
 
 local function validate(context)
+    if context.body and not context.body.current() then return false,'CONTROL_REQUIRED' end
     if Work.context ~= context or isClient() or isServer() or not Probe.ready then return false, "DRIVER_UNAVAILABLE" end
     if not Store.valid(context.job,context.generation,context.token) then return false,"STALE_TASK" end
     if context.actor:isDead() or not EmberRoutesProbeJava.carrierPresent(context.npc)
@@ -93,7 +143,8 @@ local function validate(context)
     return Producers.check(context)
 end
 
-local function launch(actor, record)
+local function launch(actor, record,body,weights,nonPreemptive)
+    if record.controlUncertain then return 'RECONCILE_REQUIRED' end
     if record.format ~= 1 or record.kind ~= "EXPLICIT_TRANSFER" or record.executor ~= "ENTITY"
             or record.scopeId ~= "local-world" or type(record.items) ~= "table" or #record.items > 30 then
         return "TASK_FORMAT_UNSUPPORTED"
@@ -130,22 +181,68 @@ local function launch(actor, record)
     local preview={actor=actor,npc=npc,job=record,source=source,destination=destination}
     local allowed,producerReason=Producers.check(preview)
     if not allowed then return producerReason end
-    Probe.cancelAll("WORK_ORDER",npcId)
-    if not Haul.cleanup(npc) or not Actions.cleanupForHaul(npc) then return "CLEANUP_BLOCKED" end
+    if Probe.controlledExecution==true and not body then
+        local runtime=Runtime.current()
+        if not runtime then return 'ADMISSION_CLOSED' end
+        local root=Registry.data()
+        local previous=job()
+        local generation=previous and previous.generation
+        local copyWeights
+        if weights then copyWeights={} for id,n in pairs(weights) do copyWeights[id]=n end end
+        local c
+        local handle,why=runtime:submit({npcId=npcId,jobId=record.id,kind='TRANSFER',binding={id=npcId,handle=npc},
+            nonPreemptive=nonPreemptive==true,captureStop=true,reconcileErrors=true,
+            validate=function()
+                return Probe.ready and not actor:isDead() and Registry.data()==root and job()==previous
+                    and (not previous or previous.generation==generation) and not record.controlUncertain
+                    and not Work.context
+            end,
+            start=function(granted)
+                Work.pendingJob=nil
+                local value=launch(actor,record,granted,copyWeights)
+                c=Work.context
+                if c and c.job==record then return true end
+                return false,value,'UNCHANGED'
+            end,
+            tick=function() Work.tick() end,
+            finished=function() return c and Work.context~=c end,
+            stopAdapter=function(controller,ticket) return Work.stopAdapter(controller,ticket) end,
+            persistFailure=function(fact,reason)
+                if Registry.data()~=root then return false end
+                if fact.effects=='UNKNOWN' then
+                    if job()~=record then return false end
+                    record.controlUncertain=true record.reason=reason or 'RECONCILE_REQUIRED' Signals.changed(npcId)
+                end
+                return true
+            end})
+        if handle then Work.pendingJob=record.id end
+        return handle and 'QUEUED' or why
+    end
+    if not body then
+        Probe.cancelAll("WORK_ORDER",npcId)
+        if not Haul.cleanup(npc) or not Actions.cleanupForHaul(npc) then return "CLEANUP_BLOCKED" end
+    end
     if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
     local token,claimReason=Store.claim(record)
     if not token then return claimReason end
-    EmberRoutesProbeJava.stopCarrier(npc)
+    if not body then EmberRoutesProbeJava.stopCarrier(npc) end -- A native grant already requires an idle body.
     local context = { actor=actor, npc=npc, job=record, source=source, destination=destination,
-        generation=record.generation,token=token }
+        generation=record.generation,token=token,body=body }
     context.valid = function() return validate(context) end
     context.eligible = function(item) return Work.eligible(item) and Registry.accepts(context.destination,item) end
     context.transferred=function(item,_,to)
         if Store.valid(record,context.generation,token) and to==destination.container
             and item:getContainer()==to and to:getItems():contains(item) then Store.releaseCapacity(token,item:getID()) end
     end
+    -- Publish before a native effect can run; a full ledger is a safe refusal.
+    local published,why=Store.publish(record)
+    if not published then Store.finish(record) return why end
     Work.context, Work.step, Work.nextTick = context, nil, 0
     setState(record, "RUNNING", "EXPLICIT_START")
+    if body and weights then
+        local ok,why=Store.capacityBatch(token,record.destination,weights,destination.container:getFreeCapacity(npc))
+        if not ok then Work.pause(why) return why end
+    end
     return "STARTED " .. #record.items
 end
 
@@ -161,10 +258,10 @@ function Work.assign(actor,intent)
         if type(intent.weights)~="table" then return "TASK_FORMAT_UNSUPPORTED" end
         for _,id in ipairs(ids) do if type(intent.weights[id])~="number" then return "TASK_FORMAT_UNSUPPORTED" end end
     end
-    local record={id=Registry.id(),npcId=npcId,source=intent.source,destination=intent.destination,items=ids,phase="COLLECT",
+    local record={id=intent.jobId or Registry.id(),npcId=npcId,source=intent.source,destination=intent.destination,items=ids,phase="COLLECT",
         state="PAUSED",reason="CREATED",delivered=0,format=1,kind="EXPLICIT_TRANSFER",scopeId="local-world",executor="ENTITY",
         producer=intent.producer,settlementId=intent.settlementId,sourceMode=intent.sourceMode}
-    local result=launch(actor,record)
+    local result=launch(actor,record,nil,intent.weights,true)
     if Work.busy() then
         Store.publish(record)
         if intent.weights then
@@ -176,11 +273,11 @@ function Work.assign(actor,intent)
     return result
 end
 
-function Work.resume(actor)
+function Work.resume(actor,nonPreemptive)
     if Work.busy() then return "BUSY" end
     local record=job() if not record then return "NO_TASK" end
     if record.state=="DONE" then return "DONE" end
-    return launch(actor,record)
+    return launch(actor,record,nil,nil,nonPreemptive)
 end
 
 function Work.hasCargo(actor)
@@ -381,9 +478,11 @@ local function tick()
         local step, why = nextStep(context)
         if not step then
             if why == "DONE" then
+                context.job.state='DONE'
+                Store.finish(context.job)
+                context.completed=true context.closedGeneration=context.job.generation
                 Work.context = nil
                 setState(context.job, "DONE", "ALL_ORIGINAL_IDS_AT_DESTINATION")
-                Store.finish(context.job)
                 if not context.job.producer then say(context.actor, "DONE " .. #context.job.items) end
             elseif why=="CAPACITY_RESERVED" then
                 if context.job.reason~=why then context.job.reason=why log("WAIT task="..context.job.id.." reason="..why) end

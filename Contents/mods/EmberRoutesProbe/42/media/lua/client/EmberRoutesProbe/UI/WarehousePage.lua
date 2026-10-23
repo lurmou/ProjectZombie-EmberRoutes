@@ -91,7 +91,7 @@ function EmberRoutesWarehousePage:createChildren()
     if compact then self.pad=math.ceil(h*0.35) end
     local p=self.pad
     local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},
-        {{basis=h*4},{basis=h+p},{grow=1},{basis=h+p},{basis=h},{basis=h+p}},
+        {{basis=h*4+p},{basis=h+p},{grow=1},{basis=h+p},{basis=h},{basis=h+p}},
         {direction="column",padding=p,gap=p/2}))
     self.summary=Summary.new(regions[1],{
         {id="loaded",label=text("loaded")},{id="unloaded",label=text("unloaded")},{id="private",label=text("private")},
@@ -190,21 +190,20 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
     if not self.active then return end
     if changed.snapshot then
         local s=snapshot.snapshot
+        local c=s.counts or {}
+        local capRatio=c.usedWeight and c.totalCapacity and c.totalCapacity>0 and c.usedWeight/c.totalCapacity or nil
         if s.state=="READY" then
-            local c=s.counts
             self.summary:setValues({loaded=c.loaded.."/"..c.containers,unloaded=c.unloaded,private=c.private,
                 missing=c.missing,limited=c.limited,items=c.items})
-            local capRatio=(c.totalCapacity and c.totalCapacity>0) and (c.usedWeight/c.totalCapacity) or nil
             self.summary:setCoverage(c.usedWeight or c.loaded,c.totalCapacity or c.containers)
         elseif s.state~="UPDATING" or not s.retain then self.summary:setValues(nil) self.summary:setCoverage(nil,nil) end
         local note=""
         if s.state=="ERROR" and s.reason then note=text(s.reason)
-        elseif s.state=="READY" and c then
+        elseif s.state=="READY" and c and (c.fullCount or capRatio) then
             if c.fullCount and c.fullCount>0 then note="▲ "..c.fullCount.." "..text("limited")
             elseif capRatio then note=text(capRatio>0.8 and "capacityWarning" or "capacityAdequate").." ("..math.floor(capRatio*100).."%)" end
         end
-        local partial=s.state=="READY" and (s.counts.unloaded>0 or s.counts.private>0 or s.counts.missing>0 or s.counts.limited>0)
-        self.summary:setStatus(partial and "PARTIAL" or s.state,note)
+        self.summary:setStatus(s.state,note)
     end
     if not self.syncingPage and (changed.snapshot or changed.search or changed.category or changed.sort or changed.page) then
         local explicit=changed.search or changed.category or changed.sort or changed.page

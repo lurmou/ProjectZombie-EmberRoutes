@@ -116,7 +116,7 @@ function Cards.details(owner,bounds)
         if order and not order.released then
             if order.reason then add(Words.reason(order.reason),Visual.colors[state]) end
             if order.uncertain then add(text("uncertain"),Visual.colors.blocked)
-            elseif order.resumable and not worker.busy then add(text("continueHint"),Theme.accent) end
+            elseif order.resumable and not worker.orderBusy and order.state~='RUNNING' then add(text("continueHint"),Theme.accent) end
         end
         self.visual=v
         local list=self.list local entry=list.items[1]

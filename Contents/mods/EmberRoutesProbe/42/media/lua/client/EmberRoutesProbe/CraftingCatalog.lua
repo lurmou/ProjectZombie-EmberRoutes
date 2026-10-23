@@ -5,9 +5,12 @@ local Catalog={}
 local root,source,rows,byId,position,revision,done=nil,nil,{},{},0,0,false
 local queryState
 local categorySet={}
+local productionById,productionByType={},{}
+local lastSlice
 local function ensure()
     if root~=Registry.data() then
         root=Registry.data() source=nil rows={} byId={} categorySet={} position=0 revision=revision+1 done=false queryState=nil
+        productionById={} productionByType={} lastSlice=nil
     end
     if not source then
         local manager=getScriptManager()
@@ -16,12 +19,23 @@ local function ensure()
 end
 function Catalog.step()
     ensure() if done or not source then return end
+    local clock=_G.getTimestampMs
+    if type(clock)=="function" then
+        local now=clock() if lastSlice and now-lastSlice<8 then return end lastSlice=now
+    end
     for _=1,4 do
         if position>=source:size() then done=true revision=revision+1 break end
         local native=source:get(position) position=position+1
         local id=EmberRoutesProbeJava.recipeKey(native)
         if id~="" and not byId[id] then
             local spec,reason=Recipe.read(id)
+            if spec then
+                productionById[id]=spec
+                for kind in pairs(spec.outputs) do
+                    productionByType[kind]=productionByType[kind] or {}
+                    table.insert(productionByType[kind],spec)
+                end
+            end
             local category=native:getCategory() or "Other"
             local row={id=id,name=native:getTranslationName(),category=category,
                 supported=spec~=nil,reason=reason,surface=spec and spec.surface or false,
@@ -42,6 +56,10 @@ function Catalog.step()
             if row.supported then categorySet[category].supported=true end
         end
     end
+end
+-- Internal production lookup shares discovery with the browser; no second catalogue scan.
+function Catalog.productionIndex()
+    ensure() return productionById,productionByType,done
 end
 function Catalog.query(search,category,unsupported,page,size)
     ensure() size=math.max(1,math.min(size or 12,24))

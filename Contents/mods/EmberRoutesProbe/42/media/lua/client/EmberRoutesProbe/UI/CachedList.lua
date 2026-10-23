@@ -47,6 +47,9 @@ function Cached.create(owner,bounds,select,style)
         if self.smoothScrollTargetY then
             self.smoothScrollTargetY=math.max(-maxScroll,math.min(0,self.smoothScrollTargetY))
         end
+        if self.smoothScrollY then
+            self.smoothScrollY=math.max(-maxScroll,math.min(0,self.smoothScrollY))
+        end
         return maxScroll
     end
 

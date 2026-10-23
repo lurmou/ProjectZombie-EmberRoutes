@@ -72,6 +72,7 @@ local Dashboard={open=function(a,id)
     local owner={actor=a,entry=entries[id],valid=function() return true end}
     local panel=Page:new(owner,{x=0,y=0,width=width-p*2,height=height-24-p*2-h-p-p/2})
     function owner:close() panel:dispose() panel:removeFromUIManager() end
+    panel.title=entries[id].name
     panel:initialise() panel:addToUIManager() panel:activate() return panel
 end}
 local n=0 local function check(value,why) n=n+1 assert(value,why) end

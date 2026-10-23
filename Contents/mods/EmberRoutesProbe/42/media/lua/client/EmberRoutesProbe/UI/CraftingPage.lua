@@ -32,22 +32,23 @@ function EmberRoutesCraftingPage:createChildren()
     local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},{{basis=self.fontHeight+self.pad},{grow=1}},
         {direction="column",gap=self.pad/2}))
     self.viewBounds=regions[2]
-    local top=assert(Layout.axis(regions[1],{{grow=1},{grow=1}},{gap=self.pad/2}))
-    for i,id in ipairs({"recipes","orders"}) do
+    local top=assert(Layout.axis(regions[1],{{grow=1},{grow=1},{grow=1}},{gap=self.pad/2}))
+    for i,id in ipairs({"recipes","orders","maintainStock"}) do
         local r=top[i] local button=ISButton:new(r.x,r.y,r.width,r.height,Words.get("view_"..id),self,function() self:selectView(id) end)
         button:initialise() Theme.button(button) self:addChild(button) self.viewButtons[id]=button
     end
 end
-function EmberRoutesCraftingPage:selectView(id)
-    if id~="recipes" and id~="orders" then return end
+function EmberRoutesCraftingPage:selectView(id,args)
+    if id~="recipes" and id~="orders" and id~="maintainStock" then return end
     local previous=self.views[self.selectedView]
     if previous then previous:deactivate() previous:setVisible(false) end
     self.selectedView=id local view=self.views[id]
     if not view then
-        local module=id=="recipes" and "CraftingBrowser" or "CraftingOrders"
+        local module=id=="recipes" and "CraftingBrowser" or id=="orders" and "CraftingOrders" or "StockRules"
         view=require("EmberRoutesProbe/UI/"..module):new(self,self.viewBounds)
         view:initialise() self.views[id]=view self:addChild(view)
     end
+    if args and view.applyArgs then view:applyArgs(args) end
     view:setVisible(true) if self.active then view:activate() view:focusContent() end
     for key,button in pairs(self.viewButtons) do Theme.button(button,key==id) button.borderColor=key==id and Theme.accent or Theme.border end
 end

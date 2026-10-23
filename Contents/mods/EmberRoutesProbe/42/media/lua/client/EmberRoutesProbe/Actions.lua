@@ -1,12 +1,15 @@
 local Probe = require "EmberRoutesProbe/Boot"
 local Log = require "EmberRoutesProbe/Log"
 local Batch = require "EmberRoutesProbe/Batch"
+local Diagnostic=require 'EmberRoutesProbe/TaskDiagnostic'
+local View=require 'EmberRoutesProbe/InventoryView'
 require "TimedActions/ISTimedActionQueue"
 require "TimedActions/ISEatFoodAction"
 require "TimedActions/ISDrinkFluidAction"
 require "TimedActions/ISInventoryTransferAction"
 
 local Actions = { fixtures = nil, batch = nil, actor = nil, lastState = nil }
+local controlled
 local function log(message) Log.write("ACTION", message) end
 local function now() return getTimestampMs() end
 
@@ -14,23 +17,31 @@ local function busy()
     return Actions.batch and Actions.batch.state == "RUNNING"
 end
 
-local function clearQueue(npc)
+local function clearQueue(npc,body)
     -- clear() stops the engine action before clearing the Lua queue (native partial consumption).
+    if body then return body.clear() end
     ISTimedActionQueue.clear(npc)
 end
 
-function Actions.cancel(reason, npcId)
+function Actions.cancel(reason, npcId,body)
     if npcId and Actions.fixtures and EmberRoutesProbeJava.carrierId(Actions.fixtures.npc)~=npcId then return end
+    if not body and Diagnostic.active(controlled) then
+        if not npcId or npcId==controlled.binding.id then return Diagnostic.cancel(controlled,reason) end
+        return
+    end
     if busy() then Actions.batch:cancel(reason or "USER") end
-    if Actions.fixtures then clearQueue(Actions.fixtures.npc) end
+    if Actions.fixtures and (body or Probe.controlledExecution~=true) then clearQueue(Actions.fixtures.npc,body) end
 end
 
-local function cleanup()
+local function cleanup(body)
     local f = Actions.fixtures
     if not f then return true end
+    if Probe.controlledExecution==true and not body then return false end
+    if body and not body.current() then return false end
     local root = f.npc:getInventory()
     if f.bag then
         local contents = f.bag:getItems()
+        if contents:size()>512 then Actions.cleanupBlocked=true return false end
         for i = 0, contents:size() - 1 do
             local found = false
             for _, fixture in ipairs(f.items) do
@@ -46,6 +57,9 @@ local function cleanup()
     -- Check every location before removing anything; never dispose an unrelated item.
     for _, item in ipairs(f.items) do
         local container = item:getContainer()
+        if Probe.controlledExecution==true and not container then
+            Actions.cleanupBlocked=true log('CLEANUP_BLOCKED missing original fixture') return false
+        end
         if container and container ~= root and container ~= f.bag then
             Actions.cleanupBlocked = true
             log("CLEANUP_BLOCKED fixture moved to an unexpected container id=" .. item:getID())
@@ -57,7 +71,9 @@ local function cleanup()
         local container = item:getContainer()
         if container then container:Remove(item) end
     end
-    ISTimedActionQueue.queues[f.npc] = nil
+    if body then
+        if not body.clear() then return false end
+    else ISTimedActionQueue.queues[f.npc] = nil end
     Actions.fixtures = nil
     Actions.cleanupBlocked = false
     if Actions.batch and Actions.batch.state ~= "RUNNING" then
@@ -106,10 +122,10 @@ local function prepare(npc)
 end
 
 function Actions.isBusy() return busy() end
-function Actions.cleanupForHaul(npc)
+function Actions.cleanupForHaul(npc,body)
     if npc and Actions.fixtures and Actions.fixtures.npc~=npc then return true end
     if busy() then return false end
-    return cleanup()
+    return cleanup(body)
 end
 
 local function cargoCheck(f, dest)
@@ -123,10 +139,12 @@ local function cargoCheck(f, dest)
 end
 
 local function actionStep(f, name, kind, cancelAt, dest)
+    local body=f.body
     local step = { name = name }
-    local action, stopped, performed, cancelled, settledAt
+    local action, stopped, performed, attempted, cancelled, settledAt
     local beforeHunger, beforeThirst, beforeFood, beforeWater, source
     function step.start()
+        if body and not body.current() then return 'FAILED','CONTROL_REQUIRED' end
         local npc = f.npc
         if not EmberRoutesProbeJava.carrierActive(npc) then error("carrier unavailable or moving") end
         if not npc:getCharacterActions():isEmpty() then error("carrier already has a native action") end
@@ -148,26 +166,33 @@ local function actionStep(f, name, kind, cancelAt, dest)
             -- Both containers are on this NPC; native selectedContainer stays nil,
             -- avoiding player-slot loot UI. No global action class is patched.
         end
-        local nativeStop, nativePerform = action.stop, action.perform
+        local nativeStop, nativePerform, nativeValid = action.stop, action.perform, action.isValid
+        local nativeAnim,nativeUpdate=action.startActionAnim,action.update
+        action.isValid=function(self) return (not body or body.current()) and nativeValid(self) end
+        if nativeAnim then action.startActionAnim=function(self) if not body or body.current() then return nativeAnim(self) end end end
+        if nativeUpdate then action.update=function(self) if not body or body.current() then return nativeUpdate(self) end end end
         action.useProgressBar = false
         action.forceProgressBar = false
         action.stop = function(self)
-            nativeStop(self)
+            if body and (stopped or performed or not body.retained()) then return end
             stopped = true
+            nativeStop(self)
         end
         action.perform = function(self)
+            if body and (attempted or stopped or not body.current() or not self:isValid()) then return end
+            attempted=true
             nativePerform(self)
             performed = true
         end
-        ISTimedActionQueue.add(action)
+        if body then assert(body.add(action),'CONTROL_REQUIRED') else ISTimedActionQueue.add(action) end
     end
-    function step.cancel() clearQueue(f.npc) end
+    function step.cancel() clearQueue(f.npc,body) end
     function step.poll(time)
         if cancelAt and not cancelled and action.action and action:isStarted()
                 and action:getJobDelta() >= cancelAt then
             if action:getJobDelta() >= 1 then return "FAILED", "cancel window missed" end
             cancelled = true
-            clearQueue(f.npc)
+            clearQueue(f.npc,body)
             settledAt = time + 500
         end
         if ISTimedActionQueue.hasAction(action) then return "WAIT" end
@@ -231,21 +256,21 @@ function Actions.report()
     return Actions.batch.state
 end
 
-local function execute(actor, command)
+local function execute(actor, command,c)
     if command == "report" then return Actions.report() end
-    if Actions.fixtures and EmberRoutesProbeJava.selectedId
+    if not c and Actions.fixtures and EmberRoutesProbeJava.selectedId
         and EmberRoutesProbeJava.carrierId(Actions.fixtures.npc)~=EmberRoutesProbeJava.selectedId() then return "FIXTURE_OTHER_NPC" end
     if command == "cancel" then
         if Probe.cancelAll then Probe.cancelAll("USER") else Actions.cancel("USER") end
         return "CANCELLED"
     end
     if Probe.haulBusy and Probe.haulBusy() then return "BUSY" end
-    if command ~= "cleanup" and Probe.cancelCompanion then Probe.cancelCompanion("ACTION_ORDER") end
-    if command ~= "report" and Probe.cancelWork then Probe.cancelWork("ACTION_ORDER") end
+    if not c and command ~= "cleanup" and Probe.cancelCompanion then Probe.cancelCompanion("ACTION_ORDER") end
+    if not c and command ~= "report" and Probe.cancelWork then Probe.cancelWork("ACTION_ORDER") end
     if busy() then return "BUSY" end
-    if command == "cleanup" then return cleanup() and "CLEANED" or "CLEANUP_BLOCKED" end
+    if command == "cleanup" then return cleanup(c and c.body) and "CLEANED" or "CLEANUP_BLOCKED" end
     if not Probe.ready or not Probe.hasJava() then return Probe.unavailableCode() end
-    local npc = EmberRoutesProbeJava.actionCarrier(actor)
+    local npc = c and c.npc or EmberRoutesProbeJava.actionCarrier(actor)
     if not npc then return "CARRIER_UNAVAILABLE" end
     local health = npc:getBodyDamage():getOverallBodyHealth()
     if health < 95 then
@@ -253,9 +278,10 @@ local function execute(actor, command)
         return "INJURED"
     end
     if command == "suite" then
-        if not cleanup() then return "CLEANUP_BLOCKED" end
+        if not cleanup(c and c.body) then return "CLEANUP_BLOCKED" end
     end
     local f = prepare(npc)
+    f.body=c and c.body
     if not f or not f.bag or not f.ready then error("incomplete fixture setup") end
     if command == "prepare" then return "FIXTURES_READY" end
     local steps
@@ -284,8 +310,63 @@ local function execute(actor, command)
     return "STARTED"
 end
 
+local function evidence()
+    local f=Actions.fixtures
+    if not f then return {effects='KNOWN',ids={}} end
+    local ids={} local known=true
+    local containers={f.npc:getInventory()} if f.bag then containers[#containers+1]=f.bag end
+    local index=View.index(containers)
+    for _,item in ipairs(f.items) do
+        ids[#ids+1]=item:getID()
+        if not index or View.find(index,item:getID())~=item then known=false end
+        local container=item:getContainer()
+        if container~=f.npc:getInventory() and container~=f.bag then known=false end
+        if container and not container:getItems():contains(item) then known=false end
+    end
+    if f.bag then
+        local contents=f.bag:getItems()
+        if contents:size()>512 then return {effects='UNKNOWN',ids=ids} end
+        for i=0,contents:size()-1 do
+            local owned=false for _,item in ipairs(f.items) do if item==contents:get(i) then owned=true break end end
+            if not owned then known=false end
+        end
+    end
+    return {effects=known and 'KNOWN' or 'UNKNOWN',ids=ids}
+end
+function Actions.fixtureEvidence(npc)
+    if npc and Actions.fixtures and Actions.fixtures.npc~=npc then return {effects='KNOWN',ids={}} end
+    return evidence()
+end
+local function dispatch(actor,command)
+    if Probe.controlledExecution~=true or command=='report' then return execute(actor,command) end
+    if command=='cancel' then
+        if controlled and controlled.binding.id==EmberRoutesProbeJava.selectedId() then Diagnostic.cancel(controlled,'USER') end
+        return 'STOP_REQUESTED'
+    end
+    if command~='cleanup' and command~='prepare' and command~='suite' and command~='eat' and command~='drink'
+        and command~='pack' and command~='unpack' then return 'INVALID_COMMAND' end
+    if Diagnostic.active(controlled) then return 'BUSY' end
+    local result,c=Diagnostic.submit(actor,'ACTIONS',{
+        assets=true,recovery=command=='cleanup',
+        validate=function(binding)
+            return not busy() and (not Probe.haulBusy or not Probe.haulBusy())
+                and (not Actions.fixtures or Actions.fixtures.npc==binding.handle)
+                and (command=='cleanup' or binding.handle:getBodyDamage():getOverallBodyHealth()>=95)
+        end,
+        start=function(context)
+            context.result=execute(actor,command,context) context.recovered=context.result=='CLEANED'
+            return context.result=='STARTED' or context.result=='FIXTURES_READY' or context.recovered,context.result
+        end,
+        tick=function(context) Actions.tick(context) end,
+        finished=function() return not busy() end,
+        pause=function(context,reason) Actions.cancel(reason,context.binding.id,context.body) end,
+        evidence=evidence})
+    if c then controlled=c end
+    return result
+end
+
 function Actions.execute(actor, command)
-    local ok, result = pcall(execute, actor, command)
+    local ok, result = pcall(dispatch, actor, command)
     if not ok then
         Actions.cancel("ERROR")
         log("ERROR " .. tostring(result))
@@ -293,12 +374,14 @@ function Actions.execute(actor, command)
     end
     if result == "INJURED" then actor:Say(getText("IGUI_EmberRoutesProbe_ActionInjured"))
     else actor:Say(getText("IGUI_EmberRoutesProbe_ActionResult") .. " " .. tostring(result)) end
+    return result
 end
 
-function Actions.tick()
-    if not Actions.fixtures then return end
+function Actions.tick(context)
     local f = Actions.fixtures
     if not f or not f.npc then return end
+    local body=f.body
+    if body and (not context or context~=controlled or context.body~=body or not body.current()) then return end
     local npc = f.npc
     if not Probe.ready or not EmberRoutesProbeJava.carrierActive(npc) then
         if not Actions.cleanupBlocked then

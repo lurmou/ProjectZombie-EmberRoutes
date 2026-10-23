@@ -12,12 +12,29 @@ local Preview={}
 function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId)
     local request={root=Registry.data(),actor=actor,entryId=id,npcId=npcId,recipeId=recipeId,quantity=quantity,surfaceId=surfaceId,
         result={state="CHECKING",conditions={},counts={},skills={}}}
-    function request:cancel() self.cancelled=true self.plan=nil end
+    function request:cancel() self.cancelled=true self.plan=nil if self.chain then self.chain:cancel() end end
     function request:step()
         if self.cancelled then return end
         if self.root~=Registry.data() or not Ledger.view(actor,id) then self:cancel() return end
         if self.finished then return self.result end
         local r=self.result
+        if self.chain then
+            if not Driver.valid(self.binding) then
+                self.chain:cancel() self.chain=nil r.conditions[#r.conditions+1]="CARRIER_UNAVAILABLE"
+                r.state="BLOCKED" self.finished=true return r
+            end
+            local plan,why=self.chain:step()
+            if plan or why then
+                if plan then
+                    r.chain={nodes=plan.nodes} r.state=#r.conditions==0 and "READY" or "BLOCKED"
+                else
+                    r.blocker=self.chain.blocker
+                    r.conditions[#r.conditions+1]=why r.state=(why=="CHAIN_INVENTORY_UNKNOWN" or why=="CHAIN_PLAN_LIMIT") and "UNKNOWN" or "BLOCKED"
+                end
+                self.finished=true self.chain=nil return r
+            end
+            return
+        end
         if not self.started then
             self.started=true
             local function condition(code) r.conditions[#r.conditions+1]=code end
@@ -51,6 +68,7 @@ function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId)
             local entry,reason=Supply.entry(actor,npc,object,id)
             if not entry then condition(reason) r.state="BLOCKED" self.finished=true return r end
             self.plan,reason=Plan.new(entry,npc,spec,{id="preview",materials={},tools={},outputs={}},true,r.units)
+            self.entry=entry self.object=object
             if not self.plan then condition(reason) r.state="UNKNOWN" self.finished=true return r end
         end
         if not Driver.valid(self.binding) then
@@ -60,6 +78,13 @@ function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId)
         if ready or reason then
             r.counts=self.plan:counts()
             r.partial=self.plan.partial==true
+            if reason=="MATERIALS_UNAVAILABLE" or reason=="TOOLS_UNAVAILABLE" then
+                if r.partial then
+                    r.conditions[#r.conditions+1]=reason r.state="UNKNOWN" self.finished=true self.plan=nil return r
+                end
+                self.chain=require("EmberRoutesProbe/ProductionChain").new(actor,self.binding.handle,self.entry,recipeId,quantity,self.object,"preview",true)
+                self.plan=nil return
+            end
             if reason then r.conditions[#r.conditions+1]=reason end
             r.state=#r.conditions==0 and "READY" or r.partial and "UNKNOWN" or "BLOCKED"
             self.finished=true self.plan=nil return r

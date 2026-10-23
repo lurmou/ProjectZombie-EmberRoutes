@@ -1,6 +1,7 @@
 local build = require "EmberRoutesProbe/Build"
 local Log = require "EmberRoutesProbe/Log"
-local Probe = { build = build, ready = false, failureCode = "NOT_STARTED" }
+-- P1 complete execution path enabled for single-player acceptance. No live toggle.
+local Probe = { build = build, ready = false, runtimeReady=false, failureCode = "NOT_STARTED", controlledExecution=true }
 
 function Probe.hasJava()
     return EmberRoutesProbeJava and EmberRoutesProbeJava.begin
@@ -17,6 +18,14 @@ function Probe.hasJava()
         and EmberRoutesProbeJava.spawnAdditional and EmberRoutesProbeJava.selectCarrier
         and EmberRoutesProbeJava.workerCount and EmberRoutesProbeJava.workerIdAt
         and EmberRoutesProbeJava.saveCheckpointFor and EmberRoutesProbeJava.blockAllCheckpoints
+        and (Probe.controlledExecution~=true or (EmberRoutesProbeJava.captureCheckpointFor
+            and EmberRoutesProbeJava.saveBodyReady and EmberRoutesProbeJava.armSaveReceipt
+            and EmberRoutesProbeJava.verifySaveReceipt and EmberRoutesProbeJava.restoreCheckpointFor
+            and EmberRoutesProbeJava.acquireBodyControl and EmberRoutesProbeJava.releaseBodyControl
+            and EmberRoutesProbeJava.moveWithControl and EmberRoutesProbeJava.stopWithControl
+            and EmberRoutesProbeJava.bodyStopMask and EmberRoutesProbeJava.freezeBodyControl
+            and EmberRoutesProbeJava.thawBodyControl and EmberRoutesProbeJava.retireBodyControl
+            and EmberRoutesProbeJava.removeIdleCarrier))
 end
 
 function Probe.unavailableCode()
@@ -28,11 +37,13 @@ function Probe.unavailableMessage()
     local code = Probe.unavailableCode()
     if code == "MISSING_JAVA" then return getText("IGUI_EmberRoutesProbe_MissingJava") end
     if code == "VERSION_MISMATCH" then return getText("IGUI_EmberRoutesProbe_VersionMismatch") end
+    if code=='LEGACY_TASK_RESET_REQUIRED' or code=='LEGACY_STOCK_RESET_REQUIRED' then return getText('IGUI_EmberRoutesProbe_Public_'..code) end
     return getText("IGUI_EmberRoutesProbe_DriverNotReady") .. " " .. code
 end
 
 function Probe.begin()
     Probe.ready = false
+    Probe.runtimeReady = false
     Probe.restorePending = false
     Probe.failureCode = "NOT_STARTED"
     if not Probe.hasJava() then
@@ -53,16 +64,43 @@ function Probe.begin()
     Probe.restorePending = string.sub(result, 1, 5) == "READY" and enabled == true
     Probe.ready = string.sub(result, 1, 5) == "READY"
         or string.sub(result, 1, 14) == "RESET_REQUIRED"
+    local canExecute=string.sub(result,1,5)=='READY' and Probe.enabled
+    if canExecute and Probe.controlledExecution==true
+        and not (Probe.prepareTaskRecovery and Probe.beginTasks and Probe.tickTasks and Probe.resetTasks
+            and Probe.savePersistentCarrier and Probe.beforeStockSave and Probe.afterStockSave and Probe.resetStock) then
+        Probe.ready=false Probe.restorePending=false Probe.failureCode='RUNTIME_MODULES_MISSING'
+        Log.write('BOOT','RUNTIME_MODULES_MISSING controlled execution not started')
+        return
+    end
+    if canExecute and Probe.prepareTaskRecovery then
+        local ok,reason=pcall(Probe.prepareTaskRecovery)
+        if not ok then
+            Probe.ready=false Probe.restorePending=false Probe.failureCode='RECOVERY_RECORDS_INVALID'
+            for _,code in ipairs({'LEGACY_TASK_RESET_REQUIRED','LEGACY_STOCK_RESET_REQUIRED'}) do
+                if string.find(tostring(reason),code,1,true) then Probe.failureCode=code end
+            end
+            if Probe.beforeStockSave then Probe.beforeStockSave() end
+            Log.write('BOOT','RECOVERY_RECORDS_INVALID '..tostring(reason))
+        end
+    end
+    -- RESET_REQUIRED keeps native retirement ticking, never opens task admission.
+    Probe.runtimeReady=canExecute and Probe.ready
+    if Probe.runtimeReady and Probe.beginTasks then Probe.beginTasks() end
+    if Probe.runtimeReady and Probe.controlledExecution==true then
+        Log.write('BOOT','RUNTIME controlledExecution=true recovery=READY')
+    end
 end
 
 function Probe.tick()
     if Probe.tickPersistence then Probe.tickPersistence() end
+    if Probe.tickTasks then Probe.tickTasks() end
     if Probe.tickCrafting then Probe.tickCrafting() end
     if Probe.tickActions then Probe.tickActions() end
     if Probe.tickHaul then Probe.tickHaul() end
     if Probe.tickWork then Probe.tickWork() end
     if Probe.tickCompanion then Probe.tickCompanion() end
     if Probe.tickLogistics then Probe.tickLogistics() end
+    if Probe.tickPublicWork then Probe.tickPublicWork() end
     if Probe.tickCraftView then Probe.tickCraftView() end
     if Probe.ready then EmberRoutesProbeJava.tick() end
 end
@@ -85,7 +123,9 @@ function Probe.cancelEvery(reason)
 end
 
 function Probe.reset()
+    Probe.runtimeReady = false
     Probe.restorePending = false
+    if Probe.resetTasks then Probe.resetTasks() end
     if Probe.resetPersistence then Probe.resetPersistence() end
     if Probe.resetLogistics then Probe.resetLogistics() end
     Probe.cancelEvery("WORLD_RESET")

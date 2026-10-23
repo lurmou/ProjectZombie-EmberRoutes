@@ -29,12 +29,33 @@ function Grid.new(owner,bounds,select)
         ISPanel.prerender(self)
         if #self.cells==0 then Theme.text(self,self.empty or Words.get("catalogLoading"),self.pad,self.pad,Theme.muted) end
         local h,p=self.fontHeight,self.pad
+        local mx=self.getMouseX and self:getMouseX() or nil
+        local my=self.getMouseY and self:getMouseY() or nil
         for i,cell in ipairs(self.cells) do
-            Theme.rect(self,cell.x,cell.y,cell.width,cell.height,i==self.selected and Theme.selected or Theme.control)
-            Theme.rect(self,cell.x,cell.y,cell.width,cell.height,i==self.selected and Theme.accent or Theme.border,true)
+            local isSelected=(i==self.selected)
+            local isHover=mx and my and mx>=cell.x and mx<cell.x+cell.width and my>=cell.y and my<cell.y+cell.height
+            local bg=isSelected and Theme.selected or (isHover and Theme.hover or Theme.control)
+            local bc=isSelected and Theme.accent or (isHover and Theme.accent or Theme.border)
+
+            Theme.rect(self,cell.x,cell.y,cell.width,cell.height,bg)
+            Theme.rect(self,cell.x,cell.y,cell.width,cell.height,bc,true)
+
+            if isSelected then
+                -- Signature AE2 active slot cyber indicator: 2px fluix cyan bar on left edge
+                self:drawRect(cell.x,cell.y,2,cell.height,1,Theme.accent.r,Theme.accent.g,Theme.accent.b)
+            end
+
             if cell.icon then self:drawTextureScaledAspect(cell.icon,cell.x+p,cell.y+p,h*1.8,h*1.8,1,1,1,1) end
-            Theme.text(self,cell.row.supported and (cell.row.yield>1 and ("x"..cell.row.yield) or "") or "!",cell.x+cell.width-h*2,cell.y+p,Theme.accent)
-            for n,line in ipairs(cell.lines) do Theme.text(self,line,cell.x+p,cell.y+h*2+p+(n-1)*h,Theme.textColor) end
+            if not cell.row.supported then
+                Theme.text(self,"!",cell.x+cell.width-h*1.5,cell.y+p,Theme.gold or Theme.accent)
+            elseif cell.row.yield>1 then
+                local badge="x"..cell.row.yield
+                local bw=getTextManager():MeasureStringX(UIFont.Small,badge)
+                Theme.text(self,badge,cell.x+cell.width-bw-p,cell.y+p,Theme.accent)
+            end
+            for n,line in ipairs(cell.lines) do
+                Theme.text(self,line,cell.x+p,cell.y+h*2+p+(n-1)*h,isSelected and Theme.textColor or (isHover and Theme.textColor or Theme.textColor))
+            end
         end
     end
     function panel:onMouseDown(x,y)

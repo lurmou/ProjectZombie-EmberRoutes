@@ -1,5 +1,7 @@
 # ISUI基础与实施边界
 
+2026-10-23 当前产品布局与交互按[据点UI实施设计](superpowers/specs/2026-10-23-settlement-ui-design.md)：四页主控制台、两入口共用委托/最低存量编辑器，明确库存口径、Order取消收尾、人员/防御及接口门禁。0.22.16已接[第一轮外壳/旧工单监控](reviews/2026-10-23/settlement-ui-round1.md)，实机待验；下方版本记录是历史实现基础，不恢复独立配方黄页/物流调度页为最终目标。P1实机验收及公共Order接口迁移仍按BACKLOG推进。
+
 0.21.0已接[配方浏览与条件适配](reviews/2026-10-22/probe-0.21.0-crafting-browser.md)：CraftingPage仅管理内层视图生命周期；CraftingBrowser/CraftingDraft/RecipeGrid负责下单与图标槽，CraftingOrders复用工单视觉。目录缓存、只读预检、执行命令分开，代次取消和隐藏释放；新增实机/性能未验，下方提案与版本段落为历史截点。
 
 下一轮设计提案：[制作浏览与条件适配](superpowers/specs/2026-10-22-crafting-browser-design.md)。原版条件驱动适用组件、分离配方草稿/工单、图标槽与下单预检，尚未实施。当前0.20.2只完成[制作说明修正](reviews/2026-10-22/probe-0.20.2-crafting-clarity.md)，下方版本段落为历史截点。

@@ -11,7 +11,7 @@ function Plan.new(entry,npc,spec,record,select,units)
     local ids,why=Membership.query(entry) if not ids then return nil,why end
     local self={entry=entry,npc=npc,spec=spec,ids=ids,index=Sort.index(),locations={},position=1,phase="TARGETS",read=0,
         wanted={},demands={},select=select,matched=0}
-    for _,name in ipairs({"materials","tools","outputs"}) do for _,asset in ipairs(record[name]) do self.wanted[asset.id]=true end end
+    for _,name in ipairs({"materials","tools","outputs","held"}) do for _,asset in ipairs(record[name] or {}) do self.wanted[asset.id]=true end end
     if select then
         local pinned={}
         for _,tool in ipairs(record.tools) do

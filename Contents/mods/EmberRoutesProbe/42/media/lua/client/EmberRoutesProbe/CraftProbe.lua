@@ -13,6 +13,8 @@ local Producers=require "EmberRoutesProbe/LaborProducers"
 local Surfaces=require "EmberRoutesProbe/CraftSurfaces"
 local Signals=require "EmberRoutesProbe/LaborSignals"
 local Production=require "EmberRoutesProbe/Production"
+local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local View=require 'EmberRoutesProbe/InventoryView'
 require "Entity/TimedActions/ISHandcraftAction"
 require "TimedActions/ISInventoryTransferAction"
 ---@class EmberRoutesCraftProbeTransfer: ISInventoryTransferAction
@@ -34,6 +36,7 @@ local Craft={}
 local contexts,root,records={},nil,nil
 local drafts={}
 local saveCandidates,autoPending={},{}
+local requests={}
 local function log(record,message)
     Log.write("CRAFT","npc="..record.npcId.." order="..record.id.." "..message) Signals.changed(record.npcId)
 end
@@ -41,9 +44,7 @@ local function data()
     local current=Registry.data()
     if current~=root then
         drafts={}
-        local saved=current.craftProbes or {format=1,byNpc={}}
-        if saved.format~=1 or type(saved.byNpc)~="table" then error("CRAFT_RECORD_INVALID") end
-        Record.records(current)
+        local saved={byNpc=Record.records(current)}
         for _,record in pairs(saved.byNpc) do
             if record.phase=="COMMITTING" then record.uncertain=true end
             if record.state=="RUNNING" then
@@ -51,11 +52,69 @@ local function data()
                 record.state="PAUSED" record.reason="LOAD_RECOVERY" record.generation=record.generation+1
             end
         end
-        current.craftProbes=saved root,records=current,saved.byNpc
+        root,records=current,saved.byNpc
     end
     return records
 end
 function Craft.record(id) return data()[id] end
+function Craft.prepareRecovery() data() Store.data() end
+function Craft.restoreCandidate(actor,id,jobId)
+    local r=Craft.record(id)
+    if not r or r.id~=jobId or r.released or r.uncertain or r.phase=='COMMITTING' then return false end
+    -- Existing executors revalidate exact originals and claims on admission.
+    local result
+    if r.format==3 then result=Production.execute(actor,'resume',nil,id,{nonPreemptive=true})
+    else
+        -- Legacy resumes are routed through execute below; no new Job identity.
+        result=Craft.execute(actor,'resume',nil,id,true,nil,true)
+    end
+    return result=='QUEUED'
+end
+local function stoppedEffects(c)
+    local r=c.record
+    if r.uncertain then return 'UNKNOWN' end
+    if c.completed or (c.planning and Craft.record(r.npcId)~=r) then return 'KNOWN' end
+    local containers,seen={c.npc:getInventory()},{[c.npc:getInventory()]=true}
+    local function add(container)
+        if not seen[container] then seen[container]=true containers[#containers+1]=container end
+    end
+    if r.format==1 then add(c.actor:getInventory())
+    else
+        -- Include both ends even if transfer perform threw before updating its location cache.
+        for _,field in ipairs({'source','toolSource','destination','toolDestination','materialReturn'}) do
+            if r[field] then
+                local endpoint=Registry.resolve(r[field],(field=='source' or field=='toolSource') and 'take' or 'put','local-world')
+                if not endpoint then return 'UNKNOWN' end
+                add(endpoint.container)
+            end
+        end
+    end
+    local index=View.index(containers)
+    if not index or not View.find(index,r.toolId) or (not r.made and not View.find(index,r.materialId)) then return 'UNKNOWN' end
+    for _,id in ipairs(r.outputIds) do if not View.find(index,id) then return 'UNKNOWN' end end
+    return 'KNOWN'
+end
+function Craft.stopAdapter(id,controller,ticket)
+    if Production.handles(id) then return Production.stopAdapter(id,controller,ticket) end
+    local c=contexts[id]
+    if not c then return nil,'NO_ACTIVE_CRAFT' end
+    local r,world=c.record,Registry.data()
+    return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=c.npc,npcId=id,jobId=r.id,
+        same=function(paused)
+            if world~=Registry.data() then return false end
+            local saved=Craft.record(id)
+            if saved~=r and (not c.planning or saved~=c.previousRecord) then return false end
+            if c.completed then return r.generation==c.closedGeneration end
+            if c.stopped then return r.generation==c.stoppedGeneration and r.state=='PAUSED' end
+            return not paused and not r.released and r.generation==c.generation and contexts[id]==c
+        end,
+        pause=function(reason) if c.completed then return true end return Craft.pause(reason,id,c) end,
+        effects=function() return stoppedEffects(c) end,
+        persist=function(fact)
+            if fact.effects=='UNKNOWN' then r.uncertain=true end
+            Signals.changed(id) return c.completed or r.state=='PAUSED'
+        end})
+end
 function Craft.busy(id) return contexts[id]~=nil or Production.busy(id) end
 function Craft.retains(id) local record=Craft.record(id) return record and not record.released or false end
 local function releaseBench(context)
@@ -63,10 +122,13 @@ local function releaseBench(context)
     if context.ownsBench and object and object:getUsingPlayer()==context.npc then object:setUsingPlayer(nil) end
     context.ownsBench=false
 end
-function Craft.pause(reason,id)
-    if Production.handles(id) then Production.pause(reason,id) return end
+function Craft.pause(reason,id,owned)
+    if not owned and Production.handles(id) then return Production.pause(reason,id) end
+    local context=owned or contexts[id]
+    if context and context.body and not owned then return context.body.requestStop(reason or 'USER') end
+    local request=requests[id]
+    if not owned and request and request.root==Registry.data() then request.runtime:stopJob(id,request.jobId,reason or 'USER') end
     if reason~="SAVE" then saveCandidates[id]=nil autoPending[id]=nil end
-    local context=contexts[id]
     if not context then
         if reason=="USER" then
             local saved=Craft.record(id)
@@ -78,10 +140,18 @@ function Craft.pause(reason,id)
     end
     local record=context.record
     -- Fence effects before stopping; native stop also calls the completion callback.
-    context.cancelled=true record.generation=record.generation+1 record.state="PAUSED" record.reason=reason
-    if record.phase=="COMMITTING" then record.uncertain=true end
-    if context.action and ISTimedActionQueue.hasAction(context.action) then ISTimedActionQueue.clear(context.npc) end
-    releaseBench(context) Driver.stop(context.binding) contexts[id]=nil
+    if not context.stopped then
+        context.stopped=true context.cancelled=true record.generation=record.generation+1 record.state="PAUSED" record.reason=reason
+        context.stoppedGeneration=record.generation
+        if record.phase=="COMMITTING" then record.uncertain=true end
+    end
+    if context.body then
+        if not context.body.clear() then return false end
+    elseif context.action and ISTimedActionQueue.hasAction(context.action) then ISTimedActionQueue.clear(context.npc) end
+    releaseBench(context)
+    if context.body and not Driver.stop(context.binding,context.body) then return false end
+    if not context.body then Driver.stop(context.binding) end
+    if contexts[id]==context then contexts[id]=nil end
     if context.planning and not context.resumeOnly and not context.returnOnly then drafts[id]=record end
     if reason=="SAVE" then
         saveCandidates[id]={actor=context.actor,object=context.object,record=record,generation=record.generation,
@@ -90,17 +160,19 @@ function Craft.pause(reason,id)
     end
     log(record,"PAUSED reason="..tostring(reason).." uncertain="..tostring(record.uncertain==true))
     if not context.quiet and context.actor and not context.actor:isDead() then context.actor:Say(getText("IGUI_EmberRoutesProbe_CraftResult",tostring(reason))) end
+    return true
 end
 function Craft.pauseAll(reason)
     Production.pauseAll(reason)
     if reason~="SAVE" then saveCandidates,autoPending={},{} end
-    local ids={} for id in pairs(contexts) do ids[#ids+1]=id end
-    for _,id in ipairs(ids) do Craft.pause(reason,id) end
+    local ids={} for id in pairs(contexts) do ids[id]=true end
+    for id in pairs(requests) do ids[id]=true end
+    for id in pairs(ids) do Craft.pause(reason,id) end
 end
-function Craft.reset() Craft.pauseAll("WORLD_RESET") Production.reset() contexts={} drafts={} root,records=nil,nil end
+function Craft.reset() Craft.pauseAll("WORLD_RESET") Production.reset() contexts={} drafts={} requests={} root,records=nil,nil end
 local function current(context)
     local record=context.record
-    return contexts[record.npcId]==context and not context.cancelled
+    return (not context.body or context.body.current()) and contexts[record.npcId]==context and not context.cancelled
         and ((context.planning and not context.resumeOnly and not context.returnOnly) or Craft.record(record.npcId)==record)
         and record.generation==context.generation and (context.planning or record.state=="RUNNING")
         and not context.actor:isDead() and context.actor:getUsername()==record.requester
@@ -205,7 +277,10 @@ local function transfer(context,item,from,to,id,endpoint)
         end
         return true
     end
-    action.startActionAnim=function(self) nativeAnim(self) self.selectedContainer=nil end
+    action.startActionAnim=function(self)
+        if context.body and not context.body.current() then return end
+        nativeAnim(self) self.selectedContainer=nil
+    end
     action.perform=function(self)
         if self.probeAttempted then return end self.probeAttempted=true
         if not self:isValid() then self:stop() return end
@@ -222,7 +297,9 @@ local function transfer(context,item,from,to,id,endpoint)
         end
     end
     action.stop=function(self)
-        self.probeStopped=true rejected(context,self,"TRANSFER","TRANSFER_INTERRUPTED") nativeStop(self)
+        if context.body and (self.probeStopped or self.probePerformed) then return end
+        self.probeStopped=true rejected(context,self,"TRANSFER","TRANSFER_INTERRUPTED")
+        if not context.body or context.body.retained() then nativeStop(self) end
     end
     return action
 end
@@ -258,6 +335,7 @@ local function craftAction(context)
     local nativeValid,nativeStart,nativeStop=action.isValid,action.start,action.stop
     local nativePerform=action.perform
     local nativeRecipe=action.performRecipe
+    local nativeAnim=action.startActionAnim
     action.useProgressBar,action.forceProgressBar=false,false
     action.isValid=function(self)
         local why=invalidReason()
@@ -265,6 +343,7 @@ local function craftAction(context)
         if why then rejected(context,self,"CRAFT",why) return false end return true
     end
     action.start=function(self)
+        if context.body and not context.body.current() then return end
         if not self:isValid() then self:forceStop() return end
         nativeStart(self)
         if not self.craftStarted then
@@ -277,13 +356,19 @@ local function craftAction(context)
         else log(record,"CRAFT_STARTED material="..record.materialId.." tool="..record.toolId) end
     end
     action.stop=function(self)
+        if context.body and (self.probeStopped or self.probePerformed) then return end
         self.probeStopped=true
         local why=invalidReason()
         if not why and not self.craftStarted then
             why=self.logic and "NATIVE_RECIPE_REJECTED" or "NATIVE_START_INCOMPLETE"
         end
         if not why and record.phase=="CRAFTING" then local _,inputReason=Adapter.applied(self.logic,material,tool) why=inputReason end
-        rejected(context,self,"CRAFT",why or "CRAFT_INTERRUPTED") nativeStop(self)
+        rejected(context,self,"CRAFT",why or "CRAFT_INTERRUPTED")
+        if not context.body or context.body.retained() then nativeStop(self) end
+    end
+    action.startActionAnim=function(self)
+        if context.body and not context.body.current() then return end
+        return nativeAnim(self)
     end
     action.perform=function(self)
         if self.probePerformEntered then return end self.probePerformEntered=true
@@ -339,15 +424,17 @@ local function craftAction(context)
 end
 local function finish(context)
     local record=context.record
-    releaseBench(context) contexts[record.npcId]=nil
+    releaseBench(context)
     -- An output dropped by native capacity handling can be picked up manually.
     -- Only the proven original result, with verified native consumption, may close that gap.
     if context.returnOnly and record.nativeReturned and record.consumptionVerified and record.outputVerified
         and record.toolVerified and #record.outputIds==1 then record.uncertain=false record.made=true end
     record.state=record.uncertain and "RECONCILE_REQUIRED" or (record.made and "DONE" or "CANCELLED")
-    record.phase=record.state record.released=not record.uncertain record.reason=nil
-    record.generation=record.generation+1
-    if record.released then Store.finishNative(record) end
+    record.phase=record.state record.reason=nil
+    if not record.uncertain then Store.finishNative(record) end
+    record.released=not record.uncertain record.generation=record.generation+1
+    context.completed=true context.closedGeneration=record.generation
+    if contexts[record.npcId]==context then contexts[record.npcId]=nil end
     log(record,record.state.." original items delivered")
     if not context.quiet then context.actor:Say(getText("IGUI_EmberRoutesProbe_CraftResult",record.state)) end
 end
@@ -489,7 +576,8 @@ local function prepare(context)
     local token,why=Store.claimNative(record)
     if not token then Craft.pause(why or "ITEM_RESERVED",record.npcId) return end
     context.token=token context.generation=record.generation context.planning=false
-    data()[record.npcId]=record
+    local published,why=require('EmberRoutesProbe/BusinessJobs').publishCraft(record)
+    if not published then Store.finishNative(record) Craft.pause(why,record.npcId) return end
     log(record,"CLAIMED material="..record.materialId.." tool="..record.toolId)
 end
 local function tick(context)
@@ -522,9 +610,14 @@ local function tick(context)
     local action,reason,movement=nextAction(context)
     if reason then Craft.pause(reason,context.record.npcId) return end
     if movement then
-        context.moving=Transfer.move({npc=context.npc,actor=context.actor,job=context.record},movement) context.started=time
+        context.moving=Transfer.move({npc=context.npc,actor=context.actor,job=context.record,body=context.body},movement) context.started=time
         local state,why=context.moving.start() if state=="FAILED" then Craft.pause(why,context.record.npcId) end
-    elseif action then context.action=action context.started=time ISTimedActionQueue.add(action) end
+    elseif action then
+        context.action=action context.started=time
+        if context.body then
+            if not context.body.add(action) then Craft.pause('CONTROL_REQUIRED',context.record.npcId) end
+        else ISTimedActionQueue.add(action) end
+    end
 end
 function Craft.tick(id)
     if Production.busy(id) then Production.tick(id) return end
@@ -532,7 +625,7 @@ function Craft.tick(id)
     local ok,err=pcall(tick,context)
     if not ok then log(context.record,"ERROR "..tostring(err)) Craft.pause("ERROR",id) end
 end
-local function execute(actor,command,object,npcId,quiet)
+local function execute(actor,command,object,npcId,quiet,body,validateOnly,jobId)
     if not Probe.ready or not Probe.hasJava() then return Probe.unavailableCode() end
     if isClient() or isServer() then return "SP_ONLY" end
     local id=npcId or Driver.selected(actor)
@@ -545,7 +638,8 @@ local function execute(actor,command,object,npcId,quiet)
         for _,outputId in ipairs(record.outputIds) do log(record,"REPORT output="..outputId) end
         return record.state.." / "..record.phase
     elseif command=="stop" then Work.pause("USER",id) return "PAUSED" end
-    if Craft.busy(id) or Work.busy(id) then return "BUSY" end
+    if contexts[id] or Production.busy(id) or (Probe.controlledExecution==true and Work.executing(id))
+        or (Probe.controlledExecution~=true and Work.busy(id)) then return "BUSY" end
     local binding=Driver.bindId(actor,id) if not binding then return "CARRIER_UNAVAILABLE" end
     local npc=binding.handle
     if npc:getBodyDamage():getOverallBodyHealth()<95 then return "INJURED" end
@@ -560,17 +654,18 @@ local function execute(actor,command,object,npcId,quiet)
                 if not resolved then return why end object=resolved
             end
             if object:getModData().EmberRoutesCraftProbeBenchId~=record.benchId then return "BENCH_CHANGED" end
-            record.surface=Surfaces.location(object)
+            if not validateOnly then record.surface=Surfaces.location(object) end
         else object=nil end
         local entry,reason=Supply.entry(actor,npc,object,record.settlementId)
         if not entry then return reason end
         local plan,why=Supply.new(entry,npc,nil,record)
         if not plan then return why end
-        Probe.cancelAll("ACTION_ORDER",id)
+        if validateOnly then return true end
+        if not body then Probe.cancelAll("ACTION_ORDER",id) end
         if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
         contexts[id]={record=record,binding=binding,npc=npc,actor=actor,object=object,index=1,
-            generation=record.generation,resumeOnly=true,planning=true,supply=plan,quiet=quiet}
-        Work.wake(id) log(record,"RESUME_PLANNING") return "RESUME_STARTED"
+            generation=record.generation,resumeOnly=true,planning=true,supply=plan,quiet=quiet,body=body,previousRecord=record}
+        if not body then Work.wake(id) end log(record,"RESUME_PLANNING") return "RESUME_STARTED"
     elseif command=="return" then
         if not record or record.released then return "NO_CARGO" end
         if record.requester~=actor:getUsername() then return "OWNER_CHANGED" end
@@ -587,32 +682,83 @@ local function execute(actor,command,object,npcId,quiet)
         if not entry then return entryReason end
         local plan,planReason=Supply.new(entry,npc,spec)
         if not plan then return planReason end
+        if validateOnly then return true end
+        local previous=record
         local benchData=object:getModData()
         benchData.EmberRoutesCraftProbeBenchId=benchData.EmberRoutesCraftProbeBenchId or Registry.id()
-        record={format=2,id=Registry.id(),npcId=id,requester=actor:getUsername(),generation=1,state="RUNNING",
+        record={format=2,id=jobId or Registry.id(),npcId=id,requester=actor:getUsername(),generation=1,state="RUNNING",
             phase="PLANNING",benchId=benchData.EmberRoutesCraftProbeBenchId,surface=Surfaces.location(object),
             settlementId=entry.id,outputIds={},released=false}
         local context={record=record,binding=binding,npc=npc,actor=actor,object=object,
-            index=1,generation=record.generation,supply=plan,planning=true,quiet=quiet}
-        Probe.cancelAll("ACTION_ORDER",id)
+            index=1,generation=record.generation,supply=plan,planning=true,quiet=quiet,body=body,previousRecord=previous}
+        if not body then Probe.cancelAll("ACTION_ORDER",id) end
         if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
-        drafts[id]=nil contexts[id]=context Work.wake(id) log(record,"PLANNING classified storage") return "STARTED"
+        drafts[id]=nil contexts[id]=context
+        if not body then Work.wake(id) end log(record,"PLANNING classified storage") return "STARTED"
     else return "INVALID_COMMAND" end
-    Probe.cancelAll("ACTION_ORDER",id)
-    if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
-    local context={record=record,binding=binding,npc=npc,actor=actor,index=1,generation=record.generation,returnOnly=true,quiet=quiet}
+    local context={record=record,binding=binding,npc=npc,actor=actor,index=1,generation=record.generation,returnOnly=true,quiet=quiet,
+        body=body,previousRecord=record}
     if record.format==1 then
         if not nearby(context) then return "STAND_BY_NPC" end
-        record.generation=record.generation+1 record.state="RUNNING" record.phase="RETURNING" context.generation=record.generation
-        local token,reason=Store.claimNative(record) if not token then record.state="PAUSED" return reason end context.token=token
     else
         local entry,reason=Supply.entry(actor,npc,nil,record.settlementId) if not entry then return reason end
         local plan,why=Supply.new(entry,npc,nil,record) if not plan then return why end
         context.supply=plan context.planning=true
     end
-    contexts[id]=context Work.wake(id) return "RETURN_STARTED"
+    if validateOnly then return true end
+    if not body then Probe.cancelAll("ACTION_ORDER",id) end
+    if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
+    contexts[id]=context -- Capture any start failure after claim/generation changes.
+    if record.format==1 then
+        record.generation=record.generation+1 record.state="RUNNING" record.phase="RETURNING" context.generation=record.generation
+        local token,reason=Store.claimNative(record)
+        if not token then record.state="PAUSED" if not body then contexts[id]=nil end return reason end
+        context.token=token
+    end
+    if not body then Work.wake(id) end return "RETURN_STARTED"
 end
-function Craft.execute(actor,command,object,npcId,quiet,options)
+local function dispatchLegacy(actor,command,object,id,quiet,nonPreemptive,restoreJobId)
+    if Probe.controlledExecution~=true or (command~='run' and command~='resume' and command~='return') then
+        return execute(actor,command,object,id,quiet)
+    end
+    local runtime=Runtime.current()
+    if not runtime then return 'ADMISSION_CLOSED' end
+    local ready=execute(actor,command,object,id,quiet,nil,true)
+    if ready~=true then return ready end
+    local world=Registry.data()
+    local previous=Craft.record(id)
+    local generation=previous and previous.generation
+    local jobId=command=='run' and (restoreJobId or Registry.id()) or previous and previous.id
+    if not jobId then return 'NO_CARGO' end
+    local c
+    local handle,why=runtime:submit({npcId=id,jobId=jobId,kind='CRAFT_PROBE',binding=Driver.bindId(actor,id),
+        nonPreemptive=nonPreemptive==true,captureStop=true,reconcileErrors=true,
+        validate=function()
+            return Registry.data()==world and Craft.record(id)==previous and (not previous or previous.generation==generation)
+                and execute(actor,command,object,id,quiet,nil,true)==true
+        end,
+        start=function(body)
+            local value=execute(actor,command,object,id,quiet,body,false,jobId)
+            c=contexts[id]
+            if c and c.record.id==jobId then return true end
+            return false,value,'UNCHANGED'
+        end,
+        tick=function() Craft.tick(id) end,
+        finished=function() return c and contexts[id]~=c end,
+        stopAdapter=function(controller,ticket) return Craft.stopAdapter(id,controller,ticket) end,
+        persistFailure=function(fact,reason)
+            if Registry.data()~=world then return false end
+            if fact.effects=='UNKNOWN' then
+                local r=c and c.record or Craft.record(id)
+                if not r or r.id~=jobId then return false end
+                r.uncertain=true r.reason=reason or 'RECONCILE_REQUIRED' Signals.changed(id)
+            end
+            return true
+        end})
+    if handle then requests[id]={handle=handle,runtime=runtime,root=world,jobId=jobId} end
+    return handle and 'QUEUED' or why,handle
+end
+function Craft.execute(actor,command,object,npcId,quiet,options,nonPreemptive)
     local id=npcId or Driver.selected(actor)
     data() -- Normalize loaded records before the production branch can use them.
     if options or Production.handles(id) then
@@ -621,13 +767,13 @@ function Craft.execute(actor,command,object,npcId,quiet,options)
         if not quiet then actor:Say(getText("IGUI_EmberRoutesProbe_CraftResult",tostring(result))) end
         return result
     end
-    local ok,result=pcall(execute,actor,command,object,npcId,quiet)
+    local ok,result,handle=pcall(dispatchLegacy,actor,command,object,id,quiet,nonPreemptive)
     if not ok then
         local id=npcId or Driver.selected(actor) local record=Craft.record(id)
         if record then log(record,"COMMAND_ERROR "..tostring(result)) end
         Craft.pause("ERROR",id) result="ERROR"
     end
-    if not quiet then actor:Say(getText("IGUI_EmberRoutesProbe_CraftResult",tostring(result))) end return result
+    if not quiet then actor:Say(getText("IGUI_EmberRoutesProbe_CraftResult",tostring(result))) end return result,handle
 end
 -- Schedule only after every checkpoint was accepted; never resume inside OnSave.
 function Craft.afterSave(results)
@@ -654,7 +800,8 @@ function Craft.tickPending()
         local record=candidate.record
         if candidate.root==Registry.data() and record.generation==candidate.generation
             and record.state=="PAUSED" and record.reason=="SAVE" and not record.uncertain then
-            Craft.execute(candidate.actor,candidate.command,candidate.object,id,candidate.quiet)
+            local ok,why=pcall(dispatchLegacy,candidate.actor,candidate.command,candidate.object,id,candidate.quiet,true,record.id)
+            if not ok then record.reason='ERROR' log(record,'AUTO_RESUME_ERROR '..tostring(why)) end
         end
         return -- one worker per normal tick; no automatic retry loop
     end

@@ -19,7 +19,7 @@ package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return roo
 package.loaded['EmberRoutesProbe/ProductionRecipe']={read=function(id)
     calls=calls+1
     if id=='Base.Recipe5' then return nil,'RECIPE_MECHANISM_UNSUPPORTED' end
-    return {product='Base.Product',yield=1,surface=false}
+    return {product='Base.Product',yield=1,surface=false,outputs={['Base.Product']=1}}
 end}
 local Catalog=require 'EmberRoutesProbe/CraftingCatalog'
 Catalog.step()

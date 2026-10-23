@@ -53,6 +53,12 @@ public final class ProbeNpc extends IsoPlayer {
     String failure() { return failure; }
     boolean retiring() { return retiring; }
     boolean moving() { return movement.active(); }
+    int stopMask() {
+        return (movement.active() ? 1 : 0) | (isMoving() ? 2 : 0)
+            | (!getCharacterActions().isEmpty() ? 4 : 0) | (getPath2() != null ? 8 : 0)
+            | (!getPathFindBehavior2().isGoalNone() && !getPathFindBehavior2().getIsCancelled() ? 16 : 0)
+            | (getPathFindBehavior2().pathNextIsSet ? 32 : 0);
+    }
     String lastMoveResult() { return moveResult; }
     void pauseMovementClock(long now) { movement.pause(now); }
 

@@ -1,7 +1,7 @@
 local Store=require "EmberRoutesProbe/LaborStore"
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Supply=require "EmberRoutesProbe/CraftSupply"
-local Producers=require "EmberRoutesProbe/LaborProducers"
+local Carry=require "EmberRoutesProbe/ProductionCarry"
 local Recipe=require "EmberRoutesProbe/ProductionRecipe"
 require "Entity/TimedActions/ISHandcraftAction"
 require "TimedActions/ISInventoryTransferAction"
@@ -29,7 +29,7 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
             and Actions.inRoot(item,from,id) and Store.validNative(c.record,c.token,"item:"..id)
             and (c.returnOnly or Registry.accepts(current,item)) and Registry.logistics(current)=="STORAGE"
             and to:hasRoomFor(c.npc,item) and not item:getIsCraftingConsumed()
-            and (to~=npcRoot or Producers.freeCarry(c.npc)>=item:getUnequippedWeight())
+            and (to~=npcRoot or Carry.fits(c.npc,item:getUnequippedWeight()))
             and (to==npcRoot or Store.availableCapacity(endpoint.id,to:getFreeCapacity(c.npc))>=item:getUnequippedWeight())
     end
     if not valid() then return nil,"TRANSFER_PRECONDITION" end
@@ -38,7 +38,10 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
     local nativeValid,nativePerform,nativeStop,nativeAnim=action.isValid,action.perform,action.stop,action.startActionAnim
     action.useProgressBar,action.forceProgressBar=false,false
     action.isValid=function(self) return valid() and nativeValid(self) end
-    action.startActionAnim=function(self) nativeAnim(self) self.selectedContainer=nil end
+    action.startActionAnim=function(self)
+        if c.body and not c.body.current() then return end
+        nativeAnim(self) self.selectedContainer=nil
+    end
     action.perform=function(self)
         if self.attempted then return end self.attempted=true
         if not self:isValid() then self.failure="TRANSFER_PRECONDITION" self:stop() return end
@@ -50,7 +53,11 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
             Registry.inventoryChanged(from) Registry.inventoryChanged(to)
         else self.failure=ok and "TRANSFER_POSTCONDITION" or tostring(reason) end
     end
-    action.stop=function(self) self.stopped=true nativeStop(self) end
+    action.stop=function(self)
+        if c.body and (self.stopped or self.performed) then return end
+        self.stopped=true
+        if not c.body or c.body.retained() then nativeStop(self) end
+    end
     return action
 end
 function Actions.craft(c)
@@ -75,7 +82,11 @@ function Actions.craft(c)
             if not Actions.inRoot(entry.item,inventory,entry.id) or not Store.validNative(r,c.token,"item:"..entry.id)
                 or not entry.io:canUseItem(entry.item,npc) then return "INPUT_CHANGED" end
         end
-        if Producers.freeCarry(npc)<spec.outputWeight or inventory:getCapacityWeight()+spec.outputWeight>inventory:getEffectiveCapacity(npc) then
+        local consumed=0
+        for _,entry in ipairs(entries) do
+            consumed=consumed+Carry.consumed(entry.item,{keep=entry.keep,io=entry.io})
+        end
+        if not Carry.fits(npc,0,consumed,spec.outputWeight) then
             return "OUTPUT_CAPACITY_UNAVAILABLE"
         end
     end
@@ -100,7 +111,11 @@ function Actions.craft(c)
             self.failure="NATIVE_INPUT_SET_CHANGED" self:forceStop()
         end
     end
-    action.stop=function(self) self.stopped=true nativeStop(self) end
+    action.stop=function(self)
+        if c.body and (self.stopped or self.performed) then return end
+        self.stopped=true
+        if not c.body or c.body.retained() then nativeStop(self) end
+    end
     action.perform=function(self)
         if self.entered then return end self.entered=true
         if not self:isValid() or not Recipe.applied(self.logic,entries) then self:stop() return end

@@ -36,10 +36,19 @@ function Details.new(owner,bounds,presentation)
     Theme.list(self.list) Table.columns(self.list,false) owner:addChild(self.list)
     Table.empty(owner,self.list,text("chooseItem"))
     self.quantityX=self.list.x+self.list.width-h-p-getTextManager():MeasureStringX(UIFont.Small,text("quantity"))
-    local r=parts[4]
+    local botBtns=assert(Layout.axis(parts[4],{{grow=1},{grow=1}},{gap=p/2}))
+    local r=botBtns[1]
     self.locate=ISButton:new(r.x,r.y,r.width,r.height,text("locate"),owner,owner.locateSource)
     self.locate:initialise() Theme.enable(self.locate,false)
     self.locate.tooltip=text("chooseSource") owner:addChild(self.locate)
+    local r2=botBtns[2]
+    self.maintainStock=ISButton:new(r2.x,r2.y,r2.width,r2.height,getText("IGUI_EmberRoutesProbe_Public_createOrder"),owner,function()
+        if self.row and self.row.fullType and owner.owner and owner.owner.openPublicOrder then
+            owner.owner:openPublicOrder({productType=self.row.fullType})
+        end
+    end)
+    self.maintainStock:initialise() Theme.enable(self.maintainStock,false)
+    self.maintainStock.tooltip=text("chooseItem") owner:addChild(self.maintainStock)
     return self
 end
 function methods:setItem(row)
@@ -56,10 +65,11 @@ function methods:setItem(row)
     self.sourceHeading=text("sources")..(row and (" ("..#row.sources..")") or "")
     self.selectedSource=Cached.reconcile(self.list,row and row.sources or {},function(source)
         return sourceName(source).."\n"..location(source).."\n"..text("quantity")..": "
-            ..(source.pending and "..." or tostring(source.count))
+            ..(source.pending and "..." or tostring(source.count)).."\n"..source.id
     end,function(source) return source.id end,true)
     Theme.enable(self.locate,self.selectedSource~=false,true)
     self.locate.tooltip=text(self.selectedSource and "locateHint" or "chooseSource")
+    Theme.enable(self.maintainStock,row~=nil,true)
     Table.empty(owner,self.list,row and text("noSources") or text("chooseItem"))
 end
 function methods:draw()

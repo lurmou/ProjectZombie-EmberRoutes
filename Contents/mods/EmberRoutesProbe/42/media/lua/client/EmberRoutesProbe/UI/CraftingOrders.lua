@@ -62,7 +62,7 @@ function EmberRoutesCraftingOrders:project(value,_changes)
     if not self.active then return end
     local chosen=Cached.reconcile(self.workerList,value.snapshot.workers,function(row)
         local order=row.order
-        return row.name..":"..tostring(row.busy)..":"..(order and (tostring(order.id)..":"..tostring(order.state)..":"..tostring(order.phase)..":"..tostring(order.reason)) or "")
+        return row.name..":"..tostring(row.busy)..":"..tostring(row.orderBusy)..":"..(order and (tostring(order.id)..":"..tostring(order.state)..":"..tostring(order.phase)..":"..tostring(order.reason)) or "")
     end,function(row) return row.id end,true)
     local selected
     for i,row in ipairs(value.snapshot.workers) do if row.id==value.selection then selected=row self.workerList.selected=i break end end
@@ -71,11 +71,12 @@ function EmberRoutesCraftingOrders:project(value,_changes)
     ---@type table?
     local order=selected and selected.order
     local retained=order and not order.released
-    self.buttons.stop:setVisible(selected and selected.busy and retained or false)
-    self.buttons.resume:setVisible(not (selected and selected.busy and retained))
-    Theme.enable(self.buttons.stop,selected and selected.busy and retained or false,true)
-    Theme.enable(self.buttons.resume,selected and not selected.busy and order and not order.released and order.resumable or false,true)
-    Theme.enable(self.buttons["return"],selected and not selected.busy and retained or false)
+    local active=selected and (selected.orderBusy==true or order and order.state=='RUNNING')
+    self.buttons.stop:setVisible(active and retained or false)
+    self.buttons.resume:setVisible(not (active and retained))
+    Theme.enable(self.buttons.stop,active and retained or false,true)
+    Theme.enable(self.buttons.resume,selected and not active and retained and order.resumable or false,true)
+    Theme.enable(self.buttons["return"],selected and not active and retained or false)
     self.detailCard:set(selected,value.snapshot.surfaces,nil,nil,1)
 end
 function EmberRoutesCraftingOrders:command(command)

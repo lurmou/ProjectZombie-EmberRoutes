@@ -25,6 +25,7 @@ EmberRoutesProbeJava = {
     workerCount=stub,workerIdAt=stub,saveCheckpointFor=stub,blockAllCheckpoints=stub,
 }
 local Probe = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua")
+Probe.controlledExecution=false -- Explicit legacy lifecycle fixture; activation has a separate regression.
 Probe.tickActions = function() jobs = jobs + 1 end
 Probe.tickHaul = Probe.tickActions
 Probe.tickCompanion = Probe.tickActions

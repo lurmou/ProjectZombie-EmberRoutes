@@ -18,6 +18,7 @@ SAMPLES = {
     'ChopLog': ('recipes_carpentry.txt', 1, 1, [6, 1]),
     'MakeTentKit': ('recipes_camping.txt', 8, 0, [1]),
     'MakeWoodenToolbox': ('recipes_carpentry.txt', 4, 3, [1]),
+    'MakeWoodenIngotCastMold': ('recipes_carpentry.txt', 2, 2, [1]),
 }
 
 
@@ -82,4 +83,4 @@ output = ROOT / 'build/qa'
 output.mkdir(parents=True, exist_ok=True)
 (output / 'recipe-coverage.lua').write_text('return ' + lua(rows) + '\n', encoding='utf-8')
 (output / 'recipe-coverage.json').write_text(json.dumps(rows, indent=2), encoding='utf-8')
-print('PASS 7 installed vanilla source profiles + callback/mapping negative controls; native resolution/effects NOT RUN')
+print(f'PASS {len(rows)} installed vanilla source profiles + callback/mapping negative controls; native resolution/effects NOT RUN')

@@ -56,7 +56,7 @@ function Service.status(actor,id)
         if (binding and Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()))
             or (status and status.settlementId==id) then
             result.workers[#result.workers+1]={id=npcId,name=binding and binding.handle:getFullName() or string.sub(npcId,1,8),
-                order=status,busy=Work.busy(npcId)}
+                order=status,busy=Work.busy(npcId),orderBusy=Craft.busy(npcId)}
         end
     end
     table.sort(result.workers,function(a,b) return a.id<b.id end)
@@ -124,7 +124,7 @@ function Service.readTick()
         end
     end
 end
-function Service.command(actor,id,npcId,command,surfaceId,recipeId,quantity)
+local function command(actor,id,npcId,command,surfaceId,recipeId,quantity)
     if type(npcId)~="string" or npcId=="" then return "NO_WORKER" end
     local entry,reason=Ledger.view(actor,id)
     if not entry then return reason end
@@ -143,13 +143,20 @@ function Service.command(actor,id,npcId,command,surfaceId,recipeId,quantity)
     elseif command=="resume" then
         -- A selected replacement is not permission to substitute an order's surface.
         local record=Craft.record(npcId)
-        if record and not record.surface and surfaceId==record.benchId then
+        if record and not record.surface and record.benchId and surfaceId==record.benchId then
             object,reason=Surfaces.resolve((Registry.data().craftSurfaces or {})[surfaceId],surfaceId)
             if not object then return reason end
         end
     elseif command~="stop" and command~="return" then return "INVALID_COMMAND" end
-    local options=recipeId and (command=="run" or command=="teach") and {recipeId=recipeId,quantity=quantity==nil and 1 or quantity} or nil
+    local options=recipeId and (command=="run" or command=="teach") and {recipeId=recipeId,quantity=quantity==nil and 1 or quantity,chain=true} or nil
     local result=Craft.execute(actor,command,object,npcId,true,options) changed() invalidate() return result
+end
+function Service.command(actor,id,npcId,action,surfaceId,recipeId,quantity)
+    if Probe.publicDispatch and action=='run' then return 'PUBLIC_ORDER_ENTRY_REQUIRED' end
+    if Probe.publicDispatch and action=='teach' then return 'READ_BOOK_REQUIRED' end
+    local result=command(actor,id,npcId,action,surfaceId,recipeId,quantity)
+    Log.write('CRAFTING_COMMAND','npc='..tostring(npcId)..' command='..tostring(action)..' result='..tostring(result))
+    return result
 end
 function Service.watch(actor,id,callback)
     local token={actor=actor,id=id,callback=callback,world=currentWorld()}

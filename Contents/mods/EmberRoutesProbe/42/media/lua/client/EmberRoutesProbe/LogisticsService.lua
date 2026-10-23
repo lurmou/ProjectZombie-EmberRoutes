@@ -35,7 +35,7 @@ local function check(context)
     if not ctx or not ctx.running then return false,"LOGISTICS_STOPPED" end
     local entry=Ledger.get(record.settlementId)
     if not entry or entry.factionId~=Ledger.data().factionId or not members(entry,record) then return false,"SETTLEMENT_CHANGED" end
-    if not Store.get(entry.id).workers[record.npcId] then return false,"WORKER_REMOVED" end
+    if not ctx.public and not Store.get(entry.id).workers[record.npcId] then return false,"WORKER_REMOVED" end
     if Registry.logistics(context.destination)~="STORAGE" then return false,"PRODUCER_RULE_CHANGED" end
     return true
 end
@@ -62,7 +62,7 @@ function Service.invalidate(id)
     for key,ctx in pairs(contexts) do
         local entry=Ledger.get(key)
         if not id or ctx.members[id] or (position and entry and Geometry.inside(entry,position.x,position.y)) then
-            ctx.plan=nil ctx.cache=nil ctx.nextTick=0 ctx.dirty=true
+            ctx.plan=nil ctx.publicPlans={} ctx.cache=nil ctx.nextTick=0 ctx.dirty=true
         end
         if key==id then roster(ctx) ctx.cache=nil ctx.nextTick=0 end
     end
@@ -70,6 +70,7 @@ end
 function Service.stop(actor,id)
     local entry,reason=Ledger.view(actor,id)
     if not entry then return reason end
+    if Probe.publicDispatch then Store.get(id).suspended=true end
     local ctx=contexts[id]
     if ctx then ctx.running=false ctx.plan=nil ctx.cache=nil ctx.members={} ctx.actor=nil schedule:remove(id) end
     for npcId in pairs(Store.get(id).workers) do
@@ -81,6 +82,7 @@ end
 function Service.start(actor,id)
     local entry,reason=Ledger.view(actor,id)
     if not entry then return reason end
+    if Probe.publicDispatch then Store.get(id).suspended=false changed(id) return 'STARTED' end
     if not Probe.ready or Probe.enabled==false or not Probe.hasJava() then return "DRIVER_UNAVAILABLE" end
     local settings=Store.get(id)
     if not settings.intake and not settings.tidy then return "MODES_DISABLED" end
@@ -163,7 +165,7 @@ local function advance(ctx)
         local result=Work.assign(ctx.actor,npcId,intent) ctx.reason=result
         local assigned=Work.record(npcId)
         ctx.attempts[npcId]=assigned and (assigned.id..":"..tostring(assigned.generation)) or "attempted"
-        if not string.find(result,"^STARTED") then ctx.nextTick=now+2000 end
+        if result~='QUEUED' and not string.find(result,"^STARTED") then ctx.nextTick=now+2000 end
     elseif state=="DONE" then
         if ctx.lastWait~=reason then
             local s=ctx.plan.stats
@@ -177,9 +179,30 @@ local function advance(ctx)
     elseif state=="FAILED" then ctx.running=false ctx.plan=nil ctx.reason=reason schedule:remove(ctx.id)
     else ctx.reason="SCANNING" end
 end
+function Service.preparePublic(actor,entry)
+    local settings=Store.get(entry.id)
+    if settings.suspended or not settings.intake and not settings.tidy then return nil end
+    local ctx=contexts[entry.id]
+    if not ctx or not ctx.public then
+        ctx={id=entry.id,actor=actor,running=true,public=true,publicPlans={},members={}} contexts[entry.id]=ctx
+    end
+    ctx.running=true ctx.actor=actor
+    return ctx
+end
+function Service.publicOffer(actor,entry,npc)
+    local ctx=Service.preparePublic(actor,entry) if not ctx then return nil end
+    local settings=Store.get(entry.id)
+    local id=EmberRoutesProbeJava.carrierId(npc)
+    local plan=ctx.publicPlans[id]
+    if not plan then plan=Planner.new(entry,settings,npc) ctx.publicPlans[id]=plan end
+    if not plan then return nil end
+    local intent,state=plan:step(Service.BUDGET)
+    if intent or state~='WAIT' then ctx.publicPlans[id]=nil end
+    return intent
+end
 function Service.tick()
     if not Probe.ready or Probe.enabled==false or not Probe.hasJava() or isClient() or isServer() then return end
-    schedule:step(1,function(id)
+    if not Probe.publicDispatch then schedule:step(1,function(id)
         local ctx=contexts[id] local before=ctx.reason local ok,reason=pcall(advance,ctx)
         if before~=ctx.reason then changed(id) end
         if not ok then
@@ -192,6 +215,7 @@ function Service.tick()
             end
         end
     end)
+    end
     local pending=dirty dirty={}
     for id in pairs(pending) do
         local snapshot=Service.status(id)

@@ -36,10 +36,12 @@ function Base:addItem(text,item,tooltip)
 end
 function Base:ensureVisible() end
 function Base:onJoypadDown() end
+function Base:addOption(opt) self.options=self.options or {} table.insert(self.options,opt) end
 ISCollapsableWindow=Base
 ISScrollingListBox=Base
 ISButton=Base
-for _,name in ipairs({"ISCollapsableWindow","ISScrollingListBox","ISButton"}) do package.loaded['ISUI/'..name]=true end
+ISComboBox=Base
+for _,name in ipairs({"ISCollapsableWindow","ISScrollingListBox","ISButton","ISComboBox"}) do package.loaded['ISUI/'..name]=true end
 UIFont={Small=1}
 Keyboard={KEY_UP=1,KEY_DOWN=2,KEY_SPACE=3,KEY_RETURN=4,KEY_ESCAPE=5}
 Joypad={AButton=1,BButton=2,XButton=3}
@@ -47,14 +49,16 @@ local fontHeight,sw,sh=16,1920,1080
 function getTextManager() return {getFontHeight=function() return fontHeight end,
     MeasureStringX=function(_,_,text) measures=measures+1 return #text*fontHeight*0.5 end} end
 function getCore() return {getScreenWidth=function() return sw end,getScreenHeight=function() return sh end} end
-function getText(key) return ERTestTranslations and ERTestTranslations[key] or key end
+function getTextOrNull(key) return ERTestTranslations and ERTestTranslations[key] end
+function getText(key) return getTextOrNull(key) or key end
 function getTexture(path) return path end
 local names=0
 function getItemNameFromFullType(id) names=names+1 if id=='Base.Hammer' then return 'Localized hammer' end return nil end
 function isClient() return false end function isServer() return false end
 local live=Filter.new() live.groups.food=true live.types['Base.Hammer']=true live.types['Missing.ModItem']=false
 local permit=false
-local Registry={containerIndex=function(o,c) if o:getContainer()==c then return 0 end end,filter=function() return live end, configure=function(_,_,draft)
+local Registry={containerIndex=function(o,c) if o:getContainer()==c then return 0 end end,filter=function() return live end,
+    metadata=function() return nil end,logistics=function() return "STORAGE" end,configure=function(_,_,draft)
     submits=submits+1
     if not permit then return "TOO_FAR_TO_TAG" end
     live=Filter.copy(draft) return "FILTER_CONFIGURED"
@@ -62,7 +66,7 @@ end}
 package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
 package.loaded['EmberRoutesProbe/Log']={write=function() end}
 local actor={isDead=function() return false end,getPlayerNum=function() return 0 end,getJoypadBind=function() return -1 end}
-local container={getItems=function() return {size=function() return 0 end} end}
+local container={getType=function() return "crate" end,getItems=function() return {size=function() return 0 end} end}
 local object={getContainer=function() return container end}
 local Panel=require "EmberRoutesProbe/StorageFilterPanel"
 local panel=Panel.open(actor,object)

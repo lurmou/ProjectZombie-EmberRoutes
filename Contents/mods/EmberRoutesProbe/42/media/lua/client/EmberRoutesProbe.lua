@@ -1,10 +1,15 @@
 local Probe=require "EmberRoutesProbe/Boot"
 local Companion=require "EmberRoutesProbe/Companion"
 local Work=require "EmberRoutesProbe/Work"
+-- Background lifecycle must exist before OnGameStart, even with every UI closed.
+require "EmberRoutesProbe/Persistence"
+require "EmberRoutesProbe/StockService"
+require "EmberRoutesProbe/PublicWork"
 local ContainerMenu=require "EmberRoutesProbe/ContainerMenu"
 local Commands=require "EmberRoutesProbe/NpcCommands"
 require "EmberRoutesProbe/StorageTabs"
 local SettlementMenu=require "EmberRoutesProbe/SettlementMenu"
+require "EmberRoutesProbe/RecipeOrderEntry"
 local LogisticsMenu=require "EmberRoutesProbe/LogisticsMenu"
 LogisticsMenu.initialize()
 require "EmberRoutesProbe/DebugMenu"

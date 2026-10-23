@@ -60,7 +60,11 @@ local sw,sh,fh=1920,1080,20
 function getCore() return {getScreenWidth=function() return sw end,getScreenHeight=function() return sh end} end
 function getTextManager() return {getFontHeight=function() return fh end,MeasureStringX=function(_,_,s) return #s*fh/2 end} end
 function getTextOrNull(key) return ERTestTranslations and ERTestTranslations[key] end
-function getText(key) return getTextOrNull(key) or key end
+function getText(key,...)
+    local value=getTextOrNull(key) or key
+    for i,arg in ipairs({...}) do local replacement=tostring(arg) value=value:gsub('%%'..i,function() return replacement end) end
+    return value
+end
 function getItemNameFromFullType(id) return id end function getTexture() return {} end
 local sawTexture={texture=true}
 function tryGetTexture(name) if name=='Item_TestSawVariant' then return sawTexture end end
@@ -99,6 +103,14 @@ local logisticsSnapshot={running=true,intake=true,tidy=true,workers={worker}}
 local wareCount,logCount,stops=0,0,0
 local wareCallbacks,logCallbacks={},{}
 local craftCount,craftCallbacks,craftCommands=0,{},{}
+local monitorCount,monitorCallbacks,monitorCommands=0,{},{}
+local monitorRow={id='CRAFT:monitor-job',jobId='monitor-job',npcId='worker',generation=3,kind='CRAFT',name='Worker',title='Saw logs',
+ state='PAUSED',phase='CRAFTING',bucket='paused',bodyMode='FOLLOW',target=3,requested=3,produced=0,delivered=0,
+ assets={{id=11,kind='tools'}},nodes={},carrierAvailable=true,canResume=true,canCancel=true}
+local monitorSnapshot={rows={monitorRow}}
+package.loaded['EmberRoutesProbe/OrderMonitorService']={status=function() return monitorSnapshot end,
+ watch=function(_,_,fn) monitorCount=monitorCount+1 monitorCallbacks[#monitorCallbacks+1]=fn return function() monitorCount=monitorCount-1 end end,
+ command=function(_,_,id,generation,action) monitorCommands[#monitorCommands+1]={id=id,generation=generation,action=action} return 'QUEUED' end}
 local craftSnapshot={workers={{id='worker',name='Worker',busy=false}},surfaces={{id='surface',x=1,y=2,z=0}},surfaceId='surface'}
 local onWatch
 package.loaded['EmberRoutesProbe/WarehouseIndex']={watch=function(_,fn)
@@ -144,7 +156,21 @@ local Logistics=require 'EmberRoutesProbe/LogisticsDashboard'
 local shell=Dashboard.open(actor,entry.id)
 local page=shell.pages.warehouse
 check(shell.activeTab=='warehouse' and not shell.pages.logistics and wareCount==1,'only initial warehouse page is created and subscribed')
-check(shell.tabButtons.warehouse.borderColor~=shell.tabButtons.logistics.borderColor,'active tab is visibly marked')
+check(shell.tabButtons.warehouse.borderColor~=shell.tabButtons.orders.borderColor,'active tab is visibly marked')
+check(not shell.tabButtons.logistics and not shell.tabButtons.crafting,'legacy configuration is not exposed as main navigation')
+shell:selectTab('orders')
+local monitor=shell.pages.orders
+check(monitorCount==1 and wareCount==0 and #monitor.orderList.items==1,'new monitor owns only its active subscription')
+check(monitor.store.value.selection=='CRAFT:monitor-job' and monitor.buttons.resume.enable,'monitor selects stable job identity while worker follows')
+monitor:command('resume')
+check(monitorCommands[1].id=='CRAFT:monitor-job' and monitorCommands[1].generation==3,'monitor command carries selected job and revision')
+monitor.store:setState({filter='attention'})
+check(#monitor.orderList.items==0 and not monitor.buttons.resume.enable,'empty filter clears stale actionable selection')
+monitor.store:setState({filter='open'})
+shell:selectTab('warehouse')
+local oldMonitor=monitor.store.value.snapshot
+monitorCallbacks[1]({rows={}})
+check(monitorCount==0 and monitor.store.value.snapshot==oldMonitor,'hidden monitor releases interest and rejects late callbacks')
 if ERTestTranslations then
     check(shell.tabButtons.warehouse.title==getText('IGUI_EmberRoutesProbe_Settlement_tab_warehouse'),'real language tab label')
     check(not shell.title:find('IGUI_',1,true),'management title translated')
@@ -222,6 +248,12 @@ orders.store:setState({snapshot=orderSnapshot()})
 displayOrder={id='machine-only-order-id',recipeId='Base.SawLogs',recipeName='Saw logs',state='PAUSED',phase='PLANNING',surfaceRequired=false,requested=1,target=3,produced=0,delivered=0,resumable=true}
 orders.store:setState({snapshot=orderSnapshot()})
 check(orders.workerList.items[1].item.visual.state=='paused' and orders.buttons.resume.enable,'same-phase pause updates independent order controls')
+local following=orderSnapshot()
+following.workers[1].busy=true following.workers[1].orderBusy=false
+orders.store:setState({snapshot=following})
+check(orders.buttons.resume.enable and orders.buttons.resume.visible~=false and orders.buttons.stop.visible==false,
+    'following with paused production exposes resume instead of production pause')
+check(orders.buttons['return'].enable,'paused production can request return while another body task is active')
 check(orders.detailCard.visual.title[1]=='Saw logs','order title does not append a misleading repetition count')
 craft:selectView('recipes') browser=craft.views.recipes
 check(browser.store.value.recipeId==draftId and browser.store.value.quantity==quantity and catalogCount==1 and previewCount==1,'returning from orders preserves search, recipe and quantity')
@@ -235,15 +267,17 @@ local oldCatalog=catalogCallbacks[#catalogCallbacks] local oldPreview=previewCal
 shell:selectTab('warehouse')
 oldCatalog({rows={},categories={},page=1,pages=1,loading=false}) oldPreview({state='BLOCKED',conditions={},counts={}})
 check(craftCount==0 and catalogCount==0 and previewCount==0 and browser.store.value.preview.state=='READY','hidden browser releases every query and ignores late results')
-for i=1,9 do shell:nextTab(1) check(wareCount+logCount+craftCount==1,'exactly one page subscription through repeated switches') end
+for i=1,9 do shell:nextTab(1) check(wareCount+logCount+craftCount+monitorCount==1,'exactly one page subscription through repeated switches') end
 shell:onKeyPress(Keyboard.KEY_NEXT)
-check(shell.activeTab=='logistics','keyboard PageDown changes tab')
+check(shell.activeTab=='warehouse','keyboard PageDown cycles only the new primary tabs')
+shell:selectTab('logistics')
 log.workerList:onJoypadDirLeft()
-check(shell.activeTab=='warehouse','controller outer list edge changes tab')
+check(shell.activeTab=='orders','controller edge returns from legacy configuration to monitor')
+shell:selectTab('warehouse')
 page:focusList(page.itemList) page.itemList:onJoypadDirRight()
 check(shell.activeTab=='warehouse' and page.focusedList==page.sourceList,'controller inner edge keeps intra-page navigation')
 page.sourceList:onJoypadDirRight()
-check(shell.activeTab=='logistics','controller other outer edge changes tab')
+check(shell.activeTab=='orders','controller other outer edge opens order monitor')
 local oldLogState=log.store.value.snapshot
 shell:selectTab('warehouse')
 logCallbacks[#logCallbacks](logisticsSnapshot)
@@ -290,6 +324,17 @@ for _,size in ipairs({{1280,720,28},{1920,1080,20},{2560,1440,24},{3840,2160,32}
     check(browser.draft.list.height>fh and browser.draft.run.y>=browser.draft.list.y+browser.draft.list.height,'draft actions remain below scrollable material viewport')
     craft:selectView('orders') orders=craft.views.orders
     check(orders.workerList.height>fh*2,'order viewport remains usable')
+    shell:selectTab('orders')
+    local monitor=shell.pages.orders
+    check(monitor.orderList.height>fh*2 and monitor.details.list.width>0,'monitor retains a usable viewport across supported screen/font sizes')
+    if monitor.narrow then
+        monitor.buttons.details.onclick()
+        check(monitor.store.value.detailMode and monitor.orderList.visible==false and monitor.details.list.visible,
+            'narrow monitor switches from list to details without squeezing columns')
+        monitor.buttons.details.onclick()
+        check(monitor.orderList.visible and monitor.details.list.visible==false,'narrow monitor returns to original job list')
+    end
+    shell:selectTab('crafting')
     local manager=getTextManager
     getTextManager=function() error('drawing must not remeasure text') end
     shell:prerender() log:prerender() craft:prerender()
@@ -298,16 +343,80 @@ for _,size in ipairs({{1280,720,28},{1920,1080,20},{2560,1440,24},{3840,2160,32}
     end
     getTextManager=manager shell:close()
 end
+shell=Dashboard.open(actor,entry.id,'crafting') browser=shell.pages.crafting.views.recipes
+browser:change({recipeId='Base.SawLogs',quantity=1})
+browser:change({preview={state='READY',conditions={},counts={[0]={available=0,required=1},[1]={available=1,required=1}},
+ chain={nodes={{recipeId='precursor',recipeName='Precursor',product='Base.Log',requested=1,surface=false},
+ {recipeId='Base.SawLogs',recipeName='Saw logs',product='Base.Plank',requested=3,surface=true}}}}})
+local precursorRow
+for _,row in ipairs(browser.draft.list.items) do if row.item.value.kind=='input' and row.item.value.slot==0 then precursorRow=row end end
+check(precursorRow.item.value.precursor and not precursorRow.item.value.missing and precursorRow.item.visual.sub:find('0 / 1',1,true),'planned supply keeps zero actual stock and uses a distinct precursor state')
+check(browser.draft.run.enable and #browser.draft.list.items>=7,'complete chain permits ordering and displays its route')
+local chainRows={}
+for _,row in ipairs(browser.draft.list.items) do
+    if row.item.value.kind=='chain_step' then chainRows[#chainRows+1]=row.item.value end
+end
+check(#chainRows==2 and chainRows[1].surfaceBadge==getText('IGUI_EmberRoutesProbe_Crafting_badgeHand')
+ and chainRows[2].surfaceBadge==getText('IGUI_EmberRoutesProbe_Crafting_badgeSurface'),
+ 'boolean chain surface requirements render hand and platform badges without aborting preview')
+browser:change({preview={state='BLOCKED',conditions={'NPC_RECIPE_UNKNOWN'},counts={},
+ blocker={recipeId='precursor',recipeName='Precursor',surfaceId='precursor-surface'}}})
+browser.draft.teach.onclick()
+check(craftCommands[#craftCommands].recipeId=='precursor' and craftCommands[#craftCommands].surface=='precursor-surface'
+ and browser.store.value.recipeId=='Base.SawLogs','teaching a missing precursor targets it without changing the selected final recipe')
+-- Exercise the actual public dialogs, rather than only the old hidden pages.
+local publicCalls={} local publicRevision=2 local request=0
+package.loaded['EmberRoutesProbe/ContainerRegistry'].id=function() request=request+1 return 'request-'..request end
+package.loaded['EmberRoutesProbe/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
+package.loaded['EmberRoutesProbe/PublicWork']={
+ available=function() return true end,
+ rule=function() return {minimum=50,batch=12} end,
+ create=function(_,scope,recipe,n,surface,token)
+  publicCalls[#publicCalls+1]={scope=scope,recipe=recipe,n=n,surface=surface,token=token} return 'ORDER_CREATED'
+ end,
+ saveRule=function() return 'RULE_SAVED' end,
+ priorities=function() return {crafting=1,hauling=4,revision=publicRevision} end,
+ setPriorities=function(_,scope,id,values,revision)
+  check(id=='worker' and values.crafting==1 and values.hauling==4 and revision==2,'priority save carries stable NPC and expected revision')
+  publicRevision=3 return 'PRIORITY_SAVED'
+ end}
+shell:selectTab('orders')
+monitor=shell.pages.orders monitor.buttons.crafting.onclick()
+local dialog=shell.publicDialog
+check(dialog and not dialog.npcId and catalogCount==1,'public dialog has no NPC assignment and owns one catalogue subscription')
+check(dialog.minimum:getText()=='50' and dialog.batch:getText()=='12','dialog loads existing stock threshold and fixed batch')
+local token=dialog.requestId dialog.quantity:setText('7')
+check(dialog.requestId~=token,'quantity change renews idempotent draft token')
+dialog:submitOrder()
+check(#publicCalls==1 and publicCalls[1].n==7 and publicCalls[1].scope==entry.id,'public submit uses only demand and scope')
+check(not shell.publicDialog and catalogCount==0,'successful submission closes dialog and releases catalogue')
+monitor.buttons.logistics.onclick()
+local priority=shell.priorityDialog
+check(priority and priority.fields.crafting.selected==2 and priority.fields.hauling.selected==5,'priority editor restores per-NPC 0–4 values')
+priority.save.onclick()
+check(priority.revision==3,'priority editor refreshes optimistic revision after save')
+shell:selectTab('warehouse')
+check(not shell.priorityDialog,'switching tabs disposes priority popup')
+shell:close()
 check(wareCount==0 and logCount==0 and stops==0,'all test windows release watches and never stop business')
 print('PASS '..checks..' unified shell/page lifecycle/layout checks; native host mocked, game renderer NOT RUN')
 -- Optional visual QA export: real pages and prepared draw data, synthetic business snapshots.
 function ERSettlementPreview(tab,height)
     sw,sh,fh=1280,960,height
-    local shell=Dashboard.open(actor,entry.id,tab)
+    local shell=Dashboard.open(actor,entry.id,(tab=='publicOrder' or tab=='priorities') and 'orders' or tab)
     shell.x=0 shell.y=0
+    if tab=='publicOrder' then
+        shell:openPublicOrder({recipeId='Base.SawLogs',recipeName='Saw logs'})
+        local dialog=shell.publicDialog dialog.x=0 dialog.y=0 return dialog
+    elseif tab=='priorities' then
+        shell:openPriorities() local dialog=shell.priorityDialog dialog.x=0 dialog.y=0 return dialog
+    end
     if tab=='crafting' then
         local browser=shell.pages.crafting.views.recipes
         browser:change({recipeId='Base.SawLogs',quantity=1})
+        browser:change({preview={state='READY',conditions={},counts={[0]={available=0,required=1},[1]={available=1,required=1}},
+            chain={nodes={{recipeId='precursor',recipeName='Precursor',product='Base.Log',requested=1,surface=false},
+            {recipeId='Base.SawLogs',recipeName='Saw logs',product='Base.Plank',requested=3,surface=true}}}}})
     elseif tab=='logistics' then
         package.loaded['EmberRoutesProbe/ContainerRegistry'].describe=function(id)
             if id=='a' then return {containerType='crate',x=3571,y=10897,z=0} end

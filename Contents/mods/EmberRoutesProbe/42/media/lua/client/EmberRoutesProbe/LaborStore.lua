@@ -11,25 +11,11 @@ end
 function Store.data()
     local current=Registry.data()
     if current~=root then
-        local data=current.labor
-        local migrating=not data
-        if migrating then
-            data={format=2,tasks={},byNpc={},routes={}}
-            local old=current.job
-            if old then
-                if type(old)~="table" or type(old.id)~="string" or type(old.npcId)~="string" then error("LEGACY_TASK_INVALID") end
-                data.tasks[old.id]=old data.byNpc[old.npcId]=old.id
-                data.routes[old.npcId]={source=current.source,destination=current.destination}
-            elseif current.source or current.destination then
-                data.unassignedRoute={source=current.source,destination=current.destination}
-            end
-        end
-        if data.format~=2 or type(data.tasks)~="table" or type(data.byNpc)~="table" or type(data.routes)~="table" then error("LABOR_FORMAT_UNSUPPORTED") end
-        if current.job and not migrating then error("LEGACY_TASK_CONFLICT") end
+        local data=require('EmberRoutesProbe/BusinessJobs').hauls()
         local rebuilt,newTokens=Claims.new(),{}
         for id,record in pairs(data.tasks) do
             if type(record)~="table" or type(id)~="string" or record.id~=id or type(record.npcId)~="string"
-                or data.byNpc[record.npcId]~=id or record.format~=1 or record.kind~="EXPLICIT_TRANSFER"
+                or (record.state~='DONE' and data.byNpc[record.npcId]~=id) or record.format~=1 or record.kind~="EXPLICIT_TRANSFER"
                 or record.executor~="ENTITY" or record.scopeId~="local-world" or type(record.items)~="table"
                 or #record.items>30 or (record.state~="RUNNING" and record.state~="PAUSED" and record.state~="DONE")
                 or (record.generation and (type(record.generation)~="number" or record.generation<0
@@ -69,7 +55,7 @@ function Store.data()
             record.generation=(record.generation or 0)+1
             if record.state=="RUNNING" then record.state="PAUSED" record.reason="LOAD_RECOVERY" end
         end
-        current.labor=data current.job=nil
+        require('EmberRoutesProbe/BusinessJobs').flush()
         root,ledger,claims,tokens=current,data,rebuilt,newTokens
         nativeTokens=rebuiltNative
         recent={}
@@ -105,14 +91,14 @@ end
 function Store.validNative(record,token,key)
     Store.data()
     return nativeTokens[record.id]==token and token and token.generation==record.generation
-        and root.craftProbes and root.craftProbes.byNpc[record.npcId]==record and not record.released
+        and CraftRecord.records(root)[record.npcId]==record and not record.released
         and (not key or claims:valid(token,key))
 end
 function Store.extendNative(record,token)
     Store.data()
     -- An already committed native result still belongs to its paused owner.
     -- This only records originals; it never authorizes a stale physical action.
-    if nativeTokens[record.id]~=token or not root.craftProbes or root.craftProbes.byNpc[record.npcId]~=record
+    if nativeTokens[record.id]~=token or CraftRecord.records(root)[record.npcId]~=record
         or record.released then return false,"STALE_CLAIM" end
     return claims:extend(token,CraftRecord.resources(record))
 end
@@ -126,11 +112,12 @@ function Store.replaceNative(record,token,proposed)
     local ok,reason=claims:replace(token,CraftRecord.resources(proposed))
     if not ok then return false,reason end
     record.materials,record.tools,record.outputs=proposed.materials,proposed.tools,proposed.outputs
+    record.held=proposed.held
     return true
 end
 function Store.claim(record)
     Store.data()
-    local native=root.craftProbes and root.craftProbes.byNpc[record.npcId]
+    local native=CraftRecord.records(root)[record.npcId]
     if native and not native.released then return nil,"OTHER_TASK_RETAINED" end
     local generation=(record.generation or 0)+1
     local token,reason=claims:acquire(record.id,generation,resources(record))
@@ -139,13 +126,13 @@ function Store.claim(record)
 end
 function Store.publish(record)
     local data=Store.data() local previous=Store.record(record.npcId)
-    local native=root.craftProbes and root.craftProbes.byNpc[record.npcId]
+    local native=CraftRecord.records(root)[record.npcId]
     if native and not native.released then return false,"OTHER_TASK_RETAINED" end
     if previous and previous~=record then
         if previous.state~="DONE" then return false,"TASK_EXISTS_RESUME_OR_CLEAR" end
-        claims:release(tokens[previous.id]) tokens[previous.id]=nil data.tasks[previous.id]=nil
+        claims:release(tokens[previous.id]) tokens[previous.id]=nil
     end
-    data.tasks[record.id]=record data.byNpc[record.npcId]=record.id return true
+    return require('EmberRoutesProbe/BusinessJobs').publishHaul(record)
 end
 function Store.valid(record,generation,token)
     return Store.record(record.npcId)==record and record.state=="RUNNING" and record.generation==generation
@@ -198,7 +185,9 @@ function Store.finish(record)
 end
 function Store.clear(npcId)
     local record=Store.record(npcId) if not record then return end
-    Store.finish(record) ledger.byNpc[npcId]=nil ledger.tasks[record.id]=nil
+    Store.finish(record) record.state='DONE' record.reason='CLEARED'
+    require('EmberRoutesProbe/BusinessJobs').removeHaul(record)
+    require('EmberRoutesProbe/BusinessJobs').flush()
     recent[npcId]=nil
 end
 function Store.route(npcId)

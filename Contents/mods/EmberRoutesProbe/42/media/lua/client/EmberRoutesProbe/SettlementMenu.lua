@@ -5,7 +5,6 @@ local Menu={}
 local Metrics=require "EmberRoutesProbe/WarehouseMetrics"
 local Geometry=require "EmberRoutesProbe/SettlementGeometry"
 local Logistics=require "EmberRoutesProbe/LogisticsMenu"
-local Crafting=require "EmberRoutesProbe/CraftingService"
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 function Menu.create(actor)
     Selector.open(actor,nil,function(entry)
@@ -34,8 +33,11 @@ function Menu.fill(actor,menu)
 
 end
 function Menu.craftAt(actor,object)
+    local Crafting=require "EmberRoutesProbe/CraftingService"
     local surface,reason=Crafting.selectSurface(actor,object)
-    if surface then Dashboard.open(actor,surface.settlementId,"crafting")
+    if surface then
+        local panel=Dashboard.open(actor,surface.settlementId,"orders")
+        if panel then panel:openPublicOrder({surfaceId=surface.id}) end
     else actor:Say(require("EmberRoutesProbe/CraftingText").reason(reason)) end
 end
 function Menu.craftSurfaces(actor,menu,objects)

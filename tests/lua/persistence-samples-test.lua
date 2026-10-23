@@ -107,3 +107,4 @@ check(Samples.recover(npc, "npc-2") == "TEST_HEALTH_RESTORED" and npc.damage.hea
 check(npc.data.EmberRoutesPersistenceSample == markerBefore and npc.root.items:size() == itemCountBefore,
     "test recovery preserves sample marker and existing inventory instances")
 print("PASS " .. count .. " persistence sample assertions; native serialization NOT simulated")
+return {npc=npc,Samples=Samples,unrelated=unrelated}

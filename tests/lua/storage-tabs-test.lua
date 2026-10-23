@@ -3,7 +3,9 @@ local Filter=require "EmberRoutesProbe/StorageFilter"
 local count=0
 local function check(value,why) count=count+1 assert(value,why) end
 local events={}
-Events={OnGameStart={Add=function(fn) events[#events+1]=fn end}}
+Events=setmetatable({OnGameStart={Add=function(fn) events[#events+1]=fn end}},{
+    __index=function(t,k) t[k]={Add=function(fn) events[#events+1]=fn end} return t[k] end
+})
 function getTexture(path) return path end
 function getText(key) return ERTestTranslations and ERTestTranslations[key] or key end
 UIFont={Small=1}
@@ -16,13 +18,16 @@ local applied=Filter.new() applied.groups.food=true
 local Registry={containerIndex=function(o,c)
     if o:getContainer()==c then return 0 end
     if o.getContainerCount then for i=0,o:getContainerCount()-1 do if o:getContainerByIndex(i)==c then return i end end end
-end,listeners={},filter=function() return applied end}
+end,listeners={},filter=function() return applied end,logistics=function() return "STORAGE" end,metadata=function() return nil end}
 package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
 package.loaded['EmberRoutesProbe/StorageFilterPanel']={open=function() end}
 package.loaded['EmberRoutesProbe/Log']={write=function() end}
 local options={}
 local lastOption
-local context={addOption=function(_,label,a,fn,o,c) options[#options+1]=label lastOption={actor=a,callback=fn,object=o,container=c} end}
+local context={addOption=function(_,label,a,fn,o,c) options[#options+1]=label lastOption={actor=a,callback=fn,object=o,container=c} return {} end,
+    addSubMenu=function() end}
+local subcontext={addOption=function() return {} end,addSubMenu=function() end}
+ISContextMenu={getNew=function() return subcontext end}
 function getPlayerContextMenu() return context end
 local actor={isDead=function() return false end}
 function getSpecificPlayer() return actor end

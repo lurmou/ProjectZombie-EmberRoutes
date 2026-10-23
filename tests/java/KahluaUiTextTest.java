@@ -191,7 +191,7 @@ class KahluaUiTextTest {
         }
         graphics.setClip(null);
         graphics.setColor(new java.awt.Color(40,44,48)); graphics.fillRect(0,0,width,24);
-        graphics.setColor(java.awt.Color.WHITE); graphics.drawString((String)panel.rawget("title"),20,20);
+        graphics.setColor(java.awt.Color.WHITE); Object rawTitle=panel.rawget("title"); graphics.drawString(rawTitle!=null?rawTitle.toString():"",20,20);
         KahluaTable children=(KahluaTable)panel.rawget("children");
         for(int i=1;children.rawget(i)!=null;i++) {
             KahluaTable button=(KahluaTable)children.rawget(i);

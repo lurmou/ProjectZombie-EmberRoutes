@@ -115,6 +115,17 @@ function Samples.check(npc, id)
     return result
 end
 
+-- Stop evidence is about the actual original set, not an unchanged health/name assertion.
+function Samples.evidence(npc,id)
+    local sample=npc:getModData()[KEY]
+    if not sample then return {effects='KNOWN',ids={}} end
+    local ids={}
+    if type(sample.pieces)~='table' then return {effects='UNKNOWN',ids=ids} end
+    for _,itemId in pairs(sample.pieces) do ids[#ids+1]=itemId end
+    local ok,marker,items=pcall(owned,npc,id)
+    return {effects=ok and marker~=nil and items~=nil and 'KNOWN' or 'UNKNOWN',ids=ids}
+end
+
 function Samples.cleanup(npc, id)
     local sample, items, reason = owned(npc, id)
     if not sample or not items then return reason end

@@ -289,6 +289,12 @@ final class CarrierRuntime {
 
     /** Called only from OnSave after all fixture owners have released their tasks. */
     public String saveCheckpoint(String mode, boolean home, double hx, double hy, double hz) {
+        return captureCheckpoint(mode, home, hx, hy, hz, false);
+    }
+    String captureStoppedCheckpoint(String mode, boolean home, double hx, double hy, double hz) {
+        return captureCheckpoint(mode, home, hx, hy, hz, true);
+    }
+    private String captureCheckpoint(String mode, boolean home, double hx, double hy, double hz, boolean stopped) {
         if (!persistenceReady()) return result("SAVE_UNAVAILABLE", "SP world-thread driver required");
         try {
             ProbeNpc npc = SESSION.get();
@@ -299,7 +305,9 @@ final class CarrierRuntime {
             if (npc == null && RESTORE.state() == ProbeRestoreGate.State.UNRESOLVED)
                 return result("CHECKPOINT_RETAINED", "unresolved saved record left unchanged");
             if (!carrierPresent(npc)) return blockCheckpoint("CARRIER_UNAVAILABLE state=" + RESTORE.state());
-            npc.stopProbe();
+            if (stopped) {
+                if (npc.stopMask() != 0) return blockCheckpoint("BODY_NOT_STOPPED");
+            } else npc.stopProbe();
             ProbeCheckpoint.Data data = ProbePersistence.capture(npc, probeId, mode, home, (float)hx, (float)hy, (float)hz);
             persistence.write(data);
             return result("CHECKPOINT_SAVED", "id=" + probeId + " items=" + data.items().size()

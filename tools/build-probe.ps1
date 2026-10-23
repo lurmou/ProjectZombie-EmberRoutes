@@ -61,6 +61,9 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix Checkpoint tests failed" }
 & $javaCommand '-ea' '-cp' "$classes;$tests" 'emberroutes.probe.WorkerRosterTest' 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'worker-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Worker tests failed" }
+& $javaCommand '-ea' '-cp' "$classes;$tests" 'emberroutes.probe.BodyAuthorityTest' 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'body-authority-tests.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Body authority tests failed" }
 & $javaCommand '-ea' '-cp' "$classes;$tests" 'emberroutes.probe.ProbeBaselineTest' $GameRoot $expected['projectzomboid.jar'] 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'baseline-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Installed-file baseline regression failed" }
@@ -79,6 +82,12 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix Checkpoint table test compilation fail
 & $javaCommand '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProbeStoreTableTest' 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'store-table-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Checkpoint table migration tests failed" }
+& $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/ProbeSaveReceiptTest.java') 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'save-receipt-compile.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Save receipt test compilation failed" }
+& $javaCommand '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProbeSaveReceiptTest' 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'save-receipt-tests.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Save receipt tests failed" }
 & $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/RecipeMetadataTest.java') 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'recipe-metadata-compile.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Recipe metadata test compilation failed" }

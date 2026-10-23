@@ -16,10 +16,10 @@ local function container()
     local c={items=list(),capacity=100}
     function c:getItems() return self.items end
     function c:contains(item) return self.items:contains(item) end
-    function c:getCapacityWeight() return #self.items end
-    function c:getFreeCapacity() return self.capacity-#self.items end
+    function c:getCapacityWeight() local n=0 for _,v in ipairs(self.items) do n=n+v:getUnequippedWeight() end return n end
+    function c:getFreeCapacity() return self.capacity-self:getCapacityWeight() end
     function c:getEffectiveCapacity() return self.capacity end
-    function c:hasRoomFor() return #self.items+1<=self.capacity end
+    function c:hasRoomFor(_,v) return self:getCapacityWeight()+v:getUnequippedWeight()<=self.capacity end
     function c:AddItem(item) self.items:add(item) item.container=self return item end
     function c:Remove(item) for i,v in ipairs(self.items) do if v==item then table.remove(self.items,i) item.container=nil return end end end
     return c
@@ -32,8 +32,8 @@ local function item(kind)
     function value:getContainer() return self.container end
     function value:getCondition() return self.condition end
     function value:getSharpness() return self.sharpness end
-    function value:getActualWeight() return 1 end
-    function value:getUnequippedWeight() return 1 end
+    function value:getActualWeight() return self.weight or 1 end
+    function value:getUnequippedWeight() return self.weight or 1 end
     function value:getIsCraftingConsumed() return false end -- new craft path need not set the legacy flag
     function value:isEquipped() return self.equipped==true end
     function value:isFavorite() return self.favorite==true end
@@ -52,7 +52,7 @@ function square:AddWorldInventoryItem(value) self.dropped=value end
 local function character(id)
     local body={id=id,root=container(),actions=list(),known=true,skill=2}
     function body:getInventory() return self.root end
-    function body:getMaxWeight() return 100 end
+    function body:getMaxWeight() return self.maxWeight or 100 end
     function body:getInventoryWeight() return self.root:getCapacityWeight() end
     function body:getCharacterActions() return self.actions end
     function body:getCurrentSquare() return square end
@@ -134,7 +134,7 @@ end
 local materials=storage("materials",4,"Base.SmallHandle")
 local tools=storage("tools",8,"Base.KitchenKnife")
 local products=storage("products",12,"Base.WoodenFork")
-local registry={listeners={},data=function() return saved end,id=function() serial=serial+1 return "uuid-"..serial end}
+local registry={listeners={},inventoryListeners={},data=function() return saved end,id=function() serial=serial+1 return "uuid-"..serial end}
 function registry.resolve(id)
     local endpoint=boxes[id]
     if endpoint and not endpoint.private then return endpoint end
@@ -144,7 +144,7 @@ function registry.revalidate(endpoint) return registry.resolve(endpoint.id) end
 function registry.filter(target) for _,endpoint in pairs(boxes) do if endpoint.object==target then return endpoint.filter end end end
 function registry.accepts(endpoint,value) return not endpoint.private and endpoint.filter.types[value.kind]==true end
 function registry.logistics(endpoint) return endpoint.role or "STORAGE" end
-function registry.inventoryChanged() end
+function registry.inventoryChanged() for _,listener in ipairs(registry.inventoryListeners) do listener() end end
 package.loaded["EmberRoutesProbe/ContainerRegistry"]=registry
 local entry={id="home",areas={{x=0,y=0,w=30,h=2}}}
 package.loaded["EmberRoutesProbe/SettlementLedger"]={
@@ -260,6 +260,8 @@ local function toCraft()
     end
     error("craft action not reached")
 end
+local legacyRecipe={} for key,value in pairs(recipe) do legacyRecipe[key]=value end
+local legacyLogic,legacyManager=HandcraftLogic.new,getScriptManager
 local m,t=fresh()
 check(Craft.execute(actor,"run",object)=="STARTED","classified storage plan starts")
 check(Work.busy(npc.id) and not Work.automationAllowed(npc.id),"same shared worker arbiter")
@@ -363,12 +365,12 @@ check(not Work.busy("other-npc"),"one production order does not monopolize other
 Work.pauseAll("SAVE")
 local rootWithConflict=saved
 local conflicting={format=1,id="conflict",npcId="other-npc",kind="EXPLICIT_TRANSFER",executor="ENTITY",scopeId="local-world",items={t.id},state="PAUSED"}
-rootWithConflict.labor.tasks.conflict=conflicting rootWithConflict.labor.byNpc["other-npc"]="conflict"
+assert(require('EmberRoutesProbe/BusinessJobs').publishHaul(conflicting))
 local freshRoot={} for key,value in pairs(rootWithConflict) do freshRoot[key]=value end saved=freshRoot
 local ok=pcall(Store.data)
 check(not ok,"load cannot publish double ownership across native production and logistics")
 -- Restore the old root only to allow the fixture reset; this is not a runtime repair path.
-saved=rootWithConflict rootWithConflict.labor.tasks.conflict=nil rootWithConflict.labor.byNpc["other-npc"]=nil
+saved=rootWithConflict rootWithConflict.taskJobs.byId.conflict=nil
 
 local Claims=require "EmberRoutesProbe/LaborClaims"
 local claims=Claims.new()
@@ -435,14 +437,14 @@ check(nativeCalls==0 and Craft.record(npc.id).reason=="ITEM_MISSING" and Store.o
 fresh() mode="consume_error" Craft.execute(actor,"run",object) toCraft():perform() pump()
 check(Craft.execute(actor,"resume")=="RECONCILE_REQUIRED" and nativeCalls==1,"uncertain native commit cannot be continued as a fresh craft")
 
--- Old 0.17.0 loans may only return what was already borrowed, never start new loans.
-m,t=fresh() materials.container:Remove(m) tools.container:Remove(t) npc.root:AddItem(m) npc.root:AddItem(t)
-saved.craftProbes={format=1,byNpc={[npc.id]={format=1,id="legacy-loan",npcId=npc.id,requester=actor.id,generation=1,
-    state="PAUSED",phase="COLLECTING",benchId="legacy-surface",materialId=m.id,toolId=t.id,outputIds={},released=false}}}
-function actor:getInventory() return self.root end -- Explicit legacy recovery is the sole compatibility exception.
+-- User explicitly cancelled legacy task import. No old loan is reconstructed.
+fresh()
+local cleanRoot=saved
+saved={craftProbes={format=1,byNpc={[npc.id]={id='legacy-loan'}}}}
+local legacyOk=pcall(function() require('EmberRoutesProbe/BusinessJobs').crafts() end)
+check(not legacyOk and saved.craftProbes.byNpc[npc.id].id=='legacy-loan','old task records block import without being erased')
+saved=cleanRoot
 Craft.reset()
-check(Craft.execute(actor,"return")=="RETURN_STARTED","legacy loan has an explicit recovery path") pump()
-check(m.container==actor.root and t.container==actor.root and Craft.record(npc.id).released,"upgrade preserves and returns previously borrowed originals")
 
 -- Formal service uses the real craft kernel, explicit surfaces, scalar snapshots and signals.
 function actor:getInventory() error("PLAYER_INVENTORY_TOUCHED_BY_FORMAL_SERVICE") end
@@ -732,3 +734,175 @@ preview=finishPreview(Preview.new(actor,entry.id,npc.id,'Base.CarveWoodenFork',1
 local missingSurface=false for _,reason in ipairs(preview.conditions) do if reason=='CRAFT_SURFACE_REQUIRED' then missingSurface=true end end
 check(missingSurface,'surface-only recipe reports missing surface during preflight')
 print('PASS read-only preview contracts: '..checks..' total checks; game/native effects NOT RUN')
+
+-- Real chain coordinator + existing native action adapter, with synthetic recipe data.
+local function chainItem(kind)
+    return {getFullName=function() return kind end,getDisplayName=function() return kind end,getActualWeight=function() return 1 end}
+end
+local function chainInput(kind,n,keep,slot)
+    local io=profileInput({keep=keep,index=slot,getResourceType=materialInput.getResourceType,
+        isVariableAmount=materialInput.isVariableAmount,isKeep=materialInput.isKeep,getIntAmount=function() return n end,
+        canUseItem=function(_,value) return value.kind==kind end})
+    function io:getPossibleInputItems() return list({chainItem(kind)}) end
+    function io:isDestroy() return not self.keep end
+    return io
+end
+local function chainRecipe(key,kind,n,inputs,hand)
+    local out=profileOutput({getResourceType=output.getResourceType,isVariableAmount=output.isVariableAmount,
+        getIntAmount=function() return n end,getPossibleResultItems=function() return list({chainItem(kind)}) end})
+    local r=setmetatable({key=key,testInputs=list(inputs),testOutputs=list({out}),hand=hand},{__index=recipe})
+    function r:getTranslationName() return self.key end
+    function r:getCategory() return 'Carpentry' end
+    return r
+end
+local sawRecipe=chainRecipe('Base.TestSaw','Base.Plank',3,{chainInput('Base.Log',1,false,0),chainInput('Base.Saw2',1,true,1)},true)
+local mouldRecipe=chainRecipe('Base.TestMould','Base.TestMould',1,{chainInput('Base.Plank',2,false,0)},false)
+local recipeMap={[sawRecipe.key]=sawRecipe,[mouldRecipe.key]=mouldRecipe}
+function getScriptManager() return {getCraftRecipe=function(_,key) return recipeMap[key] end,
+    getAllCraftRecipes=function()
+        local values={} for _,value in pairs(recipeMap) do values[#values+1]=value end
+        table.sort(values,function(a,b) return a.key<b.key end) return list(values)
+    end} end
+EmberRoutesProbeJava.recipeKey=function(r) return r.key end
+function getTextOrNull() return nil end
+local function chainFresh(logCount)
+    fresh() materials.container=container() tools.container=container() products.container=container()
+    materials.filter.types['Base.Log']=true materials.filter.types['Base.Plank']=true
+    tools.filter.types['Base.Saw2']=true products.filter.types['Base.TestMould']=true
+    local log
+    for i=1,logCount or 1 do log=materials.container:AddItem(item('Base.Log')) end
+    local saw=tools.container:AddItem(item('Base.Saw2'))
+    Service.selectSurface(actor,object)
+    return log,saw
+end
+local function startChain(n)
+    return Service.command(actor,entry.id,npc.id,'run',object.mod.EmberRoutesCraftProbeBenchId,mouldRecipe.key,n or 1)
+end
+local log,saw=chainFresh(1)
+preview=finishPreview(Preview.new(actor,entry.id,npc.id,mouldRecipe.key,1,object.mod.EmberRoutesCraftProbeBenchId))
+check(preview.state=='READY' and preview.chain and #preview.chain.nodes==2,'preview discovers saw-log precursor without existing planks')
+check(not Store.owner(log.id) and nativeCalls==0,'chain preview never claims or crafts originals')
+check(startChain()=='STARTED','chain order accepted through normal service')
+local chainId=Craft.record(npc.id).id
+local intermediate
+for i=1,1000 do
+    tick(true)
+    local r=Craft.record(npc.id)
+    if r.chain.index==2 and not intermediate then
+        for _,v in ipairs(materials.container.items) do if v.kind=='Base.Plank' then intermediate=v break end end
+        check(intermediate and Store.owner(intermediate.id).taskId==chainId,'stage transition keeps delivered intermediate under the same owner')
+    end
+    if not Work.busy(npc.id) then break end
+end
+local chainRecord=Craft.record(npc.id)
+check(chainRecord.state=='DONE' and nativeCalls==2,'chain executes native saw then native mould once each: '..tostring(chainRecord.reason))
+check(log.container==nil and saw.container==tools.container and products.container.items:size()==1,'original log consumed, saw returned, mould classified')
+check(materials.container.items:size()==1 and materials.container.items:get(0).kind=='Base.Plank','one excess real plank remains classified')
+check(Craft.status(npc.id).recipeId==mouldRecipe.key and Craft.status(npc.id).produced==1,'status reports final goal rather than precursor output')
+log,saw=chainFresh(1) startChain()
+for i=1,1000 do tick(false) if queued and queued.craftRecipe then break end if queued then queued:perform() end end
+check(queued and queued.craftRecipe,'first native chain action reached')
+Work.pauseAll('SAVE') Craft.afterSave({[npc.id]='CHECKPOINT_SAVED'}) Craft.tickPending() pumpBatch()
+check(Craft.record(npc.id).state=='DONE' and nativeCalls==2,'save during first chain action resumes without duplicate effects')
+log,saw=chainFresh(1) startChain()
+for i=1,1000 do
+    tick(true) local r=Craft.record(npc.id)
+    if r.chain.index==2 then Work.pause('USER',npc.id) break end
+end
+check(Craft.execute(actor,'return',nil,npc.id)=='RETURN_STARTED','cancel complete chain during stage transition') pumpBatch()
+check(Craft.record(npc.id).state=='CANCELLED' and nativeCalls==1 and saw.container==tools.container,'cancel preserves produced planks and returns real tool')
+check(materials.container.items:size()==3,'cancel leaves all precursor products in classified storage')
+log,saw=chainFresh(0) startChain() pumpBatch()
+check(Craft.record(npc.id).state=='PAUSED' and nativeCalls==0,'unavailable raw stock keeps chain without physical effects')
+local waitingId=Craft.record(npc.id).id
+materials.container:AddItem(item('Base.Log')) registry.inventoryChanged()
+Craft.tickPending() pumpBatch()
+check(Craft.record(npc.id).state=='DONE' and Craft.record(npc.id).id==waitingId and nativeCalls==2,'external stock signal resumes the same waiting chain')
+log,saw=chainFresh(1) startChain()
+for i=1,1000 do tick(true) if Craft.record(npc.id).unitMade then break end end
+local committed=Craft.record(npc.id).outputs[1].id
+check(nativeCalls==1 and Store.owner(committed),'native precursor commit is claimed before delivery')
+Work.pauseAll('SAVE') Craft.afterSave({[npc.id]='CHECKPOINT_SAVED'}) Craft.tickPending() pumpBatch()
+check(Craft.record(npc.id).state=='DONE' and nativeCalls==2,'saving after precursor commit does not craft it twice')
+log,saw=chainFresh(1) startChain()
+for i=1,1000 do tick(true) if Craft.record(npc.id).chain.index==2 then Work.pause('USER',npc.id) break end end
+local persisted=Craft.record(npc.id) local oldWorld=saved
+saved={} for key,value in pairs(oldWorld) do saved[key]=value end
+Store.data()
+local restoredOwner=Store.owner(saw.id)
+check(restoredOwner and restoredOwner.taskId==persisted.id,'world cache reconstruction restores the entire chain ownership')
+check(Craft.execute(actor,'resume',nil,npc.id)=='RESUME_STARTED','persisted chain resumes the current node') pumpBatch()
+check(Craft.record(npc.id).state=='DONE' and nativeCalls==2,'loaded chain does not repeat a completed node')
+-- The user's actual installed IO: one plank + one nail, reusable hammer and saw.
+local function fromSource(id)
+    local sample for _,candidate in ipairs(profiles) do if candidate.id==id then sample=candidate break end end
+    assert(sample,'missing installed source sample '..id)
+    local inputs={}
+    for slot,input in ipairs(sample.inputs) do
+        local kind=input.choices[1]
+        if input.tag then kind=kind=='base:hammer' and 'Base.Hammer' or 'Base.Saw2' end
+        inputs[#inputs+1]=chainInput(kind,input.count,input.keep,slot)
+    end
+    return chainRecipe(id,sample.outputs[1].kind,sample.outputs[1].count,inputs,sample.hand)
+end
+local realSaw=fromSource('Base.SawLogs') local realMould=fromSource('Base.MakeWoodenIngotCastMold')
+recipeMap={[realSaw.key]=realSaw,[realMould.key]=realMould}
+log,saw=chainFresh(1)
+materials.filter.types['Base.Nails']=true tools.filter.types['Base.Hammer']=true products.filter.types['Base.WoodenIngotCastMold']=true
+materials.container:AddItem(item('Base.Nails')) local originalHammer=tools.container:AddItem(item('Base.Hammer'))
+check(Service.command(actor,entry.id,npc.id,'run',object.mod.EmberRoutesCraftProbeBenchId,realMould.key,1)=='STARTED','installed wooden ingot mould chain starts without planks')
+pumpBatch()
+check(Craft.record(npc.id).state=='DONE' and nativeCalls==2,'installed-source saw and ingot mould IO pass through the same executor: '..tostring(Craft.record(npc.id).reason))
+check(log.container==nil and saw.container==tools.container and originalHammer.container==tools.container,'installed-source chain returns both original tools')
+check(products.container.items:get(0).kind=='Base.WoodenIngotCastMold' and materials.container.items:size()==2,'one real mould and two excess planks are classified')
+log,saw=chainFresh(1)
+materials.container:AddItem(item('Base.Nails')) tools.container:AddItem(item('Base.Hammer'))
+local known=npc.isRecipeKnown
+npc.isRecipeKnown=function(self,r) return r~=realSaw and known(self,r) end
+preview=finishPreview(Preview.new(actor,entry.id,npc.id,realMould.key,1,object.mod.EmberRoutesCraftProbeBenchId))
+check(preview.state=='BLOCKED' and preview.blocker and preview.blocker.recipeId==realSaw.key,'missing precursor knowledge identifies the saw recipe rather than the mould')
+npc.isRecipeKnown=known
+log,saw=chainFresh(0)
+materials.container:AddItem(item('Base.Plank')) materials.container:AddItem(item('Base.Nails')) tools.container:AddItem(item('Base.Hammer'))
+function getScriptManager() return {getCraftRecipe=function(_,key) return recipeMap[key] end,
+    getAllCraftRecipes=function() error('DIRECT_ORDER_MUST_NOT_SCAN_CATALOGUE') end} end
+check(Service.command(actor,entry.id,npc.id,'run',object.mod.EmberRoutesCraftProbeBenchId,realMould.key,1)=='STARTED','direct materials take the fast path')
+pumpBatch()
+check(Craft.record(npc.id).state=='DONE' and nativeCalls==1,'existing plank order never waits for a full recipe catalogue')
+print('PASS dependency execution contracts: '..checks..' total checks; native effects and storage are mocked')
+-- Realistic heavy input: normal capacity 8, log 9, saw .7; safe second level.
+log,saw=chainFresh(1)
+npc.maxWeight=8 log.weight=9 saw.weight=0.7
+check(Service.command(actor,entry.id,npc.id,'run',nil,realSaw.key,3)=='STARTED','heavy single log order accepted')
+for i=1,1000 do tick(true) if not Work.busy(npc.id) then break end end
+check(Craft.record(npc.id).state=='DONE' and log.container==nil and saw.container==tools.container,
+ 'second-level heavy log is collected, crafted and tool returned through native action adapter')
+log,saw=chainFresh(1)
+npc.maxWeight=6 log.weight=9 saw.weight=0.7
+check(Service.command(actor,entry.id,npc.id,'run',nil,realSaw.key,3)=='STARTED','third-level case enters bounded planning')
+for i=1,1000 do tick(true) if not Work.busy(npc.id) then break end end
+check(Craft.record(npc.id).reason=='CAPACITY_UNAVAILABLE' and log.container==materials.container,
+ 'third-level projected log rejected before taking originals')
+log,saw=chainFresh(1)
+npc.maxWeight=8 log.weight=9 saw.weight=0.7
+check(Service.command(actor,entry.id,npc.id,'run',nil,realSaw.key,3)=='STARTED','dynamic capacity case starts')
+for i=1,1000 do tick(true) if log.container==npc.root then break end end
+check(log.container==npc.root,'dynamic capacity fixture reaches carrying stage')
+npc.maxWeight=6 tick(true)
+check(Craft.record(npc.id).reason=='CAPACITY_UNAVAILABLE' and nativeCalls==0 and Store.owner(log.id),
+ 'capacity decrease stops task without crafting or releasing carried originals')
+npc.maxWeight=nil
+print('PASS production carry integration: '..checks..' total checks; game NOT RUN')
+return {Probe=Probe,Work=Work,Craft=Craft,Store=Store,actor=actor,npc=npc,registry=registry,
+    fresh=chainFresh,recipe=realSaw,entry=entry,materials=materials,tools=tools,products=products,tick=tick,
+    queued=function() return queued end,nativeCalls=function() return nativeCalls end,
+    setMode=function(value) mode=value end,object=object,item=item,
+    legacyFresh=function()
+        local material,tool=fresh()
+        for key,value in pairs(legacyRecipe) do recipe[key]=value end
+        recipe.testInputs=nil recipe.testOutputs=nil recipe.hand=nil
+        HandcraftLogic.new=legacyLogic getScriptManager=legacyManager
+        materials.filter.types={['Base.SmallHandle']=true} tools.filter.types={['Base.KitchenKnife']=true}
+        products.filter.types={['Base.WoodenFork']=true}
+        return material,tool
+    end}

@@ -31,13 +31,44 @@ function Driver.valid(binding)
         and EmberRoutesProbeJava.carrierId(binding.handle) == binding.id
 end
 
-function Driver.stop(binding)
+function Driver.stop(binding,body)
     if not Driver.valid(binding) then return false end
+    if body then return body.stop() end
     return EmberRoutesProbeJava.stopCarrier(binding.handle)
 end
 
-function Driver.move(binding, actor, point)
+-- Only TaskController supplies generation from its private ExecutionSession.
+function Driver.acquireControl(binding,jobId,generation)
+    if not Driver.valid(binding) or not EmberRoutesProbeJava.acquireBodyControl then return nil,'CONTROL_UNAVAILABLE' end
+    local key=EmberRoutesProbeJava.acquireBodyControl(binding.handle,jobId,generation)
+    if not key or key=='' then return nil,'CONTROL_DENIED' end
+    return {binding=binding,key=key}
+end
+function Driver.moveControlled(control,actor,point)
+    if not control or not Driver.valid(control.binding) then return 'STALE_NPC' end
+    return EmberRoutesProbeJava.moveWithControl(control.binding.handle,control.key,actor,point.x,point.y,point.z)
+end
+function Driver.stopControlled(control)
+    return control and Driver.valid(control.binding)
+        and EmberRoutesProbeJava.stopWithControl(control.binding.handle,control.key) or false
+end
+function Driver.stopEvidence(control)
+    if not control or not Driver.valid(control.binding) then return {available=false} end
+    local mask=EmberRoutesProbeJava.bodyStopMask(control.binding.handle,control.key)
+    -- This says nothing about Lua queued actions or business effects.
+    return {available=mask~=nil and mask>=0,nativeMask=mask,nativeStopped=mask==0}
+end
+function Driver.releaseControl(control)
+    return control and Driver.valid(control.binding)
+        and EmberRoutesProbeJava.releaseBodyControl(control.binding.handle,control.key) or false
+end
+
+function Driver.move(binding, actor, point,body)
     if not Driver.valid(binding) then return "STALE_NPC" end
+    if body then
+        local ok,result=body.move(actor,point)
+        return ok and result or (result or 'CONTROL_REQUIRED')
+    end
     if EmberRoutesProbeJava.commandFor then
         return EmberRoutesProbeJava.commandFor(binding.id,"move",actor,point.x,point.y,point.z)
     end

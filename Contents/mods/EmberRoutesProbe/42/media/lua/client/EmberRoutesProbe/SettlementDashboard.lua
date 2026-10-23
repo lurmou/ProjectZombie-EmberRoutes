@@ -5,10 +5,15 @@ local Layout=require "EmberRoutesProbe/UI/Layout"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
 local Metrics=require "EmberRoutesProbe/WarehouseMetrics"
-local tabs={"warehouse","logistics","crafting"}
-local modules={warehouse="WarehousePage",logistics="LogisticsPage",crafting="CraftingPage"}
+local tabs={"warehouse","orders"}
+-- Legacy configuration stays reachable inside the monitor until business migration.
+local modules={warehouse="WarehousePage",orders="OrderMonitorPage",logistics="LogisticsPage",crafting="CraftingPage"}
 local opened
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
+local function themeTitle()
+    local key=Theme.activePreset or "ae2"
+    return getTextOrNull("IGUI_EmberRoutesProbe_Settlement_theme_"..key) or (key=="ae2" and "风格: AE2科技" or "风格: 原版经典")
+end
 ---@class EmberRoutesSettlementDashboard:ISCollapsableWindow
 ---@field actor IsoPlayer
 ---@field entry EmberRoutesSettlement
@@ -30,7 +35,7 @@ EmberRoutesSettlementDashboard=ISCollapsableWindow:derive("EmberRoutesSettlement
 function EmberRoutesSettlementDashboard:new(actor,entry,tabId)
     local h=getTextManager():getFontHeight(UIFont.Small)
     local sw,sh=getCore():getScreenWidth(),getCore():getScreenHeight()
-    local w,height=math.min(sw*0.90,h*58),math.min(sh*0.96,h*38)
+    local w,height=math.min(sw*0.92,h*48),math.min(sh*0.94,h*32)
     ---@type EmberRoutesSettlementDashboard
     local o=ISCollapsableWindow.new(self,(sw-w)/2,(sh-height)/2,w,height)
     o.actor,o.entry,o.world=actor,entry,Ledger.data()
@@ -45,22 +50,24 @@ function EmberRoutesSettlementDashboard:createChildren()
     ISCollapsableWindow.createChildren(self)
     local h,p=self.fontHeight,self.pad
     local regions=assert(Layout.axis({x=0,y=self:titleBarHeight(),width=self.width,height=self.height-self:titleBarHeight()},
-        {{basis=h+p},{grow=1}},{direction="column",padding=p,gap=p/2}))
+        {{basis=h+p},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
     self.pageBounds=regions[2]
+    self.footerBounds=regions[3]
     local tracks={} for _ in ipairs(tabs) do tracks[#tracks+1]={grow=1} end
-    tracks[#tracks+1]={basis=math.floor(h*6.5)}
+    tracks[#tracks+1]={basis=math.floor(h*7.8)}
     local top=assert(Layout.axis(regions[1],tracks,{gap=p/2}))
     for i,id in ipairs(tabs) do
         local r=top[i]
         local button=ISButton:new(r.x,r.y,r.width,r.height,text("tab_"..id),self,EmberRoutesSettlementDashboard.tabClicked)
-        button.internal=id button:initialise() Theme.button(button) button.tooltip=text("tabNavigation")
+        button.internal=id button:initialise()
+        Theme.styleButton(button,false,id==self.initialTab)
+        button.tooltip=text("tabNavigation")
         Tooltip.attach(button,"prerender") self:addChild(button) self.tabButtons[id]=button
     end
     local themeR=top[#top]
-    local themeTitle=(Theme.presetIcon or "✦").." "..(Theme.activePreset=="ae2" and "AE2科技" or "原版经典")
-    self.themeButton=ISButton:new(themeR.x,themeR.y,themeR.width,themeR.height,themeTitle,self,EmberRoutesSettlementDashboard.toggleTheme)
+    self.themeButton=ISButton:new(themeR.x,themeR.y,themeR.width,themeR.height,themeTitle(),self,EmberRoutesSettlementDashboard.toggleTheme)
     self.themeButton:initialise() Theme.button(self.themeButton,true)
-    self.themeButton.tooltip="点击在 [AE2 现代科技] 与 [原版经典] 风格间一键换装"
+    self.themeButton.tooltip=getTextOrNull("IGUI_EmberRoutesProbe_Settlement_theme_tip") or "点击在 [AE2 现代科技] 与 [原版经典] 风格间一键换装"
     Tooltip.attach(self.themeButton,"prerender") self:addChild(self.themeButton)
     self:setWantKeyEvents(true)
 end
@@ -72,6 +79,8 @@ function EmberRoutesSettlementDashboard:selectTab(id)
     if not modules[id] then return end
     if not self:valid() then self:close() return end
     if id==self.activeTab then self.pages[id]:focusContent() return end
+    if self.publicDialog then self.publicDialog:close() end
+    if self.priorityDialog then self.priorityDialog:close() end
     local previous=self.activeTab and self.pages[self.activeTab]
     self.activeTab=nil
     if previous then previous:deactivate() previous:setVisible(false) end
@@ -84,19 +93,25 @@ function EmberRoutesSettlementDashboard:selectTab(id)
     self.activeTab=id page:setVisible(true) page:activate()
     if self.disposed or self.activeTab~=id then return end
     for key,button in pairs(self.tabButtons) do
-        Theme.button(button,key==id)
-        button.borderColor=key==id and Theme.accent or Theme.border
+        local chosen=key==id or key=='orders' and (id=='crafting' or id=='logistics')
+        Theme.styleButton(button,chosen,chosen)
     end
+    if id~='orders' then self:setFooter(getText('IGUI_EmberRoutesProbe_Monitor_'..(id=='warehouse' and 'warehouseFooter' or 'compatFooter'))) end
     page:focusContent()
+end
+function EmberRoutesSettlementDashboard:setFooter(value)
+    self.footerText=require('EmberRoutesProbe/UI/Text').wrapLimited(value,self.footerBounds.width,UIFont.Small,1)[1]
+end
+function EmberRoutesSettlementDashboard:prerender()
+    ISCollapsableWindow.prerender(self)
+    if self.footerText then Theme.text(self,self.footerText,self.footerBounds.x,self.footerBounds.y,Theme.muted) end
 end
 function EmberRoutesSettlementDashboard:toggleTheme()
     local nextId=Theme.toggle()
-    local title=(Theme.presetIcon or "✦").." "..(nextId=="ae2" and "AE2科技" or "原版经典")
-    self.themeButton:setTitle(title)
+    self.themeButton:setTitle(themeTitle())
     Theme.button(self.themeButton,true)
     for key,button in pairs(self.tabButtons) do
-        Theme.button(button,key==self.activeTab)
-        button.borderColor=key==self.activeTab and Theme.accent or Theme.border
+        Theme.styleButton(button,key==self.activeTab,key==self.activeTab)
     end
     self.backgroundColor=Theme.window
     self.borderColor=Theme.border
@@ -112,7 +127,7 @@ end
 function EmberRoutesSettlementDashboard:tabClicked(button) self:selectTab(button.internal) end
 function EmberRoutesSettlementDashboard:nextTab(direction)
     local index=1 for i,id in ipairs(tabs) do if id==self.activeTab then index=i break end end
-    self:selectTab(tabs[(index-1+direction)%#tabs+1])
+    self:selectTab(tabs[(index-1+direction+#tabs)%#tabs+1])
 end
 function EmberRoutesSettlementDashboard:isKeyConsumed(key)
     return not self.disposed and (key==Keyboard.KEY_PRIOR or key==Keyboard.KEY_NEXT)
@@ -130,11 +145,29 @@ end
 function EmberRoutesSettlementDashboard:close()
     if self.disposed then return end
     self.disposed=true self.activeTab=nil
+    if self.publicDialog then self.publicDialog:close() end
+    if self.priorityDialog then self.priorityDialog:close() end
     if opened==self then opened=nil end
     for _,page in pairs(self.pages) do page:dispose() end
     for _,button in pairs(self.tabButtons) do Tooltip.clear(button) end
     ISCollapsableWindow.close(self) self:removeFromUIManager()
     if self.actor:getJoypadBind()~=-1 then setJoypadFocus(self.actor:getIndex(),nil) end
+end
+function EmberRoutesSettlementDashboard:openPublicOrder(context)
+    local Public=require 'EmberRoutesProbe/PublicWork'
+    local available,reason=Public.available()
+    if not available then self.actor:Say(require('EmberRoutesProbe/UI/OrderMonitorCards').reason(reason)) return end
+    if not self:valid() then self:close() return end
+    if self.publicDialog then self.publicDialog:close() end
+    self.publicDialog=require('EmberRoutesProbe/UI/PublicOrderDialog').open(self,context)
+end
+function EmberRoutesSettlementDashboard:openPriorities()
+    local Public=require 'EmberRoutesProbe/PublicWork'
+    local available,reason=Public.available()
+    if not available then self.actor:Say(require('EmberRoutesProbe/UI/OrderMonitorCards').reason(reason)) return end
+    if not self:valid() then self:close() return end
+    if self.priorityDialog then self.priorityDialog:close() end
+    self.priorityDialog=require('EmberRoutesProbe/UI/WorkPriorityDialog').open(self)
 end
 function EmberRoutesSettlementDashboard.open(actor,id,tabId)
     if opened and not opened:valid() then opened:close() end

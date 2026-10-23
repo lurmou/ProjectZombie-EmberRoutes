@@ -3,9 +3,12 @@ local Log = require "EmberRoutesProbe/Log"
 local Actions = require "EmberRoutesProbe/Actions"
 local Batch = require "EmberRoutesProbe/Batch"
 local Rules = require "EmberRoutesProbe/HaulRules"
+local Diagnostic=require 'EmberRoutesProbe/TaskDiagnostic'
+local Driver=require 'EmberRoutesProbe/Driver'
 require "TimedActions/ISInventoryTransferAction"
 
 local Haul = { endpoints = {}, fixtures = {}, batch = nil }
+local controlled
 local function log(message) Log.write("HAUL", message) end
 local function now() return getTimestampMs() end
 local function newID()
@@ -36,18 +39,25 @@ local function endpointsValid()
     return true, "VALID"
 end
 
-function Haul.cancel(reason, npcId)
+function Haul.cancel(reason, npcId,body)
     if npcId and Haul.npc and EmberRoutesProbeJava.carrierId(Haul.npc)~=npcId then return end
+    if not body and Diagnostic.active(controlled) then
+        if not npcId or npcId==controlled.binding.id then return Diagnostic.cancel(controlled,reason) end
+        return
+    end
     if Haul.busy() then
         Haul.batch:cancel(reason or "USER")
-        if Haul.npc then EmberRoutesProbeJava.stopCarrier(Haul.npc) end
+        if body then body.stop()
+        elseif Haul.npc and Probe.controlledExecution~=true then EmberRoutesProbeJava.stopCarrier(Haul.npc) end
         log("INTERRUPTED items retained in their actual containers")
     end
 end
 
-function Haul.cleanup(npc)
+function Haul.cleanup(npc,body)
     if npc and Haul.npc and Haul.npc~=npc then return true end
     if Haul.busy() then return false end
+    if Probe.controlledExecution==true and (#Haul.fixtures>0 or Haul.npc) and not body then return false end
+    if body and not body.current() then return false end
     for _, fixture in ipairs(Haul.fixtures) do
         local container = fixture.item:getContainer()
         if container and container ~= fixture.root and container ~= fixture.source and container ~= fixture.destination then
@@ -65,7 +75,9 @@ function Haul.cleanup(npc)
     end
     Haul.fixtures = {}
     if Haul.batch then Haul.batch.steps = {} Haul.batch.current = nil end
-    if Haul.npc then ISTimedActionQueue.queues[Haul.npc] = nil end
+    if body then
+        if not body.clear() then return false end
+    elseif Haul.npc then ISTimedActionQueue.queues[Haul.npc] = nil end
     Haul.npc, Haul.actor = nil, nil
     log("FIXTURES_CLEANED")
     return true
@@ -80,9 +92,11 @@ local function reachable(endpoint)
 end
 
 local function moveStep(name, endpoint)
+    local body,binding=Haul.body,Haul.binding
     local step = { name = name }
     local requested = false
     function step.start()
+        if body and not body.current() then return 'FAILED','CONTROL_REQUIRED' end
         if reachable(endpoint) then return end
         local square = luautils.getCorrectSquareForWall(Haul.npc, endpoint.object:getSquare())
         if not square then return "FAILED", "CONTAINER_SQUARE_UNAVAILABLE" end
@@ -106,7 +120,8 @@ local function moveStep(name, endpoint)
         if not adjacent then return "FAILED", "NO_WALKABLE_ADJACENT_TILE" end
         log("APPROACH_TARGET pos=" .. adjacent:getX() .. "," .. adjacent:getY() .. "," .. adjacent:getZ())
         local result
-        if EmberRoutesProbeJava.commandFor then
+        if body then result=Driver.move(binding,Haul.actor,{x=adjacent:getX()+0.5,y=adjacent:getY()+0.5,z=adjacent:getZ()},body)
+        elseif EmberRoutesProbeJava.commandFor then
             result=EmberRoutesProbeJava.commandFor(EmberRoutesProbeJava.carrierId(Haul.npc),"move",Haul.actor,
                 adjacent:getX()+0.5,adjacent:getY()+0.5,adjacent:getZ())
         else result=EmberRoutesProbeJava.command("move",Haul.actor,
@@ -122,15 +137,17 @@ local function moveStep(name, endpoint)
         return reachable(endpoint) and "PASSED" or "FAILED", "movement=" .. result .. " reach checked"
     end
     function step.cancel()
-        if Haul.npc then EmberRoutesProbeJava.stopCarrier(Haul.npc) end
+        if body then body.stop() elseif Haul.npc then EmberRoutesProbeJava.stopCarrier(Haul.npc) end
     end
     return step
 end
 
 local function transferStep(name, fixture, source, destination, endpoint)
+    local body=Haul.body
     local step = { name = name }
-    local action, performed, stopped, settle
+    local action, performed, attempted, stopped, settle
     function step.start()
+        if body and not body.current() then return 'FAILED','CONTROL_REQUIRED' end
         if not EmberRoutesProbeJava.carrierActive(Haul.npc) or not reachable(endpoint) then return "FAILED", "NOT_AT_CONTAINER" end
         if fixture.item:getContainer() ~= source or not source:getItems():contains(fixture.item) then return "FAILED", "SOURCE_CHANGED" end
         if not destination:hasRoomFor(Haul.npc, fixture.item) then return "FAILED", "DESTINATION_FULL" end
@@ -141,21 +158,25 @@ local function transferStep(name, fixture, source, destination, endpoint)
         local nativePerform, nativeStop, nativeValid = action.perform, action.stop, action.isValid
         action.isValid = function(self)
             local endpointsOK = endpointsValid()
-            return endpointsOK and EmberRoutesProbeJava.carrierActive(self.character) and reachable(endpoint)
+            return (not body or body.current()) and endpointsOK and EmberRoutesProbeJava.carrierActive(self.character) and reachable(endpoint)
                 and Rules.item(fixture.item, { fixture.root, fixture.source, fixture.destination }, source, fixture)
                 and nativeValid(self)
         end
         action.startActionAnim = function(self)
+            if body and not body.current() then return end
             nativeAnim(self)
             -- World-container actions normally select a real player's loot UI.
             -- This instance keeps the native animation/effects, without that selection.
             self.selectedContainer = nil
         end
         action.update = function(self)
+            if body and not body.current() then return end
             nativeUpdate(self)
             self.character:faceThisObject(endpoint.object)
         end
         action.perform = function(self)
+            if body and (attempted or stopped or not body.current()) then return end
+            attempted=true
             -- Revalidate at the actual effect boundary, including revocation after the last Lua tick.
             if not self:isValid() then
                 self:stop()
@@ -165,8 +186,11 @@ local function transferStep(name, fixture, source, destination, endpoint)
             nativePerform(self)
             performed = true
         end
-        action.stop = function(self) nativeStop(self) stopped = true end
-        ISTimedActionQueue.add(action)
+        action.stop = function(self)
+            if body and (performed or stopped or not body.retained()) then return end
+            stopped=true nativeStop(self)
+        end
+        if body then assert(body.add(action),'CONTROL_REQUIRED') else ISTimedActionQueue.add(action) end
     end
     function step.poll(time)
         if ISTimedActionQueue.hasAction(action) then return "WAIT" end
@@ -176,7 +200,9 @@ local function transferStep(name, fixture, source, destination, endpoint)
         local valid, details = Rules.item(fixture.item, { fixture.root, fixture.source, fixture.destination }, destination, fixture)
         return valid and "PASSED" or "FAILED", details
     end
-    function step.cancel() if Haul.npc then ISTimedActionQueue.clear(Haul.npc) end end
+    function step.cancel()
+        if body then body.clear() elseif Haul.npc then ISTimedActionQueue.clear(Haul.npc) end
+    end
     return step
 end
 
@@ -196,11 +222,11 @@ local function observeStep()
     return step
 end
 
-local function start(actor)
+local function start(actor,c)
     if Haul.busy() or Actions.isBusy() then return "BUSY" end
     local valid, reason = endpointsValid()
     if not valid then return reason end
-    local npc = EmberRoutesProbeJava.actionCarrier(actor)
+    local npc = c and c.npc or EmberRoutesProbeJava.actionCarrier(actor)
     if not npc then return "CARRIER_UNAVAILABLE" end
     local health = npc:getBodyDamage():getOverallBodyHealth()
     if health < 95 then
@@ -208,8 +234,9 @@ local function start(actor)
         return "INJURED"
     end
     if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
-    if not Haul.cleanup() or not Actions.cleanupForHaul() then return "CLEANUP_BLOCKED" end
+    if not Haul.cleanup(npc,c and c.body) or not Actions.cleanupForHaul(npc,c and c.body) then return "CLEANUP_BLOCKED" end
     Haul.npc, Haul.actor = npc, actor
+    Haul.body,Haul.binding=c and c.body,c and c.binding
     local source, destination = Haul.endpoints.source, Haul.endpoints.destination
     for _, kind in ipairs({ "Base.Pencil", "Base.Screwdriver", "Base.Spoon" }) do
         local token = newID()
@@ -254,17 +281,17 @@ function Haul.report()
     return Haul.batch.state
 end
 
-local function execute(actor, command, object)
+local function execute(actor, command, object,c)
     if not Probe.ready or not Probe.hasJava() or isClient() or isServer() then return "DRIVER_UNAVAILABLE" end
     if command == "report" then return Haul.report() end
-    if Haul.npc and EmberRoutesProbeJava.selectedId
+    if not c and Haul.npc and EmberRoutesProbeJava.selectedId
         and EmberRoutesProbeJava.carrierId(Haul.npc)~=EmberRoutesProbeJava.selectedId() then return "FIXTURE_OTHER_NPC" end
     if command == "cancel" then Haul.cancel("USER") return "CANCELLED" end
-    if command == "cleanup" then return Haul.cleanup() and "CLEANED" or "CLEANUP_BLOCKED" end
+    if command == "cleanup" then return Haul.cleanup(nil,c and c.body) and "CLEANED" or "CLEANUP_BLOCKED" end
     if command == "run" then
-        if Probe.cancelWork then Probe.cancelWork("HAUL_ORDER") end
-        if Probe.cancelCompanion then Probe.cancelCompanion("HAUL_ORDER") end
-        return start(actor)
+        if not c and Probe.cancelWork then Probe.cancelWork("HAUL_ORDER") end
+        if not c and Probe.cancelCompanion then Probe.cancelCompanion("HAUL_ORDER") end
+        return start(actor,c)
     end
     if command == "untag" then
         if object then
@@ -287,15 +314,65 @@ local function execute(actor, command, object)
     return "TAGGED"
 end
 
+local function evidence(npc)
+    if npc and Haul.npc and Haul.npc~=npc then return {effects='KNOWN',ids={}} end
+    local ids={} local known=true
+    for _,fixture in ipairs(Haul.fixtures) do
+        ids[#ids+1]=fixture.id
+        local container=fixture.item:getContainer()
+        if not container or not Rules.item(fixture.item,{fixture.root,fixture.source,fixture.destination},container,fixture) then known=false end
+    end
+    return {effects=known and 'KNOWN' or 'UNKNOWN',ids=ids}
+end
+Haul.fixtureEvidence=evidence
+local function combinedEvidence(c)
+    local own=evidence(c.npc)
+    local other=Actions.fixtureEvidence(c.npc)
+    for _,id in ipairs(other.ids) do own.ids[#own.ids+1]=id end
+    if other.effects~='KNOWN' then own.effects='UNKNOWN' end
+    return own
+end
+local function dispatch(actor,command,object)
+    if Probe.controlledExecution~=true or (command~='run' and command~='cancel' and command~='cleanup') then
+        return execute(actor,command,object)
+    end
+    if command=='cancel' then
+        if controlled and controlled.binding.id==EmberRoutesProbeJava.selectedId() then Diagnostic.cancel(controlled,'USER') end
+        return 'STOP_REQUESTED'
+    end
+    if Diagnostic.active(controlled) then return 'BUSY' end
+    local source,destination=Haul.endpoints.source,Haul.endpoints.destination
+    local result,c=Diagnostic.submit(actor,'HAUL',{
+        assets=true,recovery=command=='cleanup',
+        validate=function(binding)
+            return not Haul.busy() and not Actions.isBusy() and (not Haul.npc or Haul.npc==binding.handle)
+                and (command=='cleanup' or (source==Haul.endpoints.source and destination==Haul.endpoints.destination
+                    and endpointsValid() and binding.handle:getBodyDamage():getOverallBodyHealth()>=95))
+        end,
+        start=function(context)
+            if command=='cleanup' and not Actions.cleanupForHaul(context.npc,context.body) then return false,'CLEANUP_BLOCKED' end
+            context.result=execute(actor,command,object,context) context.recovered=context.result=='CLEANED'
+            return context.result=='STARTED' or context.recovered,context.result
+        end,
+        tick=function(context) Haul.tick(context) end,
+        finished=function() return not Haul.busy() end,
+        pause=function(context,reason) Haul.cancel(reason,context.binding.id,context.body) end,
+        evidence=combinedEvidence})
+    if c then controlled=c end
+    return result
+end
+
 function Haul.execute(actor, command, object)
-    local ok, result = pcall(execute, actor, command, object)
+    local ok, result = pcall(dispatch, actor, command, object)
     if not ok then Haul.cancel("ERROR") log("ERROR " .. tostring(result)) result = "ERROR" end
     if result == "INJURED" then actor:Say(getText("IGUI_EmberRoutesProbe_HaulInjured"))
     else actor:Say(getText("IGUI_EmberRoutesProbe_HaulResult") .. " " .. tostring(result)) end
+    return result
 end
 
-function Haul.tick()
+function Haul.tick(context)
     if not Haul.busy() then return end
+    if Haul.body and (not context or context~=controlled or context.body~=Haul.body or not Haul.body.current()) then return end
     local valid, reason = endpointsValid()
     if valid then
         if not EmberRoutesProbeJava.carrierPresent(Haul.npc) then reason = "CARRIER_UNAVAILABLE"

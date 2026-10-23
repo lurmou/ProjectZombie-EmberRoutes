@@ -214,7 +214,11 @@ function EmberRoutesCraftingBrowser:prerender()
     ISPanel.prerender(self) if not self.active then return end
     self.draft:draw()
     local r=self.paging local c=self.store.value.catalog
-    Theme.text(self,c.page.." / "..c.pages.."  ("..(c.total or 0)..")",r.x,r.y+self.pad/2,Theme.muted)
+    local pagingText=c.page.." / "..c.pages.."  ("..(c.total or 0)..")"
+    local tw=getTextManager():MeasureStringX(UIFont.Small,pagingText)
+    local tx=r.x+math.max(0,math.floor((r.width-tw)/2))
+    local ty=r.y+math.floor((r.height-self.fontHeight)/2)
+    Theme.text(self,pagingText,tx,ty,Theme.muted)
     local status=self.statusLines for i,line in ipairs(status.lines) do Theme.text(self,line,status.bounds.x,status.bounds.y+(i-1)*self.fontHeight,Theme.muted) end
 end
 return EmberRoutesCraftingBrowser

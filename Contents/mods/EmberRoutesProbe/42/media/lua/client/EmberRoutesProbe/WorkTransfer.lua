@@ -32,7 +32,7 @@ function Transfer.move(context, endpoint)
             end
             if not adjacent then return "FAILED", "NO_WALKABLE_ADJACENT_TILE" end
             local result = Driver.move({handle=context.npc,id=context.job.npcId},context.actor,
-                {x=adjacent:getX()+0.5,y=adjacent:getY()+0.5,z=adjacent:getZ()})
+                {x=adjacent:getX()+0.5,y=adjacent:getY()+0.5,z=adjacent:getZ()},context.body)
             if not string.find(result, "^MOVE_REQUESTED") then return "FAILED", result end
             requested = true
         end,
@@ -47,7 +47,7 @@ function Transfer.move(context, endpoint)
 end
 
 function Transfer.item(context, item, from, to, endpoint)
-    local action, performed, stopped, notified
+    local action, performed, stopped, notified,attempted
     local function valid()
         return context.valid() and EmberRoutesProbeJava.carrierActive(context.npc)
             and Transfer.reachable(context.npc, endpoint) and item:getContainer() == from
@@ -63,16 +63,30 @@ function Transfer.item(context, item, from, to, endpoint)
             local nativeValid, nativePerform, nativeStop = action.isValid, action.perform, action.stop
             local nativeAnim, nativeUpdate = action.startActionAnim, action.update
             action.isValid = function(self) return valid() and nativeValid(self) end
-            action.startActionAnim = function(self) nativeAnim(self) self.selectedContainer = nil end
-            action.update = function(self) nativeUpdate(self) self.character:faceThisObject(endpoint.object) end
+            action.startActionAnim = function(self)
+                if context.body and not context.body.current() then return end
+                nativeAnim(self) self.selectedContainer = nil
+            end
+            action.update = function(self)
+                if context.body and not context.body.current() then return end
+                nativeUpdate(self) self.character:faceThisObject(endpoint.object)
+            end
             action.perform = function(self)
+                if context.body and attempted then return end
+                attempted=true
                 if not self:isValid() then self:stop() return end
                 nativePerform(self)
                 performed = true
                 if context.transferred then context.transferred(item, from, to) end
             end
-            action.stop = function(self) nativeStop(self) stopped = true end
-            ISTimedActionQueue.add(action)
+            action.stop = function(self)
+                if context.body and (stopped or performed) then return end
+                stopped = true
+                if not context.body or context.body.retained() then nativeStop(self) end
+            end
+            if context.body then
+                if not context.body.add(action) then return 'FAILED','CONTROL_REQUIRED' end
+            else ISTimedActionQueue.add(action) end
         end,
         poll = function()
             if ISTimedActionQueue.hasAction(action) then return "WAIT" end

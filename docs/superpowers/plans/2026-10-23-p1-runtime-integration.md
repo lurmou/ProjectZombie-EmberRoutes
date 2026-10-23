@@ -1,6 +1,6 @@
 # P1统一执行权运行接入计划
 
-日期：2026-10-23。状态：计划已形成，运行代码未修改，以下步骤未执行。
+日期：2026-10-23。状态：任务1～4代码接线完成；0.22.13已启用完整路径，任务5实机未完成。当前入口见[启用与集中验收](../../testing/p1-runtime-acceptance.md)，保存实现见[统一保存与恢复](../../reviews/2026-10-23/p1-unified-save.md)。
 
 执行方式：主代理顺序实施，不派子代理。按项目及用户规则采用实际风险对应的定向回归，不重复全历史测试；技能模板中的额外子技能不可用时不据此阻塞。
 
@@ -57,33 +57,44 @@ Files: Modify J/ProbeRuntime.java、J/CarrierRuntime.java、J/ProbeNpc.java、�
 
 ## Task 3：现有业务全部接线
 
+0.22.11进度：TaskRuntime、票据body、Companion、正式Production、Work搬运及旧CraftProbe格式1/2/草稿、Actions/Haul/NpcCommands/Persistence样本入口已接；自动续工非抢占。任务3代码接线和静态调用核对完成，原生交接与诊断竞争实机未验；保存/恢复直接检查点路径归任务4，不能先开启门闩。
+
 Files: Modify L/Production.lua、CraftProbe.lua、Work.lua、WorkAgent.lua、WorkTransfer.lua、Companion.lua、CompanionAgent.lua、Actions.lua、Haul.lua、NpcCommands.lua；查询其他调用点，禁止遗漏Java命令旁路。
 
 - [ ] 写定向失败用例：制作→随从申请、搬运→制作申请、Debug动作与正式任务竞争、两NPC互不影响、迟到取消不清新队列。
-- [ ] 各业务注册adapter，所有Driver移动/停止与TimedAction入队/清理使用获授上下文；删除业务间直接抢占，但保留原件/容量门禁。
-- [ ] 暂停先禁止下一动作，按原生停止和物理后置条件归账；COMMITTING不因为取消而假定回滚。已制作只交付，未知提交不重做。
-- [ ] 接管Production.tickPending及CraftProbe.tickPending的自动续工：改提交恢复申请，不在回调直接execute取身体。
+- [x] 各业务注册adapter，受控Driver移动/停止与TimedAction入队/清理使用获授上下文；业务间直接抢占保留在gate关闭的兼容路径，原件/容量门禁不放宽。
+- [x] 暂停先禁止下一动作，按停止观察和物理后置条件归账；COMMITTING不因为取消而假定回滚。已制作只交付，未知提交不重做。宿主通过，原生实机归任务5。
+- [x] 接管Production.tickPending及CraftProbe.tickPending的自动续工：改提交恢复申请，不在回调直接execute取身体。0.22.9/0.22.10已接；统一保存屏障仍属于任务4。
 - [ ] 运行任务1命令及相关生产/搬运/随从最小回归；检查测试断言原件和交付事实，不仅检查调用了Controller。
-- [ ] 汇总搜索所有clear/add/cancelAll/command调用，逐一登记已授权或专用系统清理依据。提交本任务变更。
+- [x] 汇总搜索clear/add/cancelAll/command及body/Java控制调用，登记已授权、旧兼容、系统清理及任务4保存范围；清单见0.22.11证据。保留当前混合未提交改动，不整批提交其他人的文件。
 
 ## Task 4：统一保存屏障与恢复
 
+0.22.12代码已接：新增TaskPersistence及只读ProbeSaveReceipt，详见[保存证据](../../reviews/2026-10-23/p1-unified-save.md)。核对本次原版bin两表后才允许正常tick恢复，没有OnPostSave单信号开闸。下列项目的原生实机验收归任务5；本轮混合改动保留未提交，不整批提交。
+
 Files: Modify L/Persistence.lua、StockService.lua、Production.lua、CraftProbe.lua、Companion.lua及加载入口；保留现有Java检查点格式，本阶段不重写存档。
 
-- [ ] 写失败用例：OnSave中随从与制作同时请求恢复、保存失败、StockService正常保存后恢复、世界切换后旧回调、动作停止未确认。
-- [ ] Persistence先Controller.beginSave，再停止/核对、保存业务与检查点；禁止靠独立OnSave监听器执行顺序形成屏障。StockService停派统一纳入编排，明确成功/失败路径均如何退出保存态。
-- [ ] 保存成功后Companion.restoreState和制作恢复只入候选，Controller.finishSave(true)在全部记录核对后开放；失败finishSave(false)保留阻塞，不启动任何恢复。
-- [ ] 读档先旧业务记录与Claims恢复，再控制器及观察恢复；不能新建taskId或把旧携货单公开重领。测试当前老格式不被改写丢字段。
-- [ ] 验证StockService.afterSave现无明显调用点的风险，补入统一成功路径；失败路径保持暂停并可诊断，不无限静默暂停。
-- [ ] 运行上述定向用例、必要preflight和Java构建；提交本任务变更。
+- [x] 写失败用例：OnSave中随从与制作同时请求恢复、保存失败、StockService正常保存后恢复、世界切换后旧回调、动作停止未确认。
+- [x] Persistence区分提前准备与原生同步保存：提前请求可跨正常tick停派/核对；OnSave只同步捕获可确认事实，未停稳/COMMITTING记UNKNOWN及恢复阻断，不等待step、不假定可取消引擎保存。StockService停派统一纳入编排，不依赖监听器注册顺序。
+- [x] Companion.restoreState和制作恢复只入候选；OnPostSave不是磁盘成功凭据。世界仍活跃且业务/声明已核对时，才在后续正常tick调用Controller.finishSave(true)开放；失败或未知finishSave(false)保留阻塞，退出无tick时不恢复。
+- [x] 读档先旧业务记录与Claims恢复，再控制器及观察恢复；不能新建taskId或把旧携货单公开重领。测试当前老格式不被改写丢字段。
+- [x] 验证StockService.afterSave现无明显调用点的风险，补入统一成功路径；失败路径保持暂停并可诊断，不无限静默暂停。
+- [x] 纳入诊断的受控清理与diagnosticRecovery标量事实；不能在冻结后用普通body.current清理或假定记录已落盘。原件未知不准生成替代样本或移除NPC，安全移动仍可独立获授。
+- [x] 运行上述定向用例、必要preflight和Java构建；本轮混合改动保留未提交，不整批提交。原生验收仍属任务5。
 
 ## Task 5：P1单人实机验收及交付
 
-- [ ] 升版本，运行 `node ../.workbuddy/tools/pz.mjs preflight Contents/mods/EmberRoutesProbe/42`、`& ./tools/build-probe.ps1`、`node ../.workbuddy/tools/pz.mjs release-check .`，检查包内源码/版本一致；保留输出。
-- [ ] 集中实机确认：一NPC制作中切跟随、搬运中停止、提交边界中断、两NPC分别切换、正常保存恢复、保存失败门禁与Debug冲突。记录NPC/task/session和实际原件位置，不反复要求无关历史用例。
-- [ ] 原生停止或恢复无法核实时标“已实现待验/受阻”，不继续将自主领单标成可上线；不得用Mock通过替代。
-- [ ] 更新唯一架构的实现状态与BACKLOG。本计划P1通过后，才执行共享任务目录/优先级认领计划；清洁/守卫模型检查可以是协议测试，但不是新工种已可用。
+2026-10-23更新：用户已确认约定三组测试全部成功，P1单人流程验收通过，见[验收登记](../../testing/p1-runtime-acceptance.md)。下方0.22.13启用说明为历史；当前运行0.22.16。磁盘故障/强退和性能未包含在本次通过结论。
+
+0.22.13已按用户授权启用controlledExecution，补齐启动能力核验、后台服务加载及原生清理/正常执行区分；新增启动30项通过。用户此前明确由其在游戏中测试，合并为[三组验收](../../testing/p1-runtime-acceptance.md)，保留未验证项，不用宿主结果替代。
+
+- [x] 升版本，运行 `node ../.workbuddy/tools/pz.mjs preflight Contents/mods/EmberRoutesProbe/42`、`& ./tools/build-probe.ps1`、`node ../.workbuddy/tools/pz.mjs release-check .`，检查包内源码/版本一致；保留输出。0.22.13已通过，包内12关键文件一致。
+- [x] 按约定三组集中实机确认交接/原件、双NPC/诊断及保存/正常重进，用户确认全部成功；按用户反馈登记，未冒充磁盘故障和全部提交边界取证。
+- [x] 根据用户反馈登记P1单人通过；公共认领仍未实现，真正磁盘故障、强退事务及性能继续列为未验证，不用Mock通过替代。
+- [x] 更新唯一架构的实现状态与BACKLOG，明确P1实机待验收。本计划P1通过后，才执行共享任务目录/优先级认领计划；清洁/守卫模型检查可以是协议测试，但不是新工种已可用。
 
 ## 当前完成与未完成
 
-本轮已吸收评审、核对Java移动/停止源码链并形成计划。任务1～5尚未实施；底层JAR停止语义、实机效果、性能均未验证。后续从任务1开始，执行前按项目规则再次读取技能/API证据及当前差异。
+2026-10-23最新：任务5按约定单人测试由用户验收通过；下一阶段共享任务接入尚未实施。以下是启用时的历史状态，不覆盖最新验收登记。
+
+任务1～4模块及业务/诊断/保存运行接线和控制调用核对已完成；完整路径默认启用，任务5实机仍待完成。任务3/4的集成场景需任务5原生验证，不能把代码完成写成游戏验收。下一步按三组操作反馈核查日志与原件；不重复创建已完成的运行服务、保存编排或业务/诊断适配，不提前记为自主认领已实现。界面视觉最后处理，当前复用既有UI基础。

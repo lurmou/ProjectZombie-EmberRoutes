@@ -42,16 +42,16 @@ class KahluaLaborTest {
             env.rawset("dofile",(JavaFunction)(frame,n)->{frame.push(call(thread,env,Path.of((String)frame.get(0))));return 1;});
             run(thread,env,Path.of("tests/lua",file));
             if (Arrays.asList(args).contains("--preview") && env.rawget("ERSettlementPreview")!=null)
-                for (String tab:List.of("warehouse","logistics","crafting")) preview(thread,env,tab,args);
+                for (String tab:List.of("warehouse","orders","logistics","crafting","publicOrder","priorities")) preview(thread,env,tab,args);
             System.out.println("PASS installed Kahlua: "+file+"; native host mocked");
         }
     }
     static Object call(KahluaThread thread,KahluaTable env,Path file) {
-        try { return thread.call(LuaCompiler.loadstring(Files.readString(file),file.toString(),env),new Object[0]); }
+        try { return thread.call(LuaCompiler.loadstring(Files.readString(file,java.nio.charset.StandardCharsets.UTF_8),file.toString(),env),new Object[0]); }
         catch (Exception error) { throw new RuntimeException(file.toString(),error); }
     }
     static void run(KahluaThread thread,KahluaTable env,Path file) throws Exception {
-        Object[] result=thread.pcall(LuaCompiler.loadstring(Files.readString(file),file.toString(),env),new Object[0]);
+        Object[] result=thread.pcall(LuaCompiler.loadstring(Files.readString(file,java.nio.charset.StandardCharsets.UTF_8),file.toString(),env),new Object[0]);
         if (!Boolean.TRUE.equals(result[0])) throw new AssertionError(file+" "+Arrays.toString(result));
     }
     static double number(Object value) { return ((Number)value).doubleValue(); }
