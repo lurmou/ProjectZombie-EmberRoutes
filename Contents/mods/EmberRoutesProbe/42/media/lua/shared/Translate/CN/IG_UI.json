@@ -791,5 +791,11 @@
   "IGUI_EmberRoutesProbe_Public_toolsHeading": "【 所需工具 】",
   "IGUI_EmberRoutesProbe_Public_outputHeading": "【 预期产出 】",
   "IGUI_EmberRoutesProbe_Public_batchCount": "每批产出 %1 件 (共 %2 批)",
-  "IGUI_EmberRoutesProbe_Public_chainSupplyTag": "前置制作"
+  "IGUI_EmberRoutesProbe_Public_chainSupplyTag": "前置制作",
+  "IGUI_EmberRoutesProbe_Personnel_roleResident": "据点成员",
+  "IGUI_EmberRoutesProbe_Monitor_unassigned": "待分配",
+  "IGUI_EmberRoutesProbe_Settlement_viewGrid": "⊞ 网格",
+  "IGUI_EmberRoutesProbe_Settlement_viewList": "☰ 列表",
+  "IGUI_EmberRoutesProbe_Settlement_viewToggleHint": "切换方格网格视图 / 紧凑列表视图",
+  "IGUI_EmberRoutesProbe_Warehouse_slotHint": "左键选择 · 双击委托制作"
 }

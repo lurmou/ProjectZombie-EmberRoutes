@@ -11,7 +11,9 @@ local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key
 function Controls.new(owner,bounds)
     local p=owner.pad
     local clearWidth=getTextManager():MeasureStringX(UIFont.Small,text("clear"))+p*2
-    local r=assert(Layout.axis(bounds,{{grow=3},{basis=clearWidth},{grow=2},{grow=2}},{gap=p/2}))
+    local viewLabel=text("viewGrid") or "⊞ 网格"
+    local viewWidth=getTextManager():MeasureStringX(UIFont.Small,viewLabel)+p*2+4
+    local r=assert(Layout.axis(bounds,{{grow=3},{basis=clearWidth},{grow=2},{grow=2},{basis=viewWidth}},{gap=p/2}))
     local self={categoryIds={false},sortIds=Controls.sorts}
     self.search=ISTextEntryBox:new("",r[1].x,r[1].y,r[1].width,r[1].height)
     self.search:initialise() self.search.target=owner self.search.onTextChangeFunction=owner.queryChanged
@@ -34,6 +36,12 @@ function Controls.new(owner,bounds)
     for _,id in ipairs(Controls.sorts) do self.sort:addOption(text("sort_"..id)) end
     self.sort:setToolTipMap({defaultTooltip=text("sortHint")}) owner:addChild(self.sort)
     Tooltip.attach(self.sort,"prerender")
+    self.viewToggle=ISButton:new(r[5].x,r[5].y,r[5].width,r[5].height,viewLabel,owner,function()
+        if owner.toggleViewMode then owner:toggleViewMode() end
+    end)
+    self.viewToggle:initialise() Theme.button(self.viewToggle)
+    self.viewToggle.tooltip=text("viewToggleHint")
+    Tooltip.attach(self.viewToggle,"prerender") owner:addChild(self.viewToggle)
     return self
 end
 return Controls

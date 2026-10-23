@@ -283,7 +283,7 @@ function EmberRoutesPersonnelPage:prerender()
     if sel then
         Theme.text(self,sel.name,r.x+p,cardY,Theme.textColor)
         cardY=cardY+h+p/4
-        Theme.text(self,'ID: '..string.sub(sel.id,1,12)..'...',r.x+p,cardY,Theme.muted)
+        Theme.text(self,getText('IGUI_EmberRoutesProbe_Personnel_roleResident') or '社区成员',r.x+p,cardY,Theme.muted)
         cardY=cardY+h+p/2
 
         local statusStr=sel.busy and text('statusBusy') or text('statusIdle')
@@ -294,7 +294,8 @@ function EmberRoutesPersonnelPage:prerender()
         Theme.text(self,text('healthNormal'),r.x+p,cardY,Theme.muted)
         cardY=cardY+h+p/2
 
-        local jobStr=sel.order and sel.order.jobId and text('activeJob',sel.order.jobId) or text('activeJob',text('none'))
+        local taskDesc = sel.order and (sel.order.title or sel.order.recipeName or (sel.busy and text('statusBusy') or nil))
+        local jobStr = taskDesc and text('activeJob', taskDesc) or text('activeJob', text('none'))
         for _,line in ipairs(Text.wrap(jobStr,r.width-p*2,UIFont.Small)) do
             Theme.text(self,line,r.x+p,cardY,Theme.textColor)
             cardY=cardY+h
@@ -307,6 +308,16 @@ function EmberRoutesPersonnelPage:prerender()
     local notice=self.store.value.notice or ''
     if notice~='' then
         Theme.text(self,notice,self.bottomNoticeBounds.x,self.bottomNoticeBounds.y,Theme.accent)
+    end
+end
+
+function EmberRoutesPersonnelPage:update()
+    ISPanel.update(self)
+    if not self.active or self.disposed then return end
+    local now=getTimestampMs()
+    if not self.nextSyncCheck or now>self.nextSyncCheck then
+        self.nextSyncCheck=now+1500
+        self:refresh()
     end
 end
 

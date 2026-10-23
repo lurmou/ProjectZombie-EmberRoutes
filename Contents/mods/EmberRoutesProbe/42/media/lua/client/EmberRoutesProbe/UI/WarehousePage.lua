@@ -109,8 +109,12 @@ function EmberRoutesWarehousePage:createChildren()
     self.listTitles={{x=parts[1].x+tableColumns.name,y=parts[1].y,label=getText("IGUI_Name")},
         {x=self.itemList.x+self.itemList.width-h-p-getTextManager():MeasureStringX(UIFont.Small,text("quantity")),
         y=parts[1].y,label=text("quantity")}}
+    local Grid=require "EmberRoutesProbe/UI/WarehouseGrid"
+    self.itemGrid=Grid.new(self,parts[2],EmberRoutesWarehousePage.selectItem,self.presentation)
+    self:addChild(self.itemGrid)
     self.details=Details.new(self,columns[2],self.presentation)
     self.sourceList=self.details.list
+    self:setViewMode("grid")
     Input.focus(self,self.itemList)
     local pages=assert(Layout.axis(regions[4],{{grow=1},{grow=3},{grow=1}},{gap=p}))
     self.pageX,self.pageY,self.pageWidth=pages[2].x,pages[2].y+p/2,pages[2].width
@@ -143,7 +147,7 @@ function EmberRoutesWarehousePage:deactivate()
     end
     Lifecycle.unmount(self)
     if self.helpModal then self.helpModal:destroy() self.helpModal=nil end
-    Tooltip.clear(self.itemList) Tooltip.clear(self.sourceList) Tooltip.clear(self.search)
+    if self.itemGrid then Tooltip.clear(self.itemGrid) end Tooltip.clear(self.itemList) Tooltip.clear(self.sourceList) Tooltip.clear(self.search)
     Tooltip.clear(self.helpButton) Tooltip.clear(self.controls.sort) Tooltip.clear(self.details.locate)
     self.locator:clear()
     for _,combo in ipairs({self.categories,self.controls.sort}) do
@@ -170,7 +174,7 @@ function EmberRoutesWarehousePage:togglePin(row)
     self:project(self.store.value,{snapshot=true})
 end
 function EmberRoutesWarehousePage:focusContent()
-    Input.focus(self,self.focusedList or self.itemList)
+    Input.focus(self,self.viewMode=="grid" and (self.itemGrid or self.itemList) or (self.focusedList or self.itemList))
 end
 function EmberRoutesWarehousePage:receive(snapshot)
     if not self.active then return end
@@ -253,6 +257,11 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
             local total=0 for _,entry in ipairs(self.itemList.items) do total=total+entry.height end
             self.itemList:setYScroll(math.max(math.min(0,self.resume.scroll),math.min(0,self.itemList.height-total)))
         end
+        if self.itemGrid then
+            self.itemGrid:setRows(rows,selection)
+            local gridEmpty=snapshot.snapshot.state=="UPDATING" and "waitingItems" or "noItems"
+            self.itemGrid.emptyLabel=snapshot.snapshot.state=="ERROR" and text(snapshot.snapshot.reason or "ERROR") or text(gridEmpty)
+        end
         local empty=snapshot.snapshot.state=="UPDATING" and "waitingItems" or "noItems"
         Table.empty(self,self.itemList,snapshot.snapshot.state=="ERROR" and text(snapshot.snapshot.reason or "ERROR") or text(empty))
         self.syncingPage=true self.store:setState({page=page,selection=selection}) self.syncingPage=false
@@ -272,7 +281,7 @@ function EmberRoutesWarehousePage:focusList(list) Input.focus(self,list) end
 function EmberRoutesWarehousePage:isListFocused(list) return self.active and Input.active(self,list) end
 function EmberRoutesWarehousePage:onListActivate(list) Input.activate(self,list) end
 function EmberRoutesWarehousePage:onListFocus(list,direction)
-    if (list==self.itemList and direction==-1) or (list==self.sourceList and direction==1) then
+    if ((list==self.itemList or list==self.itemGrid) and direction==-1) or (list==self.sourceList and direction==1) then
         self.owner:nextTab(direction)
     else Input.other(self,list) end
 end
@@ -284,7 +293,39 @@ function EmberRoutesWarehousePage:locateSource()
     self.notice=text(reason)..(position and (" "..position.x..", "..position.y.." | z="..position.z) or "")
     self.hintLines=Text.wrapLimited(self.notice,self.width-self.pad*2,UIFont.Small,1)
 end
-function EmberRoutesWarehousePage:selectItem(row) self.store:setState({selection=row}) end
+function EmberRoutesWarehousePage:selectItem(row)
+    self.store:setState({selection=row})
+    if self.itemGrid and row then
+        for i,c in ipairs(self.itemGrid.cells) do
+            if c.row.fullType==row.fullType then self.itemGrid.selected=i break end
+        end
+    end
+    if self.itemList and row then
+        for i,entry in ipairs(self.itemList.items) do
+            if entry.item.value.fullType==row.fullType then self.itemList.selected=i break end
+        end
+    end
+end
+
+function EmberRoutesWarehousePage:toggleViewMode()
+    local newMode=(self.viewMode=="grid") and "list" or "grid"
+    self:setViewMode(newMode)
+end
+
+function EmberRoutesWarehousePage:setViewMode(mode)
+    self.viewMode=mode
+    local isGrid=(mode=="grid")
+    if self.itemGrid then
+        if self.itemGrid.setVisible then self.itemGrid:setVisible(isGrid) else self.itemGrid.visible=isGrid end
+    end
+    if self.itemList then
+        if self.itemList.setVisible then self.itemList:setVisible(not isGrid) else self.itemList.visible=not isGrid end
+    end
+    if self.controls and self.controls.viewToggle then
+        local label=isGrid and (text("viewGrid") or "⊞ 网格") or (text("viewList") or "☰ 列表")
+        self.controls.viewToggle:setTitle(label)
+    end
+end
 function EmberRoutesWarehousePage:previous() self.store:setState({page=math.max(1,self.actualPage-1)}) end
 function EmberRoutesWarehousePage:nextPage() self.store:setState({page=math.min(self.pages,self.actualPage+1)}) end
 function EmberRoutesWarehousePage:onListKey(key,list) Input.key(self,key,list) end
@@ -328,7 +369,9 @@ function EmberRoutesWarehousePage:prerender()
     if not self.active then return end
     local measured=Metrics.begin("ui.panel")
     self.summary:draw(self)
-    for _,title in ipairs(self.listTitles) do Theme.text(self,title.label,title.x,title.y,Theme.muted) end
+    if self.viewMode~="grid" then
+        for _,title in ipairs(self.listTitles) do Theme.text(self,title.label,title.x,title.y,Theme.muted) end
+    end
     self.details:draw()
     self:drawText(self.pageCaption,self.pageX,self.pageY,0.9,0.85,0.65,1,UIFont.Small)
     for i,line in ipairs(self.hintLines) do self:drawText(line,self.pad,self.hintY+(i-1)*self.fontHeight,0.65,0.74,0.8,1,UIFont.Small) end

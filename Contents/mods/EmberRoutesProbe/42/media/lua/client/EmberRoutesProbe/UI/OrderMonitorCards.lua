@@ -78,7 +78,8 @@ function Cards.details(owner,bounds)
         if not row then add(text('selectOrder'),Theme.muted)
         else
             add(Cards.title(row),Theme.gold)
-            add(text('identity',row.jobId),Theme.muted)
+            local orderTag = row.orderId and ('#'..tostring(row.orderId)) or (row.index and ('#'..tostring(row.index))) or nil
+            if orderTag then add(text('identity',orderTag),Theme.muted) end
             add(Cards.reason(row.state)..' · '..Cards.reason(row.phase),Visual.colors[state(row)] or Theme.accent)
             add(text('worker',row.name))
             local bMode=tostring(row.bodyMode or '')
@@ -107,7 +108,7 @@ function Cards.details(owner,bounds)
                 for i,asset in ipairs(assets) do
                     if i>64 then add(text('moreAssets',#assets-64),Theme.muted) break end
                     local name=asset.fullType and getItemNameFromFullType(asset.fullType) or Cards.reason(asset.kind)
-                    add(name..' #'..tostring(asset.id)..(asset.delivered and (' · '..text('credited')) or ''),Theme.muted)
+                    add(name..(asset.delivered and (' · '..text('credited')) or ''),Theme.muted)
                 end
             end
 

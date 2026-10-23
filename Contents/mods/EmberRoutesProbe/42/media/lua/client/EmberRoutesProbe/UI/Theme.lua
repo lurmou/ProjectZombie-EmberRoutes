@@ -45,7 +45,7 @@ local PRESETS={
     }
 }
 
-local currentPreset="ae2"
+local currentPreset="classic"
 local listeners={}
 
 local function copyColor(c)
@@ -75,11 +75,11 @@ function Theme.applyPreset(id)
 end
 
 -- Initialize default to AE2 Modern
-Theme.applyPreset("ae2")
+Theme.applyPreset("classic")
 
 function Theme.getPreset() return currentPreset end
 function Theme.getPresets() return PRESETS end
-function Theme.getLabel() return Theme.presetLabel or "[风格: AE2科技]" end
+function Theme.getLabel() return Theme.presetLabel or "[风格: 原版经典]" end
 
 function Theme.toggle()
     local nextId=currentPreset=="ae2" and "classic" or "ae2"

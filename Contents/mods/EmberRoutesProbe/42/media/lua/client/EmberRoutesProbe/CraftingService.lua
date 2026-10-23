@@ -52,10 +52,11 @@ function Service.status(actor,id)
     for i=0,EmberRoutesProbeJava.workerCount()-1 do
         local npcId=EmberRoutesProbeJava.workerIdAt(i)
         local binding=Driver.bindId(actor,npcId)
+        local valid=binding and Driver.valid(binding) and not (binding.handle.isDead and binding.handle:isDead())
         local status=Craft.status(npcId)
-        if (binding and Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()))
-            or (status and status.settlementId==id) then
-            result.workers[#result.workers+1]={id=npcId,name=binding and binding.handle:getFullName() or string.sub(npcId,1,8),
+        if valid and ((Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()))
+            or (status and status.settlementId==id)) then
+            result.workers[#result.workers+1]={id=npcId,name=binding.handle:getFullName(),
                 order=status,busy=Work.busy(npcId),orderBusy=Craft.busy(npcId)}
         end
     end

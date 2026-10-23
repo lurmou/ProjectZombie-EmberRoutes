@@ -42,7 +42,7 @@ function Service.status(actor,id)
             or state=='STOPPING' and 'active' or state=='RUNNING' and 'active'
             or paused[r.reason] and 'paused' or 'waiting'
         local row={id=r.orderId and 'ORDER:'..r.orderId or kind..':'..r.id,orderId=r.orderId,jobId=r.id,kind=kind,npcId=r.npcId,generation=r.generation,
-            name=binding and binding.handle:getFullName() or string.sub(r.npcId,1,8),carrierAvailable=binding~=nil,
+            name=binding and binding.handle:getFullName() or (getTextOrNull('IGUI_EmberRoutesProbe_Monitor_unassigned') or '待分配'),carrierAvailable=binding~=nil,
             state=state,phase=r.phase,reason=r.reason,closed=closed,bucket=bucket,
             bodyMode=activity,uncertain=unknown,
             title=order and order.recipeName or nil,product=order and order.product or nil,

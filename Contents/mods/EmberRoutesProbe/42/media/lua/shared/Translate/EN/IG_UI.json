@@ -791,5 +791,11 @@
   "IGUI_EmberRoutesProbe_Public_toolsHeading": "【 Required Tools 】",
   "IGUI_EmberRoutesProbe_Public_outputHeading": "【 Expected Output 】",
   "IGUI_EmberRoutesProbe_Public_batchCount": "%1 per batch (%2 batches total)",
-  "IGUI_EmberRoutesProbe_Public_chainSupplyTag": "Precursor Craft"
+  "IGUI_EmberRoutesProbe_Public_chainSupplyTag": "Precursor Craft",
+  "IGUI_EmberRoutesProbe_Personnel_roleResident": "Settlement Member",
+  "IGUI_EmberRoutesProbe_Monitor_unassigned": "Unassigned",
+  "IGUI_EmberRoutesProbe_Settlement_viewGrid": "⊞ Grid",
+  "IGUI_EmberRoutesProbe_Settlement_viewList": "☰ List",
+  "IGUI_EmberRoutesProbe_Settlement_viewToggleHint": "Toggle Slot Grid / List View",
+  "IGUI_EmberRoutesProbe_Warehouse_slotHint": "L-Click: Select · Double-Click: Craft Order"
 }
