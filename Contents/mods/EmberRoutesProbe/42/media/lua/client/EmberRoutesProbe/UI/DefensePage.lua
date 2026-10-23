@@ -31,6 +31,9 @@ function EmberRoutesDefensePage:new(owner,bounds)
     o.background=false
     o.alertButtons={}
     o.store=State.new({alertLevel=0,heat=18,maxHeat=100,posts={}})
+    o.store:subscribe(function(value)
+        if o.active and not o.disposed then o:project(value) end
+    end)
     return o
 end
 

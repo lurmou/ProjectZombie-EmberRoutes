@@ -21,6 +21,7 @@ function ISCraftRecipePanel:createDynamicChildren()
 
     local button=ISButton:new(0,0,0,getTextManager():getFontHeight(UIFont.Small)*2,
         getText('IGUI_EmberRoutesProbe_Public_createOrder'),self,function()
+            if self.emberPublicDialog and not self.emberPublicDialog.disposed then self.emberPublicDialog:bringToTop() return end
             local h=getTextManager():getFontHeight(UIFont.Small)
             local adapterOwner={
                 actor=actor,
@@ -32,7 +33,7 @@ function ISCraftRecipePanel:createDynamicChildren()
                 close=function() end
             }
             local PublicDialog=require('EmberRoutesProbe/UI/PublicOrderDialog')
-            PublicDialog.open(adapterOwner,{recipeId=id,recipeName=native:getTranslationName()})
+            self.emberPublicDialog=PublicDialog.open(adapterOwner,{recipeId=id,recipeName=native:getTranslationName()})
         end)
     button:initialise() button:instantiate()
     local row=self.rootTable:addRow()

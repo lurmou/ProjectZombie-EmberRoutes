@@ -73,7 +73,7 @@ function methods:setItem(row)
     end
     self.icon=row and self.presentation:icon(row.fullType) or nil
     self.countLabel=row and (text("quantity")..": "..(row.pending and "..." or tostring(row.count))) or ""
-    self.sourceHeading=text("sources")..(row and (" ("..#row.sources..")") or "")
+    self.sourceHeading=text("sources")..(row and row.sources and (" ("..#row.sources..")") or "")
     self.selectedSource=Cached.reconcile(self.list,row and row.sources or {},function(source)
         return sourceName(source).."\n"..location(source).."\n"..text("quantity")..": "
             ..(source.pending and "..." or tostring(source.count)).."\n"..source.id

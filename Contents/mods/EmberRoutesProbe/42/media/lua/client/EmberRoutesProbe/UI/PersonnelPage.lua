@@ -43,6 +43,9 @@ function EmberRoutesPersonnelPage:new(owner,bounds)
     o.fontHeight,o.pad=owner.fontHeight,owner.pad
     o.background=false
     o.store=State.new({workers={},selected=nil,notice='',revision=0})
+    o.store:subscribe(function(value)
+        if o.active and not o.disposed then o:project(value) end
+    end)
     return o
 end
 
@@ -241,6 +244,7 @@ function EmberRoutesPersonnelPage:refresh()
         selected=enriched[1] or nil
     end
     self.store:setState({workers=enriched,selected=selected,revision=self.store.value.revision+1})
+    self:project(self.store.value)
 end
 
 function EmberRoutesPersonnelPage:project(value)

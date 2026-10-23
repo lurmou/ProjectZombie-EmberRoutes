@@ -155,17 +155,17 @@ function Probe.beforeSave()
     end
 end
 
-Events.OnGameStart.Add(Probe.begin)
-Events.OnServerStarted.Add(Probe.begin)
-Events.OnTick.Add(Probe.tick)
--- Current GameWindow emits this only on the paused game-state path.
--- Never run action batches or companion movement from this callback.
-if Events.OnTickEvenPaused then
-    Events.OnTickEvenPaused.Add(function()
-        if Probe.ready then EmberRoutesProbeJava.retirementTick() end
-    end)
+if Events and Events.OnGameStart then
+    Events.OnGameStart.Add(Probe.begin)
+    Events.OnServerStarted.Add(Probe.begin)
+    Events.OnTick.Add(Probe.tick)
+    if Events.OnTickEvenPaused then
+        Events.OnTickEvenPaused.Add(function()
+            if Probe.ready then EmberRoutesProbeJava.retirementTick() end
+        end)
+    end
+    Events.OnPreMapLoad.Add(Probe.reset)
+    Events.OnSave.Add(Probe.beforeSave)
 end
-Events.OnPreMapLoad.Add(Probe.reset)
-Events.OnSave.Add(Probe.beforeSave)
 
 return Probe

@@ -141,17 +141,23 @@ end
 function EmberRoutesSettlementDashboard:tabClicked(button) self:selectTab(button.internal) end
 
 function EmberRoutesSettlementDashboard:nextTab(direction)
+    if self.activeTab=='logistics' or self.activeTab=='crafting' then
+        self:selectTab('orders')
+        return
+    end
     local index=1
     for i,id in ipairs(tabs) do if id==self.activeTab then index=i break end end
     self:selectTab(tabs[(index-1+direction+#tabs)%#tabs+1])
 end
 
 function EmberRoutesSettlementDashboard:isKeyConsumed(key)
-    return not self.disposed and (key==Keyboard.KEY_PRIOR or key==Keyboard.KEY_NEXT)
+    return not self.disposed and (key==Keyboard.KEY_PRIOR or key==Keyboard.KEY_NEXT or key==Keyboard.KEY_ESCAPE)
 end
 
 function EmberRoutesSettlementDashboard:onKeyPress(key)
-    if self:isKeyConsumed(key) then self:nextTab(key==Keyboard.KEY_PRIOR and -1 or 1) end
+    if not self:isKeyConsumed(key) then return end
+    if key==Keyboard.KEY_ESCAPE then self:close()
+    else self:nextTab(key==Keyboard.KEY_PRIOR and -1 or 1) end
 end
 
 function EmberRoutesSettlementDashboard:update()

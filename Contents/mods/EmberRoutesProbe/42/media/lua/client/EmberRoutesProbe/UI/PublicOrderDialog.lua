@@ -38,6 +38,7 @@ function EmberRoutesPublicOrderDialog.open(owner,context)
     o.resizable=false
     o.backgroundColor=Theme.window
     o.borderColor=Theme.border
+    o:setWantKeyEvents(true)
     o:initialise()
     o:addToUIManager()
     o:query()
@@ -303,8 +304,12 @@ function EmberRoutesPublicOrderDialog:describe()
             and text('expected',n,math.ceil(n/row.yield),math.ceil(n/row.yield)*row.yield) or text('chooseRecipe')
         Theme.enable(self.actionButton,row~=nil and n~=nil and n>=1 and n<=9999 and n==math.floor(n),true)
     else
-        self.preview=row and ('产物: '..row.name..' · 触发后自动向公共池发派') or text('chooseRecipe')
-        Theme.enable(self.actionButton,row~=nil,true)
+        local minVal=tonumber(self.minimum:getText())
+        local batchVal=tonumber(self.batch:getText())
+        local validStock=minVal and minVal>=0 and minVal<=9999 and minVal==math.floor(minVal)
+            and batchVal and batchVal>=1 and batchVal<=9999 and batchVal==math.floor(batchVal)
+        self.preview=row and text('maintainPreview',row.name) or text('chooseRecipe')
+        Theme.enable(self.actionButton,row~=nil and validStock,true)
     end
 end
 
@@ -358,6 +363,14 @@ function EmberRoutesPublicOrderDialog:prerender()
         Theme.text(self,line,pr.x+self.pad,curY,self.notice and Theme.gold or Theme.accent)
         curY=curY+h
     end
+end
+
+function EmberRoutesPublicOrderDialog:isKeyConsumed(key)
+    return not self.disposed and key==Keyboard.KEY_ESCAPE
+end
+
+function EmberRoutesPublicOrderDialog:onKeyPress(key)
+    if self:isKeyConsumed(key) then self:close() end
 end
 
 function EmberRoutesPublicOrderDialog:close()
