@@ -36,19 +36,30 @@ function Details.new(owner,bounds,presentation)
     Theme.list(self.list) Table.columns(self.list,false) owner:addChild(self.list)
     Table.empty(owner,self.list,text("chooseItem"))
     self.quantityX=self.list.x+self.list.width-h-p-getTextManager():MeasureStringX(UIFont.Small,text("quantity"))
-    local botBtns=assert(Layout.axis(parts[4],{{grow=1},{grow=1}},{gap=p/2}))
-    local r=botBtns[1]
-    self.locate=ISButton:new(r.x,r.y,r.width,r.height,text("locate"),owner,owner.locateSource)
+
+    -- 3 action buttons: Locate, Pin, Create Order
+    local botBtns=assert(Layout.axis(parts[4],{{grow=1},{grow=1.1},{grow=1.2}},{gap=p/3}))
+
+    self.locate=ISButton:new(botBtns[1].x,botBtns[1].y,botBtns[1].width,botBtns[1].height,text("locate"),owner,owner.locateSource)
     self.locate:initialise() Theme.enable(self.locate,false)
     self.locate.tooltip=text("chooseSource") owner:addChild(self.locate)
-    local r2=botBtns[2]
-    self.maintainStock=ISButton:new(r2.x,r2.y,r2.width,r2.height,getText("IGUI_EmberRoutesProbe_Public_createOrder"),owner,function()
+
+    self.pinButton=ISButton:new(botBtns[2].x,botBtns[2].y,botBtns[2].width,botBtns[2].height,text("pin"),owner,function()
+        if self.row and owner.togglePin then
+            owner:togglePin(self.row)
+        end
+    end)
+    self.pinButton:initialise() Theme.enable(self.pinButton,false)
+    self.pinButton.tooltip=text("pinHint") owner:addChild(self.pinButton)
+
+    self.maintainStock=ISButton:new(botBtns[3].x,botBtns[3].y,botBtns[3].width,botBtns[3].height,getText("IGUI_EmberRoutesProbe_Public_createOrder"),owner,function()
         if self.row and self.row.fullType and owner.owner and owner.owner.openPublicOrder then
             owner.owner:openPublicOrder({productType=self.row.fullType})
         end
     end)
     self.maintainStock:initialise() Theme.enable(self.maintainStock,false)
     self.maintainStock.tooltip=text("chooseItem") owner:addChild(self.maintainStock)
+
     return self
 end
 function methods:setItem(row)
@@ -69,6 +80,13 @@ function methods:setItem(row)
     end,function(source) return source.id end,true)
     Theme.enable(self.locate,self.selectedSource~=false,true)
     self.locate.tooltip=text(self.selectedSource and "locateHint" or "chooseSource")
+
+    Theme.enable(self.pinButton,row~=nil,true)
+    if row then
+        local pinTitle=text(row.pinned and "unpin" or "pin")
+        if self.pinButton.setTitle then self.pinButton:setTitle(pinTitle) else self.pinButton.title=pinTitle end
+    end
+
     Theme.enable(self.maintainStock,row~=nil,true)
     Table.empty(owner,self.list,row and text("noSources") or text("chooseItem"))
 end

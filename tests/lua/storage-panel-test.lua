@@ -25,6 +25,7 @@ function Base:setScrollHeight(value) self.scrollHeight=value end
 function Base:prerender() self.parentRendered=true end
 function Base:setWantKeyEvents(value) self.wantsKeys=value end
 function Base:setEnable(value) self.enable=value end
+function Base:setTitle(value) self.title=value end
 function Base:setOnMouseDownFunction(target,fn) self.target,self.onclick=target,fn end
 function Base:setOverrideAButtonFunction(target,fn) self.target,self.aButton=target,fn end
 function Base:clear() self.items={} self.scrollHeight=0 self.count=0 end

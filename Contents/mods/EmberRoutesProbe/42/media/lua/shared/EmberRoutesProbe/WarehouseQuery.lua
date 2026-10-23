@@ -7,6 +7,9 @@ function Query.root(id)
     return id
 end
 local function compare(mode,a,b)
+    local ap=(a.pinned==true)
+    local bp=(b.pinned==true)
+    if ap~=bp then return ap end
     if mode=="quantityAsc" or mode=="quantityDesc" then
         local ak=not a.pending and type(a.count)=="number"
         local bk=not b.pending and type(b.count)=="number"
@@ -50,7 +53,19 @@ function methods:page(rows,search,category,page,sort,anchor)
             if (not category or Query.root(row.node)==category)
                     and (search=="" or row.searchKey:find(search,1,true)) then matching[#matching+1]=row end
         end
-        if sort~="default" then matching=sortRows(matching,sort) end
+        if sort~="default" then
+            matching=sortRows(matching,sort)
+        else
+            local pinnedList,normalList={},{}
+            for _,row in ipairs(matching) do
+                if row.pinned then pinnedList[#pinnedList+1]=row else normalList[#normalList+1]=row end
+            end
+            if #pinnedList>0 then
+                matching={}
+                for _,row in ipairs(pinnedList) do matching[#matching+1]=row end
+                for _,row in ipairs(normalList) do matching[#matching+1]=row end
+            end
+        end
         self.rows,self.search,self.category,self.sort=rows,search,category,sort
         self.matching,self.positions=matching,{}
         for i,row in ipairs(matching) do self.positions[row.fullType]=i end

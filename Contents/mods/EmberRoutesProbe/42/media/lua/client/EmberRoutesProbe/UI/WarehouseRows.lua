@@ -13,7 +13,7 @@ end
 local function row(old,count,sources,pending)
     if old.count==count and old.pending==pending and sameSources(old.sources,sources) then return old end
     return {fullType=old.fullType,node=old.node,label=old.label,searchKey=old.searchKey,
-        count=count,sources=sources,pending=pending}
+        count=count,sources=sources,pending=pending,pinned=old.pinned}
 end
 function Rows.project(snapshot,oldRows,resolveName)
     if snapshot.state=="UPDATING" then
@@ -39,11 +39,13 @@ function Rows.project(snapshot,oldRows,resolveName)
     for _,old in ipairs(oldRows) do byType[old.fullType]=old end
     for _,value in ipairs(snapshot.rows) do
         local old=byType[value.fullType]
-        if old and old.node==value.node then result[#result+1]=row(old,value.count,value.sources,nil)
+        if old and old.node==value.node then
+            result[#result+1]=row(old,value.count,value.sources,nil)
         else
             local label=resolveName(value.fullType)
             result[#result+1]={fullType=value.fullType,node=value.node,label=label,
-                searchKey=string.lower(label.." "..value.fullType),count=value.count,sources=value.sources}
+                searchKey=string.lower(label.." "..value.fullType),count=value.count,sources=value.sources,
+                pinned=old and old.pinned or false}
         end
     end
     return result

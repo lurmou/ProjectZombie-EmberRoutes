@@ -80,7 +80,7 @@ function EmberRoutesWarehousePage:new(owner,bounds)
     o.borderColor=Theme.border o.presentation=Presentation.new()
     o.store=State.new({snapshot={state="UPDATING",rows={},counts={}},search="",category=false,page=1,sort="default",selection=false})
     o.itemNames={} o.actualPage=1 o.pages=1 o.pageCaption=""
-    o.query=Query.new() o.locator=Locator.new(actor,entry.id) o.notice=""
+    o.query=Query.new() o.locator=Locator.new(actor,entry.id) o.notice="" o.pinnedItems={}
     return o
 end
 function EmberRoutesWarehousePage:initialise() ISPanel.initialise(self) end
@@ -156,6 +156,19 @@ function EmberRoutesWarehousePage:dispose()
     self.disposed=true self:deactivate() self.presentation:clear()
 end
 function EmberRoutesWarehousePage:close() self.owner:close() end
+function EmberRoutesWarehousePage:togglePin(row)
+    if not row or not row.fullType then return end
+    self.pinnedItems=self.pinnedItems or {}
+    local newState=not self.pinnedItems[row.fullType]
+    self.pinnedItems[row.fullType]=newState
+    row.pinned=newState
+    local curRows=self.store.value.snapshot.rows or {}
+    for _,r in ipairs(curRows) do
+        if r.fullType==row.fullType then r.pinned=newState end
+    end
+    self.details:setItem(row)
+    self:project(self.store.value,{snapshot=true})
+end
 function EmberRoutesWarehousePage:focusContent()
     Input.focus(self,self.focusedList or self.itemList)
 end
@@ -184,7 +197,11 @@ function EmberRoutesWarehousePage:receive(snapshot)
     end
     self.store:setState({snapshot=copy,selection=selection})
     if restore then self.resume=nil end
-    Metrics.finish("ui.update",measured)
+        self.pinnedItems=self.pinnedItems or {}
+    for _,r in ipairs(copy.rows) do
+        if self.pinnedItems[r.fullType] then r.pinned=true end
+    end
+Metrics.finish("ui.update",measured)
 end
 function EmberRoutesWarehousePage:project(snapshot,changed)
     if not self.active then return end

@@ -776,5 +776,8 @@
     "IGUI_EmberRoutesProbe_Public_recipeSelect": "选择制作配方",
     "IGUI_EmberRoutesProbe_Public_surfaceSelect": "指定加工台面",
     "IGUI_EmberRoutesProbe_Public_stockThreshold": "触发补货阈值 (低于该值自动补货)",
-    "IGUI_EmberRoutesProbe_Public_stockBatch": "单次补货发派批量"
+    "IGUI_EmberRoutesProbe_Public_stockBatch": "单次补货发派批量",
+    "IGUI_EmberRoutesProbe_Settlement_pin": "★ 收藏置顶",
+    "IGUI_EmberRoutesProbe_Settlement_unpin": "取消置顶",
+    "IGUI_EmberRoutesProbe_Settlement_pinHint": "将此物品无条件固定在列表最上方"
 }
