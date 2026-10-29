@@ -12,7 +12,12 @@ EmberRoutesProbeJava={
         assert(h==handle and job=='job' and generation>0)
         issuedGeneration=generation key='secret' return key
     end,
+    moveSeatWithControl=function(h,k,object,limit) assert(k==key and object=='chair' and limit==12) mask=1 return 'MOVE_REQUESTED_SEAT' end,
+    moveSleepSeatWithControl=function(h,k,object) assert(h==handle and k==key and object=='bed') mask=1 return 'MOVE_REQUESTED_SEAT' end,
     moveWithControl=function(h,k) assert(k==key and not frozen) mask=1 return 'MOVE_REQUESTED' end,
+    furniturePoseWithControl=function(h,k,object,phase)
+        assert(h==handle and k==key and object=='chair' and (phase=='PREPARE' or phase=='LIE')) return true
+    end,
     stopWithControl=function(h,k) assert(k==key) mask=0 stopped=true return true end,
     bodyStopMask=function(h,k) assert(k==key) return mask end,
     releaseBodyControl=function(h,k)
@@ -36,10 +41,17 @@ assert(not c:attachDriver(t,{id='b',handle=handle}))
 assert(c:attachDriver(t,{id='a',handle=handle}) and issuedGeneration>0)
 assert(not c:attachDriver(t,{id='a',handle=handle}))
 assert(c:bodySnapshot(t).nativeStopped)
+local furnitureBody=c:body(t)
+assert(furnitureBody.furniture('chair','PREPARE') and not furnitureBody.furniture('chair','INVALID'))
+assert(furnitureBody.furniture('chair','LIE'),'sleep pose uses the existing authorized body capability')
 assert(c:move(t,{}, {x=1,y=2,z=0}))
 assert(not c:bodySnapshot(t).nativeStopped)
+local seatOk,seatResult=c:move(t,{}, {furniture='chair',maxPathLength=12})
+assert(seatOk and seatResult=='MOVE_REQUESTED_SEAT','same body capability dispatches exact seating approach')
+assert(c:move(t,{}, {furniture='bed',sleep=true}),'sleep approach uses its guarded native seat route')
 assert(c:beginSave() and frozen)
 assert(not c:move(t,{}, {x=1,y=2,z=0}))
+assert(not furnitureBody.furniture('chair','PREPARE'),'stopping owner cannot prepare or align a new pose')
 assert(not c:finishSave(true))
 releaseThrows=true
 c:step()

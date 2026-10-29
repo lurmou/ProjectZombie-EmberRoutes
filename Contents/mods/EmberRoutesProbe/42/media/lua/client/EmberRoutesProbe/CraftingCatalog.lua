@@ -1,20 +1,25 @@
 -- Recipe discovery is incremental metadata work, never an inventory/furniture scan.
 local Recipe=require "EmberRoutesProbe/ProductionRecipe"
+local Facts=require "EmberRoutesProbe/CraftRecipeFacts"
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Catalog={}
 local root,source,rows,byId,position,revision,done=nil,nil,{},{},0,0,false
 local queryState
 local categorySet={}
 local productionById,productionByType={},{}
+local factsById,factsByType={},{}
 local lastSlice
+local evolvedSource,evolvedPosition,craftDone=nil,0,false
 local function ensure()
     if root~=Registry.data() then
         root=Registry.data() source=nil rows={} byId={} categorySet={} position=0 revision=revision+1 done=false queryState=nil
-        productionById={} productionByType={} lastSlice=nil
+        productionById={} productionByType={} factsById={} factsByType={} lastSlice=nil
+        evolvedSource=nil evolvedPosition=0 craftDone=false
     end
     if not source then
         local manager=getScriptManager()
         if manager and manager.getAllCraftRecipes then source=manager:getAllCraftRecipes() end
+        if manager and manager.getAllEvolvedRecipes then evolvedSource=manager:getAllEvolvedRecipes() end
     end
 end
 function Catalog.step()
@@ -23,12 +28,40 @@ function Catalog.step()
     if type(clock)=="function" then
         local now=clock() if lastSlice and now-lastSlice<8 then return end lastSlice=now
     end
+    if evolvedSource and evolvedSource:size()<=2048 then
+        for _=1,2 do
+            if evolvedPosition>=evolvedSource:size() then break end
+            local native=evolvedSource:get(evolvedPosition) evolvedPosition=evolvedPosition+1
+            local id='evolved:'..native:getOriginalname()
+            local spec=require('EmberRoutesProbe/CookingOrders').describe(id,native)
+            if spec and not byId[id] then
+                local row={id=id,name=spec.name,category='Cooking',supported=true,surface=false,
+                    product=spec.product,yield=1,cooking=true,
+                    search=string.lower(spec.name..' '..id..' '..spec.product)}
+                rows[#rows+1]=row byId[id]=row revision=revision+1 categorySet.Cooking={supported=true}
+            end
+        end
+    end
     for _=1,4 do
-        if position>=source:size() then done=true revision=revision+1 break end
+        if position>=source:size() then craftDone=true break end
         local native=source:get(position) position=position+1
         local id=EmberRoutesProbeJava.recipeKey(native)
         if id~="" and not byId[id] then
-            local spec,reason=Recipe.read(id)
+            local facts,reason=Facts.read(id,native)
+            local spec
+            if facts then
+                factsById[id]=facts
+                local seen={}
+                for _,output in ipairs(facts.outputs) do
+                    if output.resource=='Item' then for _,kind in ipairs(output.choices) do
+                        if not seen[kind] then
+                            seen[kind]=true factsByType[kind]=factsByType[kind] or {}
+                            table.insert(factsByType[kind],facts)
+                        end
+                    end end
+                end
+                spec,reason=Recipe.fromFacts(facts)
+            end
             if spec then
                 productionById[id]=spec
                 for kind in pairs(spec.outputs) do
@@ -37,9 +70,11 @@ function Catalog.step()
                 end
             end
             local category=native:getCategory() or "Other"
+            local cooking=require('EmberRoutesProbe/CookingOrders').describe(id,native)
+            if cooking then spec=cooking reason=nil end
             local row={id=id,name=native:getTranslationName(),category=category,
                 supported=spec~=nil,reason=reason,surface=spec and spec.surface or false,
-                product=spec and spec.product,yield=spec and spec.yield or 0}
+                product=spec and spec.product,yield=spec and spec.yield or 0,cooking=cooking~=nil}
             local searchParts={row.name,id,category,getTextOrNull("IGUI_CraftCategory_"..category) or category}
             for i=0,math.min(8,native:getOutputs():size())-1 do
                 local io=native:getOutputs():get(i)
@@ -56,10 +91,15 @@ function Catalog.step()
             if row.supported then categorySet[category].supported=true end
         end
     end
+    if craftDone and (not evolvedSource or evolvedSource:size()>2048 or evolvedPosition>=evolvedSource:size()) then done=true revision=revision+1 end
 end
 -- Internal production lookup shares discovery with the browser; no second catalogue scan.
 function Catalog.productionIndex()
     ensure() return productionById,productionByType,done
+end
+-- Internal read-only metadata index. Membership here grants no execution capability.
+function Catalog.recipeIndex()
+    ensure() return factsById,factsByType,done
 end
 function Catalog.query(search,category,unsupported,page,size)
     ensure() size=math.max(1,math.min(size or 12,24))
@@ -88,6 +128,8 @@ function Catalog.query(search,category,unsupported,page,size)
 end
 function Catalog.describe(id)
     ensure()
+    local cooking=require('EmberRoutesProbe/CookingOrders').describe(id)
+    if cooking then return cooking end
     local spec,reason=Recipe.read(id)
     if spec then return Recipe.describe(spec) end
     local native=getScriptManager():getCraftRecipe(id)

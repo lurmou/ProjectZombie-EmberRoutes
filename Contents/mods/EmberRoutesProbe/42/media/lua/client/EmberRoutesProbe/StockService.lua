@@ -446,6 +446,14 @@ function StockService.watch(actor,settlementId,callback)
     return function() subscribers[token]=nil end
 end
 
+-- Sample this standalone tick; no overhead while sampling is off. Metrics
+-- module resolved at load — a per-call require was measurable at 163 calls/s.
+local RuntimeMetrics=require 'EmberRoutesProbe/RuntimeMetrics'
+local rawStockTick=StockService.tick
+function StockService.tick()
+    if RuntimeMetrics.active() then RuntimeMetrics.measure('Stock',rawStockTick) else rawStockTick() end
+end
+
 -- Wire signals and events
 Signals.watch(function() StockService.markDirty() end)
 Registry.listeners[#Registry.listeners+1]=function() StockService.markDirty() end
@@ -453,8 +461,8 @@ if Registry.inventoryListeners then
     Registry.inventoryListeners[#Registry.inventoryListeners+1]=function() StockService.markDirty() end
 end
 
-local tickEvent=Events.OnTickEvenPaused or Events.OnTick
-if tickEvent then tickEvent.Add(StockService.tick) end
+-- Registered through the mod's single even-paused dispatcher.
+require('EmberRoutesProbe/EvenPaused').add(StockService.tick)
 -- Persistence owns ordering; independent OnSave listeners could pause AFTER resume.
 Probe.beforeStockSave,Probe.afterStockSave,Probe.resetStock=StockService.beforeSave,StockService.afterSave,StockService.reset
 

@@ -1,5 +1,7 @@
 # EmberRoutes（余烬商路）全景架构与综合设计文档
 
+> 导航澄清（2026-10-24）：本文件为综合整理参考，下方版本、运行环境及阶段状态是原整理截点，不作为当前兼容承诺或第二份NPC实施设计。NPC工作从[唯一架构](superpowers/specs/2026-10-22-npc-behavior-architecture-design.md)进入，当前进度见[BACKLOG](BACKLOG.md)，按任务查[导航](INDEX.md)。
+
 > **版本**：v1.2（综合整理版）｜**基线运行环境**：Project Zomboid B42.21+ / B41.78+ ｜ **状态**：架构已确认，P1控制器实施中
 
 ---

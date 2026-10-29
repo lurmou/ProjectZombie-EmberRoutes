@@ -37,16 +37,30 @@ function Plan.new(entry,npc,spec,record,select,units)
     local npcItems=npc:getInventory():getItems()
     if npcItems:size()>512 then return nil,"INVENTORY_LIMIT" end
     self.npcItems=npcItems self.npcSize=npcItems:size() self.npcOffset=0
-    local function match(candidate,seen)
-        for i,demand in ipairs(self.demands) do
-            if not seen[i] and (not candidate.npcOnly or demand.input.keep)
-                and (not demand.pinned or demand.pinned==candidate.item:getID())
-                and demand.input.io:canUseItem(candidate.item,npc) then
-                seen[i]=true
-                if not demand.candidate or match(demand.candidate,seen) then demand.candidate=candidate return true end
-            end
+    -- Explicit augmenting-path stack: one edge or one commit per operation.
+    -- No candidate changes until a complete augmenting path has been found.
+    local function matchStep()
+        local m=self.match local frames=m.frames local frame=frames[#frames]
+        if m.commit then
+            self.demands[frame.slot].candidate=frame.candidate
+            frames[#frames]=nil
+            if #frames==0 then self.matched=self.matched+1 self.match=nil end
+            return
         end
-        return false
+        local i=frame.index local demand=self.demands[i]
+        if not demand then
+            frames[#frames]=nil if #frames==0 then self.match=nil end return
+        end
+        frame.index=i+1
+        local candidate=frame.candidate
+        if not m.seen[i] and (not candidate.npcOnly or demand.input.keep)
+            and (not demand.pinned or demand.pinned==candidate.item:getID())
+            and (demand.input.accept and demand.input.accept(candidate.item)
+                or not demand.input.accept and demand.input.io:canUseItem(candidate.item,npc)) then
+            m.seen[i]=true frame.slot=i
+            if not demand.candidate then m.commit=true
+            else frames[#frames+1]={candidate=demand.candidate,index=1} end
+        end
     end
     local function inspect(item,endpoint)
         local id=item:getID()
@@ -58,14 +72,26 @@ function Plan.new(entry,npc,spec,record,select,units)
             local owner=Store.owner(id)
             if (not owner or owner.taskId==record.id) and (not endpoint or
                 (Registry.logistics(endpoint)=="STORAGE" and Registry.accepts(endpoint,item))) then
-                if match({item=item,endpoint=endpoint,npcOnly=endpoint==nil},{}) then self.matched=self.matched+1 end
+                self.match={frames={{candidate={item=item,endpoint=endpoint,npcOnly=endpoint==nil},index=1}},seen={}}
             end
         end
         return true
     end
     function self:step(budget)
+        if self.done then return true end
         for _=1,budget do
-            if self.npcOffset<self.npcSize then
+            if self.match then matchStep()
+            elseif self.finalIndex then
+                local demand=self.demands[self.finalIndex]
+                if not demand then self.done=true return true end
+                local c=demand.candidate
+                if not c then return nil,demand.input.keep and not demand.input.fluid and "TOOLS_UNAVAILABLE" or "MATERIALS_UNAVAILABLE" end
+                local id=c.item:getID()
+                if self.finalUsed[id] then return nil,"ITEM_ID_CONFLICT" end self.finalUsed[id]=true
+                local asset={id=id,slot=demand.input.slot,source=c.endpoint and c.endpoint.id}
+                table.insert(demand.input.keep and self.tools or self.materials,asset)
+                self.locations[id]=c self.finalIndex=self.finalIndex+1
+            elseif self.npcOffset<self.npcSize then
                 if self.npcItems:size()~=self.npcSize then return nil,"INVENTORY_CHANGED" end
                 local item=self.npcItems:get(self.npcOffset) self.npcOffset=self.npcOffset+1
                 local ok,reason=inspect(item,nil) if not ok then return nil,reason end
@@ -82,24 +108,17 @@ function Plan.new(entry,npc,spec,record,select,units)
                 local id=not (self.select and self.matched==#self.demands) and self.ids[self.position]
                 if not id then
                     if self.select then
-                        self.materials,self.tools={},{}
-                        local used={}
-                        for _,demand in ipairs(self.demands) do
-                            local c=demand.candidate
-                            if not c then return nil,demand.input.keep and "TOOLS_UNAVAILABLE" or "MATERIALS_UNAVAILABLE" end
-                            if used[c.item:getID()] then return nil,"ITEM_ID_CONFLICT" end used[c.item:getID()]=true
-                            local asset={id=c.item:getID(),slot=demand.input.slot,source=c.endpoint and c.endpoint.id}
-                            table.insert(demand.input.keep and self.tools or self.materials,asset)
-                            self.locations[asset.id]=c
-                        end
+                        self.materials,self.tools,self.finalUsed={},{},{} self.finalIndex=1
+                    else
+                        self.done=true return true
                     end
-                    return true
-                end
+                else
                 self.position=self.position+1 local endpoint,why=Supply.endpoint(entry,id,"take")
                 if units and why=="CONTAINER_UNLOADED" then self.partial=true end
                 if endpoint then
                     if endpoint.container:getItems():size()>2000 then return nil,"SOURCE_SCAN_LIMIT" end
                     self.source=endpoint self.offset=0 self.size=endpoint.container:getItems():size()
+                end
                 end
             else
                 local source=self.source local items=source.container:getItems()

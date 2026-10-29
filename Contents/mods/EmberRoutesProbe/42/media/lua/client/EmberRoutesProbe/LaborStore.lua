@@ -1,12 +1,17 @@
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Claims=require "EmberRoutesProbe/LaborClaims"
 local CraftRecord=require "EmberRoutesProbe/CraftRecord"
+local Manifest=require 'EmberRoutesProbe/HaulManifest'
 local Store={}
 local root,ledger,claims,tokens
 local nativeTokens={}
+local personalTokens={}
+local cookingTokens={}
+local activityTokens={}
+local recoveredGenerations={}
 local recent={}
 local function resources(record)
-    local result={} for _,id in ipairs(record.items) do result[#result+1]="item:"..id end return result
+    local result={} for _,id in ipairs(Manifest.claimItemIds(record)) do result[#result+1]="item:"..id end return result
 end
 function Store.data()
     local current=Registry.data()
@@ -15,7 +20,7 @@ function Store.data()
         local rebuilt,newTokens=Claims.new(),{}
         for id,record in pairs(data.tasks) do
             if type(record)~="table" or type(id)~="string" or record.id~=id or type(record.npcId)~="string"
-                or (record.state~='DONE' and data.byNpc[record.npcId]~=id) or record.format~=1 or record.kind~="EXPLICIT_TRANSFER"
+                or (record.state~='DONE' and data.byNpc[record.npcId]~=id) or (record.format~=1 and not Manifest.valid(record)) or record.kind~="EXPLICIT_TRANSFER"
                 or record.executor~="ENTITY" or record.scopeId~="local-world" or type(record.items)~="table"
                 or #record.items>30 or (record.state~="RUNNING" and record.state~="PAUSED" and record.state~="DONE")
                 or (record.generation and (type(record.generation)~="number" or record.generation<0
@@ -23,8 +28,9 @@ function Store.data()
             for _,itemId in ipairs(record.items) do
                 if type(itemId)~="number" or itemId~=itemId or itemId==math.huge or itemId==-math.huge then error("TASK_ITEM_INVALID") end
             end
-            if record.state~="DONE" then
-                local token=rebuilt:acquire(id,(record.generation or 0)+1,resources(record))
+            local resourceKeys=resources(record)
+            if record.state~="DONE" and #resourceKeys>0 then
+                local token=rebuilt:acquire(id,(record.generation or 0)+1,resourceKeys)
                 if not token then error("TASK_CLAIM_CONFLICT") end newTokens[id]=token
                 local r=record.reservation
                 if r then
@@ -50,14 +56,55 @@ function Store.data()
                 rebuiltNative[record.id]=token
             end
         end
+        local rebuiltPersonal={}
+        for id,job in pairs(current.taskJobs.byId) do
+            if job.providerType=='SELF_CARE' then
+                if not require('EmberRoutesProbe/SelfCareRecord').valid(job) then error('PERSONAL_RECORD_INVALID') end
+                if #job.payload.claims>0 then
+                    local token,reason=rebuilt:acquire(id,job.payload.sequence,job.payload.claims)
+                    if not token then error(reason) end
+                    rebuiltPersonal[id]=token
+                end
+            end
+        end
+        local rebuiltCooking={}
+        for id,job in pairs(current.taskJobs.byId) do
+            if job.providerType=='COOKING' then
+                if not require('EmberRoutesProbe/CookingRecord').valid(job) then error('COOKING_RECORD_INVALID') end
+                if #job.payload.claims>0 then
+                    local token,reason=rebuilt:acquire(id,job.payload.sequence,job.payload.claims)
+                    if not token then error(reason or 'COOKING_CLAIM_CONFLICT') end
+                    local cap=job.payload.capacity
+                    if cap and not rebuilt:restoreWork(token,cap.endpointId,cap.amount) then error('COOKING_CAPACITY_INVALID') end
+                    rebuiltCooking[id]=token
+                end
+            end
+        end
+        local rebuiltActivity={}
+        for id,job in pairs(current.taskJobs.byId) do
+            if job.providerType=='ACTIVITY' then
+                if not require('EmberRoutesProbe/ActivityRecord').valid(job) then error('ACTIVITY_RECORD_INVALID') end
+                if #job.payload.claims>0 then
+                    local token,reason=rebuilt:acquire(id,job.payload.sequence,job.payload.claims)
+                    if not token then error(reason or 'ACTIVITY_CLAIM_CONFLICT') end
+                    rebuiltActivity[id]=token
+                end
+            end
+        end
         -- Publish the cache only after the entire ledger passed validation.
-        for _,record in pairs(data.tasks) do
+        local generations={}
+        for id,record in pairs(data.tasks) do
+            generations[id]={before=record.generation or 0,after=(record.generation or 0)+1}
             record.generation=(record.generation or 0)+1
             if record.state=="RUNNING" then record.state="PAUSED" record.reason="LOAD_RECOVERY" end
         end
         require('EmberRoutesProbe/BusinessJobs').flush()
         root,ledger,claims,tokens=current,data,rebuilt,newTokens
         nativeTokens=rebuiltNative
+        personalTokens=rebuiltPersonal
+        cookingTokens=rebuiltCooking
+        activityTokens=rebuiltActivity
+        recoveredGenerations=generations
         recent={}
     end
     return ledger
@@ -73,6 +120,163 @@ function Store.recent(npcId)
     local copy={} for key,value in pairs(saved) do copy[key]=value end return copy
 end
 function Store.owner(itemId) Store.data() return claims.owners["item:"..itemId] end
+function Store.resourceOwner(key) Store.data() return claims.owners[key] end
+-- Cheap observation fence, including ordinary hauling/crafting/personal claims.
+-- Identity also changes after a world/ledger rebuild. Not a second asset ledger.
+function Store.claimsVersion() Store.data() return claims,claims.revision end
+function Store.hasTaskClaims(taskId)
+    Store.data()
+    if nativeTokens[taskId] or tokens[taskId] or personalTokens[taskId] or cookingTokens[taskId] then return true end
+    for _,token in pairs(claims.owners) do if token.taskId==taskId then return true end end
+    for _,bucket in pairs(claims.capacity) do if bucket.entries[taskId] then return true end end
+    return false
+end
+function Store.recoveryGeneration(jobId)
+    Store.data() local stamp=recoveredGenerations[jobId]
+    return stamp and {before=stamp.before,after=stamp.after} or nil
+end
+-- Ordinary cooking Jobs share the same resource graph as hauling/crafting/care.
+function Store.claimCooking(job)
+    Store.data()
+    local saved=root.taskJobs.byId[job.id]
+    if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.npcId~=job.npcId
+        or saved.revision~=job.revision or saved.payload.phase=='SETTLED' then return nil,'COOKING_JOB_CHANGED' end
+    local token,why=claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims)
+    if token then cookingTokens[saved.id]=token end
+    return token,why
+end
+function Store.transferCooking(job,token,npcId)
+    if not Store.validCooking(job,token) then return nil,'COOKING_JOB_CHANGED' end
+    local proposed,why=require('EmberRoutesProbe/CookingRecord').handoff(job,npcId)
+    if not proposed then return nil,why end
+    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local ok,reason=jobs:transferCooking(job.id,job.revision,proposed)
+    if not ok then return nil,reason end
+    -- Same Job/resource set throughout. Old callbacks fail revision/NPC/token checks.
+    local saved=jobs:get(job.id)
+    cookingTokens[job.id]=assert(claims:acquire(job.id,saved.payload.sequence,saved.payload.claims))
+    return saved
+end
+function Store.validCooking(job,token,key)
+    Store.data()
+    local saved=root.taskJobs.byId[job.id]
+    return saved and saved.providerType=='COOKING' and saved.npcId==job.npcId and saved.revision==job.revision
+        and token and cookingTokens[job.id]==token and token.generation==saved.payload.sequence
+        and (not key or claims:valid(token,key)) or false
+end
+function Store.replaceCooking(job,token,proposed)
+    if not Store.validCooking(job,token) or proposed.id~=job.id or proposed.npcId~=job.npcId
+        or proposed.scopeId~=job.scopeId or proposed.revision~=job.revision
+        or not require('EmberRoutesProbe/CookingRecord').valid(proposed) then return false,'COOKING_JOB_CHANGED' end
+    local old={} for _,key in ipairs(token.resources) do old[#old+1]=key end
+    -- Pure coordination, no yield or native effect between replace and publish.
+    -- Conflict rejection leaves both the durable Job and all old owners intact.
+    local ok,reason=claims:replace(token,proposed.payload.claims)
+    if not ok then return false,reason end
+    local beforeCap,afterCap=job.payload.capacity,proposed.payload.capacity
+    local capacityChanged=(beforeCap and beforeCap.endpointId)~=(afterCap and afterCap.endpointId)
+        or (beforeCap and beforeCap.amount)~=(afterCap and afterCap.amount)
+    if capacityChanged then
+        claims:releaseCapacity(token)
+        if afterCap and not claims:restoreWork(token,afterCap.endpointId,afterCap.amount) then
+            assert(claims:replace(token,old),'COOKING_CLAIM_ROLLBACK_FAILED')
+            if beforeCap then assert(claims:restoreWork(token,beforeCap.endpointId,beforeCap.amount)) end
+            return false,'COOKING_CAPACITY_INVALID'
+        end
+    end
+    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local changed,why=jobs:update(job.id,job.revision,{payload=proposed.payload,effects=proposed.effects,
+        obligations=proposed.obligations,state=proposed.state})
+    if not changed then
+        if capacityChanged then claims:releaseCapacity(token) end
+        assert(claims:replace(token,old),'COOKING_CLAIM_ROLLBACK_FAILED')
+        if capacityChanged and beforeCap then assert(claims:restoreWork(token,beforeCap.endpointId,beforeCap.amount)) end
+        return false,why
+    end
+    local saved=jobs:get(job.id)
+    local nextToken=assert(claims:acquire(job.id,saved.payload.sequence,saved.payload.claims))
+    cookingTokens[job.id]=nextToken
+    return true,saved,nextToken
+end
+function Store.availableCooking(job,token,key,free)
+    if not Store.validCooking(job,token) then return 0 end
+    return claims:availableWork(token,key,free)
+end
+function Store.finishCooking(job,token)
+    if not Store.validCooking(job,token) then return false,'COOKING_JOB_CHANGED' end
+    local saved=root.taskJobs.byId[job.id]
+    if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.payload.phase~='SETTLED'
+        or saved.effects~='KNOWN' or #saved.payload.claims>0 then return false,'COOKING_OBLIGATION_RETAINED' end
+    claims:release(token) cookingTokens[job.id]=nil return true
+end
+function Store.claimPersonal(job)
+    Store.data()
+    local saved=root.taskJobs.byId[job.id]
+    if not require('EmberRoutesProbe/SelfCareRecord').valid(saved)
+        or saved.npcId~=job.npcId or saved.payload.attemptId~=job.payload.attemptId
+        or saved.payload.sequence~=job.payload.sequence then return nil,'STALE_PERSONAL_ATTEMPT' end
+    local token,reason=claims:acquire(job.id,job.payload.sequence,saved.payload.claims)
+    if token then personalTokens[job.id]=token end
+    return token,reason
+end
+function Store.claimActivity(job)
+    Store.data()
+    local saved=root.taskJobs.byId[job.id]
+    if not require('EmberRoutesProbe/ActivityRecord').valid(saved) or saved.npcId~=job.npcId
+        or saved.effects~='KNOWN' or saved.payload.sequence~=job.payload.sequence then return nil,'STALE_ACTIVITY_ATTEMPT' end
+    local token,why=claims:acquire(job.id,job.payload.sequence,saved.payload.claims)
+    if token then activityTokens[job.id]=token end return token,why
+end
+function Store.validActivity(job,token)
+    Store.data() local saved=root.taskJobs.byId[job.id]
+    return saved and token and activityTokens[job.id]==token and token.generation==saved.payload.sequence
+        and saved.npcId==job.npcId and saved.payload.sequence==job.payload.sequence or false
+end
+function Store.finishActivity(job,token)
+    if not Store.validActivity(job,token) then return false,'STALE_ACTIVITY_ATTEMPT' end
+    local saved=root.taskJobs.byId[job.id]
+    if saved.effects~='KNOWN' then return false,'ACTIVITY_EFFECT_UNKNOWN' end
+    for _ in pairs(saved.obligations) do return false,'ACTIVITY_OBLIGATION_RETAINED' end
+    local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={}
+    if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,{payload=p}) then return false,'JOB_CHANGED' end
+    claims:release(token) activityTokens[job.id]=nil return true
+end
+function Store.validPersonal(job,token,key)
+    Store.data()
+    local saved=root.taskJobs.byId[job.id]
+    return saved and saved.npcId==job.npcId and saved.payload.attemptId==job.payload.attemptId
+        and token and personalTokens[job.id]==token and token.generation==saved.payload.sequence
+        and (not key or claims:valid(token,key)) or false
+end
+function Store.finishPersonal(job,token)
+    if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
+    local saved=root.taskJobs.byId[job.id]
+    if saved.effects~='KNOWN' then return false,'PERSONAL_EFFECT_UNKNOWN' end
+    for _ in pairs(saved.obligations) do return false,'PERSONAL_OBLIGATION_RETAINED' end
+    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local payload=jobs:get(job.id).payload payload.claims={}
+    local ok,reason=jobs:update(job.id,saved.revision,{payload=payload})
+    if not ok then return false,reason end
+    claims:release(token) personalTokens[job.id]=nil return true
+end
+-- Only release furniture keys after the caller has physical exit evidence.
+-- Item custody remains exactly as declared in the same Job.
+function Store.releasePersonalSeats(job,token)
+    if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
+    local saved=root.taskJobs.byId[job.id]
+    local keep={} local present={}
+    for _,key in ipairs(saved.payload.claims) do keep[#keep+1]=key present[key]=true end
+    for _,key in ipairs(token.resources) do
+        if not present[key] and string.sub(key,1,7)~='repose:' then return false,'ITEM_CLAIM_RETAINED' end
+    end
+    return claims:replace(token,keep)
+end
+function Store.extendPersonal(job,token)
+    if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
+    -- Publish native outputs before extending the in-memory claim. A conflict
+    -- retains the durable declaration for reconciliation, never deletes output.
+    return claims:extend(token,root.taskJobs.byId[job.id].payload.claims)
+end
 function Store.claimNative(record)
     Store.data()
     if not CraftRecord.valid(record.npcId,record) or record.released then return nil,"CRAFT_RECORD_INVALID" end
@@ -117,12 +321,55 @@ function Store.replaceNative(record,token,proposed)
 end
 function Store.claim(record)
     Store.data()
+    if record.format==2 and #Manifest.claimItemIds(record)==0
+        and not (record.producer=='DELIVERY' and record.returnForNextBatch) then return nil,'HAUL_ALREADY_SETTLED' end
     local native=CraftRecord.records(root)[record.npcId]
     if native and not native.released then return nil,"OTHER_TASK_RETAINED" end
     local generation=(record.generation or 0)+1
     local token,reason=claims:acquire(record.id,generation,resources(record))
     if token then record.generation=generation tokens[record.id]=token end
     return token,reason
+end
+-- Current shared-Job payload only; never imports pre-Job/unknown legacy data.
+function Store.upgradeHaul(record,lines)
+    Store.data()
+    if Store.record(record.npcId)~=record or record.format~=1 or record.producer~='LOGISTICS'
+        or record.controlUncertain or record.state~='PAUSED' then return false,'TASK_CHANGED' end
+    local draft={} for k,v in pairs(record) do draft[k]=v end
+    draft.format,draft.manifest,draft.plannedCount,draft.routeRevision,draft.attemptSequence=2,lines,#record.items,0,0
+    if not Manifest.valid(draft) then return false,'TASK_RECORD_INVALID' end
+    local token=tokens[record.id] local drop={}
+    for _,l in ipairs(lines) do if not Manifest.pending(l) then drop[#drop+1]='item:'..l.itemId end end
+    if not token or not claims:shrink(token,drop) then return false,'STALE_CLAIM' end
+    record.format,record.manifest,record.plannedCount,record.routeRevision,record.attemptSequence=2,lines,#record.items,0,0
+    record.delivered=Manifest.count(record)
+    Store.releaseCapacity(token)
+    return true
+end
+function Store.settleHaulLines(record,token,generation,settlements)
+    Store.data()
+    if record.format~=2 or Store.record(record.npcId)~=record or tokens[record.id]~=token
+        or record.generation~=generation then return false,'STALE_CLAIM' end
+    local changes,keys,seen={},{},{}
+    for _,s in ipairs(settlements) do
+        local l=Manifest.line(record,s.itemId)
+        if not l or seen[s.itemId] or (s.state~='DELIVERED' and s.state~='WITHDRAWN') then return false,'SETTLEMENT_INVALID' end
+        seen[s.itemId]=true
+        if Manifest.pending(l) then
+            if s.state=='WITHDRAWN' and (l.custodyState~='UNCOLLECTED' or record.activeAttempt and record.activeAttempt.itemId==s.itemId)
+                or s.state=='DELIVERED' and (not s.receipt or not s.receipt.attemptId or not s.receipt.destinationId) then return false,'SETTLEMENT_INVALID' end
+            changes[#changes+1]={line=l,change=s} keys[#keys+1]='item:'..s.itemId
+        elseif l.custodyState~=s.state then return false,'SETTLEMENT_CHANGED' end
+    end
+    local ok,why=claims:shrink(token,keys) if not ok then return false,why end
+    for _,row in ipairs(changes) do
+        local l,s=row.line,row.change l.custodyState=s.state l.deliveryReceipt=s.receipt
+        local reservation=record.reservation
+        if reservation and reservation.format==2 then reservation.items[s.itemId]=nil end
+    end
+    if not token.capacityKey then record.reservation=nil end
+    record.delivered,record.withdrawn=Manifest.count(record)
+    return true
 end
 function Store.publish(record)
     local data=Store.data() local previous=Store.record(record.npcId)

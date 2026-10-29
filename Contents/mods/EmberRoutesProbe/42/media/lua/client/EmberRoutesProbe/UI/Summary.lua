@@ -58,6 +58,12 @@ function methods:draw(owner)
     if self.badge then Visual.drawBadge(owner,self.statusX,self.statusY,self.badge) end
     for i,line in ipairs(self.noteLines) do Theme.text(owner,line,self.noteX,self.statusY+(i-1)*self.fontHeight,Theme.muted) end
     local r=self.bounds
-    Visual.meter(owner,r.x,r.y+r.height-math.max(3,self.pad/3),r.width,math.max(3,self.pad/3),self.coverage,self.color)
+    local StatMeter=require "EmberRoutesProbe/UI/StatMeter"
+    local meterH=math.max(4,math.floor(self.pad*0.7))
+    StatMeter.draw(owner,r.x,r.y+r.height-meterH,r.width,meterH,self.coverage,{
+        mode="load",
+        color=self.color,
+        threshold=0.8
+    })
 end
 return Summary

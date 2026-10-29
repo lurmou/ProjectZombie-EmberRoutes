@@ -34,6 +34,7 @@ function Table.style(presentation,name,secondary)
                 height=p+block+#sub*h+4,
                 block=block,
                 icon=presentation and presentation:icon(value.fullType) or nil,
+                fullType=value.fullType,
                 pending=value.pending,
                 pinned=value.pinned==true
             }
@@ -70,6 +71,16 @@ function Table.style(presentation,name,secondary)
             local titleColor=v.pinned and Theme.gold or Theme.textColor
             for i,line in ipairs(v.lines) do
                 Theme.text(list,line,c.name,y+p/2+(i-1)*h,i==1 and titleColor or Theme.textColor)
+            end
+            local cartItem=list.parent and list.parent.deliveryCart and list.parent.deliveryCart[v.fullType]
+            if cartItem and cartItem.count>0 then
+                local bStr="+"..tostring(cartItem.count)
+                local bw=getTextManager():MeasureStringX(UIFont.Small,bStr)+6
+                local bx=v.quantityX-bw-6
+                local by=y+p/2+(v.block-h)/2
+                Theme.rect(list,bx,by,bw,h-2,Theme.selected)
+                Theme.rect(list,bx,by,bw,h-2,Theme.accent,true)
+                Theme.text(list,bStr,bx+3,by-1,Theme.accent)
             end
             Theme.text(list,v.quantity,v.quantityX,y+p/2+(v.block-h)/2,v.pending and Theme.muted or Theme.accent)
             for i,line in ipairs(v.secondary) do

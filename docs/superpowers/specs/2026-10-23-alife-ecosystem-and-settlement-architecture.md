@@ -17,6 +17,7 @@
    * `Project A-Life` 的强项是**野外小队战术、隐蔽具象化、视锥计算与轻量化实体**；
    * `EmberRoutes` 的核心是**商路物流、车辆装卸、AE2 仓储网格、工单生产链与社区经营**。
    * 我们将 `Project A-Life` 的底层物理与宏观调度机制融入 EmberRoutes，服务于商队与据点生态。
+4. **调度从属声明（2026-10-25）**：本文的插槽竞价、宏观低频推进等调度表述仅为参考素材；正式任务分派一律以[唯一架构](2026-10-22-npc-behavior-architecture-design.md)与[统一任务协议](2026-10-23-unified-task-dispatch-design.md)的事件置脏+逐NPC认领为准，不采用每小时插槽竞价作为实施调度模型。宏观低频结算（tickSeconds/squadSliceMs 一类预算与切片手法）可独立借鉴。
 
 ---
 

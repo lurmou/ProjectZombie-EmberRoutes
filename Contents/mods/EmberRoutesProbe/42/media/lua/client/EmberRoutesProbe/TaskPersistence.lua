@@ -41,6 +41,7 @@ local function validReceipt(value)
     return true
 end
 function Save.load()
+    if Probe.prepareMembershipRecovery then Probe.prepareMembershipRecovery() end
     if Probe.resetStock then Probe.resetStock() end
     -- Normalize legacy records and rebuild every original-ID/capacity claim
     -- BEFORE the runtime may admit any observation or recovery candidate.
@@ -49,10 +50,15 @@ function Save.load()
     local root=Registry.data()
     if Probe.publicDispatch then require('EmberRoutesProbe/PublicWork').prepareRecovery() end
     if not validReceipt(root.executionSave) then error('SAVE_RECOVERY_FORMAT_INVALID') end
+    if Probe.prepareCareRecovery and Probe.prepareCareRecovery(root.executionSave)~=true then error('PERSONAL_RECOVERY_FAILED') end
+    if require('EmberRoutesProbe/ActivityParticipant').prepareRecovery(root.executionSave)~=true then error('ACTIVITY_RECOVERY_FAILED') end
     loaded=root active=nil
     if root.executionSave and root.executionSave.state=='BLOCKED' and Probe.beforeStockSave then Probe.beforeStockSave() end
 end
 function Save.prepare()
+    -- Preference-only scenes own no bodies/assets. Unknown activity data stays
+    -- disabled and preserved; it must not block the existing world save barrier.
+    require('EmberRoutesProbe/ActivityService').finishScenes('SAVE_INTERRUPTED')
     local root=Registry.data()
     if loaded~=root then Save.load() end
     if active then return active.world==root and active.runtime==Runtime.current(),'SAVE_ACTIVE' end
@@ -147,10 +153,25 @@ function Save.candidate(actor,id)
         return Companion.restoreState(actor,r.intent)
     elseif r.kind=='PRODUCTION' or r.kind=='CRAFT_PROBE' then
         return Craft.restoreCandidate(actor,id,r.jobId)
+    elseif r.kind=='COOKING' then
+        return require('EmberRoutesProbe/CookingService').wake(actor,id,r.jobId)
+    elseif r.kind=='TRANSFER' then
+        local job=Store.record(id)
+        if job and job.id==r.jobId and job.producer=='DELIVERY' and not job.controlUncertain and not job.activeAttempt then
+            return require('EmberRoutesProbe/Work').resumeFor(actor,id)
+        end
     end
     -- Transfers remain paused with their original Job/cargo. Existing logistics
     -- may submit a non-preemptive resume; diagnostics are never auto-replayed.
     return false
+end
+function Save.ready()
+    if not active or active.world~=Registry.data() then return false,'NO_LIVE_BARRIER' end
+    if active.failed then return false,active.failed end
+    return active.runtime:saveReady()
+end
+function Save.pending()
+    return active~=nil and active.results~=nil and not active.failed
 end
 function Save.tick(actor)
     local s=active

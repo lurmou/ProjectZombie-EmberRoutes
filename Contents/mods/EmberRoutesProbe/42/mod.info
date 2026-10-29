@@ -1,8 +1,8 @@
 name=EmberRoutes Carrier Probe
 id=EmberRoutesProbe
 author=MuMu
-description=Single-player NPC checkpoints, companion orders and native action diagnostics. Multiplayer adapter reserved, not implemented. Version 0.23.0.
-version=0.23.0
+description=Single-player NPC checkpoints, companion orders and native action diagnostics. Multiplayer adapter reserved, not implemented. Version 0.29.16.
+version=0.29.16
 versionMin=42.21.0
 require=\ZombieBuddy
 javaJarFile=media/java/EmberRoutesProbe.jar

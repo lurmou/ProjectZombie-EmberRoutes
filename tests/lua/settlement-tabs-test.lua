@@ -1,3 +1,10 @@
+package.loaded['ISUI/ISContextMenu']=true
+-- Personnel detail projection has its own backend regression; this suite
+-- exercises page lifecycle/layout and commands against detached display rows.
+package.loaded['EmberRoutesProbe/PersonnelService']={invalidate=function() end,release=function() end,
+    details=function() return {knowledge={}} end,rows=function() return {} end}
+ERPriorityOptions={}
+ISContextMenu={get=function() ERPriorityOptions={} return {addOption=function(_,label,target,fn) ERPriorityOptions[#ERPriorityOptions+1]=fn end} end}
 local publicCalls={} local publicRevision=2 local request=0
 _G.Events=_G.Events or {}
 for _,name in ipairs({'OnGameStart','OnServerStarted','OnTick','OnTickEvenPaused','OnPreMapLoad','OnSave'}) do
@@ -27,6 +34,7 @@ function Base:clear() self.items={} self.selected=0 end
 function Base:titleBarHeight() return 24 end
 function Base:setWantKeyEvents() end
 function Base:update() end function Base:prerender() end
+function Base:getMouseX() return -1 end function Base:getMouseY() return -1 end
 function Base:setX(x) self.x=x end function Base:setY(y) self.y=y end
 function Base:drawTextureScaledAspect(texture) assert(type(texture)~='string','Texture required, got icon name') end
 function Base:setHeight(h) self.height=h end function Base:setWidth(w) self.width=w end function Base:getWidth() return self.width end
@@ -73,7 +81,7 @@ end
 function getItemNameFromFullType(id) return id end function getTexture() return {} end
 local sawTexture={texture=true}
 function tryGetTexture(name) if name=='Item_TestSawVariant' then return sawTexture end end
-function getScriptManager() return {FindItem=function(_,id)
+function getScriptManager() return {getItem=function() return nil end,FindItem=function(_,id)
     if id=='Base.Saw2' then
         return {getNormalTexture=function() return {texture=true} end,getIconsForTexture=function()
             return {isEmpty=function() return false end,get=function() return 'TestSawVariant' end}
@@ -83,7 +91,8 @@ end} end
 function getCell() return {} end
 function getTimestampMs() return 10000 end
 function isClient() return false end function isServer() return false end
-local actor={getIndex=function() return 0 end,getJoypadBind=function() return -1 end,Say=function() end}
+local actor={getIndex=function() return 0 end,getJoypadBind=function() return -1 end,Say=function() end,
+ getInventoryWeight=function() return 8 end,getMaxWeight=function() return 16 end}
 local currentActor=actor
 function getSpecificPlayer() return currentActor end
 local root={} local permitted=true
@@ -95,12 +104,12 @@ local cleared=0
 package.loaded['EmberRoutesProbe/WarehouseLocator']={new=function() return {clear=function() cleared=cleared+1 end} end}
 package.loaded['EmberRoutesProbe/UI/TooltipAnchor']={attach=function() end,clear=function() end}
 package.loaded['EmberRoutesProbe/UI/SettlementSelector']={open=function() end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle={getFullName=function() return 'Worker' end}} end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={describe=function() return nil end}
+package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle={getFullName=function() return 'Worker' end}} end,valid=function() return true end}
+package.loaded['EmberRoutesProbe/ContainerRegistry']={describe=function() return nil end,data=function() return {} end}
 package.loaded['EmberRoutesProbe/LogisticsMenu']={command=function() return 'MODE_CONFIGURED' end}
 publicCalls={} publicRevision=2
 package.loaded['EmberRoutesProbe/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
-package.loaded['EmberRoutesProbe/PublicWork']={
+package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/ContainerRegistry'].id() end,
     available=function() return true end,
     rule=function() return {minimum=50,batch=12} end,
     create=function(_,scope,recipe,n,surface,token)
@@ -181,6 +190,26 @@ package.loaded['EmberRoutesProbe/CraftingService']={status=function() return cra
  end}
 local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'
 local Logistics=require 'EmberRoutesProbe/LogisticsDashboard'
+-- Reuse only the native-host fixture for focused delivery visual inspection.
+if ERDeliveryPreviewOnly then
+    function ERSettlementPreview(tab,height,screenWidth,screenHeight)
+        sw,sh,fh=screenWidth or 1280,screenHeight or 900,height
+        local window=Dashboard.open(actor,entry.id)
+        window.x,window.y=0,0
+        local page=window.pages.warehouse local samples={}
+        for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do
+            page.itemNames[id]=ERTestTranslations and ERTestTranslations['TEST_ItemName_'..id] or id
+            if i==4 then page.itemNames[id]=string.rep(page.itemNames[id]..' / ',5) end
+            samples[i]={fullType=id,node='other',count=i*8,sources={{id='sample',x=3575,y=10898,z=0,count=i*8}}}
+        end
+        page:receive({state='READY',revision=2,rows=samples,counts={loaded=3,containers=4,items=80,unloaded=1,private=0,missing=0,limited=0}})
+        for i,row in ipairs(samples) do
+            page:addToDeliveryCart({fullType=row.fullType,label=page.itemNames[row.fullType],count=row.count},i*2)
+        end
+        return window
+    end
+    return
+end
 local shell=Dashboard.open(actor,entry.id)
 local page=shell.pages.warehouse
 check(shell.activeTab=='warehouse' and not shell.pages.logistics and wareCount==1,'only initial warehouse page is created and subscribed')
@@ -396,7 +425,7 @@ check(craftCommands[#craftCommands].recipeId=='precursor' and craftCommands[#cra
 publicCalls={} publicRevision=2 request=0
 package.loaded['EmberRoutesProbe/ContainerRegistry'].id=function() request=request+1 return 'request-'..request end
 package.loaded['EmberRoutesProbe/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
-package.loaded['EmberRoutesProbe/PublicWork']={
+package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/ContainerRegistry'].id() end,
  available=function() return true end,
  rule=function() return {minimum=50,batch=12} end,
  create=function(_,scope,recipe,n,surface,token)
@@ -423,6 +452,8 @@ check(shell.activeTab=='personnel','openPriorities navigates directly to personn
 local personnel=shell.pages.personnel
 check(personnel and personnel.matrixList and #personnel.matrixList.items>=1,'personnel page renders worker matrix')
 personnel:batchCycle('crafting')
+check(publicRevision==2 and #ERPriorityOptions==5,'opening batch menu does not mutate workers')
+ERPriorityOptions[2]()
 check(publicRevision>2,'batch cycle updates priority revision')
 shell:selectTab('warehouse')
 check(shell.activeTab=='warehouse','switching tabs cleanly switches active page')
@@ -430,15 +461,15 @@ shell:close()
 check(wareCount==0 and logCount==0 and stops==0,'all test windows release watches and never stop business')
 print('PASS '..checks..' unified shell/page lifecycle/layout checks; native host mocked, game renderer NOT RUN')
 -- Optional visual QA export: real pages and prepared draw data, synthetic business snapshots.
-function ERSettlementPreview(tab,height)
-    sw,sh,fh=1280,960,height
+function ERSettlementPreview(tab,height,screenWidth,screenHeight)
+    sw,sh,fh=screenWidth or 1280,screenHeight or 960,height
     local shell=Dashboard.open(actor,entry.id,(tab=='publicOrder' or tab=='priorities') and 'orders' or tab)
     shell.x=0 shell.y=0
     if tab=='publicOrder' then
         shell:openPublicOrder({recipeId='Base.SawLogs',recipeName='Saw logs'})
         local dialog=shell.publicDialog dialog.x=0 dialog.y=0 return dialog
     elseif tab=='priorities' then
-        shell:openPriorities() local dialog=shell.priorityDialog dialog.x=0 dialog.y=0 return dialog
+        shell:openPriorities() return shell
     end
     if tab=='crafting' then
         local browser=shell.pages.crafting.views.recipes
@@ -461,6 +492,10 @@ function ERSettlementPreview(tab,height)
             samples[i]={fullType=id,node='other',count=i*8,sources={{id='sample',x=3575,y=10898,z=0,count=i*8}}}
         end
         page:receive({state='READY',revision=2,rows=samples,counts={loaded=3,containers=4,items=80,unloaded=1,private=0,missing=0,limited=0}})
+        for i,row in ipairs(samples) do
+            page:addToDeliveryCart({fullType=row.fullType,label=page.itemNames[row.fullType],count=row.count},i*2)
+        end
+
     end
     return shell
 end

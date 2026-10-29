@@ -10,7 +10,15 @@ local Ledger={listeners={},validators={}}
 ---@field areas table[]
 ---@return {format:number,entries:table<string,EmberRoutesSettlement>,revision:number,factionId:string}
 function Ledger.data()
-    local data=ModData.getOrCreate("EmberRoutes/Settlements/v1")
+    -- Native root-handle cache (cleared on world lifecycle by the extension);
+    -- missing/noop bridge keeps the direct getOrCreate path for fixtures.
+    local bridge=EmberRoutesProbeJava
+    local data
+    if bridge and bridge.cachedModData then
+        local ok,cached=pcall(bridge.cachedModData,"EmberRoutes/Settlements/v1")
+        if ok then data=cached end
+    end
+    if not data then data=ModData.getOrCreate("EmberRoutes/Settlements/v1") end
     if data.format and data.format~=1 then error("SETTLEMENT_FORMAT_UNSUPPORTED") end
     data.format,data.entries,data.revision=1,data.entries or {},data.revision or 0
     data.factionId=data.factionId or Registry.id()
@@ -26,6 +34,7 @@ function Ledger.get(id)
     local entry=Ledger.data().entries[id]
     if not entry then return nil end
     local copy={format=entry.format,id=entry.id,name=entry.name,factionId=entry.factionId,revision=entry.revision,areas={}}
+    if entry.returnPoint then local p=entry.returnPoint copy.returnPoint={x=p.x,y=p.y,z=p.z,revision=p.revision} end
     for _,r in ipairs(entry.areas) do copy.areas[#copy.areas+1]={x=r.x,y=r.y,w=r.w,h=r.h} end
     return copy
 end
@@ -44,9 +53,21 @@ function Ledger.list()
     return result
 end
 function Ledger.at(x,y)
+    local data=Ledger.data() local factionId=data.factionId
     local result={}
     for _,entry in ipairs(Ledger.list()) do
-        if entry.factionId==Ledger.data().factionId and Geometry.inside(entry,x,y) then result[#result+1]=entry end
+        if entry.factionId==factionId and Geometry.inside(entry,x,y) then result[#result+1]=entry end
+    end
+    return result
+end
+-- Internal live lookup for per-tick runtime paths: returns the persisted entries
+-- themselves (no copy, no sort, no actor authorization). Callers must treat the
+-- result as read-only; detached DTOs remain the only published form.
+function Ledger.scopeAt(x,y)
+    local data=Ledger.data() local factionId=data.factionId
+    local result={}
+    for id,entry in pairs(data.entries) do
+        if entry.factionId==factionId and Geometry.inside(entry,x,y) then result[#result+1]=entry end
     end
     return result
 end
@@ -59,6 +80,21 @@ end
 local function notify(data,entry)
     data.revision=data.revision+1 entry.revision=(entry.revision or 0)+1
     for _,fn in ipairs(Ledger.listeners) do fn(entry.id) end
+end
+function Ledger.setReturnPoint(actor,id,point,expected)
+    local entry,why=Ledger.view(actor,id) if not entry then return false,why end
+    if entry.revision~=expected then return false,'SETTLEMENT_CHANGED' end
+    if type(point)~='table' then return false,'RETURN_POINT_INVALID' end
+    for _,key in ipairs({'x','y','z'}) do
+        local n=point[key] if type(n)~='number' or n~=n or math.abs(n)>10000000 then return false,'RETURN_POINT_INVALID' end
+    end
+    if point.z~=math.floor(point.z) or not Geometry.inside(entry,point.x,point.y) then return false,'RETURN_POINT_INVALID' end
+    local square=getCell() and getCell():getGridSquare(math.floor(point.x),math.floor(point.y),point.z)
+    if not square then return false,'TARGET_UNLOADED' end
+    if not square:isFree(false) then return false,'RETURN_POINT_BLOCKED' end
+    local data=Ledger.data() local live=data.entries[id]
+    live.returnPoint={x=point.x,y=point.y,z=point.z,revision=(live.returnPoint and live.returnPoint.revision or 0)+1}
+    notify(data,live) return true
 end
 -- Validators are pure rejection hooks for future registered system-town boundaries.
 -- No native town/protection object is created here.

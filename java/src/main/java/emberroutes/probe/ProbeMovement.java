@@ -16,6 +16,7 @@ public final class ProbeMovement {
     private long steps;
     private boolean paused;
     private long pausedAt;
+    private boolean nativeGoal;
 
     public void begin(double x, double y, double z, long now) {
         begin(x,y,z,now,TIMEOUT_NANOS);
@@ -25,6 +26,13 @@ public final class ProbeMovement {
             throw new IllegalArgumentException("non-finite target");
         targetX = x; targetY = y; targetZ = z; startedAt = now; steps = 0; active = true; paused = false;
         timeoutNanos=Math.max(TIMEOUT_NANOS,Math.min(180_000_000_000L,timeout));
+        nativeGoal=false;
+    }
+
+    /** Furniture approaches must reach the native sub-tile goal, not a nearby
+     * point inside the generic 0.4 tile arrival tolerance. */
+    public void beginNative(double x,double y,double z,long now,long timeout) {
+        begin(x,y,z,now,timeout); nativeGoal=true;
     }
 
     public void pause(long now) {
@@ -35,14 +43,14 @@ public final class ProbeMovement {
         if (!active) return Outcome.IDLE;
         if (paused) { startedAt += Math.max(0, now - pausedAt); paused = false; }
         Outcome result;
-        if (distance(x, y, z) <= ARRIVAL_DISTANCE && Math.abs(z - targetZ) <= 0.2
+        if (!nativeGoal && distance(x, y, z) <= ARRIVAL_DISTANCE && Math.abs(z - targetZ) <= 0.2
                 && Math.floor(z + 0.001) == targetZ) result = Outcome.REACHED;
         else if (now - startedAt >= timeoutNanos) result = Outcome.TIMEOUT;
         else {
             PathResult path = Objects.requireNonNull(advance.get(), "native path result");
             steps++;
             if (path == PathResult.FAILED) result = Outcome.FAILED;
-            else if (path == PathResult.SUCCEEDED) result = Outcome.PATH_ENDED;
+            else if (path == PathResult.SUCCEEDED) result = nativeGoal ? Outcome.REACHED : Outcome.PATH_ENDED;
             else return Outcome.MOVING;
         }
         active = false;

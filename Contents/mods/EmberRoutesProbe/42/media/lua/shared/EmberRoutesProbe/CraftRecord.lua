@@ -5,6 +5,7 @@ local phases={COLLECTING=true,CRAFTING=true,COMMITTING=true,CONFIRMED=true,RETUR
     RECONCILE_REQUIRED=true,DONE=true,CANCELLED=true}
 local function integer(value) return type(value)=="number" and value==value and math.abs(value)~=math.huge and value==math.floor(value) end
 local function production(id,r)
+    if not require('EmberRoutesProbe/ProductionYield').valid(r) then return false end
     if r.npcId~=id or type(id)~="string" or type(r.id)~="string" or type(r.requester)~="string"
         or type(r.recipeId)~="string" or type(r.signature)~="string" or type(r.settlementId)~="string"
         or type(r.product)~="string" or type(r.recipeName)~="string"
@@ -93,6 +94,7 @@ function Record.valid(id,r)
 end
 function Record.resources(r)
     if r.format==3 then
+        if require('EmberRoutesProbe/ProductionYield').assetFree(r) then return {} end
         local result={}
         if r.benchId then result[#result+1]="craft-surface:"..r.benchId end
         for _,name in ipairs({"materials","tools","outputs","held"}) do

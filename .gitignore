@@ -3,3 +3,6 @@
 /.gradle/
 /build/
 /Contents/mods/EmberRoutesProbe/42/media/java/*.jar
+*.bak*
+*.iml
+/.workbuddy/

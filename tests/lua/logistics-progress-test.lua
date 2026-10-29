@@ -102,7 +102,8 @@ Claims.finish(current)
 assert(Work.lastCompleted(a.id).id==before,"pause or cancellation cannot replace a verified completion")
 current.state="DONE" current.delivered=delivered
 local registryData=Registry.data local savedRoot=registryData()
-Registry.data=function() return {} end
+local replacementRoot={}
+Registry.data=function() return replacementRoot end
 assert(Claims.recent(a.id)==nil,"world switch drops prior completion metadata")
 Registry.data=function() return savedRoot end
 assert(Claims.recent(a.id)==nil,"returning to a world does not revive session-only metadata")

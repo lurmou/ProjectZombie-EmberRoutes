@@ -25,18 +25,18 @@ end
 
 local function stateBadge(ruleState)
     local labels={
-        SATISFIED={"done",text("status_satisfied") or "已达标"},
-        RESTOCKING={"active",text("status_restocking") or "补货中"},
-        WAIT_INVENTORY={"paused",text("status_wait_inventory") or "待盘点"},
-        WAIT_WORKER={"paused",text("status_wait_worker") or "等待工人"},
-        WAIT_EXISTING_ORDER={"paused",text("status_wait_order") or "等待工单"},
-        WAIT_SURFACE={"paused",text("status_wait_surface") or "缺少平台"},
-        SCOPE_OVERLAP={"blocked",text("status_overlap") or "范围重叠"},
-        DISABLED={"neutral",text("status_disabled") or "已禁用"},
-        DELETING={"blocked",text("status_deleting") or "正在删除"},
-        RECONCILE_REQUIRED={"blocked",text("status_reconcile") or "需核对"}
+        SATISFIED={"done",text("status_satisfied")},
+        RESTOCKING={"active",text("status_restocking")},
+        WAIT_INVENTORY={"paused",text("status_wait_inventory")},
+        WAIT_WORKER={"paused",text("status_wait_worker")},
+        WAIT_EXISTING_ORDER={"paused",text("status_wait_order")},
+        WAIT_SURFACE={"paused",text("status_wait_surface")},
+        SCOPE_OVERLAP={"blocked",text("status_overlap")},
+        DISABLED={"neutral",text("status_disabled")},
+        DELETING={"blocked",text("status_deleting")},
+        RECONCILE_REQUIRED={"blocked",text("status_reconcile")}
     }
-    return labels[ruleState] or {"neutral",ruleState or "未知"}
+    return labels[ruleState] or {"neutral",ruleState or text("status_unknown")}
 end
 
 ---@class EmberRoutesStockRules:ISPanel
@@ -67,8 +67,8 @@ function EmberRoutesStockRules:createChildren()
     local leftParts=assert(Layout.axis(leftBounds,{{basis=h+p/2},{grow=1}},{direction="column",gap=p/2}))
     local topRow=assert(Layout.axis(leftParts[1],{{grow=1},{basis=h*5}},{gap=p/2}))
 
-    self.titleLabel=text("title") or "最低存量规则"
-    self.newBtn=ISButton:new(topRow[2].x,topRow[2].y,topRow[2].width,topRow[2].height,text("btn_new_rule") or "+ 新增",self,function()
+    self.titleLabel=text("title")
+    self.newBtn=ISButton:new(topRow[2].x,topRow[2].y,topRow[2].width,topRow[2].height,text("btn_new_rule"),self,function()
         self:selectNewRuleMode()
     end)
     self.newBtn:initialise() Theme.button(self.newBtn) self:addChild(self.newBtn)
@@ -144,7 +144,7 @@ function EmberRoutesStockRules:buildDetailView(bounds)
         self.stepButtons[#self.stepButtons+1]=btn
     end
 
-    self.saveTargetBtn=ISButton:new(p*2+4*(stepW+p/2)+p,rowY,h*4.5,h+p/4,text("btn_save") or "保存修改",self,function()
+    self.saveTargetBtn=ISButton:new(p*2+4*(stepW+p/2)+p,rowY,h*4.5,h+p/4,text("btn_save"),self,function()
         self:commitTargetUpdate()
     end)
     self.saveTargetBtn:initialise() Theme.button(self.saveTargetBtn)
@@ -154,19 +154,19 @@ function EmberRoutesStockRules:buildDetailView(bounds)
     local botY=bounds.height-h-p*1.5
     local botW=math.floor((bounds.width-p*4)/3)
 
-    self.toggleBtn=ISButton:new(p,botY,botW,h+p/2,text("btn_toggle") or "启用/禁用",self,function()
+    self.toggleBtn=ISButton:new(p,botY,botW,h+p/2,text("btn_toggle"),self,function()
         self:commitToggle()
     end)
     self.toggleBtn:initialise() Theme.button(self.toggleBtn)
     self.detailContainer:addChild(self.toggleBtn)
 
-    self.retryBtn=ISButton:new(p*2+botW,botY,botW,h+p/2,text("btn_retry") or "重试",self,function()
+    self.retryBtn=ISButton:new(p*2+botW,botY,botW,h+p/2,text("btn_retry"),self,function()
         self:commitRetry()
     end)
     self.retryBtn:initialise() Theme.button(self.retryBtn)
     self.detailContainer:addChild(self.retryBtn)
 
-    self.deleteBtn=ISButton:new(p*3+botW*2,botY,botW,h+p/2,text("btn_delete") or "删除规则",self,function()
+    self.deleteBtn=ISButton:new(p*3+botW*2,botY,botW,h+p/2,text("btn_delete"),self,function()
         self:commitDelete()
     end)
     self.deleteBtn:initialise() Theme.button(self.deleteBtn)
@@ -193,7 +193,7 @@ function EmberRoutesStockRules:buildNewFormView(bounds)
     y=y+h+gapLabel
     self.itemInput=ISTextEntryBox:new("",p,y,bounds.width-p*2,inputH)
     self.itemInput:initialise()
-    self.itemInput:setPlaceholderText(text("placeholderItem") or "例如 Base.Plank，或从仓储标签页带入")
+    self.itemInput:setPlaceholderText(text("placeholderItem"))
     self.itemInput.backgroundColor=Theme.panel
     self.itemInput.borderColor=Theme.border
     self.itemInput.onTextChangeFunction=function() self:onItemInputChanged() end
@@ -253,7 +253,7 @@ function EmberRoutesStockRules:buildNewFormView(bounds)
 
     -- Create submit button
     local botY=bounds.height-inputH-p
-    self.createSubmitBtn=ISButton:new(p,botY,bounds.width-p*2,inputH,text("btn_create_confirm") or "确认创建规则",self,function()
+    self.createSubmitBtn=ISButton:new(p,botY,bounds.width-p*2,inputH,text("btn_create_confirm"),self,function()
         self:commitCreateRule()
     end)
     self.createSubmitBtn:initialise() Theme.button(self.createSubmitBtn)
@@ -376,7 +376,7 @@ function EmberRoutesStockRules:populateCombos(filterFullType)
                 end
             end
         else
-            self.recipeCombo:addOptionWithData(text("noRecipeFound") or "（无对应产出配方）",nil)
+            self.recipeCombo:addOptionWithData(text("noRecipeFound"),nil)
         end
     end
 
@@ -399,11 +399,11 @@ function EmberRoutesStockRules:populateCombos(filterFullType)
         end
     end
     if not workerFound then
-        self.workerCombo:addOptionWithData(text("noWorkersAvailable") or "（当前据点暂无可用工人）",nil)
+        self.workerCombo:addOptionWithData(text("noWorkersAvailable"),nil)
     end
 
     self.surfaceCombo:clear()
-    self.surfaceCombo:addOptionWithData(text("inHandNoSurface") or "手持制作 (无平台)",nil)
+    self.surfaceCombo:addOptionWithData(text("inHandNoSurface"),nil)
     local surfaces=Surfaces.list(self.entry)
     for _,s in ipairs(surfaces or {}) do
         local label=getText("IGUI_EmberRoutesProbe_Stock_benchLocation",s.x,s.y)
@@ -461,15 +461,15 @@ function EmberRoutesStockRules:commitCreateRule()
     local min=(self.store.value.newRule and self.store.value.newRule.minimum) or 20
 
     if not fullType or fullType=="" then
-        self.formNotice=text("error_no_item") or "请先指定目标物品类型"
+        self.formNotice=text("error_no_item")
         return
     end
     if not recipeId then
-        self.formNotice=text("error_no_recipe") or "请选择有效的制作配方"
+        self.formNotice=text("error_no_recipe")
         return
     end
     if not npcId then
-        self.formNotice=text("error_no_worker") or "当前据点没有可用工人，无法指派自动补货"
+        self.formNotice=text("error_no_worker")
         return
     end
 
@@ -490,7 +490,7 @@ function EmberRoutesStockRules:commitCreateRule()
         StockService.markDirty(id)
         self:selectRule(id)
     else
-        self.formNotice=tostring(err or "创建失败")
+        self.formNotice=tostring(err or text("error_create_failed"))
     end
 end
 
@@ -517,7 +517,7 @@ function EmberRoutesStockRules:project(value,_changes)
     if not isNew then
         local sel=self:getSelectedRule()
         if sel then
-            self.toggleBtn:setTitle(sel.enabled and (text("btn_disable") or "禁用规则") or (text("btn_enable") or "启用规则"))
+            self.toggleBtn:setTitle(sel.enabled and (text("btn_disable")) or (text("btn_enable")))
             Theme.enable(self.retryBtn,sel.state=="RECONCILE_REQUIRED")
         end
     else
@@ -527,21 +527,26 @@ end
 
 function EmberRoutesStockRules:updateNewForm()
     local min=self.store.value.newRule and self.store.value.newRule.minimum or 20
-    self.createSubmitBtn:setTitle((text("btn_create_confirm") or "确认创建规则").." (目标: "..min..")")
+    self.createSubmitBtn:setTitle(string.format(text("btn_create_confirm_with_target"),min))
 end
 
 function EmberRoutesStockRules:prerender()
     ISPanel.prerender(self)
     local h,p=self.fontHeight,self.pad
-    Theme.text(self,self.titleLabel or "最低存量规则",p,p/4,Theme.textColor)
+    Theme.text(self,self.titleLabel or text("title"),p,p/4,Theme.textColor)
 
     if self.detailContainer:isVisible() then
         local sel=self:getSelectedRule()
         if sel then
             local x=self.rightPanel.x+p
             local y=self.rightPanel.y+p
-            local itemType=ScriptManager.instance:getItem(sel.fullType)
-            local name=itemType and itemType:getDisplayName() or sel.fullType
+            local nameKey=sel.id..':'..sel.revision
+            if self._nameKey~=nameKey then
+                self._nameKey=nameKey
+                local itemType=ScriptManager.instance:getItem(sel.fullType)
+                self._nameText=itemType and itemType:getDisplayName() or sel.fullType
+            end
+            local name=self._nameText
             Theme.text(self,name.." ("..sel.fullType..")",x,y,Theme.textColor)
             Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_targetStockFormat",self.store.value.targetDraft or sel.minimum),x,y+h+p/4,Theme.accent)
 
@@ -560,27 +565,27 @@ function EmberRoutesStockRules:prerender()
             end
 
             local noteY=infoY+h*6
-            Theme.text(self,text("notePhysical") or "* 仅按已登记容器直接层实物件数计，不含背包/在途",x,noteY,Theme.muted)
-            Theme.text(self,text("noteReserved") or "* 箱内被其他任务预留的物资实际取出前仍计入",x,noteY+h,Theme.muted)
+            Theme.text(self,text("notePhysical"),x,noteY,Theme.muted)
+            Theme.text(self,text("noteReserved"),x,noteY+h,Theme.muted)
         end
     elseif self.newFormContainer:isVisible() then
         local x=self.rightPanel.x+p
         local baseY=self.rightPanel.y
         local fy=self.formY
         if fy then
-            Theme.text(self,text("lbl_item_type") or "目标物品类型 (fullType):",x,baseY+fy.itemLabel,Theme.textColor)
+            Theme.text(self,text("lbl_item_type"),x,baseY+fy.itemLabel,Theme.textColor)
 
             local fullType=self.itemInput and self.itemInput:getText() or ""
             local itemObj=fullType~="" and ScriptManager.instance:getItem(fullType)
             if itemObj then
                 Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_selectedItemDisplay",itemObj:getDisplayName()),x,baseY+fy.itemHint,Theme.accent)
             else
-                Theme.text(self,text("hint_select_from_storage") or "（提示: 可在仓储标签页选中物品后，点击右上角'最低存量'一键带入）",x,baseY+fy.itemHint,Theme.muted)
+                Theme.text(self,text("hint_select_from_storage"),x,baseY+fy.itemHint,Theme.muted)
             end
 
-            Theme.text(self,text("lbl_recipe") or "制作配方:",x,baseY+fy.recipeLabel,Theme.textColor)
-            Theme.text(self,text("lbl_worker") or "执行工人:",x,baseY+fy.workerLabel,Theme.textColor)
-            Theme.text(self,text("lbl_surface") or "工作平台:",x,baseY+fy.surfaceLabel,Theme.textColor)
+            Theme.text(self,text("lbl_recipe"),x,baseY+fy.recipeLabel,Theme.textColor)
+            Theme.text(self,text("lbl_worker"),x,baseY+fy.workerLabel,Theme.textColor)
+            Theme.text(self,text("lbl_surface"),x,baseY+fy.surfaceLabel,Theme.textColor)
 
             local minVal=self.store.value.newRule and self.store.value.newRule.minimum or 20
             local targetLabel=getText("IGUI_EmberRoutesProbe_Stock_targetStockFormatLabel",minVal)

@@ -3,6 +3,7 @@ package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;" .. pa
 DebugLog = { log = function(message) print(message) end }
 local function check(value, message) count = count + 1 assert(value, message) end
 local callbacks = {}
+local function tickPaused() for _=1,3 do callbacks.OnTickEvenPaused() end end -- one dispatch per three render fires
 Events = {}
 for _, name in ipairs({"OnGameStart", "OnServerStarted", "OnTick", "OnTickEvenPaused", "OnPreMapLoad", "OnSave"}) do
     Events[name] = { Add = function(fn) callbacks[name] = fn end }
@@ -11,17 +12,19 @@ SandboxVars = { EmberRoutes = { CarrierProbe = true } }
 package.loaded["EmberRoutesProbe/Build"] = { version = "test", prefix = "TEST" }
 function getText(key) return key end
 local function stub() end
-EmberRoutesProbeJava = {
+EmberRoutesProbeJava = {moveSeatWithControl=stub,reachedSeat=stub,
     begin = function() return "READY" end, version = function() return "test" end,
     tick = function() normal = normal + 1 end,
     retirementTick = function() paused = paused + 1 end,
     command = stub, reset = function() return "REMOVAL_PENDING" end,
     clearForSave = function() cleared = cleared + 1 end,
     actionCarrier = stub, carrierActive = stub, carrierPresent = stub, motionResult = stub,
+    reposeWithControl=stub,
+    reposeAtWithControl=stub,
     stopCarrier = stub, controlledCarrier = stub, carrierId = stub,
     saveCheckpoint = stub, restoreCheckpoint = stub, blockCheckpoint = stub, reportCheckpoint = stub,
     checkpointMode = stub, checkpointHasHome = stub, checkpointHomeX = stub, checkpointHomeY = stub, checkpointHomeZ = stub,
-    commandFor=stub,carrierFor=stub,selectedId=stub,spawnAdditional=stub,selectCarrier=stub,
+    commandFor=stub,carrierFor=stub,ownedCarrierId=stub,selectedId=stub,spawnAdditional=stub,selectCarrier=stub,
     workerCount=stub,workerIdAt=stub,saveCheckpointFor=stub,blockAllCheckpoints=stub,
 }
 local Probe = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua")
@@ -31,17 +34,17 @@ Probe.tickHaul = Probe.tickActions
 Probe.tickCompanion = Probe.tickActions
 Probe.cancelActions = function() cancelled = cancelled + 1 end
 Probe.cancelHaul, Probe.cancelCompanion = Probe.cancelActions, Probe.cancelActions
-callbacks.OnTickEvenPaused()
+tickPaused()
 check(paused == 0, "paused cleanup does nothing before bridge begin")
 callbacks.OnGameStart()
 check(Probe.ready, "version-matched bridge starts")
-callbacks.OnTickEvenPaused()
+tickPaused()
 check(paused == 1 and jobs == 0 and normal == 0, "pause only calls dedicated cleanup/timer hook")
 callbacks.OnTick()
 check(normal == 1 and jobs == 3, "ordinary tick remains the only job dispatcher")
 callbacks.OnPreMapLoad()
 check(cancelled == 3 and Probe.ready, "reset cancels every executor but retains pending cleanup")
-callbacks.OnTickEvenPaused()
+tickPaused()
 check(paused == 2 and jobs == 3, "pending retirement can progress while paused without dispatching jobs")
 Probe.cleanupHaul = function() return false end
 local savedPrint = print
@@ -59,7 +62,7 @@ check(Probe.unavailableCode() == "BASELINE_CHANGED", "actual startup rejection c
 check(Probe.unavailableMessage():find("DriverNotReady") and Probe.unavailableMessage():find("BASELINE_CHANGED"),
     "UI reports driver refusal and its cause")
 local pausedBeforeRefusal = paused
-callbacks.OnTickEvenPaused()
+tickPaused()
 check(paused == pausedBeforeRefusal, "refused driver remains stopped")
 EmberRoutesProbeJava.version = function() return "old-version" end
 callbacks.OnGameStart()

@@ -3,8 +3,8 @@ local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
 local Words=require "EmberRoutesProbe/CraftingText"
-local Grid={}
-function Grid.new(owner,bounds,select)
+local RecipeGrid={}
+function RecipeGrid.new(owner,bounds,select)
     ---@type any
     local panel=ISPanel:new(bounds.x,bounds.y,bounds.width,bounds.height)
     panel:initialise() panel.background=false panel.fontHeight=owner.fontHeight panel.pad=owner.pad
@@ -91,4 +91,4 @@ function Grid.new(owner,bounds,select)
     panel:setWantKeyEvents(true) owner:addChild(panel)
     return panel
 end
-return Grid
+return RecipeGrid

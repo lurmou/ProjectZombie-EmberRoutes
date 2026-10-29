@@ -9,12 +9,11 @@ local Claims=require "EmberRoutesProbe/LaborStore"
 local Adapter=require "EmberRoutesProbe/CraftRecipeAdapter"
 local Producers=require "EmberRoutesProbe/LaborProducers"
 local Supply={}
-function Supply.entry(actor,npc,object,id)
-    local entries=id and {Ledger.get(id)} or Ledger.at(actor:getX(),actor:getY())
-    if #entries~=1 then return nil,"SETTLEMENT_REQUIRED" end
-    local entry,reason=Ledger.view(actor,entries[1].id)
+function Supply.entry(actor,npc,object,id,recovery)
+    local M=require 'EmberRoutesProbe/MembershipService'
+    local entry,reason=M.entry(EmberRoutesProbeJava.carrierId(npc),id)
     if not entry then return nil,reason end
-    if not Geometry.inside(entry,npc:getX(),npc:getY()) then return nil,"NPC_OUTSIDE_SETTLEMENT" end
+    if not recovery and not Geometry.inside(entry,npc:getX(),npc:getY()) then return nil,"NPC_OUTSIDE_SETTLEMENT" end
     local square=object and object:getSquare()
     if object and (not square or not Geometry.inside(entry,square:getX(),square:getY())) then return nil,"SURFACE_OUTSIDE_SETTLEMENT" end
     return entry
@@ -100,7 +99,7 @@ function Supply.new(entry,npc,spec,recovery)
     end
     return plan
 end
-function Supply.route(plan,item)
+function Supply.route(plan,item,accept)
     local route={cursor=plan.index:cursor(item),best=nil}
     function route:step(budget)
         for _=1,budget do
@@ -109,6 +108,7 @@ function Supply.route(plan,item)
             if target then
                 local current=Supply.endpoint(plan.entry,target.id,"put")
                 if current and Registry.logistics(current)=="STORAGE" and Registry.accepts(current,item)
+                    and (not accept or accept(current))
                     and current.container:hasRoomFor(plan.npc,item)
                     and Claims.availableCapacity(current.id,current.container:getFreeCapacity(plan.npc))>=item:getUnequippedWeight() then
                     local square=current.object:getSquare()
@@ -122,5 +122,32 @@ function Supply.route(plan,item)
         return nil,false
     end
     return route
+end
+-- Bounded reuse of warehouse target ranking for leftovers/native empty vessels.
+-- No inventory scan and no new stock or claim authority.
+function Supply.returnRoute(actor,npc,scope,item,accept)
+    local entry,reason=require('EmberRoutesProbe/MembershipService').entry(EmberRoutesProbeJava.carrierId(npc),scope)
+    if not entry then return nil,reason end
+    if not Geometry.inside(entry,npc:getX(),npc:getY()) then return nil,'NPC_OUTSIDE_SETTLEMENT' end
+    local ids,why=Membership.query(entry) if not ids then return nil,why end
+    local plan={entry=entry,npc=npc,index=Sort.index()}
+    local position,route=1,nil
+    local request={}
+    function request:step(budget)
+        for _=1,budget do
+            if not route then
+                local id=ids[position] position=position+1
+                if not id then route=Supply.route(plan,item,accept)
+                else
+                    local target=Supply.endpoint(entry,id,'put')
+                    if target and Registry.logistics(target)=='STORAGE' then
+                        target.filter=Filter.copy(Registry.filter(target.object,target.container)) plan.index:add(target)
+                    end
+                end
+            else return route:step(1) end
+        end
+        return nil,false
+    end
+    return request
 end
 return Supply

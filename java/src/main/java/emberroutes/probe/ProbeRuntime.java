@@ -5,6 +5,20 @@ import zombie.characters.IsoPlayer;
 
 /** Authority facade. Selection is UI state; execution always resolves an explicit identity. */
 public final class ProbeRuntime {
+    /** Read-only, loaded-world evidence; no ownership or movement side effects. */
+    public static boolean socialVisible(IsoPlayer first,IsoPlayer second) {
+        if (first==null || second==null || first.isDead() || second.isDead()) return false;
+        var firstSquare=first.getCurrentSquare(); var secondSquare=second.getCurrentSquare();
+        if (firstSquare==null || secondSquare==null || firstSquare.getZ()!=secondSquare.getZ()
+                || first.getCell()!=second.getCell()) return false;
+        double dx=first.getX()-second.getX(), dy=first.getY()-second.getY();
+        if (dx*dx+dy*dy>7.5625) return false;
+        zombie.iso.LosUtil.TestResults result=zombie.iso.LosUtil.lineClear(first.getCell(),
+                (int)Math.floor(first.getX()),(int)Math.floor(first.getY()),firstSquare.getZ(),
+                (int)Math.floor(second.getX()),(int)Math.floor(second.getY()),secondSquare.getZ(),false);
+        return result!=zombie.iso.LosUtil.TestResults.Blocked
+                && result!=zombie.iso.LosUtil.TestResults.ClearThroughClosedDoor;
+    }
     private static final LinkedHashMap<String,CarrierRuntime> slots=new LinkedHashMap<>();
     private static final Map<String,CarrierRuntime> ids=new HashMap<>();
     private static final IdentityHashMap<IsoPlayer,CarrierRuntime> handles=new IdentityHashMap<>();
@@ -22,6 +36,60 @@ public final class ProbeRuntime {
     private ProbeRuntime() {}
     public static String version() { return BuildInfo.VERSION; }
     public static double diagnosticTimeNanos() { return System.nanoTime(); }
+    private static final Map<String,se.krka.kahlua.vm.KahluaTable> modDataCache=new HashMap<>();
+    /** getOrCreate root handle cache for per-tick Lua read paths; each Lua call to
+     *  ModData.getOrCreate is a bridge round-trip. Cleared on world lifecycle. */
+    public static se.krka.kahlua.vm.KahluaTable cachedModData(String key) {
+        if (key==null || key.isEmpty() || key.length()>256) return null;
+        se.krka.kahlua.vm.KahluaTable root=modDataCache.get(key);
+        if (root!=null) return root;
+        root=zombie.world.moddata.GlobalModData.instance.getOrCreate(key);
+        if (root==null) return null;
+        modDataCache.put(key,root);
+        return root;
+    }
+    /** One-shot need/safety observation; replaces ~10-70 per-NPC Lua bridge calls. */
+    public static se.krka.kahlua.vm.KahluaTable observerSample(zombie.characters.IsoPlayer npc) {
+        return ObserverReads.sample(npc);
+    }
+    public static Boolean workItemEligible(zombie.inventory.InventoryItem item) { return InventoryReads.eligible(item); }
+    public static double workFreeCarry(zombie.characters.IsoGameCharacter npc) { return InventoryReads.freeCarry(npc); }
+    /**
+     * Bakes the character's actual 3D appearance into a single cached texture
+     * (engine DeadBodyAtlas, same tech as ProjectRemnants party portraits).
+     * UI draws this one image instead of a per-frame 3D viewport, so roster
+     * render cost stays independent of NPC count. Returns null on any failure;
+     * the caller falls back to a static profession icon / initials.
+     */
+    public static zombie.core.textures.Texture getPortraitTexture(zombie.characters.IsoGameCharacter character) {
+        if (!(character instanceof zombie.core.skinnedmodel.visual.IHumanVisual visual)) return null;
+        try {
+            zombie.core.skinnedmodel.DeadBodyAtlas.BodyParams bp = new zombie.core.skinnedmodel.DeadBodyAtlas.BodyParams();
+            bp.init(visual, zombie.iso.IsoDirections.S, "player", "idle", 0.0F);
+            zombie.core.skinnedmodel.DeadBodyAtlas.BodyTexture bt = zombie.core.skinnedmodel.DeadBodyAtlas.instance.getBodyTexture(bp);
+            return bt != null ? bt.getTexture() : null;
+        } catch (RuntimeException | LinkageError e) {
+            return null;
+        }
+    }
+    public static se.krka.kahlua.vm.KahluaTable waterSourceBacking(zombie.iso.IsoObject tap) {
+        return WaterReads.backing(tap);
+    }
+    public static se.krka.kahlua.vm.KahluaTable inventoryReadSlice(zombie.inventory.ItemContainer container,
+            ArrayList<zombie.inventory.InventoryItem> items,int size,int offset,int limit) {
+        return InventoryReads.slice(container,items,size,offset,limit);
+    }
+    public static se.krka.kahlua.vm.KahluaTable warehouseFastScan(String settlementId,
+            se.krka.kahlua.vm.KahluaTable containers, boolean force) {
+        return WarehouseFastIndex.scanSettlement(settlementId, containers, force);
+    }
+    public static void warehouseResetCache(String settlementId) {
+        if (settlementId != null) {
+            WarehouseFastIndex.invalidateSettlement(settlementId);
+        } else {
+            WarehouseFastIndex.reset();
+        }
+    }
     /** CraftRecipe.LuaCall is not exported to Lua in the pinned engine. Read metadata only. */
     public static boolean recipeHasCallbacks(zombie.scripting.entity.components.crafting.CraftRecipe recipe) {
         if (recipe == null) return true;
@@ -82,11 +150,22 @@ public final class ProbeRuntime {
     public static boolean carrierPresent(IsoPlayer body) {
         CarrierRuntime runtime=handles.get(body); return runtime!=null && runtime.carrierPresent(body);
     }
+    public static boolean bindingValid(IsoPlayer body,String id) {
+        CarrierRuntime runtime=handles.get(body);
+        // Same-thread read: carrierId would repeat the entire presence check.
+        return runtime!=null && id!=null && runtime.carrierPresent(body) && id.equals(runtime.id());
+    }
     public static boolean carrierActive(IsoPlayer body) {
         CarrierRuntime runtime=handles.get(body); return runtime!=null && runtime.carrierActive(body);
     }
     public static String carrierId(IsoPlayer body) {
         CarrierRuntime runtime=handles.get(body); return runtime==null ? "" : runtime.carrierId(body);
+    }
+    /** Lifecycle identity survives death; never a grant to move or access an unbound body. */
+    public static String ownedCarrierId(IsoPlayer body) {
+        if (!liveAuthority()) return "";
+        CarrierRuntime runtime=handles.get(body);
+        return runtime!=null && runtime.body()==body && runtime.id()!=null ? runtime.id() : "";
     }
     public static String motionResult(IsoPlayer body) {
         CarrierRuntime runtime=handles.get(body); return runtime==null ? "UNAVAILABLE" : runtime.motionResult(body);
@@ -121,6 +200,7 @@ public final class ProbeRuntime {
         try {
             // moveTo clears native actions: do not silently interrupt an active action.
             if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
+            if (body instanceof ProbeNpc npc && npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
             CarrierRuntime runtime=handles.get(body);
             String result=runtime.workerCommand("move",actor,x,y,z); refresh(runtime); return result;
         } finally { controlCalls.remove(id); }
@@ -130,6 +210,68 @@ public final class ProbeRuntime {
         if (!liveAuthority() || !carrierPresent(body) || !authority.allows(id,key,true)
             || !controlCalls.add(id)) return false;
         try { return handles.get(body).stopCarrier(body); }
+        finally { controlCalls.remove(id); }
+    }
+    public static String moveSeatWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object,double maxPathLength) {
+        return moveSeatControlled(body,key,object,maxPathLength,false);
+    }
+    public static String moveSleepSeatWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object) {
+        return moveSeatControlled(body,key,object,0,true);
+    }
+    private static String moveSeatControlled(IsoPlayer body,String key,zombie.iso.IsoObject object,double maxPathLength,boolean sleep) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !carrierPresent(body) || !(body instanceof ProbeNpc npc)
+                || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
+        try {
+            if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
+            if (npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            return npc.moveToFurniture(object,Double.isFinite(maxPathLength) ? Math.max(0,Math.min(100,maxPathLength)) : 0,sleep);
+        } finally { controlCalls.remove(id); }
+    }
+    public static zombie.iso.IsoObject reachedSeat(IsoPlayer body) {
+        return liveAuthority() && carrierPresent(body) && body instanceof ProbeNpc npc ? npc.reachedFurniture() : null;
+    }
+    public static boolean reposeWithControl(IsoPlayer body,String key,String kind,boolean enter) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body)
+            || !authority.allows(id,key,!enter) || !controlCalls.add(id)) return false;
+        try { return enter ? npc.beginRepose(kind) : npc.endRepose(); }
+        finally { controlCalls.remove(id); }
+    }
+    public static String moveBedWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object,se.krka.kahlua.vm.KahluaTable locations) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body) || object==null || locations==null
+            || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
+        try {
+            if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
+            if (npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            return npc.moveToBed(object,locations);
+        } finally { controlCalls.remove(id); }
+    }
+    public static boolean bedPoseReady(IsoPlayer body,String pose) {
+        return carrierPresent(body) && body instanceof ProbeNpc npc && npc.bedPoseReady(pose);
+    }
+    public static boolean furniturePoseWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object,String phase) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body) || object==null && !"FLOOR".equals(phase)
+                || !authority.allows(id,key,false) || !controlCalls.add(id)) return false;
+        try {
+            if ("FLOOR".equals(phase)) return object==null && npc.beginOwnedFloorPose();
+            if ("PREPARE".equals(phase)) return npc.prepareFurniturePose(object);
+            if ("STAND_TARGET".equals(phase)) return npc.captureFurnitureStand(object);
+            if ("ALIGN_BED".equals(phase)) return npc.alignBedPose(object);
+            if ("LIE".equals(phase)) return npc.beginOwnedBedPose(object);
+            return false;
+        } finally { controlCalls.remove(id); }
+    }
+    public static boolean floorSleepSafe(IsoPlayer body,int x,int y,int z) {
+        return carrierPresent(body) && body instanceof ProbeNpc npc && npc.floorSleepSafe(x,y,z);
+    }
+    public static boolean reposeAtWithControl(IsoPlayer body,String key,String kind,zombie.iso.IsoObject furniture,String quality) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body) || furniture==null
+            || !authority.allows(id,key,false) || !controlCalls.add(id)) return false;
+        try { return npc.beginRepose(kind,furniture,quality); }
         finally { controlCalls.remove(id); }
     }
     public static boolean freezeBodyControl() {
@@ -143,6 +285,8 @@ public final class ProbeRuntime {
     }
     public static String begin(boolean enable) {
         saveReceipt=null;
+        modDataCache.clear();
+        WarehouseFastIndex.reset(); // ModData reloads with the world; never reuse old roots.
         thread=Thread.currentThread(); enabled=enable;
         var world=zombie.iso.IsoWorld.instance;
         var cell=world==null ? null : world.currentCell;
@@ -221,6 +365,7 @@ public final class ProbeRuntime {
         if (thread!=null && Thread.currentThread()!=thread) return "WRONG_THREAD";
         authority.retire();
         saveReceipt=null;
+        modDataCache.clear();
         String result="ABSENT";
         boolean pending=false,failed=false;
         for (CarrierRuntime runtime:slots.values()) {

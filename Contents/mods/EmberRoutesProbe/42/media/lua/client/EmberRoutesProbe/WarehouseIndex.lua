@@ -7,6 +7,8 @@ local Log=require "EmberRoutesProbe/Log"
 local Rollup=require "EmberRoutesProbe/WarehouseRollup"
 local Geometry=require "EmberRoutesProbe/SettlementGeometry"
 local Metrics=require "EmberRoutesProbe/WarehouseMetrics"
+local RuntimeMetrics=require 'EmberRoutesProbe/RuntimeMetrics'
+local Read=require 'EmberRoutesProbe/InventoryRead'
 local Index={BUDGET=128,MAX_ITEMS=20000,MAX_TYPES=2048,clock=0}
 local contexts,order,cursor={}, {},0
 local fail
@@ -18,8 +20,13 @@ local function unwatch(ctx,token)
     if not ctx.listeners[token] then return end
     ctx.listeners[token]=nil ctx.consumers=ctx.consumers-1
     if ctx.consumers==0 and contexts[ctx.id]==ctx then
-        contexts[ctx.id]=nil ctx.active=nil ctx.merge=nil ctx.rowByType=nil ctx.results={} ctx.dirty={}
-        for i=#order,1,-1 do if order[i]==ctx.id then table.remove(order,i) end end
+        if not (EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseFastScan) then
+            contexts[ctx.id]=nil ctx.active=nil ctx.merge=nil ctx.rowByType=nil ctx.results={} ctx.dirty={}
+            for i=#order,1,-1 do if order[i]==ctx.id then table.remove(order,i) end end
+        else
+            ctx.active=nil ctx.merge=nil
+            for i=#order,1,-1 do if order[i]==ctx.id then table.remove(order,i) end end
+        end
     end
 end
 -- Current pinned ItemContainer JAR + vanilla ISInventoryPage use getDisplayType;
@@ -43,6 +50,9 @@ local function publish(ctx,state,rows,counts,reason)
 end
 local function invalidate(ctx,id,membership,resetView)
     if ctx.halted then return end -- Error remains explicit until manual refresh.
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseResetCache and (resetView or not id) then
+        EmberRoutesProbeJava.warehouseResetCache(ctx.id)
+    end
     if not ctx.pending then ctx.viewDirty={} ctx.viewAll=false ctx.viewReset=false end
     local notify=not ctx.pending or (resetView and not ctx.viewReset) or (not id and not ctx.viewAll)
         or (id and not ctx.viewDirty[id])
@@ -72,6 +82,64 @@ function Index.refresh(id,resetView)
         invalidate(ctx,nil,true,resetView) ctx.notBefore=Index.clock
     end
 end
+local function fastScanJava(ctx)
+    if not (EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseFastScan) then return false end
+    local ledger=Ledger.data()
+    local entry=ledger.entries[ctx.id]
+    if not entry then return false end
+    if ctx.membershipDirty or not ctx.ids or #ctx.ids==0 then
+        local ids=Membership.query(entry)
+        if ids then ctx.ids=ids ctx.membershipDirty=false end
+    end
+    local containerList={}
+    for _,id in ipairs(ctx.ids or {}) do
+        local endpoint=Registry.resolve(id,"take","local-world")
+        local pos=Registry.data().containers[id]
+        if endpoint and endpoint.container then
+            local c=endpoint.container
+            local cap=(c.getCapacity and c:getCapacity()) or 0
+            local used=(c.getCapacityWeight and c:getCapacityWeight()) or (c.getContentsWeight and c:getContentsWeight()) or 0
+            containerList[#containerList+1]={
+                id=id,
+                container=c,
+                x=pos and pos.x or 0,
+                y=pos and pos.y or 0,
+                z=pos and pos.z or 0,
+                kind=c:getType() or "container",
+                displayType=c.getDisplayType and c:getDisplayType() or nil,
+                customName=c.getCustomName and c:getCustomName() or nil,
+                capacity=cap,
+                usedWeight=used
+            }
+        else
+            containerList[#containerList+1]={
+                id=id,
+                x=pos and pos.x or 0,
+                y=pos and pos.y or 0,
+                z=pos and pos.z or 0,
+                status="CONTAINER_UNLOADED"
+            }
+        end
+    end
+
+    local snapshot=EmberRoutesProbeJava.warehouseFastScan(ctx.id,containerList,ctx.viewReset or false)
+    if not snapshot or snapshot.state~="READY" then return false end
+
+    local rowByType={}
+    for _,r in ipairs(snapshot.rows or {}) do
+        rowByType[r.fullType]=r
+    end
+    ctx.rowByType=rowByType
+    ctx.fastContainers=snapshot.containers
+    ctx.pending=false
+    ctx.pendingSince=nil
+    ctx.restarts=0
+    ctx.viewReset=false
+    ctx.dirty={}
+    publish(ctx,"READY",snapshot.rows,snapshot.counts)
+    return true
+end
+
 function Index.watch(id,listener)
     if isClient() or isServer() then return nil,"DRIVER_UNAVAILABLE" end
     local entry=Ledger.data().entries[id]
@@ -81,7 +149,18 @@ function Index.watch(id,listener)
     if not ctx then
         ctx={id=id,root=Ledger.data(),scopeRevision=entry.revision,listeners={},consumers=0,ids={},dirty={},results={},generation=0,pending=false}
         contexts[id]=ctx order[#order+1]=id
-        Index.refresh(id)
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseFastScan then
+            fastScanJava(ctx)
+        else
+            Index.refresh(id)
+        end
+    else
+        local inOrder=false
+        for _,oId in ipairs(order) do if oId==id then inOrder=true break end end
+        if not inOrder then order[#order+1]=id end
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseFastScan and (not ctx.snapshot or ctx.snapshot.state~="READY") then
+            fastScanJava(ctx)
+        end
     end
     local token={}
     ctx.listeners[token]=listener ctx.consumers=ctx.consumers+1
@@ -114,9 +193,13 @@ local function start(ctx,id)
             usedWeight=(container.getCapacityWeight and container:getCapacityWeight()) or (container.getContentsWeight and container:getContentsWeight()) or 0}}
 end
 local function advance(ctx,budget)
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseFastScan then
+        if fastScanJava(ctx) then return budget end
+    end
     if not ctx.pending or ctx.halted or Index.clock<ctx.notBefore then return 0 end
-    if ctx.root~=Ledger.data() then fail(ctx,"WORLD_CHANGED") return 0 end
-    local entry=Ledger.data().entries[ctx.id]
+    local ledger=Ledger.data()
+    if ctx.root~=ledger then fail(ctx,"WORLD_CHANGED") return 0 end
+    local entry=ledger.entries[ctx.id]
     if not entry then fail(ctx,"SETTLEMENT_MISSING") return 0 end
     ctx.scopeRevision=entry.revision
     if ctx.membershipDirty then
@@ -162,21 +245,27 @@ local function advance(ctx,budget)
                 store(ctx,a.id,endpoint and a.result or {status=reason or "CONTAINER_CHANGED"})
                 ctx.dirty[a.id]=nil ctx.active=nil spent=spent+1
             else
-                local item=a.items:get(a.cursor)
-                if not item or item:getContainer()~=a.container then invalidate(ctx,a.id) break end
-                local id=item:getID()
-                if a.result.ids[id] then fail(ctx,"ITEM_ID_DUPLICATED") break end
-                a.result.ids[id]=true
-                local fullType=item:getFullType()
-                local value=a.result.types[fullType]
-                if not value then value={count=0,node=Filter.classify(Filter.describe(item),item)} a.result.types[fullType]=value end
-                value.count=value.count+1 a.cursor=a.cursor+1 spent=spent+1
+                -- Charge before reading: a rejected/duplicate batch may have
+                -- already inspected every original, even if Lua stops early.
+                local limit=math.min(Read.LIMIT,budget-spent,a.size-a.cursor)
+                spent=spent+limit
+                local rows=Read.slice(a.container,a.items,a.size,a.cursor,limit)
+                if not rows then invalidate(ctx,a.id) break end
+                for i=1,#rows,3 do
+                    local item,id,fullType=rows[i],rows[i+1],rows[i+2]
+                    if a.result.ids[id] then fail(ctx,"ITEM_ID_DUPLICATED") break end
+                    a.result.ids[id]=true
+                    local value=a.result.types[fullType]
+                    if not value then value={count=0,node=Filter.classify(Filter.describe(item),item)} a.result.types[fullType]=value end
+                    value.count=value.count+1 a.cursor=a.cursor+1
+                end
+                if ctx.halted then break end
             end
         end
     end
     return spent
 end
-function Index.step()
+local function stepImpl()
     if #order==0 then return 0 end
     local measured=Metrics.begin("index.slice")
     Index.clock=Index.clock+1
@@ -195,6 +284,16 @@ function Index.step()
         if spent>=Index.BUDGET then break end
     end
     Metrics.finish("index.slice",measured)
+    return spent
+end
+-- Sample this standalone tick via the mod's single even-paused dispatcher;
+-- without a row its cost stayed invisible. Metrics module resolved at load.
+function Index.step()
+    if #order==0 then return 0 end
+    if not RuntimeMetrics.active() then return stepImpl() end
+    local started=RuntimeMetrics.now()
+    local spent=stepImpl()
+    RuntimeMetrics.measureSpan('WarehouseIndex',started)
     return spent
 end
 -- Candidate discovery only: no reservations or effect permission are granted.
@@ -239,6 +338,42 @@ function Index.candidates(actor,id,request)
     for i=#result.sources,limit+1,-1 do result.sources[i]=nil end
     return result
 end
+function Index.containers(id)
+    local ctx=contexts[id]
+    if not ctx then return {} end
+    if ctx.fastContainers and #ctx.fastContainers>0 then
+        local list={}
+        for _,c in ipairs(ctx.fastContainers) do list[#list+1]=c end
+        table.sort(list,function(a,b)
+            if (a.z or 0)~=(b.z or 0) then return (a.z or 0)<(b.z or 0) end
+            if (a.y or 0)~=(b.y or 0) then return (a.y or 0)<(b.y or 0) end
+            return (a.x or 0)<(b.x or 0)
+        end)
+        return list
+    end
+    local list={}
+    for cid,res in pairs(ctx.results or {}) do
+        list[#list+1]={
+            id=cid,
+            x=res.x,
+            y=res.y,
+            z=res.z,
+            kind=res.kind,
+            displayType=res.displayType,
+            customName=res.customName,
+            capacity=res.capacity or 0,
+            usedWeight=res.usedWeight or 0,
+            status=res.status,
+            count=res.count or 0
+        }
+    end
+    table.sort(list,function(a,b)
+        if (a.z or 0)~=(b.z or 0) then return (a.z or 0)<(b.z or 0) end
+        if (a.y or 0)~=(b.y or 0) then return (a.y or 0)<(b.y or 0) end
+        return (a.x or 0)<(b.x or 0)
+    end)
+    return list
+end
 function Index.changed(id,resetView)
     if resetView==nil then resetView=true end
     local position=id and Registry.describe(id)
@@ -248,9 +383,15 @@ function Index.changed(id,resetView)
                 or (entry and position and Geometry.inside(entry,position.x,position.y)) then invalidate(ctx,id,true,resetView) end
     end
 end
+-- Sampled like SettlementFacilities' event handlers: container events run
+-- outside every service bucket and spike with world/container churn. Metrics
+-- module resolved once; a per-event require would itself become the hot path.
+local RuntimeMetrics=require 'EmberRoutesProbe/RuntimeMetrics'
 local function containerChanged(object)
+    local started=RuntimeMetrics.active() and RuntimeMetrics.now() or nil
     local ids=Registry.affected(object)
     if not ids then Index.changed(nil,false) else for _,id in ipairs(ids) do Index.changed(id,false) end end
+    if started then RuntimeMetrics.measureSpan('ModEvents',started) end
 end
 Registry.listeners[#Registry.listeners+1]=Index.changed
 Registry.inventoryListeners[#Registry.inventoryListeners+1]=function(id)
@@ -259,8 +400,8 @@ end
 Ledger.listeners[#Ledger.listeners+1]=function(id) if contexts[id] then Index.refresh(id,true) end end
 Events.OnContainerUpdate.Add(containerChanged)
 -- Actual IngameState dispatches this while paused too; read-only UI jobs stay responsive.
-local tickEvent=Events.OnTickEvenPaused or Events.OnTick
-tickEvent.Add(Index.step)
+-- Registered through the mod's single even-paused dispatcher.
+require('EmberRoutesProbe/EvenPaused').add(Index.step)
 Events.OnGameStart.Add(function()
     if Metrics.enabled then Metrics.stop() end
     local old=contexts

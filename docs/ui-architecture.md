@@ -1,5 +1,9 @@
 # ISUI基础与实施边界
 
+> 阅读范围（2026-10-24）：本文件维护UI工程契约；下方按版本记录的“当前/下一轮/未实施”均为历史截点，不能据此恢复旧页面或安排开发顺序。当前进度见[BACKLOG](BACKLOG.md)，产品设计及相关验证从[任务导航](INDEX.md)进入。
+
+2026-10-24：[0.23.2视口与视觉修整](reviews/2026-10-24/ui-visual-boundaries.md)补充三个复用模块：Viewport只包无子控件canvas的自绘作用域，不能把prerender结束后的子控件当作也被它裁剪；InfoList使用原版列表遮罩/滚动承载长信息、图标和进度；BlueprintRows只准备/绘制材料及制作链。部分可见内容交给原生stencil，不按整行完整可见剔除。界面内部继续使用稳定ID，正常文案显示姓名、物品和数量。GPU/优化缓存兼容仍未实机验收。
+
 2026-10-23 当前产品布局与交互按[据点UI实施设计](superpowers/specs/2026-10-23-settlement-ui-design.md)：四页主控制台、两入口共用委托/最低存量编辑器，明确库存口径、Order取消收尾、人员/防御及接口门禁。0.22.16已接[第一轮外壳/旧工单监控](reviews/2026-10-23/settlement-ui-round1.md)，实机待验；下方版本记录是历史实现基础，不恢复独立配方黄页/物流调度页为最终目标。P1实机验收及公共Order接口迁移仍按BACKLOG推进。
 
 0.21.0已接[配方浏览与条件适配](reviews/2026-10-22/probe-0.21.0-crafting-browser.md)：CraftingPage仅管理内层视图生命周期；CraftingBrowser/CraftingDraft/RecipeGrid负责下单与图标槽，CraftingOrders复用工单视觉。目录缓存、只读预检、执行命令分开，代次取消和隐藏释放；新增实机/性能未验，下方提案与版本段落为历史截点。

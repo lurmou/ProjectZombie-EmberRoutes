@@ -4,7 +4,6 @@ require 'ISUI/ISTextEntryBox'
 require 'ISUI/ISComboBox'
 local Crafting=require 'EmberRoutesProbe/CraftingService'
 local Public=require 'EmberRoutesProbe/PublicWork'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
@@ -16,6 +15,14 @@ local Catalog=require 'EmberRoutesProbe/CraftingCatalog'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
 local function craftText(key,...) return getText('IGUI_EmberRoutesProbe_Crafting_'..key,...) end
+
+local function isEnglish()
+    return getText('IGUI_EmberRoutesProbe_Public_targetQuantity') == 'Target Product Quantity'
+end
+
+local function submittingText()
+    return getTextOrNull('IGUI_EmberRoutesProbe_Public_submitting') or 'IGUI_EmberRoutesProbe_Public_submitting'
+end
 
 ---@class EmberRoutesPublicOrderDialog:ISCollapsableWindow
 ---@field owner EmberRoutesSettlementDashboard
@@ -43,13 +50,15 @@ function EmberRoutesPublicOrderDialog.open(owner,context)
     o.fontHeight,o.pad=h,p
     o.context=context or {}
     o.title=text('createOrder')
-    o.requestId=Registry.id()
+    o.requestId=Public.requestId()
     o.page=1
     o.rows={}
     o.selectedRecipe=false
+    o.preferences={}
     o.activeTab='order' -- 'order' or 'stock'
     o.presentation=Presentation.new()
     o.resizable=false
+    o.submitting=false
     o.backgroundColor=Theme.window
     o.borderColor=Theme.border
     o:setWantKeyEvents(true)
@@ -76,15 +85,16 @@ function EmberRoutesPublicOrderDialog:createChildren()
 
     -- ==================== LEFT COLUMN: CONTROLS ====================
     local leftParts=assert(Layout.axis(leftCol,
-        {{basis=h+p/2},{basis=h*4.5+p},{basis=h*2.5+p},{basis=h*6.5+p},{grow=1},{basis=h+p}},
-        {direction='column',gap=p/3}))
+        {{basis=h+p/2},{basis=h*3+p*1.5},{basis=h*2+p/2},{basis=h*4+p*1.5},{basis=h*2+p/2},{grow=1},{basis=h+p/2}},
+        {direction='column',gap=p/4}))
 
     self.tabRegion=leftParts[1]
     self.recipeRegion=leftParts[2]
     self.surfaceRegion=leftParts[3]
     self.formRegion=leftParts[4]
-    self.leftSpacer=leftParts[5]
-    self.actionRegion=leftParts[6]
+    self.calcDashboardRegion=leftParts[5]
+    self.leftSpacer=leftParts[6]
+    self.actionRegion=leftParts[7]
 
     -- 1. Mode Tabs
     local tabCols=assert(Layout.axis(self.tabRegion,{{grow=1},{grow=1}},{gap=p/2}))
@@ -112,15 +122,18 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.search:initialise()
     self.search.target=self
     self.search.onTextChangeFunction=function()
+        self.notice=nil
         self.page=1
         self:query()
     end
     self:addChild(self.search)
 
     self.recipeCombo=ISComboBox:new(recipeRows[2].x,recipeRows[2].y,recipeRows[2].width,recipeRows[2].height,self,function()
+        self.notice=nil
         local row=self.rows[self.recipeCombo.selected]
         self.selectedRecipe=row and row.id or false
-        self.requestId=Registry.id()
+        self.requestId=Public.requestId()
+        self.preferences={}
         self:loadRule()
         self:describe()
     end)
@@ -150,7 +163,8 @@ function EmberRoutesPublicOrderDialog:createChildren()
     local surfRows=assert(Layout.axis(self.surfaceRegion,{{basis=h},{basis=h+p/4}},{direction='column',gap=p/4}))
     self.surfaceLabel=surfRows[1]
     self.surfaceCombo=ISComboBox:new(surfRows[2].x,surfRows[2].y,surfRows[2].width,surfRows[2].height,self,function()
-        self.requestId=Registry.id()
+        self.notice=nil
+        self.requestId=Public.requestId()
         self:describe()
     end)
     self.surfaceCombo:initialise()
@@ -167,10 +181,11 @@ function EmberRoutesPublicOrderDialog:createChildren()
     local function makeStepper(label,r,delta,targetBox,minVal)
         minVal=minVal or 1
         local btn=ISButton:new(r.x,r.y,r.width,r.height,label,self,function()
+            self.notice=nil
             local cur=tonumber(targetBox:getText()) or 0
             local n=math.max(minVal,math.min(9999,cur+delta))
             targetBox:setText(tostring(n))
-            self.requestId=Registry.id()
+            self.requestId=Public.requestId()
             self:describe()
         end)
         btn:initialise()
@@ -194,13 +209,28 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.quantity=ISTextEntryBox:new('1',qBar[3].x,qBar[3].y,qBar[3].width,qBar[3].height)
     self.quantity:initialise()
     self.quantity.target=self
+    self.quantity.tooltip=craftText('quantityHint')
+    Tooltip.attach(self.quantity,'prerender')
     self.quantity.onTextChangeFunction=function()
-        self.requestId=Registry.id()
+        self.notice=nil
+        self.requestId=Public.requestId()
         self:describe()
     end
     self:addChild(self.quantity)
-    self.qStepDec5.onclick=function() local cur=tonumber(self.quantity:getText()) or 0 self.quantity:setText(tostring(math.max(1,cur-5))) self.requestId=Registry.id() self:describe() end
-    self.qStepDec1.onclick=function() local cur=tonumber(self.quantity:getText()) or 0 self.quantity:setText(tostring(math.max(1,cur-1))) self.requestId=Registry.id() self:describe() end
+    self.qStepDec5.onclick=function()
+        self.notice=nil
+        local cur=tonumber(self.quantity:getText()) or 0
+        self.quantity:setText(tostring(math.max(1,cur-5)))
+        self.requestId=Public.requestId()
+        self:describe()
+    end
+    self.qStepDec1.onclick=function()
+        self.notice=nil
+        local cur=tonumber(self.quantity:getText()) or 0
+        self.quantity:setText(tostring(math.max(1,cur-1)))
+        self.requestId=Public.requestId()
+        self:describe()
+    end
 
     self.qStepInc1=makeStepper('+1',qBar[4],1,self.quantity,1)
     self.qStepInc5=makeStepper('+5',qBar[5],5,self.quantity,1)
@@ -217,10 +247,23 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.minimum=ISTextEntryBox:new('0',minBar[3].x,minBar[3].y,minBar[3].width,minBar[3].height)
     self.minimum:initialise()
     self.minimum.target=self
-    self.minimum.onTextChangeFunction=function() self:describe() end
+    self.minimum.onTextChangeFunction=function()
+        self.notice=nil
+        self:describe()
+    end
     self:addChild(self.minimum)
-    self.minStepDec5.onclick=function() local cur=tonumber(self.minimum:getText()) or 0 self.minimum:setText(tostring(math.max(0,cur-5))) self:describe() end
-    self.minStepDec1.onclick=function() local cur=tonumber(self.minimum:getText()) or 0 self.minimum:setText(tostring(math.max(0,cur-1))) self:describe() end
+    self.minStepDec5.onclick=function()
+        self.notice=nil
+        local cur=tonumber(self.minimum:getText()) or 0
+        self.minimum:setText(tostring(math.max(0,cur-5)))
+        self:describe()
+    end
+    self.minStepDec1.onclick=function()
+        self.notice=nil
+        local cur=tonumber(self.minimum:getText()) or 0
+        self.minimum:setText(tostring(math.max(0,cur-1)))
+        self:describe()
+    end
     self.minStepInc1=makeStepper('+1',minBar[4],1,self.minimum,0)
     self.minStepInc5=makeStepper('+5',minBar[5],5,self.minimum,0)
 
@@ -232,15 +275,31 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.batch=ISTextEntryBox:new('10',batchBar[3].x,batchBar[3].y,batchBar[3].width,batchBar[3].height)
     self.batch:initialise()
     self.batch.target=self
-    self.batch.onTextChangeFunction=function() self:describe() end
+    self.batch.tooltip=craftText('quantityHint')
+    Tooltip.attach(self.batch,'prerender')
+    self.batch.onTextChangeFunction=function()
+        self.notice=nil
+        self:describe()
+    end
     self:addChild(self.batch)
-    self.bStepDec10.onclick=function() local cur=tonumber(self.batch:getText()) or 0 self.batch:setText(tostring(math.max(1,cur-10))) self:describe() end
-    self.bStepDec5.onclick=function() local cur=tonumber(self.batch:getText()) or 0 self.batch:setText(tostring(math.max(1,cur-5))) self:describe() end
+    self.bStepDec10.onclick=function()
+        self.notice=nil
+        local cur=tonumber(self.batch:getText()) or 0
+        self.batch:setText(tostring(math.max(1,cur-10)))
+        self:describe()
+    end
+    self.bStepDec5.onclick=function()
+        self.notice=nil
+        local cur=tonumber(self.batch:getText()) or 0
+        self.batch:setText(tostring(math.max(1,cur-5)))
+        self:describe()
+    end
     self.bStepInc5=makeStepper('+5',batchBar[4],5,self.batch,1)
     self.bStepInc10=makeStepper('+10',batchBar[5],10,self.batch,1)
 
     -- 6. Main Action Button
     self.actionButton=ISButton:new(self.actionRegion.x,self.actionRegion.y,self.actionRegion.width,self.actionRegion.height,text('submit'),self,function()
+        if self.submitting then return end
         if self.activeTab=='order' then
             self:submitOrder()
         else
@@ -260,260 +319,13 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.blueprintListRegion=rightParts[2]
     self.blueprintStatusRegion=rightParts[3]
 
-    local blueprintStyle={emptyColor=Theme.muted}
+    local blueprintStyle=require('EmberRoutesProbe/UI/BlueprintRows').style(self)
 
-    function blueprintStyle.prepare(list,row)
-        local icon=row.fullType and self.presentation:icon(row.fullType) or nil
-        if row.kind=='heading' then
-            return {height=math.floor(h*1.5),icon=nil}
-        elseif row.kind=='output' then
-            local slotSize=math.floor(h*2.2)
-            local textW=math.max(1,list.width-slotSize-p*3)
-            local titleLines=Text.wrapLimited(row.title or row.label,textW,UIFont.Small,1)
-            local subLines=row.sub and Text.wrapLimited(row.sub,textW,UIFont.Small,1) or {}
-            local headerH=math.floor(h*1.2)
-            return {
-                height=slotSize+p+headerH,
-                icon=icon,
-                slotSize=slotSize,
-                title=titleLines[1] or '',
-                sub=subLines[1] or '',
-                headerH=headerH,
-                sectionTitle=row.heading or text('outputHeading')
-            }
-        elseif row.kind=='input' then
-            local slotSize=math.floor(h*2.0)
-            local textW=math.max(1,list.width-slotSize-p*3)
-            local titleLines=Text.wrapLimited(row.title or row.label,textW,UIFont.Small,1)
-            local subLines=row.sub and Text.wrapLimited(row.sub,textW,UIFont.Small,1) or {}
-            return {
-                height=slotSize+p,
-                icon=icon,
-                slotSize=slotSize,
-                title=titleLines[1] or '',
-                sub=subLines[1] or ''
-            }
-        elseif row.kind=='chain_step' then
-            local slotSize=math.floor(h*1.8)
-            local cardH=slotSize+math.floor(p*0.6)
-            local connectorH=row.isLast and 0 or math.floor(h*0.9)
-            local gap=math.floor(p/2)
-            local textX=p+4+slotSize+gap
-            local right=list.width-p-4
-            local hasSurface=row.surfaceBadge and row.surfaceBadge~=''
-            local available=math.max(0,right-textX-gap*(hasSurface and 2 or 1))
-            local manager=getTextManager()
-            local badgeLimit=math.floor(available/3)
-            local stepW=math.min(manager:MeasureStringX(UIFont.Small,row.stepBadge or '')+p,badgeLimit)
-            local surfaceW=hasSurface and math.min(manager:MeasureStringX(UIFont.Small,row.surfaceBadge)+p,badgeLimit) or 0
-            local surfaceX=right-surfaceW
-            local nameX=textX+stepW+gap
-            local nameW=math.max(0,(hasSurface and surfaceX-gap or right)-nameX)
-            local function fit(label,width)
-                if not label or width<=0 then return '' end
-                local clipped=Text.wrapLimited(label,width,UIFont.Small,1)[1] or ''
-                return manager:MeasureStringX(UIFont.Small,clipped)<=width and clipped or ''
-            end
-            return {
-                width=list.width,
-                height=cardH+connectorH,
-                icon=icon,
-                slotSize=slotSize,
-                cardH=cardH,
-                connectorH=connectorH,
-                title=fit(row.title or row.label,nameW),
-                sub=fit(row.sub,right-textX),
-                stepBadge=fit(row.stepBadge,stepW-p),
-                surfaceBadge=fit(row.surfaceBadge,surfaceW-p),
-                textX=textX,nameX=nameX,stepW=stepW,surfaceX=surfaceX,surfaceW=surfaceW,
-                isLast=row.isLast
-            }
-        else
-            local lines=Text.wrapLimited(row.label or '',list.width-p*3,UIFont.Small,2)
-            return {height=math.max(h+p,#lines*h+math.floor(p/2)),lines=lines,icon=nil}
+    self.blueprintList=Cached.create(self,self.blueprintListRegion,function(target,row)
+        if row and row.kind=='chain_step' and row.canSwitch and row.nextRecipeId then
+            target:switchPrecursor(row.fullType,row.nextRecipeId)
         end
-    end
-
-    function blueprintStyle.draw(list,y,entry)
-        local row,v=entry.item.value,entry.item.visual
-        if row.kind=='chain_step' and v.width~=list.width then
-            v=blueprintStyle.prepare(list,row) entry.item.visual=v
-        end
-        local scroll=list:getYScroll()
-        local visible=y+scroll
-        if visible+entry.height<=0 or visible>=list.height then return y+entry.height end
-
-        local function safeText(txt,tx,ty,color)
-            if not txt or txt=='' then return end
-            local sy=ty+scroll
-            if sy+h>0 and sy<list.height then Theme.text(list,txt,tx,ty,color) end
-        end
-
-        local function safeRect(rx,ry,rw,rh,color,border)
-            if not color or rw<=0 or rh<=0 then return end
-            local sy=ry+scroll
-            if sy+rh<=0 or sy>=list.height then return end
-            local clipTop=math.max(0,-sy)
-            local clipBottom=math.max(0,(sy+rh)-list.height)
-            local drawY=ry+clipTop
-            local drawH=rh-clipTop-clipBottom
-            if drawH>0 then Theme.rect(list,rx,drawY,rw,drawH,color,border) end
-        end
-
-        local function safeTexture(tex,tx,ty,tw,th)
-            if not tex then return end
-            local sy=ty+scroll
-            if sy+th>0 and sy<list.height then list:drawTextureScaledAspect(tex,tx,ty,tw,th,1,1,1,1) end
-        end
-
-        if row.kind=='heading' then
-            local barH=math.floor(h*1.2)
-            local barY=y+math.floor((entry.height-barH)/2)
-            safeRect(p,barY,list.width-p*2,barH,Theme.control,false)
-            local accentColor=row.section=='tools' and {r=0.94,g=0.73,b=0.36,a=1} or Theme.accent
-            safeRect(p,barY,3,barH,accentColor,false)
-            safeText(row.label,p+8,barY+math.floor((barH-h)/2),Theme.textColor)
-            return y+entry.height
-        end
-
-        if row.kind=='output' then
-            local headerH=v.headerH or math.floor(h*1.2)
-            local barH=math.floor(h*1.1)
-            safeRect(p,y+2,list.width-p*2,barH,Theme.control,false)
-            safeRect(p,y+2,3,barH,Theme.gold,false)
-            safeText(v.sectionTitle or text('outputHeading'),p+8,y+2+math.floor((barH-h)/2),Theme.gold)
-
-            local slotSize=v.slotSize or math.floor(h*2.2)
-            local slotX=p
-            local slotY=y+headerH+math.floor(p/2)
-
-            safeRect(slotX,slotY,slotSize,slotSize,Theme.panel,false)
-            safeRect(slotX,slotY,slotSize,slotSize,Theme.gold,true)
-
-            if v.icon then safeTexture(v.icon,slotX+2,slotY+2,slotSize-4,slotSize-4) end
-
-            local textX=slotX+slotSize+p
-            local titleY=slotY+math.floor(p/4)
-            local subY=titleY+h
-
-            safeText(v.title or '',textX,titleY,Theme.textColor)
-            if v.sub and v.sub~='' then safeText(v.sub,textX,subY,Theme.muted) end
-            return y+entry.height
-        end
-
-        if row.kind=='input' then
-            local slotSize=v.slotSize or math.floor(h*2.0)
-            local slotX=p
-            local slotY=y+math.floor((entry.height-slotSize)/2)
-
-            safeRect(slotX,slotY,slotSize,slotSize,Theme.panel,false)
-
-            local borderColor=Theme.border
-            local countColor=Theme.textColor
-            if row.precursor then
-                borderColor=Theme.accent countColor=Theme.accent
-            elseif row.isTool then
-                borderColor={r=0.94,g=0.73,b=0.36,a=1}
-                countColor=row.missing and {r=0.95,g=0.35,b=0.30,a=1} or {r=0.35,g=0.88,b=0.60,a=1}
-            elseif row.missing then
-                borderColor={r=0.95,g=0.35,b=0.30,a=1}
-                countColor={r=0.95,g=0.35,b=0.30,a=1}
-            elseif row.known then
-                borderColor=Theme.border
-                countColor={r=0.35,g=0.88,b=0.60,a=1}
-            end
-            safeRect(slotX,slotY,slotSize,slotSize,borderColor,true)
-
-            if v.icon then safeTexture(v.icon,slotX+2,slotY+2,slotSize-4,slotSize-4) end
-
-            local textX=slotX+slotSize+p
-            local titleY=slotY+math.floor(p/4)
-            local subY=titleY+h
-
-            safeText(v.title or '',textX,titleY,Theme.textColor)
-            safeText(v.sub or '',textX,subY,countColor)
-
-            if row.isTool then
-                local badgeText=craftText('toolBadge')
-                local bw=getTextManager():MeasureStringX(UIFont.Small,badgeText)+p
-                local bx=list.width-p-bw
-                safeRect(bx,titleY,bw,h,Theme.control,false)
-                safeRect(bx,titleY,bw,h,borderColor,true)
-                safeText(badgeText,bx+math.floor(p/2),titleY,borderColor)
-            elseif row.precursor then
-                local chainText=text('chainSupplyTag')
-                local bw=getTextManager():MeasureStringX(UIFont.Small,chainText)+p
-                local bx=list.width-p-bw
-                safeRect(bx,titleY,bw,h,Theme.control,false)
-                safeRect(bx,titleY,bw,h,Theme.accent,true)
-                safeText(chainText,bx+math.floor(p/2),titleY,Theme.accent)
-            end
-
-            return y+entry.height
-        end
-
-        if row.kind=='chain_step' then
-            local cardW=list.width-p*2
-            local cardH=v.cardH or math.floor(h*2.4)
-            local cardY=y
-            local isLast=row.isLast
-            local nodeColor=isLast and Theme.gold or Theme.accent
-
-            safeRect(p,cardY,cardW,cardH,Theme.panel,false)
-            safeRect(p,cardY,cardW,cardH,isLast and nodeColor or Theme.border,true)
-
-            local slotSize=v.slotSize or math.floor(h*1.8)
-            local slotX=p+4
-            local slotY=cardY+math.floor((cardH-slotSize)/2)
-            safeRect(slotX,slotY,slotSize,slotSize,Theme.control,false)
-            safeRect(slotX,slotY,slotSize,slotSize,isLast and nodeColor or Theme.border,true)
-            if v.icon then safeTexture(v.icon,slotX+2,slotY+2,slotSize-4,slotSize-4) end
-
-            local badgeH=math.floor(h*1.0)
-            local badgeW=v.stepW
-            local textX=v.textX
-            local titleY=cardY+math.max(2,math.floor((cardH-h*2)/2))
-            local subY=titleY+h
-
-            safeRect(textX,titleY,badgeW,badgeH,Theme.control,false)
-            safeRect(textX,titleY,badgeW,badgeH,nodeColor,true)
-            safeText(v.stepBadge,textX+math.floor(p/2),titleY+math.floor((badgeH-h)/2),nodeColor)
-
-            local nameX=v.nameX
-            safeText(v.title or '',nameX,titleY,Theme.textColor)
-            safeText(v.sub or '',textX,subY,nodeColor)
-
-            if row.surfaceBadge then
-                local sW=v.surfaceW
-                local sX=v.surfaceX
-                safeRect(sX,titleY,sW,badgeH,Theme.control,false)
-                safeRect(sX,titleY,sW,badgeH,Theme.border,true)
-                safeText(v.surfaceBadge,sX+math.floor(p/2),titleY+math.floor((badgeH-h)/2),Theme.muted)
-            end
-
-            if not isLast then
-                local pipeX=math.floor(list.width/2)
-                local pipeTop=cardY+cardH
-                local connH=v.connectorH or math.floor(h*0.9)
-                local pipeBottom=pipeTop+connH
-                safeRect(pipeX-1,pipeTop,2,connH-5,Theme.accent,false)
-                safeRect(pipeX-4,pipeBottom-6,8,1,Theme.accent,false)
-                safeRect(pipeX-3,pipeBottom-5,6,1,Theme.accent,false)
-                safeRect(pipeX-2,pipeBottom-4,4,1,Theme.accent,false)
-                safeRect(pipeX-1,pipeBottom-3,2,2,Theme.accent,false)
-            end
-
-            return y+entry.height
-        end
-
-        local color=row.missing and {r=0.95,g=0.35,b=0.30,a=1} or Theme.textColor
-        for i,line in ipairs(v.lines or {}) do
-            safeText(line,p,y+math.floor(p/4)+(i-1)*h,color)
-        end
-        return y+entry.height
-    end
-
-    self.blueprintList=Cached.create(self,self.blueprintListRegion,nil,blueprintStyle)
+    end,blueprintStyle)
     Theme.list(self.blueprintList)
     self.blueprintList.emberEmptyLines=Text.wrap(text('chooseRecipe'),self.blueprintListRegion.width-p*2,UIFont.Small)
     self:addChild(self.blueprintList)
@@ -545,7 +357,9 @@ function EmberRoutesPublicOrderDialog:selectTab(tab)
     self.bStepInc5:setVisible(not isOrder)
     self.bStepInc10:setVisible(not isOrder)
 
-    self.actionButton:setTitle(text(isOrder and 'submit' or 'saveRule'))
+    if not self.submitting then
+        self.actionButton:setTitle(text(isOrder and 'submit' or 'saveRule'))
+    end
     self:describe()
 end
 
@@ -562,11 +376,18 @@ function EmberRoutesPublicOrderDialog:query()
         local selected=1
         for i,row in ipairs(self.rows) do
             self.recipeCombo:addOption(row.name)
-            if row.id==(self.context.recipeId or self.selectedRecipe) then selected=i end
+            if row.id==(self.context.recipeId or self.selectedRecipe) then
+                selected=i
+            elseif self.context.productType and row.product==self.context.productType and selected==1 then
+                selected=i
+            end
         end
         self.recipeCombo.selected=selected
         local chosen=self.rows[selected] and self.rows[selected].id or false
-        if chosen~=self.selectedRecipe then self.requestId=Registry.id() end
+        if chosen~=self.selectedRecipe then
+            self.requestId=Public.requestId()
+            self.preferences={}
+        end
         self.selectedRecipe=chosen
         self.context.recipeId=nil
         self:loadRule()
@@ -592,7 +413,70 @@ function EmberRoutesPublicOrderDialog:loadRule()
     self.batch:setText(tostring(rule and rule.batch or 10))
 end
 
+function EmberRoutesPublicOrderDialog:updateConversion()
+    local row=self.rows and self.rows[self.recipeCombo.selected]
+    if not row or not row.id then
+        self.conversion=nil
+        self.conversionFull=nil
+        self.conversionLine1=nil
+        self.conversionLine2=nil
+        return
+    end
+
+    local spec=self.currentSpec or (row.id and Recipe.read(row.id) and Recipe.describe(Recipe.read(row.id))) or row
+    local resultCount=(row and (row.resultCount or row.yield)) or (spec and (spec.resultCount or spec.yield)) or 1
+    if not resultCount or resultCount<1 then resultCount=1 end
+    self.resultCount=resultCount
+
+    local targetQty
+    if self.activeTab=='order' then
+        targetQty=tonumber(self.quantity:getText()) or 1
+    else
+        targetQty=tonumber(self.batch:getText()) or 10
+    end
+    targetQty=math.max(1,math.floor(targetQty))
+    self.targetQty=targetQty
+
+    local executions=math.max(1,math.ceil(targetQty/resultCount))
+    local expectedOutput=executions*resultCount
+    local surplus=math.max(0,expectedOutput-targetQty)
+
+    self.conversion={
+        resultCount=resultCount,
+        targetQty=targetQty,
+        executions=executions,
+        expectedOutput=expectedOutput,
+        surplus=surplus
+    }
+
+    local isEN=isEnglish()
+    local targetLabel
+    if isEN then
+        targetLabel=(self.activeTab=='order') and 'Target Need' or 'Batch Size'
+        self.conversionFull=string.format('Per Batch Output: %d | %s: %d => Craft Runs: %d | Expected: %d (%d surplus)',
+            resultCount,targetLabel,targetQty,executions,expectedOutput,surplus)
+        self.conversionLine1=string.format('Per Batch Output: %d  |  %s: %d',resultCount,targetLabel,targetQty)
+        self.conversionLine2=string.format('=> Craft Runs: %d  |  Expected: %d (%d surplus)',executions,expectedOutput,surplus)
+    else
+        local labelKey=(self.activeTab=='order') and 'IGUI_EmberRoutesProbe_Public_targetDemand' or 'IGUI_EmberRoutesProbe_Public_restockBatch'
+        targetLabel=getTextOrNull(labelKey) or labelKey
+        self.conversionFull=string.format(getTextOrNull('IGUI_EmberRoutesProbe_Public_conversionFull') or 'IGUI_EmberRoutesProbe_Public_conversionFull',
+            resultCount,targetLabel,targetQty,executions,expectedOutput,surplus)
+        self.conversionLine1=string.format(getTextOrNull('IGUI_EmberRoutesProbe_Public_conversionLine1') or 'IGUI_EmberRoutesProbe_Public_conversionLine1',
+            resultCount,targetLabel,targetQty)
+        self.conversionLine2=string.format(getTextOrNull('IGUI_EmberRoutesProbe_Public_conversionLine2') or 'IGUI_EmberRoutesProbe_Public_conversionLine2',
+            executions,expectedOutput,surplus)
+    end
+end
+
 function EmberRoutesPublicOrderDialog:describe()
+    self:updateConversion()
+    if self.submitting then
+        Theme.enable(self.actionButton,false)
+        self:requestPreview()
+        return
+    end
+
     local row=self.rows[self.recipeCombo.selected]
     local n=tonumber(self.quantity:getText())
     if self.activeTab=='order' then
@@ -605,6 +489,13 @@ function EmberRoutesPublicOrderDialog:describe()
             and batchVal and batchVal>=1 and batchVal<=9999 and batchVal==math.floor(batchVal)
         Theme.enable(self.actionButton,row~=nil and validStock,true)
     end
+    self:requestPreview()
+end
+
+function EmberRoutesPublicOrderDialog:switchPrecursor(product,nextRecipeId)
+    self.preferences=self.preferences or {}
+    self.preferences[product]=nextRecipeId
+    self.requestId=Public.requestId()
     self:requestPreview()
 end
 
@@ -623,22 +514,21 @@ function EmberRoutesPublicOrderDialog:requestPreview()
     end
     local surfaceId=self.surfaces[self.surfaceCombo.selected]
 
-    -- Read recipe spec for instant display
+    self.previewData=nil
     local spec=Recipe.read(row.id)
-    self.currentSpec=spec and Recipe.describe(spec) or row
+    self.currentSpec=row.cooking and Catalog.describe(row.id) or spec and Recipe.describe(spec) or row
     self:updateBlueprint()
 
-    -- Async preview through Crafting service
-    local status=Crafting.status(self.actor,self.entry.id)
-    local repWorker=status and status.workers and status.workers[1] and status.workers[1].id or nil
-    self.cancelPreview=Crafting.preview(self.actor,self.entry.id,repWorker,row.id,qty,surfaceId,function(result)
+    self.cancelPreview=require('EmberRoutesProbe/PublicPreview').watch(self.actor,self.entry.id,row.id,qty,surfaceId,function(result)
         if self.disposed then return end
         self.previewData=result
+        if result.cooking and result.recipe then self.currentSpec=result.recipe end
         self:updateBlueprint()
-    end)
+    end,self.preferences)
 end
 
 function EmberRoutesPublicOrderDialog:updateBlueprint()
+    self:updateConversion()
     local row=self.rows[self.recipeCombo.selected]
     if not row or not row.id then
         Cached.reconcile(self.blueprintList,{},function() return '' end,function() return '' end,true)
@@ -653,7 +543,8 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
         targetQty=tonumber(self.batch:getText()) or 10
     end
 
-    local yield=row.yield or (spec and spec.yield) or 1
+    local yield=(row and (row.resultCount or row.yield)) or (spec and (spec.resultCount or spec.yield)) or 1
+    if not yield or yield<1 then yield=1 end
     local units=math.max(1,math.ceil(targetQty/yield))
     local totalExpected=units*yield
 
@@ -661,13 +552,24 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
     local function add(r) rows[#rows+1]=r end
 
     -- 1. Hero Output Card
+    local prodType=row.product or (spec and spec.product)
+    local prodName=(spec and spec.outputs and type(spec.outputs[1])=='table' and spec.outputs[1].name)
+        or (row and row.outputs and row.outputs[1] and row.outputs[1].name)
+        or (getItemNameFromFullType and prodType and getItemNameFromFullType(prodType))
+        or (prodType and tostring(prodType):match("[^.]+$"))
+        or row.name or (spec and spec.name) or 'Product'
+    local recipeTitle=row.name or (spec and spec.name)
+    local subStr=text('batchCount',yield,units)
+    if recipeTitle and recipeTitle~=prodName then
+        subStr=subStr..' · '..recipeTitle
+    end
     add({
         kind='output',
-        fullType=row.product or (spec and spec.product),
-        title=(row.name or (spec and spec.name))..' x'..totalExpected,
-        sub=text('batchCount',yield,units),
+        fullType=prodType,
+        title=prodName..' x'..totalExpected,
+        sub=subStr,
         heading=text('outputHeading'),
-        label='output:'..tostring(row.id)..':'..totalExpected
+        label='output:'..tostring(row.id)..':'..tostring(prodType)..':'..totalExpected
     })
 
     -- 2. Inputs & Tools Breakdown
@@ -688,6 +590,11 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
                 local precursor=isMissing and preview and preview.chain and #preview.chain.nodes>1
                 local choices=input.choices or {}
                 local first=choices[1]
+                if count and count.fullType then
+                    for _,choice in ipairs(choices) do
+                        if choice.fullType==count.fullType then first=choice break end
+                    end
+                end
                 local itemName=first and first.name or (input.names and input.names[1]) or 'Material'
                 local subStr=tostring(avail)..' / '..need
                 if precursor then subStr=subStr..'  '..text('chainSupplyTag') end
@@ -701,7 +608,8 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
                     missing=isMissing and not precursor,
                     precursor=precursor,
                     isTool=false,
-                    label='input:'..tostring(input.slot)..':'..need..':'..tostring(avail)
+                    choices=choices,
+                    label='input:'..tostring(row.id)..':'..tostring(input.slot)..':'..tostring(first and first.fullType)..':'..need..':'..tostring(avail)
                 })
             end
         end
@@ -715,11 +623,28 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
                     toolHeaded=true
                 end
                 local choices=input.choices or {}
-                local first=choices[1]
-                local toolName=first and first.name or (input.names and input.names[1]) or 'Tool'
                 local count=preview and preview.counts and preview.counts[input.slot]
                 local hasTool=count and count.available>=1
+                local first=choices[1]
+                if count and count.fullType then
+                    for _,choice in ipairs(choices) do
+                        if choice.fullType==count.fullType then first=choice break end
+                    end
+                end
+                local toolName=first and first.name or (input.names and input.names[1]) or 'Tool'
                 local subStr=hasTool and craftText('readyBadge') or craftText('shortageBadge')
+                if #choices>1 then
+                    local altNames={}
+                    for _,c in ipairs(choices) do
+                        if c.name~=toolName and not altNames[c.name] then
+                            altNames[#altNames+1]=c.name
+                            altNames[c.name]=true
+                        end
+                    end
+                    if #altNames>0 then
+                        subStr=subStr..' · '..text('toolAlternatives',table.concat(altNames,' / '))
+                    end
+                end
                 add({
                     kind='input',
                     slot=input.slot,
@@ -730,7 +655,8 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
                     missing=not hasTool,
                     precursor=false,
                     isTool=true,
-                    label='tool:'..tostring(input.slot)..':'..tostring(hasTool)
+                    choices=choices,
+                    label='tool:'..tostring(row.id)..':'..tostring(input.slot)..':'..tostring(first and first.fullType)..':'..tostring(hasTool)..':'..tostring(#choices)
                 })
             end
         end
@@ -739,10 +665,33 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
     -- 3. Multi-Step Production Chain Steps
     if preview and preview.chain and #preview.chain.nodes>1 then
         add({kind='heading',label=craftText('chainPlanHeading',#preview.chain.nodes)})
+        local byId,byType=Catalog.productionIndex()
         for i,node in ipairs(preview.chain.nodes) do
             local isLast=(i==#preview.chain.nodes)
             local stepBadge=craftText(isLast and 'stepFinal' or 'stepPrecursor',i)
             local surfaceBadge=node.surface and craftText('badgeSurface') or craftText('badgeHand')
+            local canSwitch=false
+            local nextRecipeId,nextRecipeName
+            if not isLast and byType and node.product then
+                local producers=byType[node.product] or {}
+                if #producers>1 then
+                    for idx,cand in ipairs(producers) do
+                        if cand.id==node.recipeId then
+                            local nextIdx=(idx%#producers)+1
+                            nextRecipeId=producers[nextIdx].id
+                            nextRecipeName=producers[nextIdx].name
+                            canSwitch=true
+                            break
+                        end
+                    end
+                    if not canSwitch and #producers>0 then
+                        nextRecipeId=producers[1].id
+                        nextRecipeName=producers[1].name
+                        canSwitch=true
+                    end
+                end
+            end
+            local switchText=canSwitch and text('switchRecipe',nextRecipeName) or nil
             add({
                 kind='chain_step',
                 fullType=node.product,
@@ -752,7 +701,11 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
                 surfaceBadge=surfaceBadge,
                 title=node.recipeName,
                 sub=craftText('planOutput',tostring(node.totalOutput or node.requested)),
-                label='chain_step:'..i..':'..tostring(node.recipeId or node.product)
+                canSwitch=canSwitch,
+                nextRecipeId=nextRecipeId,
+                nextRecipeName=nextRecipeName,
+                switchText=switchText,
+                label='chain_step:'..i..':'..tostring(node.recipeId or node.product)..':'..tostring(nextRecipeId or '')
             })
         end
     else
@@ -768,7 +721,7 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
             surfaceBadge=surfaceBadge,
             title=row.name or (spec and spec.name),
             sub=craftText('planOutput',tostring(totalExpected)),
-            label='single_step:1:'..tostring(row.id)
+            label='single_step:1:'..tostring(row.id)..':'..totalExpected
         })
     end
 
@@ -779,6 +732,8 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
         if preview.chain and #preview.chain.nodes>1 then
             self.statusNotice=text('statusChain')
             self.statusColor=Theme.accent
+        elseif preview.state=='WAITING' then
+            self.statusNotice=getText('IGUI_EmberRoutesProbe_Public_WAITING_CLAIM') self.statusColor=Theme.muted
         elseif preview.state=='READY' then
             self.statusNotice=text('statusReady')
             self.statusColor={r=0.35,g=0.88,b=0.60,a=1.0}
@@ -796,22 +751,83 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
 end
 
 function EmberRoutesPublicOrderDialog:submitOrder()
-    if not self.owner:valid() then self:close() return end
-    local result=Public.create(self.actor,self.entry.id,self.selectedRecipe,tonumber(self.quantity:getText()),
-        self.surfaces[self.surfaceCombo.selected],self.requestId)
+    if self.disposed or self.submitting or not self.owner:valid() then
+        if not self.owner:valid() then self:close() end
+        return
+    end
+    if not self.actionButton or self.actionButton.enable == false then return end
+    if not self.selectedRecipe then return end
+
+    local qty=tonumber(self.quantity:getText())
+    if not qty or qty<1 or qty>9999 or qty~=math.floor(qty) then return end
+
+    self.submitting=true
+    local oldTitle=text('submit')
+    self.actionButton:setTitle(submittingText())
+    Theme.enable(self.actionButton,false)
+
+    local ok,result=pcall(function()
+        return Public.create(self.actor,self.entry.id,self.selectedRecipe,math.floor(qty),
+            self.surfaces[self.surfaceCombo.selected],self.requestId,self.preferences)
+    end)
+
+    if not ok then
+        self.submitting=false
+        self.notice=tostring(result)
+        self.actionButton:setTitle(oldTitle)
+        self:describe()
+        return
+    end
+
     self.notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)
     if result=='ORDER_CREATED' then
+        self.submitting=false
         self.owner:selectTab('orders')
         self:close()
+    else
+        self.submitting=false
+        self.actionButton:setTitle(oldTitle)
+        self:describe()
     end
 end
 
 function EmberRoutesPublicOrderDialog:submitRule()
-    if not self.owner:valid() then self:close() return end
-    local result=Public.saveRule(self.actor,self.entry.id,self.selectedRecipe,tonumber(self.minimum:getText()),
-        tonumber(self.batch:getText()),self.surfaces[self.surfaceCombo.selected])
+    if self.disposed or self.submitting or not self.owner:valid() then
+        if not self.owner:valid() then self:close() end
+        return
+    end
+    if not self.actionButton or self.actionButton.enable == false then return end
+    if not self.selectedRecipe then return end
+
+    local minVal=tonumber(self.minimum:getText())
+    local batchVal=tonumber(self.batch:getText())
+    if not minVal or minVal<0 or minVal>9999 or minVal~=math.floor(minVal) then return end
+    if not batchVal or batchVal<1 or batchVal>9999 or batchVal~=math.floor(batchVal) then return end
+
+    self.submitting=true
+    local oldTitle=text('saveRule')
+    self.actionButton:setTitle(submittingText())
+    Theme.enable(self.actionButton,false)
+
+    local ok,result=pcall(function()
+        return Public.saveRule(self.actor,self.entry.id,self.selectedRecipe,math.floor(minVal),
+            math.floor(batchVal),self.surfaces[self.surfaceCombo.selected],self.preferences)
+    end)
+
+    if not ok then
+        self.submitting=false
+        self.notice=tostring(result)
+        self.actionButton:setTitle(oldTitle)
+        self:describe()
+        return
+    end
+
+    self.submitting=false
     self.notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)
+    self.actionButton:setTitle(oldTitle)
+    self:describe()
 end
+EmberRoutesPublicOrderDialog.saveRule=EmberRoutesPublicOrderDialog.submitRule
 
 function EmberRoutesPublicOrderDialog:prerender()
     ISCollapsableWindow.prerender(self)
@@ -822,7 +838,9 @@ function EmberRoutesPublicOrderDialog:prerender()
     Theme.text(self,text('surfaceSelect'),self.surfaceLabel.x,self.surfaceLabel.y+(self.surfaceLabel.height-h)/2,Theme.textColor)
 
     local pageStr=(self.page or 1)..' / '..(self.totalPages or 1)
-    local pageW=getTextManager():MeasureStringX(UIFont.Small,pageStr)
+    if self._pageKey~=pageStr then self._pageKey=pageStr
+        self._pageW=getTextManager():MeasureStringX(UIFont.Small,pageStr) end
+    local pageW=self._pageW
     Theme.text(self,pageStr,self.pageIndicatorRegion.x+(self.pageIndicatorRegion.width-pageW)/2,self.pageIndicatorRegion.y+(self.pageIndicatorRegion.height-h)/2,Theme.muted)
 
     if self.activeTab=='order' then
@@ -830,6 +848,40 @@ function EmberRoutesPublicOrderDialog:prerender()
     else
         Theme.text(self,text('stockThreshold'),self.minimumLabel.x,self.minimumLabel.y+(self.minimumLabel.height-h)/2,Theme.textColor)
         Theme.text(self,text('stockBatch'),self.batchLabel.x,self.batchLabel.y+(self.batchLabel.height-h)/2,Theme.textColor)
+    end
+
+    -- Conversion Dashboard Card
+    if self.calcDashboardRegion then
+        local cr=self.calcDashboardRegion
+        Theme.rect(self,cr.x,cr.y,cr.width,cr.height,Theme.panel)
+        Theme.rect(self,cr.x,cr.y,cr.width,cr.height,Theme.border,true)
+
+        local row=self.rows and self.rows[self.recipeCombo.selected]
+        if not row or not self.conversion then
+            local emptyText=text('chooseRecipe')
+            if self._mKey~=emptyText then self._mKey=emptyText
+                self._mW=getTextManager():MeasureStringX(UIFont.Small,emptyText) end
+            local tw=self._mW
+            Theme.text(self,emptyText,cr.x+math.max(self.pad,math.floor((cr.width-tw)/2)),cr.y+math.floor((cr.height-h)/2),Theme.muted)
+        else
+            local conv=self.conversionFull or ''
+            if self._cKey~=conv then self._cKey=conv
+                self._cW=getTextManager():MeasureStringX(UIFont.Small,conv) end
+            local tw=self._cW
+            if tw<=cr.width-self.pad*2 then
+                Theme.text(self,self.conversionFull,cr.x+math.max(self.pad,math.floor((cr.width-tw)/2)),cr.y+math.floor((cr.height-h)/2),Theme.gold)
+            else
+                local l1=self.conversionLine1 or '' local l2=self.conversionLine2 or ''
+                if self._l1Key~=l1 then self._l1Key=l1
+                    self._l1W=getTextManager():MeasureStringX(UIFont.Small,l1) end
+                if self._l2Key~=l2 then self._l2Key=l2
+                    self._l2W=getTextManager():MeasureStringX(UIFont.Small,l2) end
+                local l1w=self._l1W local l2w=self._l2W
+                local startY=cr.y+math.max(2,math.floor((cr.height-h*2-2)/2))
+                Theme.text(self,self.conversionLine1 or '',cr.x+math.max(self.pad,math.floor((cr.width-l1w)/2)),startY,Theme.textColor)
+                Theme.text(self,self.conversionLine2 or '',cr.x+math.max(self.pad,math.floor((cr.width-l2w)/2)),startY+h+2,Theme.gold)
+            end
+        end
     end
 
     -- Right Column Header
@@ -850,16 +902,33 @@ function EmberRoutesPublicOrderDialog:prerender()
 end
 
 function EmberRoutesPublicOrderDialog:isKeyConsumed(key)
-    return not self.disposed and key==Keyboard.KEY_ESCAPE
+    if self.disposed then return false end
+    return key==Keyboard.KEY_ESCAPE or key==Keyboard.KEY_RETURN
 end
 
 function EmberRoutesPublicOrderDialog:onKeyPress(key)
-    if self:isKeyConsumed(key) then self:close() end
+    if self.disposed then return end
+    if key==Keyboard.KEY_ESCAPE then
+        self:close()
+    elseif key==Keyboard.KEY_RETURN then
+        if not self.submitting and self.actionButton and self.actionButton.enable ~= false then
+            if self.search and self.search:isFocused() then
+                self.search:unfocus()
+                return
+            end
+            if self.activeTab=='order' then
+                self:submitOrder()
+            else
+                self:submitRule()
+            end
+        end
+    end
 end
 
 function EmberRoutesPublicOrderDialog:close()
     if self.disposed then return end
     self.disposed=true
+    self.submitting=false
     self.catalogToken=nil
     if self.releaseCatalog then self.releaseCatalog() self.releaseCatalog=nil end
     if self.cancelPreview then self.cancelPreview() self.cancelPreview=nil end
@@ -868,6 +937,8 @@ function EmberRoutesPublicOrderDialog:close()
     self.surfaceCombo:hidePopup()
     Tooltip.clear(self.recipeCombo)
     Tooltip.clear(self.surfaceCombo)
+    Tooltip.clear(self.quantity)
+    Tooltip.clear(self.batch)
     ISCollapsableWindow.close(self)
     self:removeFromUIManager()
     if self.owner.publicDialog==self then self.owner.publicDialog=nil end

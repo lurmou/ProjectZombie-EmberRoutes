@@ -1,11 +1,18 @@
 local Theme={}
 
+local function text(key, fallback)
+    local value = getTextOrNull and getTextOrNull("IGUI_EmberRoutesProbe_"..key)
+    return value or key or fallback
+end
+
+-- PRESETS is built at module load, so store keys and resolve the label lazily.
+local PRESET_LABEL_KEYS={ae2="Theme_ae2",classic="Theme_classic"}
+
 local PRESETS={
     ae2={
         id="ae2",
         name="AE2 现代科技",
-        label="[风格: AE2科技]",
-        window={r=0.04,g=0.06,b=0.08,a=0.96},
+        labelKey=PRESET_LABEL_KEYS.ae2,        window={r=0.04,g=0.06,b=0.08,a=0.96},
         panel={r=0.06,g=0.09,b=0.13,a=0.95},
         border={r=0.22,g=0.38,b=0.52,a=0.90},
         control={r=0.09,g=0.14,b=0.20,a=1.0},
@@ -25,7 +32,7 @@ local PRESETS={
     classic={
         id="classic",
         name="原版经典",
-        label="[风格: 原版经典]",
+        labelKey=PRESET_LABEL_KEYS.classic,
         window={r=0.045,g=0.055,b=0.06,a=0.97},
         panel={r=0.065,g=0.08,b=0.085,a=0.94},
         border={r=0.30,g=0.34,b=0.36,a=0.85},
@@ -58,7 +65,7 @@ function Theme.applyPreset(id)
     currentPreset=preset.id
     Theme.activePreset=preset.id
     Theme.presetName=preset.name
-    Theme.presetLabel=preset.label
+    Theme.presetLabel=text(preset.labelKey)
     for k,v in pairs(preset) do
         if type(v)=="table" then
             if k=="status" then
@@ -79,7 +86,7 @@ Theme.applyPreset("classic")
 
 function Theme.getPreset() return currentPreset end
 function Theme.getPresets() return PRESETS end
-function Theme.getLabel() return Theme.presetLabel or "[风格: 原版经典]" end
+function Theme.getLabel() return Theme.presetLabel or text("Theme_classic") end
 
 function Theme.toggle()
     local nextId=currentPreset=="ae2" and "classic" or "ae2"

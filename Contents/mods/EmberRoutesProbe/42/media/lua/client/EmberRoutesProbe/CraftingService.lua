@@ -54,10 +54,14 @@ function Service.status(actor,id)
         local binding=Driver.bindId(actor,npcId)
         local valid=binding and Driver.valid(binding) and not (binding.handle.isDead and binding.handle:isDead())
         local status=Craft.status(npcId)
-        if valid and ((Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()))
+        local member=require('EmberRoutesProbe/MembershipService').view(npcId)
+        if valid and ((member and (not member.settlementId or member.settlementId==id))
             or (status and status.settlementId==id)) then
-            result.workers[#result.workers+1]={id=npcId,name=binding.handle:getFullName(),
-                order=status,busy=Work.busy(npcId),orderBusy=Craft.busy(npcId)}
+            result.workers[#result.workers+1]={id=npcId,name=require('EmberRoutesProbe/DisplayNames').name(npcId,binding.handle),
+                order=status,busy=Work.busy(npcId),orderBusy=Craft.busy(npcId),
+                activity=Probe.careActivity and Probe.careActivity(npcId)
+                    or (member and member.context),membership=member,
+                health=binding.handle.getBodyDamage and math.floor(binding.handle:getBodyDamage():getOverallBodyHealth()) or nil}
         end
     end
     table.sort(result.workers,function(a,b) return a.id<b.id end)
@@ -82,13 +86,17 @@ function Service.watchCatalog(actor,id,query,callback)
     browsers[token]=true
     return function() browsers[token]=nil end
 end
-function Service.preview(actor,id,npcId,recipeId,quantity,surfaceId,callback)
+function Service.preview(actor,id,npcId,recipeId,quantity,surfaceId,callback,preferences)
     local token={actor=actor,id=id,npcId=npcId,recipeId=recipeId,quantity=quantity,surfaceId=surfaceId,
-        callback=callback,world=currentWorld(),dirty=true}
+        callback=callback,world=currentWorld(),dirty=true,preferences=preferences}
     previews[token]=true
     return function() if token.request then token.request:cancel() end previews[token]=nil end
 end
 function Service.readTick()
+    local observed=false
+    for _ in pairs(browsers) do observed=true break end
+    if not observed then for _ in pairs(previews) do observed=true break end end
+    if not observed then return end
     if not Probe.ready or not Probe.hasJava() then return end
     local any=false for _ in pairs(browsers) do any=true break end
     if any then
@@ -113,7 +121,7 @@ function Service.readTick()
         end
         if token.dirty and (not token.request or token.delivered) then
             if token.request then token.request:cancel() end
-            token.request=require("EmberRoutesProbe/CraftingPreview").new(token.actor,token.id,token.npcId,token.recipeId,token.quantity,token.surfaceId)
+            token.request=require("EmberRoutesProbe/CraftingPreview").new(token.actor,token.id,token.npcId,token.recipeId,token.quantity,token.surfaceId,token.preferences)
             token.dirty=false token.delivered=false notify(token,previews,{state="CHECKING",conditions={},counts={}})
         end
         if previews[token] then
@@ -174,7 +182,14 @@ function Service.tick()
     end
 end
 Probe.tickCraftView=Service.tick
-local event=Events.OnTickEvenPaused or Events.OnTick
-if event then event.Add(Service.readTick) end
+-- Sample the standalone read ticker (catalog/preview stepping). Metrics module
+-- resolved at load — a per-call require was measurable at 163 calls/s.
+local RuntimeMetrics=require 'EmberRoutesProbe/RuntimeMetrics'
+local rawReadTick=Service.readTick
+function Service.readTick()
+    if RuntimeMetrics.active() then RuntimeMetrics.measure('CraftRead',rawReadTick) else rawReadTick() end
+end
+-- Registered through the mod's single even-paused dispatcher.
+require('EmberRoutesProbe/EvenPaused').add(Service.readTick)
 if Events.OnContainerUpdate then Events.OnContainerUpdate.Add(invalidate) end
 return Service

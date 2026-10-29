@@ -27,6 +27,9 @@ function Driver.selected(actor)
 end
 
 function Driver.valid(binding)
+    if binding and EmberRoutesProbeJava.bindingValid then
+        return EmberRoutesProbeJava.bindingValid(binding.handle,binding.id)
+    end
     return binding and EmberRoutesProbeJava.carrierPresent(binding.handle)
         and EmberRoutesProbeJava.carrierId(binding.handle) == binding.id
 end
@@ -46,11 +49,32 @@ function Driver.acquireControl(binding,jobId,generation)
 end
 function Driver.moveControlled(control,actor,point)
     if not control or not Driver.valid(control.binding) then return 'STALE_NPC' end
+    if point.bed then
+        return EmberRoutesProbeJava.moveBedWithControl(control.binding.handle,control.key,point.bed,point.locations)
+    end
+    if point.furniture then
+        if point.sleep then
+            return EmberRoutesProbeJava.moveSleepSeatWithControl(control.binding.handle,control.key,point.furniture)
+        end
+        return EmberRoutesProbeJava.moveSeatWithControl(control.binding.handle,control.key,point.furniture,point.maxPathLength or 0)
+    end
     return EmberRoutesProbeJava.moveWithControl(control.binding.handle,control.key,actor,point.x,point.y,point.z)
 end
 function Driver.stopControlled(control)
     return control and Driver.valid(control.binding)
         and EmberRoutesProbeJava.stopWithControl(control.binding.handle,control.key) or false
+end
+function Driver.reposeControlled(control,kind,enter,object,quality)
+    if enter and object then
+        return control and Driver.valid(control.binding) and EmberRoutesProbeJava.reposeAtWithControl
+            and EmberRoutesProbeJava.reposeAtWithControl(control.binding.handle,control.key,kind,object,quality) or false
+    end
+    return control and Driver.valid(control.binding) and EmberRoutesProbeJava.reposeWithControl
+        and EmberRoutesProbeJava.reposeWithControl(control.binding.handle,control.key,kind,enter) or false
+end
+function Driver.furnitureControlled(control,object,phase)
+    return control and Driver.valid(control.binding) and EmberRoutesProbeJava.furniturePoseWithControl(
+        control.binding.handle,control.key,object,phase) or false
 end
 function Driver.stopEvidence(control)
     if not control or not Driver.valid(control.binding) then return {available=false} end

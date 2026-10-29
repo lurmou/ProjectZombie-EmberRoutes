@@ -29,6 +29,9 @@ EmberRoutesProbeJava={
         assert(key==keys[body.id])
         if not delayStop then masks[body.id]=0 end return true
     end,
+    reposeWithControl=function(body,key,kind,enter)
+        assert(key==keys[body.id]) masks[body.id]=enter and (kind=='SLEEP' and 64 or 128) or 0 return true
+    end,
     bodyStopMask=function(body,key) assert(key==keys[body.id]) return masks[body.id] or 0 end,
     releaseBodyControl=function(body,key)
         assert(key==keys[body.id] and (masks[body.id] or 0)==0) keys[body.id]=nil return true
@@ -64,6 +67,17 @@ local h=assert(r:submit(a))
 check(old.starts==0 and grants==0,'submit has no effects')
 steps(r,2)
 check(old.starts==1 and grants==1 and r:inspect(h).state=='ACTIVE','grant before exactly one start')
+check(old.body.repose('SLEEP',true) and old.body.current() and not old.body.snapshot().nativeStopped,
+    'sleep belongs to current owner but is not stopped-body evidence')
+check(old.body.repose('SLEEP',false) and old.body.snapshot().nativeStopped,'wake confirmation precedes body release')
+local furniture,received={},nil
+EmberRoutesProbeJava.reposeAtWithControl=function(body,key,kind,object,quality)
+    assert(key==keys[body.id]) received={object=object,quality=quality,kind=kind} masks[body.id]=320 return true
+end
+check(old.body.repose('SLEEP',true,furniture,'goodBed') and received.object==furniture and received.quality=='goodBed'
+    and not old.body.snapshot().nativeStopped,'furniture entry keeps exact object/quality and bed reference stop evidence')
+check(old.body.repose('SLEEP',false) and old.body.snapshot().nativeStopped,'furniture sleep exits through same authorized stop path')
+check(not old.body.repose('OTHER',true),'unknown repose primitive refused')
 check(old.body.move({}, {x=1,y=1,z=0}),'body move authorized')
 local b,other=spec('b','follow') local hb=assert(r:submit(b)) steps(r,3)
 check(other.starts==1 and other.ticks>0,'two NPCs progress independently')
@@ -97,6 +111,7 @@ local priorClears=clears
 check(not old.body.clear() and not old.body.stop() and not old.body.add(action) and not old.body.requestStop('LATE'),
     'late body cannot clear stop or queue on successor')
 check(clears==priorClears and nextState.body.current(),'new owner retains body')
+check(not old.body.repose('SLEEP',true) and not old.body.repose('SLEEP',false),'old session cannot sleep or wake successor')
 check(other.body.current() and r:inspect(hb).state=='ACTIVE','handoff does not affect second NPC')
 check(r:beginSave(),'one save barrier')
 check(not nextState.body.current() and not other.body.current(),'save fences both immediately')
@@ -143,4 +158,51 @@ local read=bounded:status('a','overflow')
 check(read and read.state=='PENDING' and not bounded:status('a','other-job'),'read model matches exact pending Job identity')
 read.state='FORGED'
 check(bounded:status('a','overflow').state=='PENDING' and not bounded:status('n1'),'status is detached and cancelled candidates disappear')
+local acceptedReceipt=false local receipt,receiptCount=nil,0
+local receipts=Runtime.new({stopped=function(fact)
+    check(keys[fact.npcId]==nil,'receipt only after native authority is released')
+    receipt=fact receiptCount=receiptCount+1 return acceptedReceipt
+end})
+local original,originalState=spec('receipt','original')
+assert(receipts:submit(original)) steps(receipts,2)
+local successor,successorState=spec('receipt','self-care') successor.replaceReason='SELF_CARE'
+assert(receipts:submit(successor)) steps(receipts,3)
+check(originalState.saved=='KNOWN' and successorState.starts==0,'unpersisted handoff receipt blocks successor')
+check(receipt.reason=='SELF_CARE' and receipt.effects=='KNOWN' and receipt.started,'typed stopped receipt preserves effect and start evidence')
+acceptedReceipt=true steps(receipts,3)
+check(successorState.starts==1,'persisted receipt permits later successor grant')
+local calls=receiptCount steps(receipts,2)
+check(receiptCount==calls,'successful stopped notification does not repeat')
+local savedReceipt
+local duringSave=Runtime.new({stopped=function(fact) savedReceipt=fact return true end})
+local savedWork=spec('receipt-save','saved-work') assert(duringSave:submit(savedWork)) steps(duringSave,2)
+local pendingCare,pendingCareState=spec('receipt-save','pending-care') pendingCare.replaceReason='SELF_CARE'
+local pendingHandle=assert(duringSave:submit(pendingCare))
+assert(duringSave:beginSave()) local saveFacts=assert(duringSave:captureSave())
+check(saveFacts.ready and saveFacts.byNpc['receipt-save'].started and duringSave:inspect(pendingHandle).state=='CANCELLED',
+    'save cancels pending self-care but captures old body and actual-start evidence')
+check(savedReceipt and savedReceipt.reason=='SELF_CARE','handoff relation is persisted inside synchronous capture, before disk save')
+assert(duringSave:finishSave(true))
+check(savedReceipt and savedReceipt.jobId=='saved-work' and savedReceipt.reason=='SELF_CARE'
+    and pendingCareState.starts==0,'save finishing emits durable predecessor receipt even without a later normal tick')
+local lateAccepted,lateFact=false,nil
+local lateWindow=Runtime.new({stopped=function(fact) lateFact=fact return lateAccepted end})
+local lateWork=spec('late-window','already-closed') assert(lateWindow:submit(lateWork)) steps(lateWindow,2)
+assert(lateWindow:stop('late-window','SELF_CARE')) steps(lateWindow,2)
+check(keys['late-window']==nil and lateFact,'body can close before durable receipt is accepted')
+lateFact=nil lateAccepted=true assert(lateWindow:beginSave())
+local lateFacts=assert(lateWindow:captureSave())
+check(lateFacts.ready and lateFact and lateFact.jobId=='already-closed' and lateFact.reason=='SELF_CARE',
+    'capture preserves receipt even if its body closed before controller save facts were reset')
+local stable=Runtime.new() local stableWork=spec('unchanged','same')
+local stableHandle=assert(stable:submit(stableWork)) steps(stable,2)
+local previous=stableHandle.result
+steps(stable,3)
+check(stableHandle.result==previous and stable:inspect(stableHandle).state=='ACTIVE','unchanged active result does not allocate per frame')
+local snapshot=stable:inspect(stableHandle) snapshot.state='tampered'
+check(stable:inspect(stableHandle).state=='ACTIVE','public inspection remains detached from reused result')
+stableHandle.result.kind='tampered' steps(stable,1)
+check(stable:inspect(stableHandle).kind==stableWork.kind,'changed handle metadata is repaired rather than cached')
+assert(stable:stop('unchanged','TEST_STOP')) steps(stable,4)
+check(stable:inspect(stableHandle).state=='CLOSED','result reuse does not suppress stop transitions')
 print('PASS '..checks..' runtime/queue checks; native bodies/save NOT RUN')

@@ -3,6 +3,8 @@ local fixture=dofile("tests/lua/work-test.lua")
 local Work=require "EmberRoutesProbe/Work"
 local Store=require "EmberRoutesProbe/LaborStore"
 local Companion=require "EmberRoutesProbe/Companion"
+-- This fixture exercises the old diagnostic movement/checkpoint adapter, not membership migration.
+Companion.restoreState=Companion.debugRestoreState
 local Probe=fixture.ctx.Probe
 local actor=fixture.actor
 local checks=0
@@ -120,6 +122,8 @@ check(capacityB:getContainer()==source.container and Work.busy(b.id),"paused hel
 local oldGeneration=held.generation
 Work.reset()
 package.loaded["EmberRoutesProbe/LaborStore"]=nil
+package.loaded['EmberRoutesProbe/HaulAgent']=nil
+package.loaded['EmberRoutesProbe/HaulRouting']=nil
 package.loaded["EmberRoutesProbe/WorkAgent"]=nil
 package.loaded["EmberRoutesProbe/Work"]=nil
 Work=require "EmberRoutesProbe/Work" Store=require "EmberRoutesProbe/LaborStore"
@@ -134,8 +138,8 @@ selected=b.id Work.execute(actor,"resume") tick(15,true)
 check(capacityB:getContainer()==destination.container and Work.record(b.id).state=="DONE","waiting worker can resume after real space freed")
 
 -- Both companions retain independent bindings; selected worker never retargets A.
-selected=a.id actor.x=6 Companion.execute(actor,"follow")
-selected=b.id Companion.execute(actor,"follow") Companion.tick()
+selected=a.id actor.x=6 Companion.debugExecute(actor,"follow")
+selected=b.id Companion.debugExecute(actor,"follow") Companion.tick()
 check(Companion.exportState(a.id).mode=="FOLLOW" and Companion.exportState(b.id).mode=="FOLLOW","two follower intents coexist")
 Companion.cancel("USER",a.id)
 check(Companion.exportState(a.id).mode=="HOLD" and Companion.exportState(b.id).mode=="FOLLOW","companion cancellation is scoped")
@@ -150,7 +154,7 @@ bridge.saveCheckpointFor=function(id,mode)
     saved[id]=mode return "CHECKPOINT_SAVED"
 end
 bridge.blockAllCheckpoints=function(reason) blocked[#blocked+1]=reason return "CHECKPOINT_BLOCKED" end
-selected=a.id Companion.execute(actor,"follow") selected=b.id
+selected=a.id Companion.debugExecute(actor,"follow") selected=b.id
 Persistence.save()
 check(saved[a.id]=="FOLLOW" and saved[b.id]=="HOLD","save captures each worker's own intent")
 check(Companion.exportState(a.id).mode=="FOLLOW" and selected==b.id,"save restores A follow without changing UI selection")

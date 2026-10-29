@@ -36,12 +36,21 @@ local function request(actor,worker,binding,command,intent)
         if not store then store={format=1,byNpc={}} root.companionIntents=store end
         -- Scalar intent only. This is a recovery record, not a disk-save receipt.
         store.byNpc[binding.id]={jobId=jobId,mode=data.mode,hasHome=data.hasHome==true,
-            homeX=data.homeX,homeY=data.homeY,homeZ=data.homeZ,effects=fact.effects,reason=reason}
+            homeX=data.homeX,homeY=data.homeY,homeZ=data.homeZ,membershipRevision=worker.membershipRevision,effects=fact.effects,reason=reason}
         return true
     end
     return runtime:submit({npcId=binding.id,jobId=jobId,kind='COMPANION',binding=binding,
         nonPreemptive=intent~=nil,
-        validate=function() return Probe.ready and Registry.data()==root and not actor:isDead() end,
+        validate=function()
+            if not Probe.ready or Registry.data()~=root or not actor or actor:isDead() then return false end
+            if worker.membershipRevision then
+                local member=require('EmberRoutesProbe/MembershipService').view(binding.id)
+                return member and not member.pending and member.context=='FOLLOW'
+                    and member.revision==worker.membershipRevision
+                    and member.leaderId==require('EmberRoutesProbe/MembershipService').character(actor)
+            end
+            return true
+        end,
         start=function(body)
             worker.jobId=jobId
             if intent then return worker.restoreState(actor,intent,body) end
@@ -56,14 +65,35 @@ local function request(actor,worker,binding,command,intent)
         persistFailure=function(fact,reason) return persist(worker.exportState(),fact,reason) end})
 end
 function Companion.execute(actor,command)
+    if command~='status' then
+        local M=require 'EmberRoutesProbe/MembershipService'
+        local id=Driver.selected(actor) local row=M.view(id)
+        if not row then return false,'NO_MEMBERSHIP' end
+        local kinds={follow='FOLLOW',hold='WAIT',home='RETURN'}
+        if not kinds[command] then return false,'INVALID_COMMAND' end
+        local c=M.request(actor,id,{requestId=require('EmberRoutesProbe/ContainerRegistry').id(),
+            expectedRevision=row.revision,kind=kinds[command]})
+        actor:Say(getText('IGUI_EmberRoutesProbe_Membership_'..(c.reason or c.state)))
+        return c.state~='REJECTED',c.reason or c.state
+    end
+    return Companion.debugExecute(actor,command)
+end
+-- Explicit low-level diagnostic adapter; normal product commands always enter MembershipService.
+function Companion.debugExecute(actor,command)
     local binding=Driver.bind(actor)
     local worker,id=agent(binding and binding.id)
     if Probe.controlledExecution==true and command~='status' then
         local handle,why=request(actor,worker,binding,command)
+        if handle and Probe.invalidateCare then Probe.invalidateCare(id,'COMPANION_COMMAND') end
         if not handle then actor:Say(getText('IGUI_EmberRoutesProbe_CompanionResult')..' '..tostring(why)) end
         return handle~=nil,why
     end
     local result=worker.execute(actor,command) enroll(worker,id) return result
+end
+function Companion.startFor(actor,id,revision)
+    local binding=Driver.bindId(actor,id) if not binding then return nil,'CARRIER_UNAVAILABLE' end
+    local worker=agent(id) worker.membershipRevision=revision
+    return request(actor,worker,binding,'follow')
 end
 function Companion.cancel(reason,id)
     id=selected(id) local worker=agents[id]
@@ -75,7 +105,7 @@ function Companion.cancelAll(reason)
     for id in pairs(agents) do Companion.cancel(reason,id) end
 end
 function Companion.exportState(id)
-    local worker=agent(id) return worker.exportState()
+    local worker=agent(id) local value=worker.exportState() value.membershipRevision=worker.membershipRevision return value
 end
 function Companion.stopAdapter(id,controller,ticket,persistIntent,jobId)
     local worker=agents[id]
@@ -84,10 +114,18 @@ function Companion.stopAdapter(id,controller,ticket,persistIntent,jobId)
 end
 function Companion.restoreState(actor,data)
     local worker,id=agent(data.id)
+    local member=require('EmberRoutesProbe/MembershipService').view(id)
+    if not member or member.pending or member.context~='FOLLOW' or data.membershipRevision~=member.revision
+        or member.leaderId~=require('EmberRoutesProbe/MembershipService').character(actor) then return false,'STALE_MEMBERSHIP' end
+    worker.membershipRevision=member.revision
+    return Companion.debugRestoreState(actor,data)
+end
+function Companion.debugRestoreState(actor,data)
+    local worker,id=agent(data.id)
     if Probe.controlledExecution==true then
         -- Capture scalars now: selection and the caller's table may change before grant.
         local copy={id=data.id,jobId=data.jobId,mode=data.mode,hasHome=data.hasHome,
-            homeX=data.homeX,homeY=data.homeY,homeZ=data.homeZ}
+            homeX=data.homeX,homeY=data.homeY,homeZ=data.homeZ,membershipRevision=data.membershipRevision}
         local handle,why=request(actor,worker,Driver.bindId(actor,id),nil,copy)
         return handle~=nil,why
     end

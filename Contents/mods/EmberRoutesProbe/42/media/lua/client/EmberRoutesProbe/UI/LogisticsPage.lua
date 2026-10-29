@@ -72,8 +72,8 @@ function EmberRoutesLogisticsPage:createChildren()
         control.internal=id control:initialise() Theme.button(control,primary)
         self.buttons[id]=control self:addChild(control)
     end
-    local top=assert(Layout.axis(regions[2],{{grow=1},{grow=1},{grow=1}},{gap=p/2}))
-    for i,id in ipairs({"toggle","refresh","warehouse"}) do button(id,top[i],id=="toggle") end
+    local top=assert(Layout.axis(regions[2],{{grow=1},{grow=1}},{gap=p/2}))
+    for i,id in ipairs({"toggle","refresh"}) do button(id,top[i],id=="toggle") end
     local modeSlots=assert(Layout.axis(regions[3],{{grow=1},{grow=1}},{gap=p}))
     self.modes={}
     for i,mode in ipairs({"intake","tidy"}) do

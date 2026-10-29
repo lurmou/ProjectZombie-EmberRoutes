@@ -1,21 +1,17 @@
 local Legacy=require "EmberRoutesProbe/CraftRecipeAdapter"
+local Facts=require "EmberRoutesProbe/CraftRecipeFacts"
 local Recipe={limit=64,outputLimit=32}
 local function integer(n,max) return type(n)=="number" and n>=1 and n<=max and n==math.floor(n) end
-function Recipe.read(id)
-    if not ResourceType or not ResourceType.Item then return nil,"CRAFT_API_UNAVAILABLE" end
-    if type(id)~="string" or #id>200 then return nil,"RECIPE_UNAVAILABLE" end
-    local manager=getScriptManager()
-    local recipe=manager and manager:getCraftRecipe(id)
-    if not recipe then return nil,"RECIPE_UNAVAILABLE" end
-    if not EmberRoutesProbeJava.recipeHasCallbacks or not EmberRoutesProbeJava.recipeHasSpecialOutputs then return nil,"CRAFT_API_UNAVAILABLE" end
-    if recipe:requiresSpecificWorkstation() or recipe:isBuildableRecipe()
-        or not (recipe:isAnySurfaceCraft() or recipe:isInHandCraftCraft())
-        or recipe:hasOnTickInputs() or recipe:hasOnTickOutputs() or EmberRoutesProbeJava.recipeHasCallbacks(recipe)
-        or EmberRoutesProbeJava.recipeHasSpecialOutputs(recipe) then
+-- Legacy executor capability. Unsupported facts remain discoverable elsewhere.
+function Recipe.fromFacts(facts)
+    if not facts then return nil,"RECIPE_UNAVAILABLE" end
+    local recipe,id=facts.recipe,facts.id
+    if facts.workstation or facts.buildable or not (facts.surface or facts.inHand)
+        or facts.onTick or facts.callbacks or facts.specialOutputs then
         return nil,"RECIPE_MECHANISM_UNSUPPORTED"
     end
     local spec={id=id,recipe=recipe,inputs={},outputs={},outputWeight=0,inputCount=0,toolCount=0,
-        surface=recipe:isAnySurfaceCraft(),name=recipe:getTranslationName()}
+        surface=facts.surface,name=facts.name,facts=facts}
     local signature={id,tostring(recipe:getTime()),tostring(spec.surface)}
     local inputs,outputs=recipe:getInputs(),recipe:getOutputs()
     if inputs:size()==0 or inputs:size()>16 or outputs:size()==0 or outputs:size()>8 then return nil,"RECIPE_MECHANISM_UNSUPPORTED" end
@@ -54,6 +50,11 @@ function Recipe.read(id)
     if skills then for i=0,skills:size()-1 do signature[#signature+1]=skills:get(i) end end
     spec.signature=table.concat(signature,"\n")
     return spec
+end
+function Recipe.read(id)
+    local facts,reason=Facts.read(id)
+    if not facts then return nil,reason end
+    return Recipe.fromFacts(facts)
 end
 -- Bounded, detached display metadata. No inventory scan and no native handles escape.
 function Recipe.describe(spec)

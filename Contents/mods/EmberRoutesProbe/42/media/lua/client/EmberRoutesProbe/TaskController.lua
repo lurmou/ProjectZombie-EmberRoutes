@@ -23,13 +23,19 @@ function Controller.new()
         r.state=state byNpc[r.npcId]=nil
         -- Tickets retain their own final summary; no unbounded controller history.
         records[r.ticket]=nil
-        r.ticket.result={state=state,reason=r.reason}
+        r.ticket.result={state=state,reason=r.reason,effects=r.stopEffects or 'KNOWN'}
     end
     function api:inspect(ticket)
         local r=live(ticket)
         if r then return {state=r.state,reason=r.reason,error=r.error,npcId=r.npcId,jobId=r.jobId,kind=r.kind} end
         local result=type(ticket)=='table' and ticket.result
-        if result then return {state=result.state,reason=result.reason} end
+        if result then return {state=result.state,reason=result.reason,effects=result.effects} end
+    end
+    function api:state(ticket)
+        local r=live(ticket)
+        if r then return r.state end
+        local result=type(ticket)=='table' and ticket.result
+        return result and result.state or nil
     end
     function api:request(npcId,jobId,kind,adapter)
         if retired or frozen then return nil,'ADMISSION_CLOSED' end
@@ -112,6 +118,42 @@ function Controller.new()
             local ok,result=api:dispatch(ticket,function() return driver().stopControlled(r.control) end)
             return ok and result==true
         end
+        function body.repose(kind,enter,object,quality)
+            if kind~='REST' and kind~='SLEEP' or type(enter)~='boolean'
+                or live(ticket)~=r or not r.control or calling then return false end
+            if not enter and r.state=='STOPPING' then
+                calling=true
+                local ok,result=pcall(driver().reposeControlled,r.control,kind,false)
+                calling=false
+                if not ok then r.error=tostring(result) return false end
+                return result==true
+            end
+            local ok,result=api:dispatch(ticket,function() return driver().reposeControlled(r.control,kind,enter,object,quality) end)
+            return ok and result==true
+        end
+        function body.furniture(object,phase)
+            if phase~='PREPARE' and phase~='STAND_TARGET' and phase~='ALIGN_BED' and phase~='LIE' and phase~='FLOOR' then return false end
+            local ok,result=api:dispatch(ticket,function() return driver().furnitureControlled(r.control,object,phase) end)
+            return ok and result==true
+        end
+        -- Session-scoped locomotion posture. STOPPING may only clear it.
+        function body.sneak(value)
+            if type(value)~='boolean' or live(ticket)~=r or not r.control or calling then return false end
+            local function apply()
+                if not driver().stopEvidence(r.control).available then return false end
+                local npc=r.control.binding.handle
+                if not npc.setSneaking then return false end
+                npc:setSneaking(value) return true
+            end
+            if r.state=='STOPPING' then
+                if value then return false end
+                calling=true local ok,result=pcall(apply) calling=false
+                if not ok then r.error=tostring(result) end
+                return ok and result==true
+            end
+            local ok,result=api:dispatch(ticket,apply)
+            return ok and result==true
+        end
         function body.add(action)
             if live(ticket)~=r or not r.control then return false,'NOT_AUTHORIZED' end
             if not action or action.character~=r.control.binding.handle then return false,'WRONG_NPC' end
@@ -173,6 +215,7 @@ function Controller.new()
                         r.control=nil
                         local receipt,err=sessions:confirmStopped(r.token,evidence)
                         if receipt then
+                            r.stopEffects=evidence.effects
                             if saveFacts then
                                 saveFacts[r.npcId]={npcId=r.npcId,jobId=r.jobId,kind=r.kind,bodyStopped=true,
                                     effects=evidence.effects,persisted=true,reason=r.reason}
@@ -226,6 +269,17 @@ function Controller.new()
         end
         -- Never step or wait here: OnSave may have no future game tick.
         if not nativeFrozen then return false,'NATIVE_FREEZE_FAILED' end
+        return true
+    end
+    -- Readiness polling outside OnSave must not publish UNKNOWN facts or
+    -- invoke effect capture while an asynchronous get-up is still running.
+    function api:saveReady()
+        if retired or not frozen or not barrier or stepping or calling then return false end
+        local status=sessions:drainStatus(barrier)
+        if not status or status.pending~=0 then return false end
+        for _,fact in pairs(saveFacts) do
+            if not fact.bodyStopped or fact.effects~='KNOWN' or not fact.persisted then return false end
+        end
         return true
     end
     -- One bounded observation per live owner; never step/wait/retry inside OnSave.

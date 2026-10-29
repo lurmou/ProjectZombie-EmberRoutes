@@ -5,12 +5,14 @@ local Layout=require "EmberRoutesProbe/UI/Layout"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local SmartZoning=require "EmberRoutesProbe/SmartZoning"
 local Controls={}
 local roles={"STORAGE","INPUT","EXCLUDED"}
 ---@class EmberRoutesContainerConfigControls
 ---@field summary table
 ---@field role ISComboBox
 ---@field preset ISComboBox
+---@field smartDetect ISButton
 ---@field copy ISButton
 ---@field paste ISButton
 ---@field lines string[]
@@ -23,7 +25,7 @@ local roles={"STORAGE","INPUT","EXCLUDED"}
 function Controls.new(owner,bounds,summary)
     ---@type EmberRoutesContainerConfigControls
     local controls={summary=summary}
-    local slots=assert(Layout.axis(bounds,{{grow=1.3},{grow=1.5},{grow=0.7},{grow=0.7}},{gap=owner.pad/2}))
+    local slots=assert(Layout.axis(bounds,{{grow=1.1},{grow=1.2},{grow=1.4},{grow=0.65},{grow=0.65}},{gap=owner.pad/2}))
     local function roleChanged(target,combo) target.store:setState({role=roles[combo.selected],status="",statusError=false}) end
     local function presetChanged(target,combo)
         local id=Config.presets[combo.selected-1]
@@ -32,18 +34,50 @@ function Controls.new(owner,bounds,summary)
             target.store:setState({status=Config.text("configPresetDraft"),statusError=false}) combo.selected=1
         end
     end
-    for i,callback in ipairs({roleChanged,presetChanged}) do
-        local r=slots[i] local combo=ISComboBox:new(r.x,r.y,r.width,r.height,owner,callback)
-        combo:initialise() owner:addChild(combo)
-        if i==1 then
-            controls.role=combo for _,id in ipairs(roles) do combo:addOption(Config.text(id)) end
+
+    -- 1. Role Combo
+    local rRole = slots[1]
+    local roleCombo = ISComboBox:new(rRole.x, rRole.y, rRole.width, rRole.height, owner, roleChanged)
+    roleCombo:initialise() owner:addChild(roleCombo)
+    controls.role = roleCombo
+    for _, id in ipairs(roles) do roleCombo:addOption(Config.text(id)) end
+
+    -- 2. Smart Auto-Detect Button
+    local rSmart = slots[2]
+    local function smartDetectClicked(target)
+        local cfg, why = SmartZoning.evaluate(target.object, target.container)
+        if cfg then
+            target:edit(function(model) model.draft = cfg end)
+            local msg = getText("IGUI_EmberRoutesProbe_SmartZone_detected")
+            target.store:setState({
+                status = (msg ~= "IGUI_EmberRoutesProbe_SmartZone_detected" and msg or "Smart auto-zone: ") .. tostring(why),
+                statusError = false
+            })
         else
-            controls.preset=combo combo:addOption(Config.text("configPreset"))
-            for _,id in ipairs(Config.presets) do combo:addOption(Config.text(id)) end
+            target.store:setState({
+                status = getText("IGUI_EmberRoutesProbe_SmartZone_noMatch"),
+                statusError = true
+            })
         end
     end
+    local smartBtn = ISButton:new(rSmart.x, rSmart.y, rSmart.width, rSmart.height, getText("IGUI_EmberRoutesProbe_Filter_smartDetect"), owner, smartDetectClicked)
+    smartBtn:initialise()
+    smartBtn.tooltip = getText("IGUI_EmberRoutesProbe_Filter_smartDetectHint")
+    Theme.button(smartBtn)
+    owner:addChild(smartBtn)
+    controls.smartDetect = smartBtn
+
+    -- 3. Preset Combo
+    local rPreset = slots[3]
+    local presetCombo = ISComboBox:new(rPreset.x, rPreset.y, rPreset.width, rPreset.height, owner, presetChanged)
+    presetCombo:initialise() owner:addChild(presetCombo)
+    controls.preset = presetCombo
+    presetCombo:addOption(getText("IGUI_EmberRoutesProbe_Filter_presetsBtn"))
+    for _, id in ipairs(Config.presets) do presetCombo:addOption(Config.text(id)) end
+
+    -- 4. Copy & Paste Buttons
     for i,action in ipairs({"copy","paste"}) do
-        local r=slots[i+2]
+        local r=slots[i+3]
         local function clicked(target)
             local result,reason
             if action=="copy" then
@@ -70,7 +104,7 @@ function Controls.new(owner,bounds,summary)
         for i,line in ipairs(self.lines or {}) do Theme.text(owner,line,self.summary.x,self.summary.y+(i-1)*owner.fontHeight,Theme.accent) end
     end
     function controls:close()
-        for _,control in ipairs({self.role,self.preset,self.copy,self.paste}) do Tooltip.clear(control) end
+        for _,control in ipairs({self.role,self.smartDetect,self.preset,self.copy,self.paste}) do Tooltip.clear(control) end
     end
     return controls
 end

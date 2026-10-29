@@ -5,7 +5,9 @@ local Haul=require "EmberRoutesProbe/Haul"
 local Persistence=require "EmberRoutesProbe/Persistence"
 local SettlementMenu=require "EmberRoutesProbe/SettlementMenu"
 local Craft=require "EmberRoutesProbe/CraftProbe"
+local RuntimeMetrics=require 'EmberRoutesProbe/RuntimeMetrics'
 local function fill(actor,menu,worldobjects,square)
+    menu:addOption(getText('IGUI_EmberRoutesProbe_RuntimePerf'),nil,RuntimeMetrics.start)
     menu:addOption(getText("IGUI_EmberRoutesProbe_Spawn"), actor, Commands.execute, "spawn", square)
     menu:addOption(getText("IGUI_EmberRoutesProbe_Inspect"), actor, Commands.execute, "inspect", square)
     menu:addOption(getText("IGUI_EmberRoutesProbe_Remove"), actor, Commands.execute, "remove", square)

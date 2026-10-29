@@ -9,8 +9,8 @@ local Work=require "EmberRoutesProbe/Work"
 local Craft=require "EmberRoutesProbe/CraftProbe"
 local Surfaces=require "EmberRoutesProbe/CraftSurfaces"
 local Preview={}
-function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId)
-    local request={root=Registry.data(),actor=actor,entryId=id,npcId=npcId,recipeId=recipeId,quantity=quantity,surfaceId=surfaceId,
+function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId,preferences)
+    local request={root=Registry.data(),actor=actor,entryId=id,npcId=npcId,recipeId=recipeId,quantity=quantity,surfaceId=surfaceId,preferences=preferences,
         result={state="CHECKING",conditions={},counts={},skills={}}}
     function request:cancel() self.cancelled=true self.plan=nil if self.chain then self.chain:cancel() end end
     function request:step()
@@ -82,7 +82,7 @@ function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId)
                 if r.partial then
                     r.conditions[#r.conditions+1]=reason r.state="UNKNOWN" self.finished=true self.plan=nil return r
                 end
-                self.chain=require("EmberRoutesProbe/ProductionChain").new(actor,self.binding.handle,self.entry,recipeId,quantity,self.object,"preview",true)
+                self.chain=require("EmberRoutesProbe/ProductionChain").new(actor,self.binding.handle,self.entry,recipeId,quantity,self.object,"preview",true,self.preferences)
                 self.plan=nil return
             end
             if reason then r.conditions[#r.conditions+1]=reason end

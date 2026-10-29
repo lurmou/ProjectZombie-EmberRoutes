@@ -1,3 +1,4 @@
+package.loaded['EmberRoutesProbe/DisplayNames']={name=function(_,npc) return npc and npc:getFullName() or 'Unavailable member' end}
 function getText(key) return key end
 local checks=0
 local function check(value,label) checks=checks+1 assert(value,label) end
@@ -77,4 +78,23 @@ local received local release=Service.watch({},'s',function(value) received=value
 root={} callback({})
 check(received.reason=='WORLD_RESET' and #received.rows==0,'watch cannot carry task projections across worlds')
 release() check(released,'unsubscribe propagates to the existing view service')
+-- Delivery uses the existing monitor/cancel surface and counts only player receipts.
+function getItemNameFromFullType(fullType) return fullType end
+local deliveryOrder={id='delivery-one',settlementId='s',requesterId='leader',revision=3,state='WAITING',reason='WAITING_WORKER',
+    items={{fullType='Base.Log',quantity=2,delivered=0}}}
+root.deliveryOrders={format=1,orders={[deliveryOrder.id]=deliveryOrder}}
+local cancelledRevision
+package.loaded['EmberRoutesProbe/DeliveryService']={order=function() return deliveryOrder end,
+    cancel=function(_,_,revision) cancelledRevision=revision return 'CANCEL_REQUESTED' end}
+local function deliveryRow()
+    for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='DELIVERY' then return r end end
+end
+local dr=assert(deliveryRow())
+check(dr.bucket=='waiting' and dr.requested==2 and dr.canCancel,'unclaimed delivery visible without assigning a worker')
+check(Service.command({},'s',dr.id,'ORDER:2','return')=='TASK_CHANGED' and not cancelledRevision,'stale delivery revision cannot cancel')
+check(Service.command({},'s',dr.id,'ORDER:3','return')=='CANCEL_REQUESTED' and cancelledRevision==3,'delivery cancellation reaches existing order authority')
+haul.producer='DELIVERY' haul.settlementId='s' haul.orderId=deliveryOrder.id haul.format=2
+haul.itemTypes={['21']='Base.Log'} haul.manifest={{itemId=21,custodyState='DELIVERED',deliveryReceipt={destinationId='storage',attemptId='return'}}}
+haul.delivered=1 deliveryOrder.jobId=haul.id
+check(deliveryRow().delivered==0,'returned-storage receipt is never shown as a player delivery')
 print('PASS '..checks..' order monitor projection/command checks; no engine/inventory run')

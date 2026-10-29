@@ -27,6 +27,12 @@ local Log=require "EmberRoutesProbe/Log"
 ---@field unsubscribe function?
 EmberRoutesSettlementSelector=ISCollapsableWindow:derive("EmberRoutesSettlementSelector")
 local active
+-- Child selectors share the existing world-input owner instead of registering
+-- competing outside-mouse handlers alongside the settlement editor.
+function EmberRoutesSettlementSelector.claim(panel)
+    if active and active~=panel then active:close() end
+    active=panel
+end
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 ---@param actor IsoPlayer
 ---@param entry EmberRoutesSettlement?

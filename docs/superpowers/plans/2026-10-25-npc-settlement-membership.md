@@ -1,5 +1,7 @@
 # 显式据点归属与驻扎运行接线 Implementation Plan
 
+> 执行记录：用户审阅准备后明确“开始吧”，由本会话主代理直接原位实施；0.27.0开发接线完成，25份定向宿主及CN/EN UI宿主通过，真实游戏/故障/规模性能未验证。[实际证据与闲暇交接](../../reviews/2026-10-25/npc-settlement-membership.md)是执行结果；下方步骤保留原计划，不将未实际执行的红测或实机勾为完成。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 用持久化据点身份和明确命令驱动NPC生活，经统一控制器安全交接，并交付闲暇侧可直接消费的稳定资格接口。
@@ -63,7 +65,7 @@
 
 - Consumes: Task 1契约、`TaskRuntime.current():stop/status/owns/submit`、`TaskJobs.current():forNpc`及既有业务责任记录。
 - Produces: `MembershipService.request(actor,npcId,command)`、`cancel(actor,npcId,requestId,expectedRevision)`、`setReturnPoint(actor,settlementId,point,expectedEntryRevision)`。
-- Internal: `MembershipRuntime.tick()`在同一服务调度中推进，`obligations(npcId)`生成只读义务明细，`MembershipReturn.candidate(npcId)`生成同一仲裁器消费的返回候选；不另建独立任务线程/调度器。
+- Internal: `MembershipRuntime.tick()`在同一服务调度中推进，`obligations(npcId)`生成只读义务明细；实施中返回适配细化为`MembershipReturn.start(actor,binding,member)`，只在身体空闲/宏观context允许时向既有TaskRuntime提交MEMBERSHIP_RETURN，个人自理仍通过原接口抢占；不另建身体拥有者或任务线程。
 - Notification: 成员revision改变发送现有LaborSignals.changed(npcId)，定向撤销Study/Leisure offer和旧社交邀请；不能为失效缓存直接释放原件声明。
 
 - [ ] membership-command-test.lua加入SETTLE、FOLLOW、WAIT、RETURN、TRANSFER、UNASSIGN及cancel；断言跟随不改籍、旧责任未结时调驻保持原归属并显示书/货物/未知明细、重复请求不再次停止或提交、过期revision拒绝。
@@ -118,4 +120,4 @@ node ../.workbuddy/tools/pz.mjs preflight Contents/mods/EmberRoutesProbe
 
 设计§1/2→Task 1，§3/5/6→Task 2，§4/8→Task 3，§7/9→Task 4；四不变量与五项Review Focus均有明确场景。没有旧档迁移切片，也没有闲暇策略重构切片。运行适配不能凭“提交停止”当作已停；归属查询不能取代动作级校验。
 
-本会话由主代理原位执行；未获子代理授权，不自动创建其他聊天或发送消息。writing-plans要求“review the plan … before implementation”；本计划待用户审阅，运行代码尚未修改。所提superpowers执行技能当前技能目录未检索到，后续不得假称已加载；用户若指定直接本会话执行，以明确用户指令为准使用现有工具逐项执行并记录验证，不因此擅自安装技能或启用代理。
+本会话由主代理原位执行；未获子代理授权，不自动创建其他聊天或发送消息。writing-plans要求“review the plan … before implementation”；计划已给用户审阅，用户随后明确“开始吧”，按本会话直接执行。所提superpowers执行技能当前技能目录未检索到，未假称加载，依用户明确指令使用现有工具实施并记录验证；没有安装技能或启用代理。共享文件包含既有改动，未把这些文件整体提交冒充本轮独立提交。

@@ -1,7 +1,13 @@
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Filter=require "EmberRoutesProbe/StorageFilter"
 local Rules=require "EmberRoutesProbe/HaulRules"
-local Config={presets={"food","food.stable","food.perishable","weapons","medical","tools","materials","scrap"}}
+local Config={presets={
+    "food","food.meals","food.perishable","food.stable",
+    "medical","medical.bandages","medical.pills",
+    "weapons","weapons.guns","weapons.ammo",
+    "apparel","tools","materials","trade","scrap",
+    "kit.fishing","kit.farming","kit.tailoring","kit.mechanic"
+}}
 local clipboard=setmetatable({},{__mode="k"})
 function Config.text(key)
     for _,prefix in ipairs({"IGUI_EmberRoutesProbe_Filter_","IGUI_EmberRoutesProbe_WorkCode_","IGUI_EmberRoutesProbe_Logistics_"}) do

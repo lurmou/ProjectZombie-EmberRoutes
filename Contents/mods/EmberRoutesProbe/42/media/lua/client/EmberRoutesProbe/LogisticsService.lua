@@ -34,15 +34,17 @@ local function check(context)
     local record=context.job local ctx=contexts[record.settlementId]
     if not ctx or not ctx.running then return false,"LOGISTICS_STOPPED" end
     local entry=Ledger.get(record.settlementId)
-    if not entry or entry.factionId~=Ledger.data().factionId or not members(entry,record) then return false,"SETTLEMENT_CHANGED" end
+    if not entry or entry.factionId~=Ledger.data().factionId or record.format~=2 and not members(entry,record) then return false,"SETTLEMENT_CHANGED" end
     if not ctx.public and not Store.get(entry.id).workers[record.npcId] then return false,"WORKER_REMOVED" end
-    if Registry.logistics(context.destination)~="STORAGE" then return false,"PRODUCER_RULE_CHANGED" end
+    if record.format~=2 and Registry.logistics(context.destination)~="STORAGE" then return false,"PRODUCER_RULE_CHANGED" end
     return true
 end
 Producers.register("LOGISTICS",{
     check=check,
     transfer=function(context,item,from)
         if not check(context) then return false end
+        if context.job.format==2 and from==context.npc:getInventory() then return true end
+        if not context.source then return false end
         if from~=context.source.container then return true end -- Held originals may finish delivery after a mode change.
         if Producers.freeCarry(context.npc)<item:getUnequippedWeight() then return false end
         local mode=Sort.source(Registry.logistics(context.source),Store.get(context.job.settlementId),
@@ -62,9 +64,9 @@ function Service.invalidate(id)
     for key,ctx in pairs(contexts) do
         local entry=Ledger.get(key)
         if not id or ctx.members[id] or (position and entry and Geometry.inside(entry,position.x,position.y)) then
-            ctx.plan=nil ctx.publicPlans={} ctx.cache=nil ctx.nextTick=0 ctx.dirty=true
+            ctx.plan=nil ctx.publicPlans={} ctx.publicWait={} ctx.cache=nil ctx.nextTick=0 ctx.dirty=true
         end
-        if key==id then roster(ctx) ctx.cache=nil ctx.nextTick=0 end
+        if key==id then roster(ctx) ctx.publicPlans={} ctx.publicWait={} ctx.cache=nil ctx.nextTick=0 end
     end
 end
 function Service.stop(actor,id)
@@ -101,7 +103,8 @@ function Service.addNearby(actor,id)
         local npcId=EmberRoutesProbeJava.workerIdAt(i) local binding=Driver.bindId(actor,npcId)
         if binding and Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()) and not Work.busy(npcId)
             and not Work.hasCargo(actor,npcId) and binding.handle:getCharacterActions():isEmpty()
-            and Companion.exportState(npcId).mode=="HOLD" then
+            and require('EmberRoutesProbe/MembershipService').check(npcId,'WORK',
+                {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ(),scopeId=id}).allowed then
             local record=Work.record(npcId)
             if not record or record.state=="DONE" or record.producer=="LOGISTICS" then
                 local result=Store.worker(actor,id,npcId,true)
@@ -132,7 +135,9 @@ local function advance(ctx)
     if not ctx.plan then ctx.cursor=ctx.cursor%#ctx.workers+1 npcId=ctx.workers[ctx.cursor] end
     local binding=Driver.bindId(ctx.actor,npcId)
     if not binding or not settings.workers[npcId] or not Work.automationAllowed(npcId) or Work.busy(npcId)
-        or Companion.exportState(npcId).mode~="HOLD" or not binding.handle:getCharacterActions():isEmpty()
+        or not require('EmberRoutesProbe/MembershipService').check(npcId,'WORK',
+            {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ(),scopeId=ctx.id}).allowed
+        or not binding.handle:getCharacterActions():isEmpty()
         or binding.handle:getBodyDamage():getOverallBodyHealth()<95 then ctx.plan=nil ctx.reason="WAITING_WORKER" return end
     local record=Work.record(npcId)
     if record and record.state~="DONE" then
@@ -179,12 +184,12 @@ local function advance(ctx)
     elseif state=="FAILED" then ctx.running=false ctx.plan=nil ctx.reason=reason schedule:remove(ctx.id)
     else ctx.reason="SCANNING" end
 end
-function Service.preparePublic(actor,entry)
+function Service.preparePublic(actor,entry,recovery)
     local settings=Store.get(entry.id)
-    if settings.suspended or not settings.intake and not settings.tidy then return nil end
+    if settings.suspended or not recovery and not settings.intake and not settings.tidy then return nil end
     local ctx=contexts[entry.id]
     if not ctx or not ctx.public then
-        ctx={id=entry.id,actor=actor,running=true,public=true,publicPlans={},members={}} contexts[entry.id]=ctx
+        ctx={id=entry.id,actor=actor,running=true,public=true,publicPlans={},publicWait={},members={}} contexts[entry.id]=ctx
     end
     ctx.running=true ctx.actor=actor
     return ctx
@@ -193,14 +198,65 @@ function Service.publicOffer(actor,entry,npc)
     local ctx=Service.preparePublic(actor,entry) if not ctx then return nil end
     local settings=Store.get(entry.id)
     local id=EmberRoutesProbeJava.carrierId(npc)
+    local now=getTimestampMs()
+    if now<(ctx.publicWait[id] or 0) then return nil end
     local plan=ctx.publicPlans[id]
     if not plan then plan=Planner.new(entry,settings,npc) ctx.publicPlans[id]=plan end
-    if not plan then return nil end
+    if not plan then ctx.publicWait[id]=now+2000 return nil end
     local intent,state=plan:step(Service.BUDGET)
-    if intent or state~='WAIT' then ctx.publicPlans[id]=nil end
+    if intent or state~='WAIT' then
+        ctx.publicPlans[id]=nil
+        -- An exhausted search is not new work. Events wake it immediately;
+        -- bounded retry also detects vanilla/other-mod inventory changes.
+        if not intent then ctx.publicWait[id]=now+(state=='CHANGED' and 500 or 2000) end
+    end
     return intent
 end
+local recoveryWorld,recoveryIds,recoveryCursor,recoveryAt,recoveryRefresh=nil,{},0,0,0
+local recoveryWait={}
+function Service.recover()
+    if not Probe.ready or Probe.enabled==false or not Probe.hasJava() or isClient() or isServer() then return end
+    local now=getTimestampMs() if now<recoveryAt then return end recoveryAt=now+100
+    local world=Registry.data()
+    if world~=recoveryWorld then recoveryWorld=world recoveryWait={} recoveryRefresh=0 end
+    local rt=require('EmberRoutesProbe/TaskRuntime').current()
+    if rt and not rt:accepting() or world.executionSave and world.executionSave.state=='BLOCKED' then return end
+    if now>=recoveryRefresh then
+        recoveryIds={} for id in pairs(require('EmberRoutesProbe/BusinessJobs').hauls().byNpc) do recoveryIds[#recoveryIds+1]=id end
+        table.sort(recoveryIds) recoveryRefresh=now+2000
+    end
+    local actor=getSpecificPlayer(0) if not actor then return end
+    local wake=require 'EmberRoutesProbe/PlanningWake'
+    for _=1,math.min(2,#recoveryIds) do
+        recoveryCursor=recoveryCursor%#recoveryIds+1 local id=recoveryIds[recoveryCursor]
+        local r=Work.record(id)
+        if r and r.producer=='LOGISTICS' and r.state=='PAUSED' and not r.controlUncertain and not r.manualPaused
+            and not Work.busy(id) and (not rt or not rt:owns(id)) then
+            local reason=r.reason or ''
+            local system=r.format==2 and (reason=='ROUTING_WAIT' or reason=='SAVE' or reason=='LOAD_RECOVERY')
+                or r.format==1 and (reason=='SAVE' or reason=='LOAD_RECOVERY' or reason=='NATIVE_TRANSFER_STOPPED'
+                    or string.find(reason,'^FILTER_REJECTED') or replanReasons[reason])
+            local entry=Ledger.get(r.settlementId) local b=system and entry and Driver.bindId(actor,id)
+            local wait=recoveryWait[id]
+            if b and (not wait or wait.job~=r.id or now>=wait.due or wake.changed(wait.watch))
+                and require('EmberRoutesProbe/MembershipService').check(id,'WORK',
+                    {x=b.handle:getX(),y=b.handle:getY(),z=b.handle:getZ(),scopeId=entry.id}).allowed then
+                local ctx=contexts[entry.id]
+                if Probe.publicDispatch then ctx=Service.preparePublic(actor,entry,true) end
+                if ctx and ctx.running then
+                    recoveryWait[id]={job=r.id,due=now+5000+recoveryCursor%7*137,watch=wake.capture(entry)}
+                    Work.resumeFor(actor,id)
+                end
+            end
+        end
+    end
+end
 function Service.tick()
+    Service.recover()
+    if Probe.publicDispatch then
+        local pending=false for _ in pairs(dirty) do pending=true break end
+        if not pending then return end
+    end
     if not Probe.ready or Probe.enabled==false or not Probe.hasJava() or isClient() or isServer() then return end
     if not Probe.publicDispatch then schedule:step(1,function(id)
         local ctx=contexts[id] local before=ctx.reason local ok,reason=pcall(advance,ctx)
@@ -251,7 +307,10 @@ function Service.status(id)
         elseif not Work.automationAllowed(npcId) then reason="MANUAL_OVERRIDE"
         elseif record and record.state~="DONE" then
             reason=record.producer=="LOGISTICS" and record.reason or "MANUAL_TASK_PENDING"
-        elseif Companion.exportState(npcId).mode~="HOLD" then reason="WORKER_FOLLOWING" end
+        else
+            local m=require('EmberRoutesProbe/MembershipService').view(npcId)
+            if not m or m.pending or m.context~='SETTLEMENT' or m.settlementId~=id then reason='MEMBERSHIP_UNAVAILABLE' end
+        end
         result.workers[#result.workers+1]={id=npcId,reason=reason,state=record and record.state or "IDLE",
             taskId=record and record.id or "",producer=record and record.producer or "",
             delivered=record and record.delivered or 0,total=record and #record.items or 0,
@@ -283,7 +342,8 @@ function Service.workerCommand(actor,id,npcId,command)
     if record and record.state~="DONE" and (record.producer~="LOGISTICS" or record.settlementId~=id) then
         return "MANUAL_TASK_PENDING"
     end
-    if Companion.exportState(npcId).mode~="HOLD" then return "WORKER_FOLLOWING" end
+    local member=require('EmberRoutesProbe/MembershipService').view(npcId)
+    if not member or member.pending or member.context~='SETTLEMENT' or member.settlementId~=id then return 'MEMBERSHIP_UNAVAILABLE' end
     local ctx=contexts[id]
     if not ctx or not ctx.running then return "STOPPED" end
     Work.allowAutomation(npcId)
@@ -296,7 +356,10 @@ function Service.reset()
 end
 Registry.listeners[#Registry.listeners+1]=Service.invalidate
 Registry.inventoryListeners[#Registry.inventoryListeners+1]=function(id)
-    for _,ctx in pairs(contexts) do if ctx.members[id] then ctx.nextTick=0 ctx.dirty=true end end
+    for _,ctx in pairs(contexts) do
+        if ctx.public then ctx.publicWait={} end
+        if ctx.members[id] then ctx.nextTick=0 ctx.dirty=true end
+    end
 end
 Ledger.listeners[#Ledger.listeners+1]=function(id) Service.invalidate(id) end
 Probe.tickLogistics,Probe.resetLogistics=Service.tick,Service.reset

@@ -16,8 +16,9 @@ local Theme=require "EmberRoutesProbe/UI/Theme"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
 local Table=require "EmberRoutesProbe/UI/WarehouseList"
 local Details=require "EmberRoutesProbe/UI/WarehouseDetails"
-local Summary=require "EmberRoutesProbe/UI/Summary"
+local Summary=require "EmberRoutesProbe/UI/CompactSummaryStrip"
 local Rows=require "EmberRoutesProbe/UI/WarehouseRows"
+local CartDrawer=require "EmberRoutesProbe/UI/DeliveryCartDrawer"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local Text=require "EmberRoutesProbe/UI/Text"
 local State=require "EmberRoutesProbe/UI/State"
@@ -81,6 +82,7 @@ function EmberRoutesWarehousePage:new(owner,bounds)
     o.store=State.new({snapshot={state="UPDATING",rows={},counts={}},search="",category=false,page=1,sort="default",selection=false})
     o.itemNames={} o.actualPage=1 o.pages=1 o.pageCaption=""
     o.query=Query.new() o.locator=Locator.new(actor,entry.id) o.notice="" o.pinnedItems={}
+    o.deliveryCart={} o.deliveryCartCount=0 o.deliveryCartTotalUnits=0 o.deliveryCartWeight=0 o.cartDrawerOpen=false
     return o
 end
 function EmberRoutesWarehousePage:initialise() ISPanel.initialise(self) end
@@ -91,52 +93,67 @@ function EmberRoutesWarehousePage:createChildren()
     if compact then self.pad=math.ceil(h*0.35) end
     local p=self.pad
     local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},
-        {{basis=h*4+p},{basis=h+p},{grow=1},{basis=h+p},{basis=h},{basis=h+p}},
+        {{basis=math.floor(h*1.6+p/2)},{basis=h+p},{grow=1},{basis=h+p}},
         {direction="column",padding=p,gap=p/2}))
-    self.summary=Summary.new(regions[1],{
-        {id="loaded",label=text("loaded")},{id="unloaded",label=text("unloaded")},{id="private",label=text("private")},
-        {id="missing",label=text("missing")},{id="limited",label=text("limited")},{id="items",label=text("instanceCount")}},h,p,
-        {READY=text("summaryReady"),PARTIAL=text("summaryPartial"),UPDATING=text("summaryUpdating"),ERROR=text("summaryError")})
+    self.summary=Summary.new(regions[1],h,p)
     self.controls=Controls.new(self,regions[2])
     self.search,self.categories,self.categoryIds=self.controls.search,self.controls.category,self.controls.categoryIds
     local columns=assert(Layout.axis(regions[3],{{grow=3},{grow=2}},{gap=p}))
-    local parts=assert(Layout.axis(columns[1],{{basis=h+p/2},{grow=1}},{direction="column"}))
-    self.itemList=Cached.create(self,parts[2],EmberRoutesWarehousePage.selectItem,
+    self.itemList=Cached.create(self,columns[1],EmberRoutesWarehousePage.selectItem,
         Table.style(self.presentation,function(row) return row.label end))
     self.itemList.emberMetric="ui.items"
     Theme.list(self.itemList) self:addChild(self.itemList)
-    local tableColumns=Table.columns(self.itemList,true)
-    self.listTitles={{x=parts[1].x+tableColumns.name,y=parts[1].y,label=getText("IGUI_Name")},
-        {x=self.itemList.x+self.itemList.width-h-p-getTextManager():MeasureStringX(UIFont.Small,text("quantity")),
-        y=parts[1].y,label=text("quantity")}}
+    self.itemList.onRightMouseDown=function(list,x,y)
+        local rowIdx=list:rowAt(x,y)
+        if rowIdx and rowIdx>0 and rowIdx<=#list.items then
+            local entry=list.items[rowIdx]
+            local row=entry and entry.item and (entry.item.value or entry.item)
+            if row then
+                self:selectItem(row)
+                self:openItemContextMenu(row,list:getAbsoluteX()+x,list:getAbsoluteY()+y)
+                return true
+            end
+        end
+        return false
+    end
+    self.listTitles={}
     local Grid=require "EmberRoutesProbe/UI/WarehouseGrid"
-    self.itemGrid=Grid.new(self,parts[2],EmberRoutesWarehousePage.selectItem,self.presentation)
+    self.itemGrid=Grid.new(self,columns[1],EmberRoutesWarehousePage.selectItem,self.presentation)
     self:addChild(self.itemGrid)
     self.details=Details.new(self,columns[2],self.presentation)
     self.sourceList=self.details.list
     self:setViewMode("grid")
     Input.focus(self,self.itemList)
-    local pages=assert(Layout.axis(regions[4],{{grow=1},{grow=3},{grow=1}},{gap=p}))
-    self.pageX,self.pageY,self.pageWidth=pages[2].x,pages[2].y+p/2,pages[2].width
-    for i,callback in ipairs({EmberRoutesWarehousePage.previous,EmberRoutesWarehousePage.nextPage}) do
-        local r=pages[i==1 and 1 or 3]
-        local button=ISButton:new(r.x,r.y,r.width,r.height,text(i==1 and "previous" or "next"),self,callback)
-        button:initialise() Theme.button(button) self:addChild(button)
-        if i==1 then self.previousButton=button else self.nextButton=button end
-    end
-    self.hintY=regions[5].y
-    self.hintLines=Text.wrapLimited(text("shortHint"),regions[5].width,UIFont.Small,1)
-    local foot=assert(Layout.axis(regions[6],{{grow=1.3},{grow=1.3},{grow=0.8}},{gap=p}))
+
+    local footBounds={x=columns[1].x,y=regions[4].y,width=columns[1].width,height=regions[4].height}
+    local foot=assert(Layout.axis(footBounds,{{grow=1.0},{grow=1.0},{grow=0.6}},{gap=p}))
     for i,definition in ipairs({{text("refresh"),EmberRoutesWarehousePage.refresh},
             {text("edit"),EmberRoutesWarehousePage.editArea},{text("help"),EmberRoutesWarehousePage.help}}) do
         local r=foot[i]
         local button=ISButton:new(r.x,r.y,r.width,r.height,definition[1],self,definition[2])
         button:initialise() Theme.button(button,i==1) self:addChild(button)
         if i==1 then self.refreshButton=button end
-        if i==3 then self.helpButton=button button.tooltip=text("coverageHint") end
+        if i==3 then self.helpButton=button button.tooltip=text("coverageHint").."\n\n"..text("shortHint") end
     end
+    local cartBtn=ISButton:new(columns[2].x,regions[4].y,columns[2].width,regions[4].height,
+        getText('IGUI_EmberRoutesProbe_Warehouse_cartButton','0'),self,EmberRoutesWarehousePage.toggleCartDrawer)
+    cartBtn:initialise() Theme.button(cartBtn) self:addChild(cartBtn)
+    cartBtn.tooltip=getText('IGUI_EmberRoutesProbe_Warehouse_cartEmptyHint') self.cartButton=cartBtn
+
+    local p2=self.summary.pills[2]
+    self.containerPillBtn=ISButton:new(p2.x,p2.y,p2.width,p2.height,"",self,function()
+        self:openContainerInspector()
+    end)
+    self.containerPillBtn:initialise()
+    self.containerPillBtn.background=false
+    self.containerPillBtn.backgroundColor={r=0,g=0,b=0,a=0}
+    self.containerPillBtn.backgroundColorMouseOver={r=1,g=1,b=1,a=0.08}
+    self.containerPillBtn.borderColor={r=0,g=0,b=0,a=0}
+    self.containerPillBtn.tooltip=getText("IGUI_EmberRoutesProbe_Settlement_summaryMergedClickHint")
+    self:addChild(self.containerPillBtn)
 end
 function EmberRoutesWarehousePage:activate()
+    self.deliveryMiddleDown=type(isMouseButtonDown)=='function' and isMouseButtonDown(2) or false
     Lifecycle.mount(self,function(callback) return Index.watch(self.entry.id,callback) end,
         function(snapshot) self:receive(snapshot) end)
 end
@@ -146,9 +163,25 @@ function EmberRoutesWarehousePage:deactivate()
         self.resume={fullType=selection and selection.fullType,page=self.actualPage,scroll=self.itemList:getYScroll()}
     end
     Lifecycle.unmount(self)
+    self.deliveryMiddleDown=nil
+    if self.details then self.details:setVisible(true) end
+    if self.cartDrawer then self.cartDrawer:close() self.cartDrawer=nil self.cartDrawerOpen=false end
+    if self.containerInspectorDialog then self.containerInspectorDialog:close() self.containerInspectorDialog=nil end
+    if self.cartButton then self.cartButton:setVisible(true) end
     if self.helpModal then self.helpModal:destroy() self.helpModal=nil end
-    if self.itemGrid then Tooltip.clear(self.itemGrid) end Tooltip.clear(self.itemList) Tooltip.clear(self.sourceList) Tooltip.clear(self.search)
-    Tooltip.clear(self.helpButton) Tooltip.clear(self.controls.sort) Tooltip.clear(self.details.locate)
+    if self.itemGrid then Tooltip.clear(self.itemGrid) end
+    if self.itemList then Tooltip.clear(self.itemList) end
+    if self.sourceList then Tooltip.clear(self.sourceList) end
+    if self.search then Tooltip.clear(self.search) end
+    if self.helpButton then Tooltip.clear(self.helpButton) end
+    if self.controls and self.controls.sort then Tooltip.clear(self.controls.sort) end
+    if self.details then
+        if self.details.locate then Tooltip.clear(self.details.locate) end
+        if self.details.pinButton then Tooltip.clear(self.details.pinButton) end
+        if self.details.cartButton then Tooltip.clear(self.details.cartButton) end
+        if self.details.maintainStock then Tooltip.clear(self.details.maintainStock) end
+        if self.details.heroPanel then Tooltip.clear(self.details.heroPanel) end
+    end
     self.locator:clear()
     for _,combo in ipairs({self.categories,self.controls.sort}) do
         if combo.expanded then combo:hidePopup() combo.expanded=false end
@@ -170,6 +203,7 @@ function EmberRoutesWarehousePage:togglePin(row)
     for _,r in ipairs(curRows) do
         if r.fullType==row.fullType then r.pinned=newState end
     end
+    if self.query and self.query.invalidate then self.query:invalidate() else self.query.rows=nil end
     self.details:setItem(row)
     self:project(self.store.value,{snapshot=true})
 end
@@ -199,12 +233,12 @@ function EmberRoutesWarehousePage:receive(snapshot)
             if row.fullType==self.resume.fullType then selection=row break end
         end
     end
-    self.store:setState({snapshot=copy,selection=selection})
-    if restore then self.resume=nil end
-        self.pinnedItems=self.pinnedItems or {}
+    self.pinnedItems=self.pinnedItems or {}
     for _,r in ipairs(copy.rows) do
         if self.pinnedItems[r.fullType] then r.pinned=true end
     end
+    self.store:setState({snapshot=copy,selection=selection})
+    if restore then self.resume=nil end
 Metrics.finish("ui.update",measured)
 end
 function EmberRoutesWarehousePage:project(snapshot,changed)
@@ -215,7 +249,7 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
         local capRatio=c.usedWeight and c.totalCapacity and c.totalCapacity>0 and c.usedWeight/c.totalCapacity or nil
         if s.state=="READY" then
             self.summary:setValues({loaded=c.loaded.."/"..c.containers,unloaded=c.unloaded,private=c.private,
-                missing=c.missing,limited=c.limited,items=c.items})
+                missing=c.missing,limited=c.limited,items=c.items}, s.rows and #s.rows or nil)
             self.summary:setCoverage(c.usedWeight or c.loaded,c.totalCapacity or c.containers)
         elseif s.state~="UPDATING" or not s.retain then self.summary:setValues(nil) self.summary:setCoverage(nil,nil) end
         local note=""
@@ -233,15 +267,12 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
         end
         local anchor=not explicit and snapshot.selection and snapshot.selection.fullType or nil
         local measured=Metrics.begin("ui.query")
-        local rows,page,pages,total=self.query:page(snapshot.snapshot.rows,snapshot.search,snapshot.category,
-            explicit and snapshot.page or self.actualPage,snapshot.sort,anchor)
+        local rows,_,_,total=self.query:all(snapshot.snapshot.rows,snapshot.search,snapshot.category,snapshot.sort)
         Metrics.finish("ui.query",measured)
-        self.actualPage,self.pages=page,pages
-        local condition=self.categories.options[self.categories.selected].." / "..self.controls.sort.options[self.controls.sort.selected]
-        self.pageCaption=table.concat(Text.wrapLimited(text("page")..page.."/"..pages.." | "..text("types")..total.." | "..condition,
-            self.pageWidth,UIFont.Small,1),"")
-        Theme.enable(self.previousButton,page>1) Theme.enable(self.nextButton,page<pages)
-        Theme.enable(self.controls.clear,snapshot.search~="")
+        local allCount=#(snapshot.snapshot.rows or {})
+        local isFiltered=(snapshot.search~="" or snapshot.category~=false)
+        self.badgeStats={matched=total,total=allCount,isFiltered=isFiltered}
+        if self.controls.clear then Theme.enable(self.controls.clear,snapshot.search~="") end
         Theme.enable(self.refreshButton,snapshot.snapshot.state~="UPDATING",true)
         if self.notice~="" then self.hintLines=Text.wrapLimited(text("shortHint"),self.width-self.pad*2,UIFont.Small,1) end
         self.notice=""
@@ -264,7 +295,7 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
         end
         local empty=snapshot.snapshot.state=="UPDATING" and "waitingItems" or "noItems"
         Table.empty(self,self.itemList,snapshot.snapshot.state=="ERROR" and text(snapshot.snapshot.reason or "ERROR") or text(empty))
-        self.syncingPage=true self.store:setState({page=page,selection=selection}) self.syncingPage=false
+        self.syncingPage=true self.store:setState({page=snapshot.page or 1,selection=selection}) self.syncingPage=false
         if #rows==0 then self.details:setItem(nil) end
     end
     if changed.selection then
@@ -285,7 +316,12 @@ function EmberRoutesWarehousePage:onListFocus(list,direction)
         self.owner:nextTab(direction)
     else Input.other(self,list) end
 end
-function EmberRoutesWarehousePage:selectSource(source) self.details.selectedSource=source end
+function EmberRoutesWarehousePage:selectSource(source)
+    self.details.selectedSource=source
+    if self.details and self.details.updateCartButton then
+        self.details:updateCartButton()
+    end
+end
 function EmberRoutesWarehousePage:locateSource()
     local source=self.details.selectedSource
     if not source then return end
@@ -322,8 +358,9 @@ function EmberRoutesWarehousePage:setViewMode(mode)
         if self.itemList.setVisible then self.itemList:setVisible(not isGrid) else self.itemList.visible=not isGrid end
     end
     if self.controls and self.controls.viewToggle then
-        local label=isGrid and (text("viewGrid") or "⊞ 网格") or (text("viewList") or "☰ 列表")
+        local label=isGrid and text("viewGrid") or text("viewList")
         self.controls.viewToggle:setTitle(label)
+        self.controls.viewToggle.tooltip=text("viewToggleHint")
     end
 end
 function EmberRoutesWarehousePage:previous() self.store:setState({page=math.max(1,self.actualPage-1)}) end
@@ -353,16 +390,273 @@ function EmberRoutesWarehousePage:editArea()
     self:close()
     Selector.open(actor,entry,function(updated) require("EmberRoutesProbe/SettlementDashboard").open(actor,updated.id) end)
 end
+local function getItemWeight(fullType)
+    local sm=type(getScriptManager)=="function" and getScriptManager()
+    if sm then
+        local s=sm:getItem(fullType)
+        if s and s.getActualWeight then return s:getActualWeight() end
+    end
+    return 1.0
+end
+
+local function getItemStep(fullType)
+    local w=getItemWeight(fullType)
+    if w>=1.5 then return 1
+    elseif w>=0.3 then return 5
+    else return 20 end
+end
+
+function EmberRoutesWarehousePage:onMiddleClickItem(row,shiftDown)
+    if not row or not row.fullType then return end
+    local delta=shiftDown and -1 or 1
+    self:addToDeliveryCart(row,delta)
+    return true
+end
+
+function EmberRoutesWarehousePage:onMiddleClickSource(source,shiftDown)
+    local row=self.details and self.details.row
+    if not row or not row.fullType or not source then return end
+    local delta=shiftDown and -1 or 1
+    self:addToDeliveryCart(row,delta,source)
+    return true
+end
+
+function EmberRoutesWarehousePage:addToDeliveryCart(row,delta,preferredSource)
+    if not row or not row.fullType then return end
+    self.deliveryFeedbackError=false
+    if row.pending or row.count==false then
+        self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_cartStockUpdating')
+        self:toggleCartDrawer(true) return
+    end
+    local ft=row.fullType
+    local src=preferredSource
+    local cartKey=src and (ft..':'..src.id) or ft
+    local existing=self.deliveryCart[cartKey]
+    local maxCount=src and (src.count or row.count) or (row.count or (existing and existing.maxCount) or 9999)
+    local curCount=existing and existing.count or 0
+    local newCount=curCount+delta
+    if newCount>0 then newCount=math.min(newCount,maxCount) end
+    if newCount==curCount then
+        self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_cartQuantityLimit')
+        self:toggleCartDrawer(true) return
+    end
+    if newCount<=0 then
+        self.deliveryCart[cartKey]=nil
+    else
+        newCount=math.min(newCount,maxCount)
+        local icon=self.presentation and self.presentation:icon(ft) or nil
+        local weight=getItemWeight(ft)
+        local sourceName=src and (src.customName and src.customName~='' and src.customName or src.kind or src.displayType or '仓库')
+        local floorStr=src and (src.z==0 and getText('IGUI_EmberRoutesProbe_Settlement_floorGround') or ((src.z+1)..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel'))) or nil
+        local sourceLoc=src and ('('..src.x..','..src.y..')') or ''
+        local sourceLabel=src and (sourceName..' '..floorStr..' '..sourceLoc) or nil
+        self.deliveryCart[cartKey]={
+            cartKey=cartKey,
+            fullType=ft,
+            label=row.label or (existing and existing.label) or ft,
+            count=newCount,
+            maxCount=maxCount,
+            icon=icon,
+            weight=weight,
+            step=1,
+            source=src and {id=src.id,name=sourceName,x=src.x,y=src.y,z=src.z} or (existing and existing.source) or nil,
+            sourceLabel=sourceLabel or (existing and existing.sourceLabel) or nil
+        }
+    end
+    self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_cartItemUpdated',
+        row.label or (existing and existing.label) or ft,tostring(math.max(0,newCount)))
+    self:updateDeliveryCartTotals()
+    self:toggleCartDrawer(true)
+end
+
+function EmberRoutesWarehousePage:removeFromDeliveryCart(cartKey)
+    if self.deliveryCart[cartKey] then
+        self.deliveryFeedbackError=false
+        self.deliveryCart[cartKey]=nil
+        self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_cartItemRemoved')
+        self:updateDeliveryCartTotals()
+        if self.cartDrawer and self.cartDrawer.getIsVisible and self.cartDrawer:getIsVisible() then
+            self.cartDrawer:refresh()
+        end
+    end
+end
+
+function EmberRoutesWarehousePage:clearDeliveryCart()
+    self.deliveryCart={}
+    self.deliveryFeedback=nil
+    self.deliveryFeedbackError=false
+    self:updateDeliveryCartTotals()
+    if self.cartDrawer and self.cartDrawer:isVisible() then
+        self.cartDrawer:refresh()
+    end
+end
+
+function EmberRoutesWarehousePage:updateDeliveryCartTotals()
+    self.deliveryRequestId=nil
+    local types,units,weight=0,0,0
+    for _,item in pairs(self.deliveryCart) do
+        types=types+1
+        units=units+item.count
+        weight=weight+(item.weight or 1.0)*item.count
+    end
+    self.deliveryCartCount=types
+    self.deliveryCartTotalUnits=units
+    self.deliveryCartWeight=weight
+    if self.cartButton then
+        self:updateCartButtonVisual()
+    end
+    if self.details and self.details.updateCartButton then
+        self.details:updateCartButton()
+    end
+end
+
+function EmberRoutesWarehousePage:updateCartButtonVisual()
+    if not self.cartButton then return end
+    self.cartButton:setTitle(getText('IGUI_EmberRoutesProbe_Warehouse_cartButton',tostring(self.deliveryCartTotalUnits or 0)))
+    self.cartButton.tooltip=getText('IGUI_EmberRoutesProbe_Warehouse_cartEmptyHint')
+end
+
+function EmberRoutesWarehousePage:toggleCartDrawer(forceState)
+    local newState
+    if type(forceState) == "boolean" then
+        newState = forceState
+    else
+        newState = not self.cartDrawerOpen
+    end
+    self.cartDrawerOpen = newState
+    if newState then
+        local dash = self.owner
+        local w = math.min(360, math.max(300, math.floor(dash.width * 0.38)))
+        local h = dash.height
+        local x = dash:getX() + dash.width + 8
+        local screenW = getCore():getScreenWidth()
+        if x + w > screenW then x = math.max(8, dash:getX() - w - 8) end
+        local y = dash:getY()
+
+        if not self.cartDrawer then
+            self.cartDrawer = CartDrawer:new(self, x, y, w, h)
+        else
+            self.cartDrawer:setX(x)
+            self.cartDrawer:setY(y)
+            self.cartDrawer:setWidth(w)
+            self.cartDrawer:setHeight(h)
+        end
+        self.cartDrawer:addToUIManager()
+        self.cartDrawer:setVisible(true)
+        self.cartDrawer:bringToTop()
+        self.cartDrawer:refresh()
+    else
+        if self.cartDrawer then
+            self.cartDrawer:close()
+        end
+    end
+end
+
+function EmberRoutesWarehousePage:openContainerInspector()
+    if self.containerInspectorDialog then
+        self.containerInspectorDialog:close()
+        self.containerInspectorDialog = nil
+        return
+    end
+    local containers = Index.containers(self.entry.id)
+    local counts = self.store.value.snapshot and self.store.value.snapshot.counts or {}
+    local ContainerInspector = require 'EmberRoutesProbe/UI/ContainerInspectorDialog'
+    self.containerInspectorDialog = ContainerInspector:new(self, self.entry.id, containers, counts)
+    self.containerInspectorDialog:addToUIManager()
+    self.containerInspectorDialog:bringToTop()
+end
+
+function EmberRoutesWarehousePage:dispatchDeliveryCart()
+    if not self.deliveryCart or self.deliveryCartCount==0 then return end
+    if not self.owner:valid() then self.owner:close() return end
+    local items={}
+    for cartKey,itm in pairs(self.deliveryCart) do
+        items[#items+1]={
+            fullType=itm.fullType,
+            quantity=itm.count,
+            sourceId=itm.source and itm.source.id or nil
+        }
+    end
+
+    local PublicWork=require "EmberRoutesProbe/PublicWork"
+    local result="DELIVERY_UNAVAILABLE"
+    if PublicWork and PublicWork.createDeliveryOrder then
+        self.deliveryRequestId=self.deliveryRequestId or require('EmberRoutesProbe/ContainerRegistry').id()
+        result=PublicWork.createDeliveryOrder(self.actor,self.entry.id,items,self.deliveryRequestId)
+    end
+
+    if result=="ORDER_CREATED" then
+        self.deliveryRequestId=nil
+        local HaloTextHelper=_G.HaloTextHelper
+        if HaloTextHelper and HaloTextHelper.addGoodText then
+            HaloTextHelper.addGoodText(self.actor,getText("IGUI_EmberRoutesProbe_Warehouse_cartDispatched"))
+        end
+        local sm=type(getSoundManager)=="function" and getSoundManager()
+        if sm and self.actor and self.actor.getEmitter then
+            self.actor:getEmitter():playSound("StoreItemPlayerInventory")
+        end
+        self:clearDeliveryCart()
+        self:toggleCartDrawer(false)
+    else
+        self.deliveryFeedbackError=true
+        local reasonKeys={ORDER_LIMIT='cartOrderLimit',INVALID_REQUEST='cartInvalidItems',REQUEST_CHANGED='cartInvalidItems',
+            ACCESS_DENIED='cartAccessDenied',OUTSIDE_SETTLEMENT='cartAccessDenied',DRIVER_UNAVAILABLE='cartAccessDenied'}
+        local key=reasonKeys[result] or 'cartRejected'
+        self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_'..key)
+        self:toggleCartDrawer(true)
+        if _G.HaloTextHelper and HaloTextHelper.addBadText then HaloTextHelper.addBadText(self.actor,self.deliveryFeedback) end
+    end
+end
+
+function EmberRoutesWarehousePage:openItemContextMenu(row,screenX,screenY)
+    if not row then return end
+    require "ISUI/ISContextMenu"
+    local playerNum=self.actor:getIndex()
+    local menu=ISContextMenu.get(playerNum,screenX,screenY)
+
+    local hasSources=row.sources and #row.sources>0
+    local locateOpt=menu:addOption(text("locate"),self,function()
+        self:locateSource()
+    end)
+    locateOpt.tooltip=text(hasSources and "locateHint" or "chooseSource")
+    if not hasSources then locateOpt.notAvailable=true end
+
+    if row.fullType and self.owner and self.owner.openPublicOrder then
+        local orderOpt=menu:addOption(getText("IGUI_EmberRoutesProbe_Public_createOrder"),self,function()
+            self.owner:openPublicOrder({productType=row.fullType})
+        end)
+        orderOpt.tooltip=getText("IGUI_EmberRoutesProbe_Public_createOrder")
+    end
+
+    local inCart=self.deliveryCart and self.deliveryCart[row.fullType]~=nil
+    local cartLabel=inCart and text("removeFromCart") or text("addToCart")
+    local cartOpt=menu:addOption(cartLabel,self,function()
+        if inCart then self:removeFromDeliveryCart(row.fullType) else self:onMiddleClickItem(row,false) end
+    end)
+    cartOpt.tooltip=text("cartTitle")
+
+    local pinLabel=text(row.pinned and "unpin" or "pin")
+    local pinOpt=menu:addOption(pinLabel,self,function()
+        self:togglePin(row)
+    end)
+    pinOpt.tooltip=text("pinHint")
+end
 function EmberRoutesWarehousePage:onListJoypad(button)
     if button==Joypad.XButton then self:refresh()
     elseif button==Joypad.YButton then
         self.categories.selected=self.categories.selected%#self.categoryIds+1 self:queryChanged()
-    elseif button==Joypad.LBumper then self:previous()
-    elseif button==Joypad.RBumper then self:nextPage()
+    elseif button==Joypad.LBumper then
+        if self.itemGrid then self.itemGrid:onMouseWheel(-4) end
+    elseif button==Joypad.RBumper then
+        if self.itemGrid then self.itemGrid:onMouseWheel(4) end
     elseif button==Joypad.LStickButton then self:clearSearch()
     elseif button==Joypad.RStickButton then
         self.controls.sort.selected=self.controls.sort.selected%#self.controls.sortIds+1 self:queryChanged()
     end
+end
+function EmberRoutesWarehousePage:update()
+    ISPanel.update(self)
+    Input.delivery(self)
 end
 function EmberRoutesWarehousePage:prerender()
     ISPanel.prerender(self)
@@ -372,9 +666,8 @@ function EmberRoutesWarehousePage:prerender()
     if self.viewMode~="grid" then
         for _,title in ipairs(self.listTitles) do Theme.text(self,title.label,title.x,title.y,Theme.muted) end
     end
-    self.details:draw()
-    self:drawText(self.pageCaption,self.pageX,self.pageY,0.9,0.85,0.65,1,UIFont.Small)
-    for i,line in ipairs(self.hintLines) do self:drawText(line,self.pad,self.hintY+(i-1)*self.fontHeight,0.65,0.74,0.8,1,UIFont.Small) end
+    if self.details then self.details:draw() end
+    -- No header badge, space fully reclaimed by grid
     Metrics.finish("ui.panel",measured)
 end
 return EmberRoutesWarehousePage

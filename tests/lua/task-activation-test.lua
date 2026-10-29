@@ -18,15 +18,15 @@ for _,name in ipairs({'command','tick','reset','clearForSave','actionCarrier','c
     'reportCheckpoint','checkpointMode','checkpointHasHome','checkpointHomeX','checkpointHomeY','checkpointHomeZ',
     'commandFor','carrierFor','selectedId','spawnAdditional','selectCarrier','workerCount','workerIdAt','saveCheckpointFor',
     'blockAllCheckpoints','captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
-    'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','freezeBodyControl',
-    'thawBodyControl','retireBodyControl','removeIdleCarrier'}) do bridge[name]=stub end
+    'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','ownedCarrierId','freezeBodyControl',
+    'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl'}) do bridge[name]=stub end
 EmberRoutesProbeJava=bridge
 local Probe=dofile('Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua')
 package.loaded['EmberRoutesProbe/Boot']=Probe
 check(Probe.controlledExecution==true,'production defaults to complete controlled path')
 local required={'captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
-    'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','freezeBodyControl',
-    'thawBodyControl','retireBodyControl','removeIdleCarrier'}
+    'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','ownedCarrierId','freezeBodyControl',
+    'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl'}
 for _,name in ipairs(required) do
     local original=bridge[name] bridge[name]=nil
     local before=bootCalls callbacks.OnGameStart()

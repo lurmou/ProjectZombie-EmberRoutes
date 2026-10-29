@@ -6,33 +6,46 @@ require "TimedActions/ISInventoryTransferAction"
 local Transfer = {}
 
 function Transfer.reachable(npc, endpoint)
-    local square, current = endpoint.object:getSquare(), npc:getCurrentSquare()
+    local square=endpoint.playerId and endpoint.object:getCurrentSquare() or endpoint.object:getSquare()
+    local current=npc:getCurrentSquare()
     return square and current and Rules.near(npc:getX(), npc:getY(), npc:getZ(),
         square:getX()+0.5, square:getY()+0.5, square:getZ()) and current:canReachTo(square)
 end
 
-function Transfer.move(context, endpoint)
+function Transfer.prepareMove(context,endpoint)
+    local square=luautils.getCorrectSquareForWall(context.npc,endpoint.object:getSquare())
+    if not square then return nil,'CONTAINER_UNAVAILABLE' end
+    local excluded={}
+    for _=1,8 do
+        local candidate=AdjacentFreeTileFinder.Find(square,context.npc,excluded)
+        if not candidate then break end
+        local cell=getCell()
+        if cell and cell:getGridSquare(candidate:getX(),candidate:getY(),candidate:getZ())==candidate
+            and candidate:TreatAsSolidFloor() and not candidate:isSolid() and not candidate:isSolidTrans() then
+            return {object=endpoint.object,square=candidate,x=candidate:getX()+0.5,y=candidate:getY()+0.5,
+                z=candidate:getZ(),at=getTimestampMs()}
+        end
+        excluded[#excluded+1]=candidate
+    end
+    return nil,'NO_WALKABLE_ADJACENT_TILE'
+end
+local function preparedValid(endpoint,p)
+    if not p or p.object~=endpoint.object or getTimestampMs()-p.at>2000 then return false end
+    local s=p.square local cell=getCell()
+    return cell and cell:getGridSquare(s:getX(),s:getY(),s:getZ())==s
+        and s:TreatAsSolidFloor() and not s:isSolid() and not s:isSolidTrans()
+end
+function Transfer.move(context, endpoint,prepared)
     local requested = false
     return {
         timeout=185000,
         start = function()
             if Transfer.reachable(context.npc, endpoint) then return end
-            local square = luautils.getCorrectSquareForWall(context.npc, endpoint.object:getSquare())
-            if not square then return "FAILED", "CONTAINER_UNAVAILABLE" end
-            local excluded, adjacent = {}, nil
-            for _ = 1, 8 do
-                local candidate = AdjacentFreeTileFinder.Find(square, context.npc, excluded)
-                if not candidate then break end
-                local cell = getCell()
-                if cell and cell:getGridSquare(candidate:getX(), candidate:getY(), candidate:getZ()) == candidate
-                        and candidate:TreatAsSolidFloor() and not candidate:isSolid() and not candidate:isSolidTrans() then
-                    adjacent = candidate break
-                end
-                excluded[#excluded+1] = candidate
-            end
-            if not adjacent then return "FAILED", "NO_WALKABLE_ADJACENT_TILE" end
+            local point,why=prepared
+            if not preparedValid(endpoint,point) then point,why=Transfer.prepareMove(context,endpoint) end
+            if not point then return 'FAILED',why end
             local result = Driver.move({handle=context.npc,id=context.job.npcId},context.actor,
-                {x=adjacent:getX()+0.5,y=adjacent:getY()+0.5,z=adjacent:getZ()},context.body)
+                {x=point.x,y=point.y,z=point.z},context.body)
             if not string.find(result, "^MOVE_REQUESTED") then return "FAILED", result end
             requested = true
         end,
@@ -47,12 +60,35 @@ function Transfer.move(context, endpoint)
 end
 
 function Transfer.item(context, item, from, to, endpoint)
-    local action, performed, stopped, notified,attempted
+    local action, performed, stopped, notified,attempted,lastCheck,diagnosed
+    -- Same conjunction and order as before; each clause records its own bucket
+    -- so a mid-action stop can name the failing precondition in diagnostics.
     local function valid()
-        return context.valid() and EmberRoutesProbeJava.carrierActive(context.npc)
-            and Transfer.reachable(context.npc, endpoint) and item:getContainer() == from
-            and from:getItems():contains(item) and to:hasRoomFor(context.npc, item)
-            and context.eligible(item) and Producers.transfer(context,item,from,to)
+        local own=context.npc:getInventory()
+        local ownTransfer=not endpoint and (from==own or from.isInCharacterInventory and from:isInCharacterInventory(context.npc))
+            and (to==own or to.isInCharacterInventory and to:isInCharacterInventory(context.npc))
+        if not context.valid() then lastCheck='CONTEXT_INVALID'
+        elseif not EmberRoutesProbeJava.carrierActive(context.npc) then lastCheck='CARRIER_INACTIVE'
+        elseif not (ownTransfer or endpoint and Transfer.reachable(context.npc, endpoint)) then lastCheck='NOT_REACHABLE'
+        elseif item:getContainer() ~= from then lastCheck='ITEM_MOVED'
+        elseif not from:getItems():contains(item) then lastCheck='ITEM_ABSENT_SOURCE'
+        elseif not to:hasRoomFor(endpoint and endpoint.playerId and endpoint.object or context.npc, item) then lastCheck='DESTINATION_FULL'
+        elseif not context.eligible(item) then lastCheck='ELIGIBILITY_REJECTED'
+        elseif not Producers.transfer(context,item,from,to) then lastCheck='PRODUCER_REJECTED'
+        else return true end
+        return false
+    end
+    local function diagnose(what)
+        local job=context.job
+        require "EmberRoutesProbe/Log".write("TRANSFER",
+            "STOP npc="..(job and job.npcId or "?").." job="..(job and job.id or "?")
+            .." item="..tostring(item and item.getID and item:getID() or "?")
+            .." cause="..what.." check="..tostring(lastCheck)
+            .." from="..tostring(from and from.getType and from:getType() or "?")
+            .." to="..tostring(to and to.getType and to:getType() or "?")
+            .." source="..tostring(job and job.source or "?")
+            .." destination="..tostring(job and job.destination or "?")
+            .." performed="..tostring(performed==true).." stopped="..tostring(stopped==true))
     end
     return {
         start = function()
@@ -62,14 +98,20 @@ function Transfer.item(context, item, from, to, endpoint)
             action.useProgressBar, action.forceProgressBar = false, false
             local nativeValid, nativePerform, nativeStop = action.isValid, action.perform, action.stop
             local nativeAnim, nativeUpdate = action.startActionAnim, action.update
-            action.isValid = function(self) return valid() and nativeValid(self) end
+            action.isValid = function(self)
+                if not valid() then return false end
+                local ok = nativeValid(self)
+                if not ok then lastCheck='NATIVE_ISVALID' end
+                return ok
+            end
             action.startActionAnim = function(self)
                 if context.body and not context.body.current() then return end
                 nativeAnim(self) self.selectedContainer = nil
             end
             action.update = function(self)
                 if context.body and not context.body.current() then return end
-                nativeUpdate(self) self.character:faceThisObject(endpoint.object)
+                nativeUpdate(self)
+                if endpoint then self.character:faceThisObject(endpoint.object) end
             end
             action.perform = function(self)
                 if context.body and attempted then return end
@@ -90,7 +132,13 @@ function Transfer.item(context, item, from, to, endpoint)
         end,
         poll = function()
             if ISTimedActionQueue.hasAction(action) then return "WAIT" end
-            if not performed or stopped then return "FAILED", "NATIVE_TRANSFER_STOPPED" end
+            if not performed or stopped then
+                if not diagnosed then
+                    diagnosed=true
+                    diagnose(lastCheck and 'PRECONDITION' or stopped and 'EXTERNAL_STOP' or 'UNPERFORMED')
+                end
+                return "FAILED", "NATIVE_TRANSFER_STOPPED"
+            end
             if item:getContainer() ~= to or not to:getItems():contains(item) or from:getItems():contains(item) then
                 return "FAILED", "INSTANCE_TRANSFER_MISMATCH"
             end

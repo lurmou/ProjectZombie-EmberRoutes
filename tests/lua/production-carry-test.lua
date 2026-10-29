@@ -30,6 +30,31 @@ local io={isDestroy=function() return true end}
 check(Carry.consumed(item,{keep=false,io=io})==9,'whole destroy input receives credit')
 check(Carry.consumed(item,{keep=true,io=io})==0,'tool never receives consumption credit')
 check(Carry.consumed(item,{keep=false,io={}})==0,'unknown/partial input stays conservative')
+local script={getReplaceOnDeplete=function() return nil end}
+local plain={getUnequippedWeight=function() return 6 end,getCurrentUses=function() return 1 end,
+    getScriptItem=function() return script end,getReplaceOnUse=function() return nil end,
+    getFluidContainer=function() return nil end,getContainer=function() return {} end}
+local normal={isDestroy=function() return false end,isUsesPartialItem=function() return false end,
+    hasConsumeFromItem=function() return false end,hasCreateToItem=function() return false end}
+check(Carry.consumed(plain,{keep=false,io=normal})==6,'ordinary single-use branch is consumed despite mode not Destroy')
+root.weight=0 npc.maximum=6
+check(Carry.fits(npc,7,Carry.consumed(plain,{keep=false,io=normal}),3),
+    'reported branch and saw: peak is 7, not input plus output 10')
+plain.getCurrentUses=function() return 5 end
+check(Carry.consumed(plain,{keep=false,io=normal})==0,'multi-use ordinary input does not free its full weight')
+plain.getCurrentUses=function() return 1 end
+script.getReplaceOnDeplete=function() return 'Base.Bowl' end
+check(Carry.consumed(plain,{keep=false,io=normal})==0,'replacement vessel is not treated as absent')
+script.getReplaceOnDeplete=function() return nil end
+normal.isUsesPartialItem=function() return true end
+check(Carry.consumed(plain,{keep=false,io=normal})==0,'partial-use inputs cannot receive whole-item credit')
+normal.isUsesPartialItem=function() return false end
+local spec={inputs={{slot=0,count=1,keep=false,io=normal}},outputWeight=3}
+local plan={materials={{id=1,slot=0}},tools={},locations={[1]={item=plain}}}
+check(Carry.plan(npc,spec,plan),'public preclaim uses exact one-batch weights')
+plan.materials[2]={id=2,slot=0} plan.locations[2]={item=plain}
+check(Carry.plan(npc,spec,plan),'future batches in a large public order are not carried all at once')
+npc.maximum=3 check(not Carry.plan(npc,spec,plan),'genuine inability to carry inputs rejects before public allocation')
 root.weight=0/0
 check(not Carry.fits(npc,1),'NaN weight fails closed')
 root.weight=0 npc.maximum=math.huge

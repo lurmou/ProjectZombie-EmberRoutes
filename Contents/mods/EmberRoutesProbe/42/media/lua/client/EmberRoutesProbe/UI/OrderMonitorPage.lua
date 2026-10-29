@@ -1,6 +1,7 @@
 require 'ISUI/ISPanel'
 require 'ISUI/ISButton'
 require 'ISUI/ISComboBox'
+require 'ISUI/ISModalDialog'
 local Service=require 'EmberRoutesProbe/OrderMonitorService'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local State=require 'EmberRoutesProbe/UI/State'
@@ -8,6 +9,7 @@ local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Lifecycle=require 'EmberRoutesProbe/UI/PageLifecycle'
 local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local FilterChips=require 'EmberRoutesProbe/UI/FilterChips'
 local Cards=require 'EmberRoutesProbe/UI/OrderMonitorCards'
 local text=Cards.text
 local filters={'open','active','waiting','paused','attention','closed'}
@@ -20,7 +22,7 @@ local filters={'open','active','waiting','paused','attention','closed'}
 ---@field pad number
 ---@field buttons table
 ---@field store table
----@field filterCombo ISComboBox
+---@field filterChips EmberRoutesFilterChips
 ---@field narrow boolean
 ---@field orderList EmberRoutesCachedList
 ---@field details table
@@ -31,6 +33,7 @@ local filters={'open','active','waiting','paused','attention','closed'}
 ---@field noticeLines table?
 ---@field active boolean?
 ---@field disposed boolean?
+---@field cancelModal ISModalDialog?
 EmberRoutesOrderMonitorPage=ISPanel:derive('EmberRoutesOrderMonitorPage')
 
 ---@param owner EmberRoutesSettlementDashboard
@@ -57,12 +60,17 @@ function EmberRoutesOrderMonitorPage:createChildren()
         {{basis=h+p},{grow=1},{basis=h+p},{basis=h*1.5+p}},
         {direction='column',padding=p,gap=p/2}))
 
-    -- Top bar: Filter combo + [Create Order] button + [Details] + [Refresh]
-    local top=assert(Layout.axis(regions[1],{{grow=1},{basis=h*8},{basis=h*5},{basis=h*5}},{gap=p/2}))
-    self.filterCombo=ISComboBox:new(top[1].x,top[1].y,top[1].width,top[1].height,self,EmberRoutesOrderMonitorPage.filterChanged)
-    self.filterCombo:initialise()
-    for _,key in ipairs(filters) do self.filterCombo:addOption(text('filter_'..key)) end
-    self:addChild(self.filterCombo)
+    -- Top bar: Filter chips + [Create Order] button + [Details] + [Refresh]
+    local top=assert(Layout.axis(regions[1],{{grow=1},{basis=h*7},{basis=h*4},{basis=h*4}},{gap=p/2}))
+    self.filterChips=FilterChips:new(top[1].x,top[1].y,top[1].width,top[1].height,function(id)
+        self.store:setState({filter=id})
+    end)
+    local defaultChips={}
+    for _,key in ipairs(filters) do
+        defaultChips[#defaultChips+1]={id=key,label=text('filter_'..key)}
+    end
+    self.filterChips:setOptions(defaultChips,'open')
+    self:addChild(self.filterChips)
 
     local function button(key,label,r,fn,isPrimary)
         local caption=require('EmberRoutesProbe/UI/Text').wrapLimited(label,r.width-p*2,UIFont.Small,1)[1]
@@ -129,6 +137,25 @@ end
 
 function EmberRoutesOrderMonitorPage:project(value)
     if not self.active then return end
+    local counts = {open=0, active=0, waiting=0, paused=0, attention=0, closed=0}
+    for _, r in ipairs(value.snapshot.rows or {}) do
+        if not r.closed then counts.open = counts.open + 1 end
+        if r.bucket and counts[r.bucket] ~= nil then
+            counts[r.bucket] = counts[r.bucket] + 1
+        end
+    end
+    if self.filterChips then
+        local chipOptions = {
+            {id='open', label=text('filter_open'), count=counts.open},
+            {id='active', label=text('filter_active'), count=counts.active, glyph='●'},
+            {id='waiting', label=text('filter_waiting'), count=counts.waiting, glyph='▲'},
+            {id='paused', label=text('filter_paused'), count=counts.paused, glyph='❚❚'},
+            {id='attention', label=text('filter_attention'), count=counts.attention, glyph='◆', alert=(counts.attention > 0)},
+            {id='closed', label=text('filter_closed'), count=counts.closed, glyph='✔'},
+        }
+        self.filterChips:setOptions(chipOptions, value.filter)
+    end
+
     local rows={}
     for _,row in ipairs(value.snapshot.rows) do
         if value.filter=='open' and not row.closed or row.bucket==value.filter then rows[#rows+1]=row end
@@ -153,7 +180,55 @@ function EmberRoutesOrderMonitorPage:project(value)
 end
 
 function EmberRoutesOrderMonitorPage:command(action)
-    local row=self.selected
+    local row=type(self.selected)=='table' and self.selected or nil
+    if not self.active or not row then return end
+    if not self.owner:valid() then self.owner:close() return end
+    if action=='return' then
+        self:promptCancel(row)
+        return
+    end
+    self:executeCommand(action,row)
+end
+
+function EmberRoutesOrderMonitorPage:promptCancel(row)
+    if self.cancelModal then return end
+    row=type(row)=='table' and row or (type(self.selected)=='table' and self.selected or nil)
+    if not row then return end
+    local count=row.produced or row.delivered or 0
+    local message=string.format(getTextOrNull('IGUI_EmberRoutesProbe_Order_cancelConfirm') or 'IGUI_EmberRoutesProbe_Order_cancelConfirm',tostring(count))
+    local w=math.min(self.width,self.fontHeight*28)
+    local absX=self.getAbsoluteX and self:getAbsoluteX() or self.x or 0
+    local absY=self.getAbsoluteY and self:getAbsoluteY() or self.y or 0
+    local x=absX+(self.width-w)/2
+    local y=absY+self.fontHeight*3
+    local modal=ISModalDialog:new(x,y,w,0,message,true,self,
+        EmberRoutesOrderMonitorPage.onConfirmCancel,self.actor:getIndex(),row)
+    function modal:destroy()
+        self:setVisible(false)
+        self:removeFromUIManager()
+    end
+    self.cancelModal=modal
+    modal:initialise()
+    modal:addToUIManager()
+    if self.actor:getJoypadBind()~=-1 then
+        setJoypadFocus(self.actor:getIndex(),modal)
+    end
+end
+
+function EmberRoutesOrderMonitorPage:onConfirmCancel(button,row)
+    self.cancelModal=nil
+    local confirmed=false
+    if button==true or button=='YES' then
+        confirmed=true
+    elseif type(button)=='table' then
+        confirmed=(button.internal=='YES' or button.internal=='OK' or button.internal==true)
+    end
+    if not confirmed then return end
+    self:executeCommand('return',row)
+end
+
+function EmberRoutesOrderMonitorPage:executeCommand(action,row)
+    row=row or self.selected
     if not self.active or not row then return end
     if not self.owner:valid() then self.owner:close() return end
     local result=Service.command(self.actor,self.entry.id,row.id,row.generation,action)
@@ -163,10 +238,13 @@ end
 
 function EmberRoutesOrderMonitorPage:deactivate()
     Lifecycle.unmount(self)
-    Tooltip.clear(self.orderList)
-    Tooltip.clear(self.details.list)
-    if self.filterCombo.hidePopup then self.filterCombo:hidePopup() end
-    for _,btn in pairs(self.buttons) do Tooltip.clear(btn) end
+    if self.cancelModal then
+        self.cancelModal:destroy()
+        self.cancelModal=nil
+    end
+    if self.orderList then Tooltip.clear(self.orderList) end
+    if self.details and self.details.list then Tooltip.clear(self.details.list) end
+    for _,btn in pairs(self.buttons or {}) do Tooltip.clear(btn) end
 end
 
 function EmberRoutesOrderMonitorPage:dispose()

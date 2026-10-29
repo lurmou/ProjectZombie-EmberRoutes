@@ -8,6 +8,7 @@ Events=setmetatable({OnGameStart={Add=function(fn) events[#events+1]=fn end}},{
 })
 function getTexture(path) return path end
 function getText(key) return ERTestTranslations and ERTestTranslations[key] or key end
+function getTextOrNull(key) return ERTestTranslations and ERTestTranslations[key] end
 UIFont={Small=1}
 function getCore() return {getScreenWidth=function() return 1920 end} end
 function getTextManager() return {MeasureStringX=function(_,_,s) return #s*8 end} end

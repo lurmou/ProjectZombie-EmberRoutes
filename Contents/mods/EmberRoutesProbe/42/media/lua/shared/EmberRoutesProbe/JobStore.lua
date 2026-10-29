@@ -1,5 +1,5 @@
 -- Independent persistent Job identity. No Session, asset authority or scheduler.
-local Store={LIMIT=512}
+local Store={LIMIT=512,PERSONAL_LIMIT=256}
 local states={PREPARING=true,RUNNING=true,STOPPING=true,SUSPENDED=true,SETTLING=true,
     DONE=true,CANCELLED=true,RECONCILE_REQUIRED=true}
 local terminal={DONE=true,CANCELLED=true}
@@ -32,11 +32,13 @@ local function copy(value,seen,budget,depth)
 end
 local function detached(value) return copy(value,{},{n=0},0) end
 local function valid(job)
-    return type(job)=='table' and id(job.id) and id(job.npcId) and id(job.providerType)
+    local basic=type(job)=='table' and id(job.id) and id(job.npcId) and id(job.providerType)
         and id(job.scopeId) and integer(job.revision) and job.revision>0 and states[job.state]
         and (job.effects=='KNOWN' or job.effects=='UNKNOWN') and type(job.obligations)=='table'
         and type(job.payload)=='table' and (not job.orderId or id(job.orderId))
         and (not terminal[job.state] or job.effects=='KNOWN' and empty(job.obligations))
+    return basic and (job.providerType~='COOKING' or require('EmberRoutesProbe/CookingRecord').valid(job))
+        and (job.providerType~='ACTIVITY' or require('EmberRoutesProbe/ActivityRecord').valid(job))
 end
 local function legacy(root)
     local craft,labor=root.craftProbes,root.labor
@@ -49,28 +51,57 @@ function Store.open(root)
     local saved=root.taskJobs
     if saved~=nil and (type(saved)~='table' or saved.format~=1 or type(saved.byId)~='table') then return nil,'JOB_FORMAT_UNSUPPORTED' end
     local data=saved or {format=1,byId={}}
-    local byNpc,count={},0
+    local byNpc,count,personal,personalByNpc={},0,0,{}
     for key,job in pairs(data.byId) do
         if not valid(job) or job.id~=key then return nil,'JOB_RECORD_INVALID' end
         local ok=pcall(detached,job) if not ok then return nil,'JOB_DATA_UNSERIALIZABLE' end
-        count=count+1 if count>Store.LIMIT then return nil,'JOB_LIMIT' end
+        if job.providerType=='SELF_CARE' then
+            if personalByNpc[job.npcId] then return nil,'PERSONAL_JOB_DUPLICATED' end
+            personalByNpc[job.npcId]=key personal=personal+1
+            if personal>Store.PERSONAL_LIMIT then return nil,'PERSONAL_JOB_LIMIT' end
+        else
+            count=count+1 if count>Store.LIMIT then return nil,'JOB_LIMIT' end
+        end
         byNpc[job.npcId]=byNpc[job.npcId] or {} byNpc[job.npcId][key]=true
     end
     root.taskJobs=data
     local api={}
+    function api:ordinaryCount() return count end
+    -- Read-only live view for per-frame validation paths. Callers must not
+    -- mutate the returned record; detached copies remain the only published form.
+    function api:peek(key) return data.byId[key] end
+    -- Same internal read-only contract as peek; uses the unique personal index.
+    function api:peekPersonal(npcId) return data.byId[personalByNpc[npcId]] end
+    -- Internal read-only visitor: use the existing index, without a whole-ledger scan or payload copies.
+    function api:visitNpc(npcId,visitor)
+        for key in pairs(byNpc[npcId] or {}) do local job=data.byId[key] if job then visitor(job) end end
+    end
     function api:get(key) return data.byId[key] and detached(data.byId[key]) end
-    function api:forNpc(npcId)
+    function api:forNpc(npcId,providerType)
+        if providerType=='SELF_CARE' then
+            local key=personalByNpc[npcId]
+            return key and {detached(data.byId[key])} or {}
+        end
         local result={}
-        for key in pairs(byNpc[npcId] or {}) do result[#result+1]=detached(data.byId[key]) end
+        for key in pairs(byNpc[npcId] or {}) do
+            local job=data.byId[key]
+            if not providerType or job.providerType==providerType then result[#result+1]=detached(job) end
+        end
         table.sort(result,function(a,b) return a.id<b.id end)
         return result
     end
     function api:create(job)
         if not valid(job) or job.revision~=1 or job.state~='PREPARING' or job.effects~='KNOWN' then return false,'JOB_RECORD_INVALID' end
         if data.byId[job.id] then return false,'JOB_EXISTS' end
-        if count>=Store.LIMIT then return false,'JOB_LIMIT' end
+        if job.providerType=='SELF_CARE' then
+            if personalByNpc[job.npcId] then return false,'PERSONAL_JOB_EXISTS' end
+            if personal>=Store.PERSONAL_LIMIT then return false,'PERSONAL_JOB_LIMIT' end
+        elseif count>=Store.LIMIT then return false,'JOB_LIMIT' end
         local ok,value=pcall(detached,job) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
-        data.byId[value.id]=value count=count+1
+        data.byId[value.id]=value
+        if value.providerType=='SELF_CARE' then
+            personal=personal+1 personalByNpc[value.npcId]=value.id
+        else count=count+1 end
         byNpc[value.npcId]=byNpc[value.npcId] or {} byNpc[value.npcId][value.id]=true
         return true
     end
@@ -86,10 +117,43 @@ function Store.open(root)
         for field,value in pairs(patch) do candidate[field]=value end
         candidate.revision=revision+1
         if not valid(candidate) then return false,'JOB_RECORD_INVALID' end
+        if old.providerType=='COOKING' and not require('EmberRoutesProbe/CookingRecord').transition(old,candidate) then
+            return false,'COOKING_TRANSITION_INVALID'
+        end
         if candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
         data.byId[key]=value
         return true,value.revision
+    end
+    -- Only LaborStore's verified physical handoff uses this narrow operation.
+    -- Ordinary update cannot rewrite stable ownership or the indexed NPC.
+    function api:transferCooking(key,revision,candidate)
+        local old=data.byId[key]
+        if not old or old.revision~=revision or not valid(candidate)
+            or not require('EmberRoutesProbe/CookingRecord').transferValid(old,candidate) then return false,'COOKING_HANDOFF_CHANGED' end
+        for otherId in pairs(byNpc[candidate.npcId] or {}) do
+            local other=data.byId[otherId]
+            if not terminal[other.state] then
+                if other.providerType~='SELF_CARE' or other.effects~='KNOWN' or not empty(other.obligations)
+                    or #(other.payload.claims or {})>0 then return false,'OTHER_TASK_RETAINED' end
+            end
+        end
+        local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
+        data.byId[key]=value byNpc[old.npcId][key]=nil
+        if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end
+        byNpc[value.npcId]=byNpc[value.npcId] or {} byNpc[value.npcId][key]=true
+        return true
+    end
+    function api:removeSettled(key,revision)
+        local old=data.byId[key]
+        if not old or old.revision~=revision then return false,'JOB_CHANGED' end
+        if old.providerType=='SELF_CARE' or not terminal[old.state]
+            or old.effects~='KNOWN' or not empty(old.obligations) then return false,'JOB_NOT_SETTLED' end
+        data.byId[key]=nil
+        byNpc[old.npcId][key]=nil
+        if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end
+        count=count-1
+        return true
     end
     return api
 end

@@ -7,7 +7,18 @@ local Diagnostic=require 'EmberRoutesProbe/TaskDiagnostic'
 local Persistence = {}
 local restoreQueue
 local legacyStockResume
-local function managed() return require 'EmberRoutesProbe/TaskPersistence' end
+local worldSaveRequest
+-- Kahlua's require machinery (string concat + loader walk) cost ~0.05ms per
+-- tick when this ran in the idle fast-path gate. The in-game host does not
+-- expose _G.package, so a package.loaded shortcut is test-only; cache the
+-- resolved module instead — its identity never changes within a session, and
+-- replaced-module stubs install before first resolution.
+local TaskPersistenceKey='EmberRoutesProbe/TaskPersistence'
+local taskPersistenceModule
+local function managed()
+    if not taskPersistenceModule then taskPersistenceModule=require(TaskPersistenceKey) end
+    return taskPersistenceModule
+end
 local function ids()
     local result={}
     if EmberRoutesProbeJava.workerCount then
@@ -39,10 +50,45 @@ function Persistence.restore(actor,id)
     return result
 end
 
-function Persistence.tick()
+local slowPathEntries=0
+-- Slow-path body, measured as its own bucket and annotated once per ~300
+-- entries (≈3-4s at game tick rate) with which gate kept the tick active — a
+-- steady PersistWork cost at idle means one of these conditions is stuck and
+-- the log names it. Counter-based so no clock global is required here.
+local function tickWork()
+    slowPathEntries=slowPathEntries+1
+    if slowPathEntries%300==1 then
+        local gate=Probe.restorePending and 'RESTORE_PENDING' or restoreQueue and 'RESTORE_QUEUE'
+            or legacyStockResume and 'LEGACY_STOCK' or 'MANAGED_PENDING'
+        Log.write('PERSISTENCE','SLOW_PATH gate='..gate..' entries='..slowPathEntries)
+    end
     if not Probe.ready or not Probe.hasJava() then return end
     local actor=getSpecificPlayer(0)
     if not actor or actor:isDead() or not actor:getCurrentSquare() then return end
+    if worldSaveRequest then
+        local request=worldSaveRequest
+        if request.world~=require('EmberRoutesProbe/ContainerRegistry').data() then worldSaveRequest=nil return end
+        local ready,reason=managed().ready()
+        if reason or getTimestampMs()>request.deadline then
+            worldSaveRequest=nil
+            managed().failed(reason or 'SAVE_PREPARE_TIMEOUT')
+            actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparationFailed'))
+            return
+        end
+        if ready then
+            worldSaveRequest=nil
+            -- A normal quit must reach this same barrier before the engine's
+            -- synchronous OnSave. Never attempt to animate inside OnSave.
+            local ok,err
+            if request.exit then ok,err=pcall(request.exit)
+            else ok,err=pcall(request.save,true) end
+            if not ok then
+                managed().failed('NATIVE_SAVE_FAILED '..tostring(err))
+                actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparationFailed'))
+            end
+            return
+        end
+    end
     if Probe.controlledExecution==true then
         local ok,why=pcall(managed().tick,actor)
         if not ok then managed().failed('LIVE_RECOVERY_ERROR '..tostring(why)) end
@@ -66,6 +112,13 @@ function Persistence.tick()
         if selected and selected~="" then EmberRoutesProbeJava.selectCarrier(selected) end
     end
     Log.write("PERSISTENCE","AUTO npc="..id.." "..tostring(result))
+end
+
+function Persistence.tick()
+    if not worldSaveRequest and not Probe.restorePending and not restoreQueue and not legacyStockResume
+        and (Probe.controlledExecution~=true or not managed().pending()) then return end
+    local Performance=require 'EmberRoutesProbe/RuntimeMetrics'
+    if Performance.active() then Performance.measure('PersistWork',tickWork) else tickWork() end
 end
 
 local function captureOnSave()
@@ -135,6 +188,24 @@ function Persistence.prepare()
     return true
 end
 
+function Persistence.requestExit(exit)
+    if Probe.enabled==false or not Probe.ready or not Probe.hasJava() or Probe.controlledExecution~=true
+        or isClient() or isServer() then return false end
+    if worldSaveRequest then return true end
+    local actor=getSpecificPlayer(0)
+    if not actor or actor:isDead() then return false end
+    local ok,reason=Persistence.prepare()
+    if not ok then
+        Log.write('PERSISTENCE','EXIT_PREPARE_FAILED '..tostring(reason))
+        actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparationFailed'))
+        return true
+    end
+    worldSaveRequest={world=require('EmberRoutesProbe/ContainerRegistry').data(),
+        exit=exit,deadline=getTimestampMs()+15000}
+    actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparing'))
+    return true
+end
+
 local function sampleRequest(actor,command)
     return Diagnostic.submit(actor,'PERSISTENCE_SAMPLE',{
         assets=command~='recover',recovery=command=='clearsample',
@@ -181,17 +252,20 @@ function Persistence.execute(actor, command)
         if isClient() or isServer() then result = "DRIVER_UNAVAILABLE"
         elseif type(nativeSave) ~= "function" then result = "SAVE_API_UNAVAILABLE"
         else
+            if worldSaveRequest then
+                actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparing')) return 'WORLD_SAVE_PREPARING'
+            end
             local ok,reason=Persistence.prepare()
             if not ok then result=reason
+            elseif Probe.controlledExecution==true then
+                worldSaveRequest={world=require('EmberRoutesProbe/ContainerRegistry').data(),
+                    save=nativeSave,deadline=getTimestampMs()+15000}
+                actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparing'))
+                return 'WORLD_SAVE_PREPARING'
             else
                 local saved,err=pcall(nativeSave,true)
-                if saved then result = "WORLD_SAVE_REQUESTED"
-                else
-                    legacyStockResume=nil
-                    if Probe.controlledExecution==true then managed().failed('NATIVE_SAVE_FAILED '..tostring(err)) end
-                    result='WORLD_SAVE_FAILED'
-                    Log.write('PERSISTENCE','NATIVE_SAVE_FAILED '..tostring(err))
-                end
+                if saved then result='WORLD_SAVE_REQUESTED'
+                else result='WORLD_SAVE_FAILED' Log.write('PERSISTENCE','NATIVE_SAVE_FAILED '..tostring(err)) end
             end
         end
     elseif command == "sample" or command == "checksample" or command == "clearsample" or command == "recover" then
@@ -228,8 +302,9 @@ Probe.prepareTaskRecovery=function()
     elseif Probe.resetStock then Probe.resetStock() end
 end
 Probe.resetPersistence=function()
-    restoreQueue=nil legacyStockResume=nil
+    restoreQueue=nil legacyStockResume=nil worldSaveRequest=nil
     if Probe.controlledExecution==true then managed().reset() end
     if Probe.resetStock then Probe.resetStock() end
 end
+require('EmberRoutesProbe/ExitSave').install(Persistence)
 return Persistence

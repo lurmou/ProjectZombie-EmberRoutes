@@ -14,9 +14,11 @@ local Signals=require "EmberRoutesProbe/LaborSignals"
 local Log=require "EmberRoutesProbe/Log"
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Production={}
+local Yield=require 'EmberRoutesProbe/ProductionYield'
 local contexts,candidates,pending={},{},{}
 local requests={}
 local waiting,inventoryDirty,inventoryRevision={},false,0
+local yieldWorld,yieldIds,yieldCursor,yieldScan,yieldRetry=nil,{},0,0,{}
 local function inventoryChanged() inventoryDirty=true inventoryRevision=inventoryRevision+1 end
 if Registry.inventoryListeners then Registry.inventoryListeners[#Registry.inventoryListeners+1]=inventoryChanged end
 if Events.OnContainerUpdate then Events.OnContainerUpdate.Add(inventoryChanged) end
@@ -35,6 +37,10 @@ end
 function Production.busy(id) return contexts[id]~=nil end
 local function rejectUncollected(c,fact)
     local r=c.record
+    -- A public demand is not cancelled because its worker's capacity changed.
+    -- Keep its exact Job paused/resumable; ordinary discovery rejects known
+    -- overweight first batches before allocating a public Job in the first place.
+    if r.orderId then return end
     if fact.bodyStopped~=true or fact.effects~='KNOWN' or r.reason~='CAPACITY_UNAVAILABLE'
         or r.uncertain or r.unitMade or r.produced~=0 or r.delivered~=0
         or (r.chain and r.chain.index>1) then return end
@@ -155,7 +161,7 @@ local function context(actor,binding,r,entry,object,body)
             and r.generation==c.generation and r.state=="RUNNING" and not actor:isDead()
             and actor:getUsername()==r.requester and Driver.valid(binding)
             and c.npc:getBodyDamage():getOverallBodyHealth()>=95
-            and Supply.entry(actor,c.npc,c.object,r.settlementId)~=nil and Store.validNative(r,c.token)
+            and Supply.entry(actor,c.npc,c.object,r.settlementId,true)~=nil and Store.validNative(r,c.token)
     end
     c.changed=function(message) changed(c,message) end
     return c
@@ -163,7 +169,7 @@ end
 local function makePlan(c,select)
     if c.record.chain and c.record.chain.index==0 and not c.returnOnly then
         local r=c.record
-        c.chainRequest=require("EmberRoutesProbe/ProductionChain").new(c.actor,c.npc,c.entry,r.recipeId,r.requested,c.object,r.id)
+        c.chainRequest=require("EmberRoutesProbe/ProductionChain").new(c.actor,c.npc,c.entry,r.recipeId,r.requested,c.object,r.id,false,r.preferences)
         c.planning=true return true
     end
     local spec,reason
@@ -191,7 +197,7 @@ local function activateNode(c,index)
         object,reason=Surfaces.resolve(node.location,node.benchId)
         if not object then return nil,reason or "CRAFT_SURFACE_REQUIRED" end
     end
-    local entry,why=Supply.entry(c.actor,c.npc,object,r.settlementId) if not entry then return nil,why end
+    local entry,why=Supply.entry(c.actor,c.npc,object,r.settlementId,true) if not entry then return nil,why end
     local proposed={} for k,v in pairs(r) do proposed[k]=v end
     proposed.recipeId=node.recipeId proposed.signature=node.signature proposed.product=spec.product proposed.recipeName=spec.name
     proposed.requested=node.requested proposed.target=node.requested proposed.unitYield=spec.yield proposed.produced=0 proposed.delivered=0
@@ -244,15 +250,25 @@ local function deliver(c,asset,callback)
 end
 local function finish(c)
     local r=c.record releaseBench(c)
+    local manual
+    if c.returnOnly and r.activityYield and r.activityYield.kind=='MANUAL' and not r.activityYield.cancelled then
+        manual=Yield.manualPlan(r)
+        if not manual then r.uncertain=true end
+    end
     if r.uncertain then r.state="RECONCILE_REQUIRED" r.phase=r.state r.reason="RECONCILE_REQUIRED"
     else
-        r.state=c.returnOnly and "CANCELLED" or "DONE" r.phase=r.state
-        if not c.returnOnly and r.reason~="TARGET_REACHED" then r.reason=nil end
         Store.finishNative(r)
-        r.released=true
+        if manual and not manual.complete then Yield.applyManual(r,manual)
+        else
+            r.state=manual and manual.complete and 'DONE' or c.returnOnly and "CANCELLED" or "DONE" r.phase=r.state
+            if r.activityYield then r.reason=r.activityYield.cancelled and 'USER_CANCEL' or 'ACTIVITY_YIELD' end
+            if not c.returnOnly and r.reason~="TARGET_REACHED" then r.reason=nil end
+            r.released=true
+        end
         inventoryChanged()
     end
-    r.generation=r.generation+1 c.completed=true c.closedGeneration=r.generation contexts[r.npcId]=nil changed(c,r.state)
+    r.generation=r.generation+1 c.completed=true c.closedGeneration=r.generation contexts[r.npcId]=nil
+    require('EmberRoutesProbe/BusinessJobs').refresh(r.id) changed(c,r.state)
 end
 local function prepare(c)
     if c.chainRequest then
@@ -321,6 +337,11 @@ local function prepare(c)
 end
 local function advance(c)
     local r=c.record local root=c.npc:getInventory()
+    if not c.returnOnly and Probe.activityContext and Yield.request(r,Probe.activityContext(r.npcId)) then
+        -- Native craft actions have already performed/stopped before advance().
+        -- Reuse original return-only reconciliation; no further unit is started.
+        c.returnOnly=true r.reason='ACTIVITY_YIELD' changed(c,'ACTIVITY_YIELD')
+    end
     if c.returnOnly then
         c.returned=c.returned or {}
         for _,name in ipairs({"materials","outputs","tools","held"}) do
@@ -474,10 +495,12 @@ local function execute(actor,command,object,id,options,body,validateOnly)
             requested=n,target=math.ceil(n/spec.yield)*spec.yield,produced=0,delivered=0,materials={},tools={},outputs={},
             settlementId=entry.id,benchId=benchId,surface=object and Surfaces.location(object) or nil,released=false}
         if options.origin then r.origin=options.origin end
+        r.workerName=require('EmberRoutesProbe/DisplayNames').name(id,npc)
         if options.orderId then r.orderId=options.orderId end
         if options.chain then
             local goal={} for _,key in ipairs({"recipeId","recipeName","product","signature","requested","target","unitYield","produced","delivered"}) do goal[key]=r[key] end
             r.chain={format=1,index=0,nodes={},goal=goal} r.held={}
+            if options.preferences then r.preferences=options.preferences end
         end
         local token,reason=Store.claimNative(r) if not token then return reason end
         local published,why=require('EmberRoutesProbe/BusinessJobs').publishCraft(r)
@@ -489,19 +512,32 @@ local function execute(actor,command,object,id,options,body,validateOnly)
         changed(c,"STARTED "..r.recipeId.." target="..r.target) return "STARTED"
     end
     if not r or r.format~=3 or r.released then return "NO_CARGO" end
+    local explicitCancel=r.activityYield and command=='return' and options.nonPreemptive~=true
+    -- Once return-to-yield starts, save/reload or a resume cannot restart work
+    -- before all of this attempt's originals have been reconciled.
+    local freed=Yield.assetFree(r)
+    if r.activityYield and not freed and command=='resume' then command='return' end
     if r.requester~=actor:getUsername() then return "OWNER_CHANGED" end
     if command~="resume" and command~="return" then return "INVALID_COMMAND" end
     if command=="resume" and (r.uncertain or r.phase=="COMMITTING") then return "RECONCILE_REQUIRED" end
     if command=="resume" and not r.unitMade and r.surface then
         local resolved,why=Surfaces.resolve(r.surface,r.benchId) if not resolved then return why end object=resolved
     else object=nil end
-    local entry,reason=Supply.entry(actor,npc,object,r.settlementId) if not entry then return reason end
+    local entry,reason=Supply.entry(actor,npc,object,r.settlementId,true) if not entry then return reason end
     if validateOnly then return true end
     if not body then Probe.cancelAll("ACTION_ORDER",id) end
     if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
+    if freed then Store.data() end -- Rebuild against the still-valid asset-free snapshot first.
     r.generation=r.generation+1 r.state="RUNNING" r.reason=nil
+    local marker=r.activityYield
+    if freed and command=='resume' then r.activityYield=nil end
     local token,why=Store.claimNative(r)
-    if not token then r.state="PAUSED" r.reason=why return why end
+    if not token then
+        if freed then r.activityYield=marker marker.blockedReason=why end
+        r.state="PAUSED" r.reason=freed and 'ACTIVITY_YIELD' or why return why
+    end
+    if explicitCancel then r.activityYield.cancelled=true end
+    require('EmberRoutesProbe/BusinessJobs').refresh(r.id)
     local c=context(actor,binding,r,entry,object,body) c.token=token c.returnOnly=command=="return" contexts[id]=c
     local ready,failed=makePlan(c,r.phase=="PLANNING" and not c.returnOnly)
     if not ready then Production.pause(failed,id) return failed end
@@ -523,9 +559,25 @@ function Production.execute(actor,command,object,id,options)
     if not jobId then return 'NO_CARGO' end
     if command=='run' then copy.taskId=jobId end
     local c
+    local member=command=='run' and require('EmberRoutesProbe/MembershipService').view(id)
+    local membershipRevision=member and member.revision
     local handle,why=runtime:submit({npcId=id,jobId=jobId,kind='PRODUCTION',binding=Driver.bindId(actor,id),
         nonPreemptive=copy.nonPreemptive==true,captureStop=true,reconcileErrors=true,
         validate=function()
+            if copy.activityResumeEpoch~=nil then
+                local binding=Driver.bindId(actor,id)
+                if not binding or require('EmberRoutesProbe/TaskResume').epoch(id)~=copy.activityResumeEpoch
+                    or Probe.activityContext and Probe.activityContext(id) or Probe.careBlocksWork and Probe.careBlocksWork(id) then return false end
+                local npc=binding.handle
+                if not require('EmberRoutesProbe/MembershipService').check(id,'WORK',
+                    {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=copy.settlementId},copy.activityMembershipRevision).allowed then return false end
+            end
+            if command=='run' then
+                local binding=Driver.bindId(actor,id) if not binding or not membershipRevision then return false end
+                local npc=binding.handle
+                if not require('EmberRoutesProbe/MembershipService').check(id,'WORK',
+                    {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=copy.settlementId},membershipRevision).allowed then return false end
+            end
             return Registry.data()==root and record(id)==previous and (not previous or previous.generation==generation)
                 and execute(actor,command,object,id,copy,nil,true)==true
         end,
@@ -547,7 +599,10 @@ function Production.execute(actor,command,object,id,options)
             end
             return true
         end})
-    if handle then requests[id]={handle=handle,runtime=runtime,root=root,jobId=jobId} end
+    if handle then
+        if not copy.nonPreemptive and Probe.invalidateCare then Probe.invalidateCare(id,'PRODUCTION_COMMAND') end
+        requests[id]={handle=handle,runtime=runtime,root=root,jobId=jobId}
+    end
     return handle and 'QUEUED' or why,handle
 end
 function Production.afterSave(results)
@@ -582,6 +637,30 @@ function Production.tickPending()
         end
         inventoryDirty=false
     end
+    local root=Registry.data() local now=getTimestampMs()
+    if root~=yieldWorld then yieldWorld,yieldIds,yieldCursor,yieldScan,yieldRetry=root,{},0,0,{} end
+    if now>=yieldScan then
+        yieldScan=now+1000 yieldIds={}
+        for id,r in pairs(require('EmberRoutesProbe/BusinessJobs').crafts()) do if Yield.assetFree(r) then yieldIds[#yieldIds+1]=id end end
+        table.sort(yieldIds)
+    end
+    if #yieldIds>0 then
+        yieldCursor=yieldCursor%#yieldIds+1 local id=yieldIds[yieldCursor] local r=record(id)
+        local c=r and r.activityContinuation
+        if r and c and Yield.assetFree(r) and r.reason=='ACTIVITY_YIELD' and now>=(yieldRetry[id] or 0)
+            and require('EmberRoutesProbe/TaskResume').epoch(id)==c.resumeEpoch
+            and not (Probe.activityContext and Probe.activityContext(id)) and not (Probe.careBlocksWork and Probe.careBlocksWork(id)) then
+            local actor=getSpecificPlayer(0) local b=actor and Driver.bindId(actor,id)
+            local member=b and require('EmberRoutesProbe/MembershipService').check(id,'WORK',
+                {x=b.handle:getX(),y=b.handle:getY(),z=b.handle:getZ(),scopeId=r.settlementId},c.membershipRevision)
+            if member and member.allowed and actor:getUsername()==r.requester then
+                yieldRetry[id]=now+2000
+                local result=Production.execute(actor,'resume',nil,id,{nonPreemptive=true,settlementId=r.settlementId,
+                    activityResumeEpoch=c.resumeEpoch,activityMembershipRevision=c.membershipRevision})
+                return result=='QUEUED' or result=='RESUME_STARTED'
+            end
+        end
+    end
     return false
 end
 function Production.status(r)
@@ -589,6 +668,7 @@ function Production.status(r)
         uncertain=r.uncertain==true,made=r.unitMade==true,resumable=not r.released and not r.uncertain and r.phase~="COMMITTING",
         recipeId=r.recipeId,recipeName=r.recipeName,product=r.product,requested=r.requested,target=r.target,produced=r.produced,delivered=r.delivered,
         surfaceRequired=r.surface~=nil,surface=r.surface and {x=r.surface.x,y=r.surface.y,z=r.surface.z} or nil}
+    if Yield.assetFree(r) and r.activityYield.blockedReason then result.reason=r.activityYield.blockedReason end
     if r.chain then
         local goal=r.chain.goal
         result.chainIndex=r.chain.index result.chainTotal=#r.chain.nodes result.stepName=r.recipeName
@@ -596,6 +676,12 @@ function Production.status(r)
         for _,key in ipairs({"recipeId","recipeName","product","requested","target"}) do result[key]=goal[key] end
         result.produced=r.chain.index==#r.chain.nodes and r.produced or 0
         result.delivered=r.chain.index==#r.chain.nodes and r.delivered or 0
+    end
+    if r.activityContinuation then
+        local c=r.activityContinuation local g=c.goal
+        result.requested,result.target=g.requested,g.target result.recipeId,result.product,result.recipeName=g.recipeId,g.product,g.recipeName
+        result.produced=math.min(g.target,c.delivered+(result.produced or 0))
+        result.delivered=math.min(g.target,c.delivered+(result.delivered or 0))
     end
     return result
 end

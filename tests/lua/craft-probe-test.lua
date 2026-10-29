@@ -147,6 +147,7 @@ function registry.logistics(endpoint) return endpoint.role or "STORAGE" end
 function registry.inventoryChanged() for _,listener in ipairs(registry.inventoryListeners) do listener() end end
 package.loaded["EmberRoutesProbe/ContainerRegistry"]=registry
 local entry={id="home",areas={{x=0,y=0,w=30,h=2}}}
+dofile('tests/lua/membership-fixture.lua')(function() if not entry.denied then return entry end end,{npc.id})
 package.loaded["EmberRoutesProbe/SettlementLedger"]={
  listeners={},
  get=function() return entry end,at=function() return {entry} end,
@@ -523,6 +524,10 @@ HandcraftLogic.new=function(body)
     local recipeData={}
     function recipeData:getAllInputItems()
         local values=list() for _,items in pairs(logic.manual) do for _,value in ipairs(items) do values:add(value) end end return values
+    end
+    function recipeData:getDataForInputScript(io)
+        return {getAppliedItemsCount=function() return #(logic.manual[io] or {}) end,
+            hasAppliedItem=function(_,value) return logic.manual[io] and logic.manual[io]:contains(value) or false end}
     end
     function recipeData:getAllConsumedItems() return logic.consumed end
     function recipeData:luaCallOnCreate() end

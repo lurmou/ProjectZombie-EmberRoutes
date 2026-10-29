@@ -30,8 +30,8 @@ function EmberRoutesDefensePage:new(owner,bounds)
     o.fontHeight,o.pad=owner.fontHeight,owner.pad
     o.background=false
     o.alertButtons={}
-    o.store=State.new({alertLevel=0,heat=18,maxHeat=100,posts={}})
-    o.store:subscribe(function(value)
+    o.store=State.new({alertLevel=0,posts={}})
+    o.unsubscribe=o.store:subscribe(function(value)
         if o.active and not o.disposed then o:project(value) end
     end)
     return o
@@ -52,16 +52,33 @@ function EmberRoutesDefensePage:createChildren()
     self.heatBounds=regions[3]
     self.postsBounds=regions[4]
 
+    -- Cached static text for zero-GC prerender
+    self.titleText=text('title')
+    self.badgeText=text('previewBadge')
+    self.alertHintText=text('alertLocked')
+    self.heatTitle=text('heatMeter')
+    self.heatSafeLabel=text('heatSafe')..' (0 / 100)'
+    self.heatUnavailable=text('unavailable')
+    self.postsTitle=text('posts')
+    self.checklists={
+        text('req_tower'),
+        text('req_patrol'),
+        text('req_guard')
+    }
+    self.noPostsLines=Text.wrap(text('noPosts'),self.postsBounds.width-p*3,UIFont.Small)
+
     -- Alert level buttons (Defcon 0, 1, 2)
     local alertTrack=assert(Layout.axis(self.alertBounds,{{grow=1},{grow=1},{grow=1}},{gap=p/2}))
+    local fullHint=text('alertLocked')..'\n'..text('alertHint')
     for i=0,2 do
         local r=alertTrack[i+1]
         local btn=ISButton:new(r.x,r.y,r.width,r.height,text('alert_'..i),self,function()
             self:setAlertLevel(i)
         end)
         btn:initialise()
+        btn:setEnable(false)
         Theme.styleButton(btn,false,i==self.store.value.alertLevel)
-        btn.tooltip=text('alertHint')
+        btn.tooltip=fullHint
         Tooltip.attach(btn,'prerender')
         self:addChild(btn)
         self.alertButtons[i]=btn
@@ -74,6 +91,7 @@ function EmberRoutesDefensePage:setAlertLevel(level)
         local btn=self.alertButtons[i]
         if btn then
             Theme.styleButton(btn,i==level,i==level)
+            btn:setEnable(false)
         end
     end
 end
@@ -92,6 +110,10 @@ end
 
 function EmberRoutesDefensePage:dispose()
     self.disposed=true
+    if self.unsubscribe then
+        self.unsubscribe()
+        self.unsubscribe=nil
+    end
     self:deactivate()
 end
 
@@ -100,7 +122,10 @@ function EmberRoutesDefensePage:project(value)
     -- Keep buttons synced with state
     for i=0,2 do
         local btn=self.alertButtons[i]
-        if btn then Theme.styleButton(btn,i==value.alertLevel,i==value.alertLevel) end
+        if btn then
+            Theme.styleButton(btn,i==value.alertLevel,i==value.alertLevel)
+            btn:setEnable(false)
+        end
     end
 end
 
@@ -108,47 +133,55 @@ function EmberRoutesDefensePage:prerender()
     ISPanel.prerender(self)
     local h,p=self.fontHeight,self.pad
 
-    -- Title
-    Theme.text(self,text('title'),self.titleBounds.x,self.titleBounds.y,Theme.gold)
-    Theme.text(self,text('alertHint'),self.titleBounds.x,self.titleBounds.y+h,Theme.muted)
+    -- Title with Preview Badge
+    local title=self.titleText or text('title')
+    Theme.text(self,title,self.titleBounds.x,self.titleBounds.y,Theme.gold)
+    local titleW=getTextManager():MeasureStringX(UIFont.Small,title)
+    Theme.text(self,self.badgeText or '',self.titleBounds.x+titleW+p,self.titleBounds.y,Theme.accent)
+    Theme.text(self,self.alertHintText or text('alertLocked'),self.titleBounds.x,self.titleBounds.y+h,Theme.muted)
 
     -- Heat Meter Card
     local hr=self.heatBounds
-    Theme.rect(self,hr.x,hr.y,hr.width,hr.height,Theme.panel)
-    Theme.rect(self,hr.x,hr.y,hr.width,hr.height,Theme.border,true)
+    local CardPanel=require 'EmberRoutesProbe/UI/CardPanel'
+    local heatTitle=self.heatTitle or text('heatMeter')
+    local heatSafeLabel=self.heatSafeLabel or (text('heatSafe')..' (0 / 100)')
+    CardPanel.draw(self,hr.x,hr.y,hr.width,hr.height,{
+        title=heatTitle,
+        badge=heatSafeLabel,
+        badgeColor=Theme.status.READY
+    })
+    Theme.text(self,self.heatUnavailable or text('unavailable'),hr.x+p,hr.y+p+h+p/4,Theme.muted)
 
-    local heat=self.store.value.heat or 0
-    local maxH=self.store.value.maxHeat or 100
-    local heatRatio=math.max(0,math.min(1,heat/maxH))
-
-    local heatLabel=text('heatValue',heat,heatRatio>0.6 and text('heatWarning') or text('heatSafe'))
-    Theme.text(self,text('heatMeter'),hr.x+p,hr.y+p/2,Theme.accent)
-    Theme.text(self,heatLabel,hr.x+p+getTextManager():MeasureStringX(UIFont.Small,text('heatMeter'))+p,hr.y+p/2,Theme.textColor)
-
-    -- Heat Progress Bar
-    local barY=hr.y+h+p/2
-    local barW=hr.width-p*2
-    local barH=h
-    Theme.rect(self,hr.x+p,barY,barW,barH,Theme.control)
-    Theme.rect(self,hr.x+p,barY,barW,barH,Theme.border,true)
-
-    local fillW=math.floor(barW*heatRatio)
-    local barColor=heatRatio>0.7 and {r=0.95,g=0.35,b=0.30,a=0.9} or (heatRatio>0.4 and {r=1.0,g=0.75,b=0.25,a=0.9} or {r=0.25,g=0.75,b=1.0,a=0.9})
-    if fillW>0 then
-        Theme.rect(self,hr.x+p+1,barY+1,fillW-2,barH-2,barColor)
-    end
+    -- Heat progress bar preview (0/100, safe threshold at 70%)
+    local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
+    local meterY=hr.y+hr.height-p*1.5
+    local meterW=hr.width-p*2
+    local meterH=math.max(6,math.floor(p*0.8))
+    StatMeter.draw(self,hr.x+p,meterY,meterW,meterH,0.0,{
+        mode="danger",
+        threshold=0.7
+    })
 
     -- Posts Card
     local pr=self.postsBounds
-    Theme.rect(self,pr.x,pr.y,pr.width,pr.height,Theme.panel)
-    Theme.rect(self,pr.x,pr.y,pr.width,pr.height,Theme.border,true)
+    CardPanel.draw(self,pr.x,pr.y,pr.width,pr.height,{
+        title=self.postsTitle or text('posts')
+    })
 
-    Theme.text(self,text('posts'),pr.x+p,pr.y+p,Theme.gold)
-    Theme.rect(self,pr.x+p,pr.y+p+h+p/4,pr.width-p*2,1,Theme.border)
+    local curY=pr.y+p+h+p
+    if self.checklists then
+        for _,req in ipairs(self.checklists) do
+            Theme.text(self,req,pr.x+p,curY,Theme.muted)
+            curY=curY+h
+        end
+        curY=curY+p/2
+    end
 
-    local lines=Text.wrap(text('noPosts'),pr.width-p*3,UIFont.Small)
-    for i,line in ipairs(lines) do
-        Theme.text(self,line,pr.x+p,pr.y+p+h+p+(i-1)*h,Theme.muted)
+    if self.noPostsLines then
+        for _,line in ipairs(self.noPostsLines) do
+            Theme.text(self,line,pr.x+p,curY,Theme.muted)
+            curY=curY+h
+        end
     end
 end
 

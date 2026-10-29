@@ -57,6 +57,42 @@ public final class ProbeLogicTest {
         check(session.spawn(Object::new) != null, "retry after construction failure");
         movementRegression();
         retirementRegression();
+        FurnitureExitState exit=new FurnitureExitState();
+        exit.begin(); exit.observe(true,false,0); exit.request();
+        exit.observe(false,true,100_000_000L);
+        check(!exit.settled(1_000_000_000L),"logical state exit cannot discard a live root-motion tail");
+        exit.observe(false,false,1_000_000_000L);
+        check(!exit.settled(1_100_000_000L),"native blend quiet interval remains owned");
+        check(exit.settled(1_200_000_000L) && exit.active(),"ready-to-check geometry is not permission to release");
+        exit.observe(false,false,2_000_000_000L);
+        check(exit.active() && exit.exiting(),"blocked geometry retains the original exit responsibility");
+        exit.finish(); check(!exit.active() && !exit.exiting(),"verified free standing finishes the physical handoff");
+        exit.begin(); exit.observe(true,false,0); exit.observe(false,false,1);
+        check(exit.exiting(),"unrequested native get-up still requires spatial exit verification");
+        BedPoseMotion bed=new BedPoseMotion(10,20,1,0.2f,0.4f,0);
+        bed.advance(100_000_000L,false);
+        check(bed.phase==BedPoseMotion.Phase.AWAKE,"native awake evidence gates the lying transition");
+        bed.advance(100_000_000L,true);
+        check(bed.phase==BedPoseMotion.Phase.ENTER && bed.x(100_000_000L)==10,"entry begins at the native seated anchor");
+        float half=bed.y(700_000_000L);
+        bed.exit(700_000_000L);
+        check(bed.y(700_000_000L)==half && bed.phase==BedPoseMotion.Phase.ENTER,"interrupted entry does not jump or restart a reverse clip");
+        bed.advance(1_300_000_000L,true);
+        check(bed.phase==BedPoseMotion.Phase.EXIT,"pending stop reverses once the entering clip is complete");
+        bed.exit(1_400_000_000L);
+        bed.advance(2_467_000_000L,true);
+        check(bed.phase==BedPoseMotion.Phase.SEATED && bed.x(3_000_000_000L)==10 && bed.y(3_000_000_000L)==20,
+                "repeated stop preserves exact anchor restoration without accumulated offsets");
+        check(bed.z==1,"bed interpolation never changes floors");
+        float[] foot=BedPoseMotion.bedOffset(12.2f,20.5f,10,20,11,20,"W");
+        check(foot!=null && Math.abs(12.2f+foot[0]-11)<0.001 && foot[1]==0,"foot entry centers pelvis along the actual two-tile bed");
+        float[] head=BedPoseMotion.bedOffset(10.2f,20.5f,10,20,11,20,"E");
+        check(head!=null && Math.abs(10.2f+head[0]-11)<0.001,"head and foot entries share the same bed center");
+        float[] wide=BedPoseMotion.bedOffset(10.5f,21.5f,10,20,11,21,"W");
+        check(wide!=null && wide[1]==0,"double-bed width lane is preserved");
+        float[] north=BedPoseMotion.bedOffset(10.5f,22.2f,10,20,10,21,"N");
+        check(north!=null && Math.abs(22.2f+north[1]-21)<0.001 && north[0]==0,"north/south beds center along their own length");
+        check(BedPoseMotion.bedOffset(0,0,0,0,0,0,"S")==null,"a single chair cannot masquerade as a bed-length pose");
         System.out.println(BuildInfo.PREFIX + " PASS " + assertions + " assertions");
     }
 
@@ -105,6 +141,15 @@ public final class ProbeLogicTest {
     }
 
     private static void retirementRegression() {
+        ProbeMovement seat = new ProbeMovement();
+        seat.beginNative(5,5,0,0,35_000_000_000L);
+        check(seat.tick(() -> ProbeMovement.PathResult.WORKING,5,5,0,1)
+                == ProbeMovement.Outcome.MOVING, "native seat goal cannot finish at generic nearby coordinates");
+        check(seat.tick(() -> ProbeMovement.PathResult.SUCCEEDED,5.12,4.8,0,2)
+                == ProbeMovement.Outcome.REACHED, "native sub-tile goal completion proves furniture approach");
+        seat.begin(5,5,0,3);
+        check(seat.tick(() -> ProbeMovement.PathResult.WORKING,5,5,0,4)
+                == ProbeMovement.Outcome.REACHED, "normal movement keeps its original arrival mode");
         ProbeMovement pausedMove = new ProbeMovement();
         pausedMove.begin(5, 0, 0, 0);
         pausedMove.pause(1_000_000_000L);

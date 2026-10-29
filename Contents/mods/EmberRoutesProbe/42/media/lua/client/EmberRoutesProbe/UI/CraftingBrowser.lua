@@ -215,7 +215,9 @@ function EmberRoutesCraftingBrowser:prerender()
     self.draft:draw()
     local r=self.paging local c=self.store.value.catalog
     local pagingText=c.page.." / "..c.pages.."  ("..(c.total or 0)..")"
-    local tw=getTextManager():MeasureStringX(UIFont.Small,pagingText)
+    if self._pagingKey~=pagingText then self._pagingKey=pagingText
+        self._pagingW=getTextManager():MeasureStringX(UIFont.Small,pagingText) end
+    local tw=self._pagingW
     local tx=r.x+math.max(0,math.floor((r.width-tw)/2))
     local ty=r.y+math.floor((r.height-self.fontHeight)/2)
     Theme.text(self,pagingText,tx,ty,Theme.muted)

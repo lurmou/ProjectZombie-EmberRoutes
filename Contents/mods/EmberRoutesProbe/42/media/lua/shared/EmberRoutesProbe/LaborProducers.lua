@@ -19,11 +19,16 @@ function Producers.transfer(context,item,from,to)
     return handler and handler.transfer(context,item,from,to) or false
 end
 function Producers.eligible(item)
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.workItemEligible then
+        local result=EmberRoutesProbeJava.workItemEligible(item)
+        if result~=nil then return result end
+    end
     local data=item:getModData()
     return item:getCategory()~="Container" and not item:isEquipped() and not item:isFavorite()
         and not data.EmberRoutesHaulFixture and not data.EmberRoutesPersistenceSample and not data.EmberRoutesProbeFixture
 end
 function Producers.freeCarry(npc)
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.workFreeCarry then return EmberRoutesProbeJava.workFreeCarry(npc) end
     local maximum,weight=npc:getMaxWeight(),npc:getInventoryWeight()
     if type(maximum)~="number" or type(weight)~="number" or maximum~=maximum or weight~=weight
         or maximum<0 or weight<0 or maximum==math.huge or weight==math.huge then return 0 end

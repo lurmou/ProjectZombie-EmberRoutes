@@ -1,5 +1,23 @@
 # 制作任务负重策略
 
+## 2026-10-24 真实消耗模式及公共领单修正（0.24.1）
+
+用户实机反馈配方公共工单都因负重取消。读取当前console.txt确认两名NPC锯大树枝均被算作weight=0、maximum=6、added=7、consumed=0、output=3、peak=10、limit=8.99，并经REJECTED_UNCOLLECTED结束。原版LargeBranch重量6、SawLargeBranch消耗默认mode而非显式Destroy，锯作为keep工具；正确一批峰值应为max(7,7−6+3)=7。
+
+- ProductionCarry不再把“非Destroy”当作不会整件消耗。当前安装JAR的CraftRecipeData.processUsedItems调用ItemUser.UseItem处理普通输入；已核对的单次使用、非部分用量、无CreateTo/ConsumeFrom及无替代容器输入可以抵扣原件重量。保留工具、多次使用、部分输入与替代物继续保守处理。未放宽前两档超重上限，也没有重复按特质补能力。
+- ProductionChain的直接配方只读预检复用同一单批负重规则；整张公共需求预查的后续批次材料不累加为本批负重。真带不动时，公共需求保持WAITING并显示负重原因，在分配Job/认领原件之前拒绝该候选。负重失败冷却仅作用于该NPC，不阻塞其他有能力工人立即领同一单。复杂前置链或实际领取后能力下降仍须在执行阶段重验。
+- 已关联公共Order的执行Job遇负重不足保留PAUSED及恢复引用，不再调用旧“未取料就取消”收束。已有原件和不明效果均不释放。旧指定NPC诊断/私有执行的既有释放政策保持原契约。
+- 日志中的SawLogs另有真实限制：当前NPC能力6，单批原木和锯的待取重量10，本身就超过8.99，即使正确抵扣消耗也不能搬起它们。该公共单应等待合适工人/负重条件，而非取消；不以修正峰值估算冒充任意NPC均能搬动原木。
+- 不复活历史CANCELLED任务：旧取消原因未必能区分自动拒绝与用户取消。受旧缺陷影响的已取消需求需要重新下单，仓库原件不删除、不重造。
+
+基线仍为下文PZ42.21.0 JAR SHA256。当前安装脚本已查SawLogs/SawLargeBranch及LargeBranch重量；新增只读javap证据位于build/research/carry-repair-{manager,inputdata,cache,itemuser}-javap.txt，实机触发日志片段在carry-repair-console.txt。定向回归：production-carry-test 26项、task-production-runtime-test 60项及public-work-test 46项通过，覆盖默认消耗、单批而非全单负重、真实超重预领单拒绝、公共Job暂停及能力恢复后同Job完成、弱工人失败不阻塞强工人；原生效果仍为宿主替身。原始输出为build/logs/carry-repair-regression.txt。0.24.1构建成功，最终归档150文件与源码一致；最终release-check通过（0错误/151提示，含并行UI提示）。完整preflight通过：141个Lua文件，LuaLS 0错误/183信息性警告，保留原版ISFluidEmptyAction.lua的0.0f方言解析缺口；文档链接检查通过。门禁、构建、归档、发布与文档输出分别为build/logs/carry-repair-{preflight,build,package,release,doclink}.txt。实机修复效果尚未复测。
+
+验证范围补充：本次preflight记录141个Lua文件的负重修复基线。扫描期间共享工作区另有仓储/UI并行更新（含LiquidRegistry、PinyinHelper及页面调整），保留这些改动；最终归档重新核对为150文件与当前源码一致。本专题不将负重回归或前述类型扫描扩大为并行修改的完整验收。
+
+### 三批锯原木专项复核（同版本，无生产代码变更）
+
+用户进一步质疑三批总重量会导致无人能接。新增tests/lua/production-three-batch-test.lua，复用当前安装原版Lua动作及现有原版来源配方夹具，直接调用公共领单使用的ProductionChain预检和带orderId/chain的Production执行。NPC能力8，每根原木9、锯1，三根加工具总重28超过11.99，但单批重量10；预检通过且不认领原件，随后三次提交交付9块木板，任一时刻最多携带一根原木，峰值10，原锯最终归还。7项专项断言通过，原始输出build/logs/three-batch-carry-regression.txt；身体/物品与原生制作效果为替身，游戏未运行。本轮未修改产品Lua或重建版本，保留0.24.1已有单批规则；不把此前仅两份材料的辅助函数用例冒充三批完整路径验证。
+
 ## 2026-10-23 实机故障修正（0.22.14）
 
 0.22.13日志确认两名不同NPC：adbba889…的新锯原木工单因CAPACITY_UNAVAILABLE暂停，数次归还可完成CANCELLED；00f750b5…的旧工单9611b5f1…则反复ITEM_MISSING。不能把两者当作同一NPC占用，也不能据此推断共享负重。

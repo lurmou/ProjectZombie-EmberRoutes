@@ -1,6 +1,6 @@
 # NPC 显式据点归属与生活上下文设计
 
-> 日期：2026-10-25｜修订：1.0，用户确认由本会话负责驻扎并开始准备实施；共享接口已细化｜运行未实施。
+> 日期：2026-10-25｜修订：1.0，用户确认并要求实施；0.27.0已接运行与宿主验证，实机未验证。证据见[开发接线与交接](../../reviews/2026-10-25/npc-settlement-membership.md)。
 > 从属于[NPC唯一架构](2026-10-22-npc-behavior-architecture-design.md)，不构成第二架构入口。
 
 ## 1. 决定、事实与范围
@@ -52,19 +52,20 @@ pending保存可恢复意图，不代表交接成功。无归属使用缺省字�
 | 函数 | 返回与责任 |
 |---|---|
 | view(npcId) | detached成员DTO：npcId、factionId、settlementId、context、revision、pending、reason、obligations；不存在返回nil与NO_MEMBERSHIP |
-| check(npcId,purpose,observation,expectedRevision) | 资格DTO：allowed、reason、revision、settlementId、context、entryRevision；purpose为WORK/LEISURE/STUDY/SELF_CARE/RECOVERY/RETURN。observation为本轮NPC的x/y/z及可选scopeId；禁止以玩家位置代替。expectedRevision可省，携带旧候选时必填 |
+| check(npcId,purpose,observation,expectedRevision) | 资格DTO：allowed、reason、revision、settlementId、context、entryRevision；SELF_CARE/RECOVERY另有sharedResources。purpose为WORK/LEISURE/STUDY/SELF_CARE/RECOVERY/RETURN。observation为本轮NPC的x/y/z及可选scopeId；禁止以玩家位置代替。expectedRevision可省，携带旧候选时必填 |
+| members(settlementId) | 按据点的稳定成员ID副本；nil查询未分配。索引随成员/世界变化失效，不代表这些实体均已加载 |
 | entry(npcId,scopeId) | 内部只读据点条目、原因、成员revision；核对阵营/归属，不调用要求玩家在圈内的Ledger.view。只读条目不得交给UI或原地修改 |
 | request(actor,npcId,command) | 命令DTO包含requestId、expectedRevision、kind和可选settlementId；kind为SETTLE/FOLLOW/WAIT/RETURN/TRANSFER/UNASSIGN。返回回执state/requestId/revision/reason及义务明细，不将PENDING当完成 |
 | cancel(actor,npcId,requestId,expectedRevision) | 取消对应pending，原context/归属不变；停止中不直接重启旧身体；取消本身产生新revision并使旧候选失效 |
 | setReturnPoint(actor,settlementId,point,expectedEntryRevision) | 校验并提交据点返回点；只改变据点版本，不能直接改NPC命令或启动移动 |
 
-check是资格层，不替代身体、健康、原件、目标占用及动作前置条件。SELF_CARE/RECOVERY不因WAIT/FOLLOW、无归属、pending或圈外一概拒绝，但返回allow仅表示宏观门禁允许；现有需求紧迫性、个人/共享物资范围及身体交接仍由原流程核验。RETURN要求有效归属和可返回上下文，目标加载/路径成本由返回执行适配器检查。
+check是资格层，不替代身体、健康、原件、目标占用及动作前置条件。SELF_CARE/RECOVERY不因WAIT/FOLLOW、无归属、pending或圈外一概拒绝，但返回allow仅表示宏观门禁允许；sharedResources单独标明处于所属据点内、阵营有效的SETTLEMENT/WAIT成员可使用共享自理资源。FOLLOW/RETURN保留个人物资优先，不能用“不能闲暇”推导“不能自救”。现有需求紧迫性及身体交接仍由原流程核验。RETURN要求有效归属和可返回上下文，目标加载/路径成本由返回执行适配器检查。
 
 WORK/LEISURE/STUDY要求SETTLEMENT、无pending、有效且匹配的归属、NPC实际在该据点范围；判定顺序固定为旧revision失效→无记录/归属→上下文→pending→据点/阵营→范围。理由包括STALE_MEMBERSHIP、NO_MEMBERSHIP、CONTEXT_WAIT、CONTEXT_FOLLOW、CONTEXT_RETURN、COMMAND_PENDING、TARGET_LOST、ACCESS_DENIED、OUTSIDE_SETTLEMENT。身体、资源或预算失败沿用各消费者原因，不覆盖为身份错误。
 
 revision在接受/替换/撤销命令、正式提交context/归属及使资格变化的生命周期事件时递增；未生效pending阶段仍展示旧context/归属，但立即禁止新普通候选。纯位置变化不递增成员revision：check每次用当前观察重验；据点改界/返回点变更以entryRevision单独重验。恢复自理只持有先前意图，不能覆盖其后新revision。
 
-闲暇/研习offer、社交advertise和待启动候选记录membershipRevision与settlementId；接受邀请、启动活动和继续执行资格检查时重验，不以缓存TTL代替。命令接受后定向清offer、withdraw旧邀请并请求既有任务安全停止；已生效声明必须等停止及原件核对后释放，不随失效缓存删除。驻扎侧只接此资格/失效边界，闲暇侧随后负责发现、选择、冷却、姿态和社交表现重构。
+闲暇/研习offer、社交advertise和待启动候选记录membershipRevision与settlementId；闲暇/研习候选及Job.payload另存settlementRevision。接受邀请、启动活动和继续执行资格检查时重验，不以缓存TTL代替。命令接受后定向清offer、withdraw旧邀请并请求既有任务安全停止；已生效声明必须等停止及原件核对后释放，不随失效缓存删除。驻扎侧只接此资格/失效边界，闲暇侧随后负责发现、选择、冷却、姿态和社交表现重构。
 
 ## 3. 命令与玩家语义
 
@@ -174,10 +175,11 @@ NPC确认死亡/永久移除时先撤销待处理普通命令、停止身体派�
 
 “缺料WAITING工单触发workReady反复收束闲暇”仍是[BACKLOG已登记问题](../../BACKLOG.md#p3545-活动系统延伸2026-10-25-交接登记未开工)，本次身份改动不解决圈内居民的该问题，不能将圈外候选减少当作修复证据。风险场景运行定向宿主回归，单机、故障恢复和性能分开记录。
 
-当前仅设计，以上行为与性能均未实施或实机验证。用户已确认本会话负责驻扎并开始准备实施；已在唯一架构§3.1登记及编写实施计划。计划审阅门禁按writing-plans执行，不能以架构确认替代运行验证。
+0.27.0已完成上述运行接线及定向开发验证，详见[开发证据](../../reviews/2026-10-25/npc-settlement-membership.md)。用户已审阅实施准备并明确要求开始，由本会话直接执行；游戏与性能未验证，不能以设计/宿主确认替代运行验收。
 
 ## 10. 修订记录
 
 - 1.0，2026-10-25：用户确认驻扎负责人并开始准备实施，加入§2.1共享函数签名、按用途资格、revision失效/位置重验与闲暇修改边界；唯一架构登记。运行代码未修改。
+- 1.0实施细化，2026-10-25：用户明确“开始吧”后接入0.27.0；§2.1明确SELF_CARE.sharedResources、members索引及候选settlementRevision，不改变三维分离/唯一控制权。实机与性能未验证。
 
 - draft-2，2026-10-25：按用户明确决定删除旧档兼容；重新计算v3.3快照SHA并逐条核对；修正HOLD调用点范围，补context转换/队长死亡换角色、设家入口去留、版本化store与唯一写权；补义务明细、IDLE诊断、生命周期清理、固定性能场景及四项架构契约验收。说明完整解散与权限继承的实施差额；无运行代码修改。

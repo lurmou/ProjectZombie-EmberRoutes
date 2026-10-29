@@ -26,9 +26,16 @@
 - “在岗位附近活动”不等于完成劳动；“有动画”不等于效果正确；“保存了表”不等于防复制或崩溃安全。
 - 不在未经验证时宣传联机稳定、零损失或支持某个 NPC/尸潮规模。
 
+## 固定参考项目
+
+- 用户指定的 NPC 参考模组：`D:/Project/ProjectRemnants`（ProjectRemnants / NPCFW；对话中也可能称 projectrename）。NPC 原生动作与安全屋生活行为的新实现或故障排查，先查这里的对应完整链路，再对照当前安装版原版 Lua/JAR；不要反复向用户询问路径。
+- 睡眠定位入口：`42/media/lua/client/NPCFW_SleepActions.lua`、`NPCFW_BedPoseResolver.lua`，以及当前根目录 `NPCFW.jar` 中的 `npcfw.safehouse.SafehouseSleepSystem`、`SafehouseSleepAnimationController` 和任务调用方。必须追踪当前 JAR 的实际分支；标有 Prototype 的 Lua 函数也可能被正式调用，不能凭命名或存在 Java 控制器就判定运行路线；`_decompiled` 只作导航，关键调用核对当前根目录 JAR，不混用其中的旧 JAR。
+- 参考只读，不直接修改或整套迁入；核对定位/床部件、朝向、动画位移、效果、退出与保存全链路，并适配本项目唯一身体控制和原件责任。参考代码存在不等于已实机验证，也不授权复制其独立控制器或绕过现有协议。
+
 ## 按需阅读入口
 
 - 首次接手先读 [接力说明](docs/HANDOFF.md)；历史对话只按需读取，不自动继承其中的旧事实。
+- 按任务查[文档导航](docs/INDEX.md)，进入相关设计、计划和证据；当前进度只维护BACKLOG执行表，不向HANDOFF/README追加版本流水。历史快照不作为当前开发指令。
 - 通用规则：[development-rules.md](docs/development-rules.md)，修改代码前读取相关约束；保留用户改动，CN/EN 成对翻译，按变更类型验证。
 - 当前方向与待办：[docs/BACKLOG.md](docs/BACKLOG.md)。每轮先看当前边界与相关事项，旧实现路线已搁置。
 - NPC 行为相关工作必读[已确认架构设计](docs/superpowers/specs/2026-10-22-npc-behavior-architecture-design.md)：唯一实施设计入口；上下文恢复先查 BACKLOG 的“NPC 架构执行记录”，按该设计续接。技术细节允许阶段细化，架构变更先经用户确认；不得把调研推荐或未验证能力当作已实现。

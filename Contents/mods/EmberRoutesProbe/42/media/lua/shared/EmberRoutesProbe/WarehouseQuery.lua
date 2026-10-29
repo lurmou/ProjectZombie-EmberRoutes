@@ -1,4 +1,5 @@
 local Filter=require "EmberRoutesProbe/StorageFilter"
+local PinyinHelper=require "EmberRoutesProbe/PinyinHelper"
 local Query={PAGE_SIZE=60,SORTS={"default","nameAsc","nameDesc","quantityDesc","quantityAsc"}}
 local methods={}
 methods.__index=methods
@@ -25,6 +26,7 @@ local function compare(mode,a,b)
     return a.fullType<b.fullType
 end
 function Query.new() return setmetatable({},methods) end
+function methods:invalidate() self.rows=nil end
 -- Installed Kahlua table.sort uses recursive quicksort and can overflow on
 -- ordered 2048-type inputs. Bottom-up merge sort has bounded stack/work here.
 local function sortRows(rows,mode)
@@ -50,8 +52,17 @@ function methods:page(rows,search,category,page,sort,anchor)
     if self.rows~=rows or self.search~=search or self.category~=category or self.sort~=sort then
         local matching={}
         for _,row in ipairs(rows) do
-            if (not category or Query.root(row.node)==category)
-                    and (search=="" or row.searchKey:find(search,1,true)) then matching[#matching+1]=row end
+            if not category or Query.root(row.node)==category then
+                if search=="" then
+                    matching[#matching+1]=row
+                elseif row.searchKey and row.searchKey:find(search,1,true) then
+                    matching[#matching+1]=row
+                elseif row.label and PinyinHelper.match(row.label,search) then
+                    matching[#matching+1]=row
+                elseif row.fullType and PinyinHelper.match(row.fullType,search) then
+                    matching[#matching+1]=row
+                end
+            end
         end
         if sort~="default" then
             matching=sortRows(matching,sort)
@@ -70,6 +81,9 @@ function methods:page(rows,search,category,page,sort,anchor)
         self.matching,self.positions=matching,{}
         for i,row in ipairs(matching) do self.positions[row.fullType]=i end
     end
+    if page==false or page=="all" then
+        return self.matching,1,1,#self.matching
+    end
     local pages=math.max(1,math.ceil(#self.matching/Query.PAGE_SIZE))
     if anchor and self.positions[anchor] then page=math.ceil(self.positions[anchor]/Query.PAGE_SIZE) end
     page=math.max(1,math.min(page or 1,pages))
@@ -77,8 +91,14 @@ function methods:page(rows,search,category,page,sort,anchor)
     for i=(page-1)*Query.PAGE_SIZE+1,math.min(page*Query.PAGE_SIZE,#self.matching) do result[#result+1]=self.matching[i] end
     return result,page,pages,#self.matching
 end
+function methods:all(rows,search,category,sort)
+    return self:page(rows,search,category,false,sort)
+end
 -- Compatibility for one-shot consumers; interactive views own a Query.new().
 function Query.page(rows,search,category,page,sort,anchor)
     return Query.new():page(rows,search,category,page,sort,anchor)
+end
+function Query.all(rows,search,category,sort)
+    return Query.new():all(rows,search,category,sort)
 end
 return Query

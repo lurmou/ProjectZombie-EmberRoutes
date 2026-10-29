@@ -30,7 +30,6 @@ function Cached.create(owner,bounds,select,style)
     list:initialise() Tooltip.attach(list,"updateTooltip") list.font=UIFont.Small
     list.emberPad,list.emberFontHeight=owner.pad,owner.fontHeight
     list.emberStyle=style
-
     local function clampScroll(self)
         local total=(self.getScrollHeight and self:getScrollHeight()) or (self.items and #self.items*(self.itemheight or 0)) or 0
         local height=self.height or 0
@@ -90,10 +89,12 @@ function Cached.create(owner,bounds,select,style)
         list.render=function(self)
             if native then native(self) end
             if #self.items==0 then
+                require("EmberRoutesProbe/UI/Viewport").draw(self,{x=0,y=0,width=self.width,height=self.height},function()
                 local c=self.emberStyle.emptyColor
                 for i,line in ipairs(self.emberEmptyLines or {}) do
                     self:drawText(line,self.emberPad,self.emberPad+(i-1)*self.emberFontHeight,c.r,c.g,c.b,c.a,UIFont.Small)
                 end
+                end)
             end
         end
     end
@@ -173,14 +174,15 @@ function Cached.reconcile(list,rows,caption,key,preserveAnchor)
                 if #lines>3 then lines={lines[1],lines[2],lines[3].."..."} end
                 visual={lines=lines,height=list.emberPad+list.emberFontHeight*math.max(1,#lines)}
             end
+            local itemTip = (visual and visual.tooltip) or (not list.emberStyle and label or nil)
             if not entry then
                 list.itemheight=visual.height
-                entry=list:addItem(label,{value=value,lines=visual.lines,visual=visual},label)
+                entry=list:addItem(label,{value=value,lines=visual.lines,visual=visual},itemTip)
             else
                 heightChanged=heightChanged or entry.height~=visual.height
-                entry.text=label entry.tooltip=label entry.item.lines=visual.lines entry.item.visual=visual entry.height=visual.height
+                entry.text=label entry.tooltip=itemTip entry.item.lines=visual.lines entry.item.visual=visual entry.height=visual.height
             end
-            if list.mouseoverselected==i and list.tooltipUI then list.tooltipUI.description=label end
+            if list.mouseoverselected==i and list.tooltipUI then list.tooltipUI.description=itemTip end
         end
         entry.item.value=value
         if old[i]~=entry then structural=true end

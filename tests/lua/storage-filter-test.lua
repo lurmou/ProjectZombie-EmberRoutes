@@ -73,7 +73,7 @@ for i,id in ipairs(ordered) do
     if id=="food.stable.modsub" then childPosition=i end
 end
 check(childPosition==parentPosition+1,"registered descendants appear in tree order rather than at end")
-local denied=Filter.new() denied.groups.food=true denied.groups["food.stable"]=false denied.groups["food.perishable"]=false
+local denied=Filter.new() denied.groups.food=true denied.groups["food.stable"]=false denied.groups["food.perishable"]=false denied.groups["food.meals"]=false
 check(#Filter.badges(denied)==0,"fully excluded subtree does not show an allowed storage badge")
 denied.types[fresh.fullType]="invalid"
 check(not Filter.matchesDescription(denied,fresh),"malformed stored rule cannot grant access by truthiness")

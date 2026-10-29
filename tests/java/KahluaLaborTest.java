@@ -20,6 +20,8 @@ class KahluaLaborTest {
             KahluaUtil.setWorkerThread(env,thread);
             run(thread,env,Path.of("D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/stdlib.lua"));
             env.rawset("next",null); // PZ gameplay does not expose the standard Lua next global.
+            if (Arrays.asList(args).contains("--timing"))
+                env.rawset("_ERTestNanos",(JavaFunction)(frame,n)->{frame.push((double)System.nanoTime());return 1;});
             for (String arg:args) if (arg.startsWith("--translations=")) {
                 var translations=platform.newTable();
                 for (String line:Files.readAllLines(Path.of(arg.substring("--translations=".length())))) {
@@ -42,7 +44,9 @@ class KahluaLaborTest {
             env.rawset("dofile",(JavaFunction)(frame,n)->{frame.push(call(thread,env,Path.of((String)frame.get(0))));return 1;});
             run(thread,env,Path.of("tests/lua",file));
             if (Arrays.asList(args).contains("--preview") && env.rawget("ERSettlementPreview")!=null)
-                for (String tab:List.of("warehouse","orders","logistics","crafting","publicOrder","priorities")) preview(thread,env,tab,args);
+                for (String tab:Arrays.stream(args).filter(a->a.startsWith("--preview-tabs=")).findFirst()
+                    .map(a->List.of(a.substring("--preview-tabs=".length()).split(",")))
+                    .orElse(List.of("warehouse","orders","logistics","crafting","publicOrder","priorities"))) preview(thread,env,tab,args);
             System.out.println("PASS installed Kahlua: "+file+"; native host mocked");
         }
     }
@@ -83,6 +87,7 @@ class KahluaLaborTest {
                 if panel.visible==false then return end
                 local ax,ay=panel:getAbsoluteX(),panel:getAbsoluteY()
                 function panel:drawText(value,x,y,r,g,b) _text(value,x+ax,y+ay,r,g,b) end
+                function panel:drawTextCentre(value,x,y,r,g,b) self:drawText(value,x-_measure(value)/2,y,r,g,b) end
                 function panel:drawRect(x,y,w,h,a,r,g,b) _rect(x+ax,y+ay,w,h,a,r,g,b,false) end
                 function panel:drawRectBorder(x,y,w,h,a,r,g,b) _rect(x+ax,y+ay,w,h,a,r,g,b,true) end
                 function panel:drawTextureScaledAspect(texture,x,y,w,h,a,r,g,b) self:drawRect(x,y,w,h,a,r,g,b) end

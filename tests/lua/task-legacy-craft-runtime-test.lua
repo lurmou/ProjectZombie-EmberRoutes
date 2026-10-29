@@ -156,7 +156,9 @@ f.tools.container:Remove(tool) f.npc.root:AddItem(tool)
 record={format=1,id='legacy-loan',npcId=f.npc.id,requester=f.actor.id,benchId='old-bench',generation=1,
     state='PAUSED',phase='COLLECTING',released=false,materialId=material.id,toolId=tool.id,outputIds={}}
 f.Craft.record(f.npc.id) -- Initialize the legacy persisted-record envelope.
-f.registry.data().craftProbes.byNpc[f.npc.id]=record
+local rootData=f.registry.data()
+if not rootData.craftProbes then rootData.craftProbes={format=2,byNpc={}} end
+rootData.craftProbes.byNpc[f.npc.id]=record
 local actorInventory=f.actor.getInventory f.actor.getInventory=function(self) return self.root end
 check(f.Craft.execute(f.actor,'return',nil,f.npc.id,true)=='QUEUED','format1 recovery enters shared admission')
 drain(true)

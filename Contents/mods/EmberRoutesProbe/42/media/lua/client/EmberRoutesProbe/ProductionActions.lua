@@ -3,6 +3,7 @@ local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Supply=require "EmberRoutesProbe/CraftSupply"
 local Carry=require "EmberRoutesProbe/ProductionCarry"
 local Recipe=require "EmberRoutesProbe/ProductionRecipe"
+local Inputs=require "EmberRoutesProbe/CraftRecipeInputs"
 require "Entity/TimedActions/ISHandcraftAction"
 require "TimedActions/ISInventoryTransferAction"
 ---@class EmberRoutesProductionTransfer:ISInventoryTransferAction
@@ -90,12 +91,14 @@ function Actions.craft(c)
             return "OUTPUT_CAPACITY_UNAVAILABLE"
         end
     end
+    local binding,bindingReason=Inputs.bind(c.spec.facts,entries,npc)
+    if not binding then return nil,bindingReason end
     if c.spec.surface then
         if c.object:getUsingPlayer() and c.object:getUsingPlayer()~=npc then return nil,"BENCH_OCCUPIED" end
         c.object:setUsingPlayer(npc) c.ownsBench=true
     end
     local why=invalid() if why then return nil,why end
-    local action=ISHandcraftAction:new(npc,c.spec.recipe,ArrayList.new(),c.object,nil,Recipe.manual(c.spec,entries),nil,nil,1,0)
+    local action=ISHandcraftAction:new(npc,c.spec.recipe,ArrayList.new(),c.object,nil,binding.manual,nil,nil,1,0)
     ---@cast action EmberRoutesProductionCraft
     action.containers:add(inventory)
     local nativeValid,nativeStart,nativeStop,nativePerform,nativeRecipe=action.isValid,action.start,action.stop,action.perform,action.performRecipe
@@ -107,7 +110,7 @@ function Actions.craft(c)
     action.start=function(self)
         if not self:isValid() then self:forceStop() return end
         nativeStart(self)
-        if not self.craftStarted or not Recipe.applied(self.logic,entries) then
+        if not self.craftStarted or not Inputs.applied(self.logic,binding) then
             self.failure="NATIVE_INPUT_SET_CHANGED" self:forceStop()
         end
     end
@@ -118,13 +121,13 @@ function Actions.craft(c)
     end
     action.perform=function(self)
         if self.entered then return end self.entered=true
-        if not self:isValid() or not Recipe.applied(self.logic,entries) then self:stop() return end
+        if not self:isValid() or not Inputs.applied(self.logic,binding) then self:stop() return end
         local ok,reason=pcall(nativePerform,self)
         if not ok then self.failure=tostring(reason) if self.attempted then r.uncertain=true end end
     end
     action.performRecipe=function(self)
         if self.attempted then return end
-        if not self:isValid() or not Recipe.applied(self.logic,entries) then self:stop() return end
+        if not self:isValid() or not Inputs.applied(self.logic,binding) then self:stop() return end
         self.attempted=true r.phase="COMMITTING" c.changed("COMMITTING")
         if not c.valid() then self.failure="CRAFT_CONTEXT_CHANGED" return end
         local ok,reason=pcall(nativeRecipe,self)

@@ -11,15 +11,31 @@ local function luaStopped(binding)
     return not queue or (type(queue.queue)=='table' and #queue.queue==0 and queue.current==nil)
 end
 
-function Runtime.new()
+function Runtime.new(options)
     local controller=Controller.new()
     local schedule=Schedule.new()
     local current,pending={},{}
     local count=0
+    -- Business pacing in wall ms between an attached task's spec.tick pairs.
+    -- 0 keeps per-tick behavior (test fixtures, direct construction); the game
+    -- runtime paces at 18ms so fast-forward does not multiply execution cost.
+    local pace=(options and options.pace or 0)
+    if type(pace)~='number' or pace<0 or pace~=math.floor(pace) then pace=0 end
+    local businessNext={}
+    local stepClock=0
     local processing,frozen,retired=false,false,false
     local api={}
+    local function stopped(r,state)
+        if r.notified or not (options and options.stopped) then return true end
+        local ok,saved=pcall(options.stopped,{npcId=r.spec.npcId,jobId=r.spec.jobId,kind=r.spec.kind,
+            state=state.state,reason=state.reason,effects=state.effects or 'UNKNOWN',started=r.started==true})
+        if not ok or saved~=true then r.error='STOP_RECEIPT_NOT_PERSISTED' return false end
+        r.notified=true return true
+    end
     local function result(r,state,reason)
         local previous=r.handle.result
+        if previous and previous.npcId==r.spec.npcId and previous.jobId==r.spec.jobId
+            and previous.kind==r.spec.kind and previous.state==state and previous.reason==reason and previous.error==r.error then return end
         r.handle.result={npcId=r.spec.npcId,jobId=r.spec.jobId,kind=r.spec.kind,state=state,reason=reason,error=r.error}
         if not previous or previous.state~=state or previous.reason~=reason then Signals.changed(r.spec.npcId) end
     end
@@ -72,6 +88,9 @@ function Runtime.new()
             or type(spec.start)~='function' or type(spec.stopAdapter)~='function'
             or type(spec.persistFailure)~='function' or type(spec.validate)~='function'
             or type(spec.tick)~='function' or type(spec.finished)~='function' then return nil,'START_SPEC_REQUIRED' end
+        if spec.replaceReason~=nil and (type(spec.replaceReason)~='string' or spec.replaceReason=='') then
+            return nil,'REPLACE_REASON_REQUIRED'
+        end
         local id=spec.npcId
         if pending[id] then return nil,'REQUEST_PENDING' end
         if current[id] and spec.nonPreemptive then return nil,'NPC_BUSY' end
@@ -91,7 +110,7 @@ function Runtime.new()
         copy.binding={id=spec.binding.id,handle=spec.binding.handle}
         local r={spec=copy,handle={}}
         pending[id]=r result(r,'PENDING')
-        if current[id] then controller:requestStop(current[id].ticket,'REPLACED') end
+        if current[id] then controller:requestStop(current[id].ticket,spec.replaceReason or 'REPLACED') end
         return r.handle
     end
     function api:inspect(handle)
@@ -114,8 +133,8 @@ function Runtime.new()
         local r=current[id]
         if not r or jobId and r.spec.jobId~=jobId then r=pending[id] end
         if not r or jobId and r.spec.jobId~=jobId then return nil end
-        local state=r.ticket and controller:inspect(r.ticket) or r.handle.result
-        return {jobId=r.spec.jobId,kind=r.spec.kind,state=state and state.state or 'PENDING'}
+        local state=r.ticket and controller:state(r.ticket) or r.handle.result and r.handle.result.state
+        return {jobId=r.spec.jobId,kind=r.spec.kind,state=state or 'PENDING',pending=pending[id]~=nil,started=r.started==true}
     end
     function api:stopJob(id,jobId,reason)
         if type(reason)~='string' or reason=='' then return false,'REASON_REQUIRED' end
@@ -126,16 +145,20 @@ function Runtime.new()
         if p and p.spec.jobId==jobId then remove(id) return true end
         return false,'STALE_JOB'
     end
-    local function advance(id)
+    local function advance(id,now)
         local r=current[id]
         if r then
-            local state=controller:inspect(r.ticket)
-            if state.state=='CLOSED' or state.state=='CANCELLED' then
-                result(r,state.state,state.reason) current[id]=nil
-                -- Never start the successor inside the old cleanup/closing turn.
-                remove(id) return
-            end
-            if state.state~='ACTIVE' or frozen or retired then
+            -- Hot path avoids the per-tick inspect allocation; the full snapshot
+            -- is only needed once the scalar state leaves ACTIVE.
+            local s=controller:state(r.ticket)
+            if s~='ACTIVE' or frozen or retired then
+                local state=controller:inspect(r.ticket)
+                if state.state=='CLOSED' or state.state=='CANCELLED' then
+                    if not stopped(r,state) then return end
+                    result(r,state.state,state.reason) current[id]=nil
+                    -- Never start the successor inside the old cleanup/closing turn.
+                    remove(id) return
+                end
                 r.error=r.error or state.error result(r,state.state,state.reason) return
             end
             if not r.attached then
@@ -166,6 +189,11 @@ function Runtime.new()
                 end
                 r.started=true result(r,'ACTIVE') return
             end
+            -- Business pacing: everything above (state transitions, stop
+            -- cleanup, admission) stays every-tick; only the spec.tick/finished
+            -- pair is paced. Stopping and completion remain controller-driven.
+            if pace>0 and now<(businessNext[id] or 0) then return end
+            if pace>0 then businessNext[id]=now+pace end
             local ok,err=pcall(r.spec.tick,r.body)
             if ok then
                 local completed,done=pcall(r.spec.finished)
@@ -173,7 +201,9 @@ function Runtime.new()
                 elseif done==true then controller:requestStop(r.ticket,'COMPLETED') end
             end
             if not ok then r.error=tostring(err) controller:requestStop(r.ticket,'EXECUTION_ERROR') end
-            result(r,controller:inspect(r.ticket).state)
+            local state=controller:state(r.ticket)
+            assert(state,'STALE_TICKET')
+            result(r,state)
             return
         end
         local p=pending[id]
@@ -191,9 +221,19 @@ function Runtime.new()
     function api:step()
         if processing then return false,'CALL_IN_FLIGHT' end
         processing=true
+        -- Wall clock when the host provides it; hosts without the global (test
+        -- fixtures) get a synthetic per-step clock that never gates the pace.
+        local now=0
+        if pace>0 then
+            if type(getTimestampMs)=='function' then now=getTimestampMs()
+            else now=(stepClock or 0)+pace stepClock=now end
+        end
         controller:step()
+        -- A closed controller record still needs the step above to release its
+        -- queue reference. No active/pending business means no traversal closure.
+        if count==0 then processing=false return true end
         schedule:step(4,function(id)
-            local ok,err=pcall(advance,id)
+            local ok,err=pcall(advance,id,now)
             if not ok then
                 local r=current[id] or pending[id]
                 if r then
@@ -215,6 +255,14 @@ function Runtime.new()
         return controller:beginSave()
     end
     function api:finishSave(success)
+        if success==true then
+            for _,r in pairs(current) do
+                local state=controller:inspect(r.ticket)
+                if (state.state=='CLOSED' or state.state=='CANCELLED') and not stopped(r,state) then
+                    return false,'STOP_RECEIPT_NOT_PERSISTED'
+                end
+            end
+        end
         local ok,why=controller:finishSave(success)
         if ok then
             -- Reclaim terminal owners before recovery candidates are admitted.
@@ -230,6 +278,13 @@ function Runtime.new()
             frozen=false
         end return ok,why
     end
+    function api:saveReady()
+        if not frozen or retired or processing or not controller:saveReady() then return false end
+        if options and options.stopped then
+            for _,r in pairs(current) do if not r.notified then return false end end
+        end
+        return true
+    end
     function api:captureSave()
         if not frozen or retired or processing then return nil,'NO_LIVE_BARRIER' end
         processing=true
@@ -237,10 +292,19 @@ function Runtime.new()
         if facts then
             for id,r in pairs(current) do
                 local fact=facts.byNpc[id]
+                if fact then fact.started=r.started==true end
                 if fact and not fact.bodyStopped then
                     -- Keep scalar/original-ID business obligations even if stop
                     -- failed before its adapter could pause. Never replay start.
                     pcall(r.spec.persistFailure,{bodyStopped=false,effects='UNKNOWN'},'SAVE_STOP_UNCONFIRMED')
+                end
+                local state=controller:inspect(r.ticket)
+                if (state.state=='CLOSED' or state.state=='CANCELLED') and not stopped(r,state) then
+                    -- A body may have closed before beginSave reset controller
+                    -- facts, while its durable predecessor receipt is still due.
+                    -- Publish it in this synchronous save stack, never after disk.
+                    facts.ready=false
+                    processing=false return facts,'STOP_RECEIPT_NOT_PERSISTED'
                 end
             end
         end
@@ -266,7 +330,10 @@ function Runtime.current()
     local root=require('EmberRoutesProbe/ContainerRegistry').data()
     if root~=world then
         if service then service:retire(true) end
-        world,service=root,Runtime.new()
+        world,service=root,Runtime.new({pace=18,stopped=function(fact)
+            if require('EmberRoutesProbe/ContainerRegistry').data()~=root then return false end
+            return not Probe.taskStopped or Probe.taskStopped(fact)==true
+        end})
     end
     return service
 end

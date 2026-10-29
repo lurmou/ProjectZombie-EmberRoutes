@@ -1,5 +1,6 @@
 -- Presentation only. Pending quantities are unknown, never usable inventory.
 local Rows={}
+local PinyinHelper=require "EmberRoutesProbe/PinyinHelper"
 local sourceFields={"id","count","x","y","z","kind","displayType","customName","pending"}
 local function sameSources(a,b)
     if #a~=#b then return false end
@@ -43,8 +44,10 @@ function Rows.project(snapshot,oldRows,resolveName)
             result[#result+1]=row(old,value.count,value.sources,nil)
         else
             local label=resolveName(value.fullType)
+            local inits=PinyinHelper and PinyinHelper.getInitials and table.concat(PinyinHelper.getInitials(label)," ") or ""
+            local searchKey=string.lower(label.." "..value.fullType..(inits~="" and (" "..inits) or ""))
             result[#result+1]={fullType=value.fullType,node=value.node,label=label,
-                searchKey=string.lower(label.." "..value.fullType),count=value.count,sources=value.sources,
+                searchKey=searchKey,count=value.count,sources=value.sources,
                 pinned=old and old.pinned or false}
         end
     end

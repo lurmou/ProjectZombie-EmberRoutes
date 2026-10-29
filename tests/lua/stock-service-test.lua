@@ -184,6 +184,7 @@ r=StockStore.get(ruleId) check(cancelled==1 and not r.activeCycle,'disabling rul
 StockStore.command(mockActor,'s1','enable',{ruleId=ruleId})
 StockService.markDirty(ruleId) StockService.tick()
 r=StockStore.get(ruleId)
+package.loaded['EmberRoutesProbe/BusinessJobs']={crafts=function() return {[r.npcId]={id=r.activeCycle.taskId,released=false}} end}
 mockModData.craftProbes.byNpc.worker_1={id=r.activeCycle.taskId,released=false}
 StockService.markDirty(ruleId) StockService.tick()
 r=StockStore.get(ruleId) check(r.activeCycle.phase=='ATTACHED','matching real production record attaches prepared cycle')

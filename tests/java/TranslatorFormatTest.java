@@ -28,7 +28,7 @@ class TranslatorFormatTest {
                 checks++;
             }
         }
-        if(checks!=58) throw new AssertionError("Expected 58 translated formats, got "+checks);
+        if(checks!=70) throw new AssertionError("Expected 70 translated formats, got "+checks);
         System.out.println("PASS "+checks+" installed Translator CN/EN parameter checks; game NOT RUN");
     }
 }

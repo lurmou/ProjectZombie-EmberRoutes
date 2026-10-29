@@ -5,15 +5,8 @@ local Layout=require "EmberRoutesProbe/UI/Layout"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
 local Metrics=require "EmberRoutesProbe/WarehouseMetrics"
-local tabs={"warehouse","orders","personnel","defense"}
-local modules={
-    warehouse="WarehousePage",
-    orders="OrderMonitorPage",
-    personnel="PersonnelPage",
-    defense="DefensePage",
-    logistics="LogisticsPage",
-    crafting="CraftingPage"
-}
+local Registry=require "EmberRoutesProbe/UI/PageRegistry"
+
 local opened
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 
@@ -30,6 +23,7 @@ local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key
 ---@field fontHeight number
 ---@field pad number
 ---@field nextCheck number
+---@field tabs string[]
 EmberRoutesSettlementDashboard=ISCollapsableWindow:derive("EmberRoutesSettlementDashboard")
 
 ---@param actor IsoPlayer
@@ -51,6 +45,7 @@ function EmberRoutesSettlementDashboard:new(actor,entry,tabId)
     o.tabButtons={}
     o.nextCheck=0
     o.initialTab=tabId or "warehouse"
+    o.tabs=Registry.getTabIds(actor,entry)
     return o
 end
 
@@ -59,21 +54,32 @@ function EmberRoutesSettlementDashboard:initialise() ISCollapsableWindow.initial
 function EmberRoutesSettlementDashboard:createChildren()
     ISCollapsableWindow.createChildren(self)
     local h,p=self.fontHeight,self.pad
+    local bar=self:titleBarHeight() local width=h*6
+    self.activityButton=ISButton:new(self.width-width-bar*3,0,width,bar,
+        getText('IGUI_EmberRoutesProbe_Activity_title'),self,function(owner)
+            if owner:valid() then require('EmberRoutesProbe/UI/ActivityDialog').open(owner) end
+        end)
+    self.activityButton:initialise() Theme.button(self.activityButton,false) self:addChild(self.activityButton)
+    self.title=require('EmberRoutesProbe/UI/Text').wrapLimited(self.title,
+        math.max(h*4,self.width-2*(width+bar*3)),UIFont.Small,1)[1] or self.title
     local regions=assert(Layout.axis({x=0,y=self:titleBarHeight(),width=self.width,height=self.height-self:titleBarHeight()},
         {{basis=h+p},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
     self.pageBounds=regions[2]
     self.footerBounds=regions[3]
 
+    self.tabs=Registry.getTabIds(self.actor,self.entry)
     local tracks={}
-    for _ in ipairs(tabs) do tracks[#tracks+1]={grow=1} end
+    for _ in ipairs(self.tabs) do tracks[#tracks+1]={grow=1} end
     local top=assert(Layout.axis(regions[1],tracks,{gap=p/2}))
-    for i,id in ipairs(tabs) do
+    for i,id in ipairs(self.tabs) do
         local r=top[i]
-        local button=ISButton:new(r.x,r.y,r.width,r.height,text("tab_"..id),self,EmberRoutesSettlementDashboard.tabClicked)
+        local def=Registry.get(id)
+        local titleKey=def and def.titleKey or ("tab_"..id)
+        local button=ISButton:new(r.x,r.y,r.width,r.height,text(titleKey),self,EmberRoutesSettlementDashboard.tabClicked)
         button.internal=id
         button:initialise()
         Theme.styleButton(button,false,id==self.initialTab)
-        button.tooltip=text("tabNavigation")
+        button.tooltip=text(def and def.tooltipKey or "tabNavigation")
         Tooltip.attach(button,"prerender")
         self:addChild(button)
         self.tabButtons[id]=button
@@ -88,7 +94,8 @@ function EmberRoutesSettlementDashboard:valid()
 end
 
 function EmberRoutesSettlementDashboard:selectTab(id)
-    if not modules[id] then return end
+    local module=Registry.getModule(id)
+    if not module then return end
     if not self:valid() then self:close() return end
     if id==self.activeTab then
         if self.pages[id] and self.pages[id].focusContent then self.pages[id]:focusContent() end
@@ -101,7 +108,6 @@ function EmberRoutesSettlementDashboard:selectTab(id)
     if previous then previous:deactivate() previous:setVisible(false) end
     local page=self.pages[id]
     if not page then
-        local module=modules[id]
         page=require("EmberRoutesProbe/UI/"..module):new(self,self.pageBounds)
         page:initialise()
         self.pages[id]=page
@@ -111,21 +117,19 @@ function EmberRoutesSettlementDashboard:selectTab(id)
     page:setVisible(true)
     page:activate()
     if self.disposed or self.activeTab~=id then return end
+
+    local def=Registry.get(id)
+    local parentTab=def and def.parentTab
     for key,button in pairs(self.tabButtons) do
-        local chosen=key==id or key=='orders' and (id=='crafting' or id=='logistics')
+        local chosen=(key==id) or (parentTab and key==parentTab)
         Theme.styleButton(button,chosen,chosen)
     end
-    if id=='warehouse' then
-        self:setFooter(getText('IGUI_EmberRoutesProbe_Monitor_warehouseFooter'))
-    elseif id=='orders' then
-        -- Orders page updates its own footer with order summary
-    elseif id=='personnel' then
-        self:setFooter(getText('IGUI_EmberRoutesProbe_Personnel_priorityHint'))
-    elseif id=='defense' then
-        self:setFooter(getText('IGUI_EmberRoutesProbe_Defense_alertHint'))
-    else
-        self:setFooter(getText('IGUI_EmberRoutesProbe_Monitor_compatFooter'))
+
+    local footer=Registry.getFooter(id,page)
+    if footer then
+        self:setFooter(footer)
     end
+
     if page.focusContent then page:focusContent() end
 end
 
@@ -141,10 +145,12 @@ end
 function EmberRoutesSettlementDashboard:tabClicked(button) self:selectTab(button.internal) end
 
 function EmberRoutesSettlementDashboard:nextTab(direction)
-    if self.activeTab=='logistics' or self.activeTab=='crafting' then
-        self:selectTab('orders')
+    local def=Registry.get(self.activeTab)
+    if def and def.parentTab then
+        self:selectTab(def.parentTab)
         return
     end
+    local tabs=self.tabs or Registry.getTabIds(self.actor,self.entry)
     local index=1
     for i,id in ipairs(tabs) do if id==self.activeTab then index=i break end end
     self:selectTab(tabs[(index-1+direction+#tabs)%#tabs+1])
@@ -176,6 +182,7 @@ function EmberRoutesSettlementDashboard:close()
     if self.publicDialog then self.publicDialog:close() end
     if self.priorityDialog then self.priorityDialog:close() end
     if opened==self then opened=nil end
+    if self.activityDialog then self.activityDialog:close() end
     for _,page in pairs(self.pages) do page:dispose() end
     for _,button in pairs(self.tabButtons) do Tooltip.clear(button) end
     ISCollapsableWindow.close(self)

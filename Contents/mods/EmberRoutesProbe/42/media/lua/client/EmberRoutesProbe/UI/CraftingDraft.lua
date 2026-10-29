@@ -106,6 +106,37 @@ function Draft.new(owner,bounds)
             return {height=math.max(h+p,#lines*h+math.floor(p/2)),lines=lines,icon=nil}
         end
     end
+    local activeList, activeScroll
+    local function safeText(txt,tx,ty,color)
+        if not txt or txt=="" then return end
+        local sy=ty+activeScroll
+        -- Submit intersecting glyphs; the native list stencil clips the edge.
+        if sy+h>0 and sy<activeList.height then
+            Theme.text(activeList,txt,tx,ty,color)
+        end
+    end
+
+    local function safeRect(rx,ry,rw,rh,color,border)
+        if not color or rw<=0 or rh<=0 then return end
+        local sy=ry+activeScroll
+        if sy+rh<=0 or sy>=activeList.height then return end
+        local clipTop=math.max(0,-sy)
+        local clipBottom=math.max(0,(sy+rh)-activeList.height)
+        local drawY=ry+clipTop
+        local drawH=rh-clipTop-clipBottom
+        if drawH>0 then
+            Theme.rect(activeList,rx,drawY,rw,drawH,color,border)
+        end
+    end
+
+    local function safeTexture(tex,tx,ty,tw,th)
+        if not tex then return end
+        local sy=ty+activeScroll
+        if sy+th>0 and sy<activeList.height then
+            activeList:drawTextureScaledAspect(tex,tx,ty,tw,th,1,1,1,1)
+        end
+    end
+
     function style.draw(list,y,entry)
         local row,v=entry.item.value,entry.item.visual
         if row.kind=="chain_step" and v.width~=list.width then
@@ -114,36 +145,7 @@ function Draft.new(owner,bounds)
         local scroll=list:getYScroll()
         local visible=y+scroll
         if visible+entry.height<=0 or visible>=list.height then return y+entry.height end
-
-        local function safeText(txt,tx,ty,color)
-            if not txt or txt=="" then return end
-            local sy=ty+scroll
-            -- Submit intersecting glyphs; the native list stencil clips the edge.
-            if sy+h>0 and sy<list.height then
-                Theme.text(list,txt,tx,ty,color)
-            end
-        end
-
-        local function safeRect(rx,ry,rw,rh,color,border)
-            if not color or rw<=0 or rh<=0 then return end
-            local sy=ry+scroll
-            if sy+rh<=0 or sy>=list.height then return end
-            local clipTop=math.max(0,-sy)
-            local clipBottom=math.max(0,(sy+rh)-list.height)
-            local drawY=ry+clipTop
-            local drawH=rh-clipTop-clipBottom
-            if drawH>0 then
-                Theme.rect(list,rx,drawY,rw,drawH,color,border)
-            end
-        end
-
-        local function safeTexture(tex,tx,ty,tw,th)
-            if not tex then return end
-            local sy=ty+scroll
-            if sy+th>0 and sy<list.height then
-                list:drawTextureScaledAspect(tex,tx,ty,tw,th,1,1,1,1)
-            end
-        end
+        activeList=list activeScroll=scroll
 
         if row.kind=="heading" then
             local barH=math.floor(h*1.2)

@@ -64,4 +64,11 @@ end
 check(not bounded:request('overflow','overflow','WORK',a),'queue storage bounded before step')
 bounded:step()
 check(bounded:request('room','room','WORK',a)~=nil,'terminal queue entries reclaimed')
+check(c:state(t)==c:inspect(t).state and stalled:state(pending)=='STOPPING','scalar state agrees with stopped/active ticket snapshots')
+check(c:state({})==nil and c:state(nil)==nil,'scalar state never invents missing ticket status')
+local scalar=Controller.new() local st=assert(scalar:request('scalar','scalar','WORK',a))
+check(scalar:state(st)=='QUEUED','queued state available without full snapshot')
+scalar:step() check(scalar:state(st)=='ACTIVE','grant updates scalar state immediately')
+local dt=scalar:inspect(st) dt.state='tampered'
+check(scalar:state(st)=='ACTIVE','scalar query does not expose mutable controller storage')
 print('PASS '..n..' controller checks; native bodies/save NOT RUN')

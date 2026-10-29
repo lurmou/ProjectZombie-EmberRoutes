@@ -190,9 +190,12 @@ local function launch(actor, record,body,weights,nonPreemptive)
         local copyWeights
         if weights then copyWeights={} for id,n in pairs(weights) do copyWeights[id]=n end end
         local c
+        local newAssignment=record.reason=='CREATED' and record.settlementId~=nil
         local handle,why=runtime:submit({npcId=npcId,jobId=record.id,kind='TRANSFER',binding={id=npcId,handle=npc},
             nonPreemptive=nonPreemptive==true,captureStop=true,reconcileErrors=true,
             validate=function()
+                if newAssignment and (not record.membershipRevision or not require('EmberRoutesProbe/MembershipService').check(npcId,'WORK',
+                    {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=record.settlementId},record.membershipRevision).allowed) then return false end
                 return Probe.ready and not actor:isDead() and Registry.data()==root and job()==previous
                     and (not previous or previous.generation==generation) and not record.controlUncertain
                     and not Work.context
@@ -234,6 +237,18 @@ local function launch(actor, record,body,weights,nonPreemptive)
         if Store.valid(record,context.generation,token) and to==destination.container
             and item:getContainer()==to and to:getItems():contains(item) then Store.releaseCapacity(token,item:getID()) end
     end
+    -- Display metadata only; original IDs and claims remain authoritative.
+    record.workerName=require('EmberRoutesProbe/DisplayNames').name(record.npcId,npc)
+    record.itemTypes=record.itemTypes or {}
+    for _,container in ipairs({source.container,npc:getInventory(),destination.container}) do
+        local items=container:getItems()
+        for i=0,math.min(items:size(),2000)-1 do
+            local item=items:get(i)
+            for _,id in ipairs(record.items) do
+                if item:getID()==id then record.itemTypes[tostring(id)]=item:getFullType() break end
+            end
+        end
+    end
     -- Publish before a native effect can run; a full ledger is a safe refusal.
     local published,why=Store.publish(record)
     if not published then Store.finish(record) return why end
@@ -261,6 +276,10 @@ function Work.assign(actor,intent)
     local record={id=intent.jobId or Registry.id(),npcId=npcId,source=intent.source,destination=intent.destination,items=ids,phase="COLLECT",
         state="PAUSED",reason="CREATED",delivered=0,format=1,kind="EXPLICIT_TRANSFER",scopeId="local-world",executor="ENTITY",
         producer=intent.producer,settlementId=intent.settlementId,sourceMode=intent.sourceMode}
+    if record.settlementId then
+        local member=require('EmberRoutesProbe/MembershipService').view(npcId)
+        record.membershipRevision=member and member.revision
+    end
     local result=launch(actor,record,nil,intent.weights,true)
     if Work.busy() then
         Store.publish(record)
@@ -511,6 +530,34 @@ function Work.reset()
     Work.context, Work.step, Work.nextTick = nil, nil, 0
 end
 
+-- Only autonomous storage jobs opt into the versioned manifest adapter.
+local routed=require('EmberRoutesProbe/HaulAgent').new(npcId)
+local legacy={}
+for _,name in ipairs({'busy','stopAdapter','pause','assign','resume','hasCargo','tick','reset','execute'}) do legacy[name]=Work[name] end
+Work.busy=function() return routed.busy() or legacy.busy() end
+Work.stopAdapter=function(controller,ticket)
+    if routed.busy() then return routed.stopAdapter(controller,ticket) end return legacy.stopAdapter(controller,ticket)
+end
+Work.pause=function(reason,owned)
+    if routed.busy() or not legacy.busy() then routed.pause(reason) end
+    if legacy.busy() then return legacy.pause(reason,owned) end
+end
+Work.assign=function(actor,intent)
+    if intent and (intent.producer=='LOGISTICS' or intent.producer=='DELIVERY') then return routed.assign(actor,intent) end return legacy.assign(actor,intent)
+end
+Work.resume=function(actor,nonPreemptive)
+    local r=job() if r and (r.producer=='LOGISTICS' or r.producer=='DELIVERY') then return routed.resume(actor,nonPreemptive) end return legacy.resume(actor,nonPreemptive)
+end
+Work.hasCargo=function(actor)
+    local r=job() if r and r.format==2 then return routed.hasCargo(actor) end return legacy.hasCargo(actor)
+end
+Work.tick=function() if routed.busy() then routed.tick() else legacy.tick() end end
+Work.reset=function() routed.reset() legacy.reset() end
+Work.execute=function(actor,command,object,container)
+    local r=job()
+    if command=='resume' and r and (r.producer=='LOGISTICS' or r.producer=='DELIVERY') then return routed.resume(actor,false) end
+    return legacy.execute(actor,command,object,container)
+end
 return Work
 end
 return Factory

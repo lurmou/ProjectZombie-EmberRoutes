@@ -15,6 +15,7 @@ world.select(a.id) Work.execute(actor,"clear") world.select(b.id) Work.execute(a
 local area={x=0,y=0,w=40,h=10}
 actor.x=4.5
 local entry=assert(Ledger.commit(actor,nil,"Logistics test",area))
+dofile('tests/lua/membership-fixture.lua')(function() return Ledger.get(entry.id) end,{a.id,b.id})
 local function container(x,types,role,private)
     local object=f.object(x) actor.x=x+0.5
     local filter=Filter.new() filter.private=private==true
@@ -168,5 +169,29 @@ local release=Service.watch(entry.id,function() end)
 release() release()
 check(Service.running(entry.id)==wasRunning,"repeated unsubscribe does not change logistics state or call absent next")
 _G.next=savedNext
+-- Public discovery must sleep after an exhausted scan and wake on inventory.
+local originalNew,originalClock=Planner.new,getTimestampMs
+local publicNow,created,progress=0,0,0
+getTimestampMs=function() return publicNow end
+Planner.new=function()
+    created=created+1
+    return {step=function()
+        progress=progress+1
+        return nil,progress%2==1 and 'WAIT' or 'DONE'
+    end}
+end
+Service.reset()
+local settings=Store.get(entry.id) settings.suspended=false settings.intake=true
+Service.publicOffer(actor,entry,a) Service.publicOffer(actor,entry,a)
+check(created==1 and progress==2,'in-flight public scan advances without cooldown')
+for _=1,10 do publicNow=publicNow+100 Service.publicOffer(actor,entry,a) end
+check(created==1,'exhausted public scan is not reconstructed every decision')
+for _,listener in ipairs(Registry.inventoryListeners) do listener(Registry.metadata(input,input.container).id) end
+Service.publicOffer(actor,entry,a)
+check(created==2,'verified inventory event immediately wakes public search')
+Service.publicOffer(actor,entry,a)
+publicNow=publicNow+2001 Service.publicOffer(actor,entry,a)
+check(created==3,'finite retry detects changes outside mod events')
+Planner.new,getTimestampMs=originalNew,originalClock
 print=originalPrint
 print("PASS "..count.." automatic intake/tidy/pool/batch/lifecycle assertions; native host mocked")

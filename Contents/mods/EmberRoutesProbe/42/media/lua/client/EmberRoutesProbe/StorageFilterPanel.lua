@@ -13,6 +13,7 @@ local Rows=require "EmberRoutesProbe/UI/FilterList"
 local Configuration=require "EmberRoutesProbe/ContainerConfiguration"
 local ConfigControls=require "EmberRoutesProbe/UI/ContainerConfigControls"
 local Theme=require "EmberRoutesProbe/UI/Theme"
+
 ---@class EmberRoutesFilterList: ISScrollingListBox
 ---@field owner EmberRoutesStorageFilterPanel
 ---@class EmberRoutesStorageFilterPanel: ISCollapsableWindow
@@ -25,7 +26,7 @@ local Theme=require "EmberRoutesProbe/UI/Theme"
 ---@field store EmberRoutesUIStore
 ---@field container ItemContainer
 ---@field unsubscribe function?
----@field model {draft:table,descriptions:table[],status:string}
+---@field model {draft:table,descriptions:table[],collapsed:table,status:string}
 ---@field hintLines string[]
 ---@field statusCaption string
 ---@field statusLines string[]
@@ -68,6 +69,14 @@ function EmberRoutesStorageFilterPanel:new(actor,object,container,initial)
     end
     table.sort(descriptions,function(a,b) return a.fullType<b.fullType end)
     o.model=Editor.new(Registry.filter(object,container),descriptions)
+    -- Default collapse root groups that have children for clean UI
+    o.model.collapsed={}
+    for _,id in ipairs(Filter.order) do
+        local node=Filter.nodes[id]
+        if node and not node.parent and node.hasChildren then
+            o.model.collapsed[id]=true
+        end
+    end
     if initial then
         local draft
         if type(initial)=="string" then draft=Configuration.preset(o.model.draft,initial)
@@ -82,9 +91,11 @@ function EmberRoutesStorageFilterPanel:new(actor,object,container,initial)
     o.hintLines=Flow.wrapLimited(text("configHint"),width-o.pad*2,UIFont.Small,2)
     return o
 end
+
 function EmberRoutesStorageFilterPanel:initialise()
     ISCollapsableWindow.initialise(self)
 end
+
 function EmberRoutesStorageFilterPanel:createChildren()
     ISCollapsableWindow.createChildren(self)
     local p,h=self.pad,self.fontHeight
@@ -119,18 +130,33 @@ function EmberRoutesStorageFilterPanel:createChildren()
     self:refreshRows()
     self.configControls:refresh()
     self.statusLines=Flow.wrapLimited(self.configControls.warning,self.width-self.pad*2,UIFont.Small,3)
-    -- Keyboard navigation uses the same selection model; arrows never toggle.
+
+    -- Keyboard navigation: Space toggles allow/deny; Left/Right toggles collapse/expand
     self.list.onKeyPress=function(list,key)
-        if key==Keyboard.KEY_UP then list.selected=math.max(1,list.selected-1) list:ensureVisible(list.selected)
-        elseif key==Keyboard.KEY_DOWN then list.selected=math.min(#list.items,list.selected+1) list:ensureVisible(list.selected)
+        if key==Keyboard.KEY_UP then
+            list.selected=math.max(1,list.selected-1) list:ensureVisible(list.selected)
+        elseif key==Keyboard.KEY_DOWN then
+            list.selected=math.min(#list.items,list.selected+1) list:ensureVisible(list.selected)
         elseif key==Keyboard.KEY_SPACE then
-            local entry=list.items[list.selected] if entry then EmberRoutesStorageFilterPanel.toggle(self,entry.item) end
+            local entry=list.items[list.selected]
+            if entry then EmberRoutesStorageFilterPanel.toggle(self,entry.item) end
+        elseif key==Keyboard.KEY_RIGHT then
+            local entry=list.items[list.selected]
+            if entry and entry.item and entry.item.hasChildren and entry.item.collapsed then
+                self:toggleCollapse(entry.item)
+            end
+        elseif key==Keyboard.KEY_LEFT then
+            local entry=list.items[list.selected]
+            if entry and entry.item and entry.item.hasChildren and not entry.item.collapsed then
+                self:toggleCollapse(entry.item)
+            end
         elseif key==Keyboard.KEY_RETURN then self:apply()
         elseif key==Keyboard.KEY_ESCAPE then self:close() end
     end
     self.list.isKeyConsumed=function(_,key)
         return key==Keyboard.KEY_UP or key==Keyboard.KEY_DOWN or key==Keyboard.KEY_SPACE
             or key==Keyboard.KEY_RETURN or key==Keyboard.KEY_ESCAPE
+            or key==Keyboard.KEY_LEFT or key==Keyboard.KEY_RIGHT
     end
     self.list.onJoypadDown=function(list,button,joypadData)
         if button==Joypad.AButton then local entry=list.items[list.selected] if entry then self:toggle(entry.item) end
@@ -140,20 +166,52 @@ function EmberRoutesStorageFilterPanel:createChildren()
     end
     self.list.onJoypadDirUp=function(list) list.selected=math.max(1,list.selected-1) list:ensureVisible(list.selected) end
     self.list.onJoypadDirDown=function(list) list.selected=math.min(#list.items,list.selected+1) list:ensureVisible(list.selected) end
+    self.list.onJoypadDirRight=function(list)
+        local entry=list.items[list.selected]
+        if entry and entry.item and entry.item.hasChildren and entry.item.collapsed then
+            self:toggleCollapse(entry.item)
+        end
+    end
+    self.list.onJoypadDirLeft=function(list)
+        local entry=list.items[list.selected]
+        if entry and entry.item and entry.item.hasChildren and not entry.item.collapsed then
+            self:toggleCollapse(entry.item)
+        end
+    end
 end
+
 function EmberRoutesStorageFilterPanel:refreshRows() Rows.refresh(self) end
+
 function EmberRoutesStorageFilterPanel:edit(change)
     local model=Editor.new(self.model.draft,self.model.descriptions)
+    model.collapsed=self.model.collapsed or {}
     change(model)
     self.store:setState({model=model,status="",statusError=false})
 end
-function EmberRoutesStorageFilterPanel:toggle(row) self:edit(function(model) Editor.toggle(model,row) end) end
+
+function EmberRoutesStorageFilterPanel:toggle(row)
+    self:edit(function(model) Editor.toggle(model,row) end)
+end
+
+function EmberRoutesStorageFilterPanel:toggleCollapse(row)
+    if not row or not row.hasChildren or not row.id then return end
+    self:edit(function(model)
+        Editor.toggleCollapse(model,row.id)
+    end)
+end
+
 function EmberRoutesStorageFilterPanel:all() self:edit(function(model) Editor.all(model,true) end) end
 function EmberRoutesStorageFilterPanel:none() self:edit(function(model) Editor.all(model,false) end) end
+
 function EmberRoutesStorageFilterPanel:apply()
     local ok,result=pcall(Registry.configure,self.actor,self.object,self.model.draft,self.container,self.store.value.role)
     if not ok then Log.write("STORAGE_FILTER","APPLY_ERROR "..tostring(result)) result="ERROR" end
-    Log.write("STORAGE_FILTER","APPLY "..result)
+    local tag=Registry.metadata(self.object,self.container)
+    local square=self.object and self.object.getSquare and self.object:getSquare()
+    Log.write("STORAGE_FILTER","APPLY "..result
+        .." id="..tostring(tag and tag.id or "unknown")
+        .." role="..tostring(tag and tag.logisticsRole or self.store.value.role or "?")
+        ..(square and " at="..square:getX()..","..square:getY()..","..square:getZ() or ""))
     if result=="FILTER_CONFIGURED" then self:close()
     else
         local key="IGUI_EmberRoutesProbe_WorkCode_"..result
@@ -162,6 +220,7 @@ function EmberRoutesStorageFilterPanel:apply()
         self.store:setState({status=self.statusCaption,statusError=true})
     end
 end
+
 function EmberRoutesStorageFilterPanel:prerender()
     ISCollapsableWindow.prerender(self)
     local y=self:titleBarHeight()+self.pad
@@ -174,6 +233,7 @@ function EmberRoutesStorageFilterPanel:prerender()
         self:drawText(line,self.pad,self.statusY+(index-1)*self.fontHeight,color.r,color.g,color.b,color.a,UIFont.Small)
     end
 end
+
 function EmberRoutesStorageFilterPanel:close()
     Tooltip.clear(self.list)
     if self.configControls then self.configControls:close() end
@@ -181,11 +241,11 @@ function EmberRoutesStorageFilterPanel:close()
     ISCollapsableWindow.close(self)
     self:removeFromUIManager()
     if self.actor and self.actor:getJoypadBind()~=-1 then
-        -- Current vanilla ISAnimalContextMenu uses this exact nil-target close path.
         ---@diagnostic disable-next-line: deprecated
         setJoypadFocus(self.actor:getPlayerNum(),nil)
     end
 end
+
 ---@param container ItemContainer?
 function EmberRoutesStorageFilterPanel.open(actor,object,container,initial)
     if not actor or actor:isDead() or isClient() or isServer() then return end
@@ -201,5 +261,5 @@ function EmberRoutesStorageFilterPanel.open(actor,object,container,initial)
     if actor:getJoypadBind()~=-1 then setJoypadFocus(actor:getPlayerNum(),panel.list) end
     return panel
 end
-return EmberRoutesStorageFilterPanel
 
+return EmberRoutesStorageFilterPanel

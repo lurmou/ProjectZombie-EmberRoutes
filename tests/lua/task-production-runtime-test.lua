@@ -44,6 +44,8 @@ ISTimedActionQueue.clear=function(npc)
     if q then q.queue={} end
 end
 local function fresh()
+    local macro=package.loaded['EmberRoutesProbe/MembershipService'].view(f.npc.id)
+    macro.context='SETTLEMENT' macro.leaderId=nil
     f.Probe.controlledExecution=false
     Runtime.reset()
     local log,saw=f.fresh(1)
@@ -54,10 +56,14 @@ end
 local function run()
     return f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=3})
 end
+local lastCraft
 local function tick(effects)
     f.tick(false)
     Runtime.current():step()
-    if effects and f.queued() then f.queued():perform() end
+    if effects and f.queued() then
+        if f.queued().craftRecipe then lastCraft=f.queued() end
+        f.queued():perform()
+    end
 end
 local function pump()
     for _=1,2000 do tick(true) if not Runtime.current():owns(f.npc.id) then return end end
@@ -120,7 +126,9 @@ for _=1,300 do
 end
 check(f.queued() and f.queued().craftRecipe,'handoff interrupts actual queued saw action before commit')
 jobId=f.Craft.record(f.npc.id).id
-check(Companion.execute(f.actor,'follow'),'follow submits against current production owner')
+local member=package.loaded['EmberRoutesProbe/MembershipService'].view(f.npc.id)
+member.context='FOLLOW' member.leaderId='fixture-leader'
+check(Companion.startFor(f.actor,f.npc.id,member.revision),'authorized follow adapter submits against current production owner')
 for _=1,25 do tick(false) end
 check(f.Craft.record(f.npc.id).state=='PAUSED' and Companion.exportState(f.npc.id).mode=='FOLLOW',
     'confirmed production stop grants body to actual companion adapter')
@@ -152,6 +160,21 @@ f.npc.maxWeight=8
 check(run()=='QUEUED','same NPC can accept another order after safe rejection')
 pump()
 check(f.Craft.record(f.npc.id).state=='DONE','new order completes after capacity corrected')
+log,saw=fresh() f.npc.maxWeight=6 log.weight=9 saw.weight=0.7
+local preflight=require('EmberRoutesProbe/ProductionChain').new(f.actor,f.npc,f.entry,f.recipe.key,3,nil,'offer:test',false)
+local result,blocked
+for _=1,2000 do result,blocked=preflight:step() if result or blocked then break end end
+check(not result and blocked=='CAPACITY_UNAVAILABLE' and not f.Craft.record(f.npc.id)
+    and not f.Store.owner(log.id),'public overweight discovery retains demand without allocating Job or originals')
+check(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=3,orderId='public-demand'})=='QUEUED',
+    'late public capacity failure fixture admitted')
+pump() r=f.Craft.record(f.npc.id) local publicJob=r.id
+check(r.state=='PAUSED' and not r.released and r.orderId=='public-demand' and r.reason=='CAPACITY_UNAVAILABLE' and key==nil,
+    'late capacity failure pauses exact public Job instead of cancelling its demand')
+f.npc.maxWeight=8
+check(f.Craft.execute(f.actor,'resume',nil,f.npc.id,true)=='QUEUED','capacity-corrected public Job remains resumable')
+pump() r=f.Craft.record(f.npc.id)
+check(r.id==publicJob and r.state=='DONE' and r.orderId=='public-demand','corrected capacity completes same public Job once')
 log,saw=fresh()
 f.npc.maxWeight=8 log.weight=9 saw.weight=0.7
 check(run()=='QUEUED','carried capacity-drop fixture accepted')
@@ -186,6 +209,8 @@ pump()
 r=f.Craft.record(f.npc.id)
 check(r.state=='CANCELLED' and r.released and saw.container==f.tools.container,
     'cancel skips credited output while returning all remaining originals')
+check(require('EmberRoutesProbe/BusinessJobs').retire(r.id) and not f.Craft.record(f.npc.id),
+    'actual cancellation retires after original tool and remaining outputs are returned')
 log,saw=fresh()
 check(run()=='QUEUED','missing original fixture accepted')
 for _=1,1000 do tick(true) if log.container==f.npc.root then break end end
@@ -198,14 +223,18 @@ pump()
 r=f.Craft.record(f.npc.id)
 check(r.reason=='ITEM_MISSING' and not r.released and f.Store.owner(log.id) and substitute.container==f.materials.container,
     'genuine missing original retains claim and never substitutes same-type item')
+check(not require('EmberRoutesProbe/BusinessJobs').retire(r.id) and f.registry.data().taskJobs.byId[r.id],
+    'failed cancellation remains visible for original reconciliation')
 log,saw=fresh()
 f.Probe.runtimeReady=true
+member.context='SETTLEMENT' member.leaderId=nil
 local Public=require 'EmberRoutesProbe/PublicWork'
 check(Public.setPriority(f.actor,f.entry.id,f.npc.id,'crafting',1)=='PRIORITY_SAVED','minimal per-NPC craft priority saved')
 check(Public.setPriority(f.actor,f.entry.id,f.npc.id,'hauling',0)=='PRIORITY_SAVED','hauling may be independently disabled')
-local accepted,orderId=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,'public-test-request')
+local publicRequest=Public.requestId()
+local accepted,orderId=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,publicRequest)
 check(accepted=='ORDER_CREATED' and orderId and not f.Craft.record(f.npc.id),'public request has no executor and causes no immediate production')
-local duplicate,duplicateId=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,'public-test-request')
+local duplicate,duplicateId=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,publicRequest)
 check(duplicate=='ORDER_CREATED' and duplicateId==orderId and #Public.orders(f.entry.id)==1,'repeated request is idempotent')
 for _=1,2000 do
     tick(true) Public.tick()
@@ -216,17 +245,32 @@ check(r and r.orderId==orderId and r.state=='DONE' and f.nativeCalls()==1,'publi
 check(f.registry.data().taskJobs.byId[r.id].payload==r and not f.registry.data().craftProbes and not f.registry.data().labor,
     'new Job payload is the single persistent business record; old roots are absent')
 local firstJob=r.id
+local retiredCallback=lastCraft
+for _=1,30 do tick(true) if not Runtime.current():owns(f.npc.id) then break end end
+check(Public.retireSettled(8)==1 and not f.registry.data().taskJobs.byId[firstJob]
+    and not f.Craft.record(f.npc.id) and #Public.orders(f.entry.id)==0,'closed public Order and Job disappear together after body release')
+retiredCallback:perform() retiredCallback:stop()
+check(not f.registry.data().taskJobs.byId[firstJob] and f.nativeCalls()==1,
+    'late native craft completion and stop do not recreate retired Job or repeat effect')
+duplicate,duplicateId=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,publicRequest)
+check(duplicate=='ORDER_CREATED' and duplicateId==orderId and #Public.orders(f.entry.id)==0,
+    'completed request receipt acknowledges retry without recreating work')
 f.materials.container:AddItem(f.item(log.kind))
-local _,nextOrder=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,'public-second-request')
+local _,nextOrder=Public.create(f.actor,f.entry.id,f.recipe.key,3,nil,Public.requestId())
 for _=1,2000 do
     tick(true) Public.tick()
     local rows=Public.orders(f.entry.id)
-    if rows[2] and rows[2].state=='DONE' then break end
+    if rows[1] and rows[1].state=='DONE' then break end
 end
-check(Public.orders(f.entry.id)[1].state=='DONE' and Public.orders(f.entry.id)[1].jobId==firstJob,
-    'completed public order keeps its own Job after the worker executes a successor')
+check(#Public.orders(f.entry.id)==1 and Public.orders(f.entry.id)[1].id==nextOrder,
+    'only successor remains in the work list')
 local history=require('EmberRoutesProbe/BusinessJobs').records('CRAFT')
 local current=f.Craft.record(f.npc.id)
-check(current and current.orderId==nextOrder and current.state=='DONE' and history[firstJob] and f.nativeCalls()==2,
-    'successor completes once and retains independent settled Job history')
+check(current and current.orderId==nextOrder and current.state=='DONE' and not history[firstJob] and f.nativeCalls()==2,
+    'successor completes once without retaining predecessor history')
+for _=1,30 do tick(true) if not Runtime.current():owns(f.npc.id) then break end end
+require('EmberRoutesProbe/TaskRetirement').install()
+f.Probe.tickRetirement()
+check(#Public.orders(f.entry.id)==0 and not f.registry.data().taskJobs.byId[current.id],
+    'normal background retirement hook clears successor after settlement')
 print('PASS '..checks..' controlled production checks; native effects mocked')

@@ -1,7 +1,7 @@
 -- Logical coordination only. Tokens fence callbacks; no world assets are changed.
 local Claims={}
 local methods={} methods.__index=methods
-function Claims.new() return setmetatable({owners={},capacity={}},methods) end
+function Claims.new() return setmetatable({owners={},capacity={},revision=0},methods) end
 function methods:acquire(taskId,generation,resources)
     local seen,previous={},nil
     for _,key in ipairs(resources) do
@@ -16,6 +16,7 @@ function methods:acquire(taskId,generation,resources)
     end
     local token={taskId=taskId,generation=generation,resources=resources}
     for _,key in ipairs(resources) do self.owners[key]=token end
+    if not previous and #resources>0 then self.revision=self.revision+1 end
     if previous and previous.capacityKey then
         local bucket=self.capacity[previous.capacityKey]
         local claim=bucket and bucket.entries[taskId]
@@ -26,17 +27,45 @@ function methods:acquire(taskId,generation,resources)
     return token
 end
 function methods:valid(token,key) return token and self.owners[key]==token end
+-- Validate the whole removal before touching owners, resources or capacity.
+function methods:shrink(token,releasedKeys)
+    if not token or type(releasedKeys)~='table' then return false,'STALE_CLAIM' end
+    local owned,drop,keep={},{},{}
+    for _,key in ipairs(token.resources) do
+        if self.owners[key]~=token then return false,'STALE_CLAIM' end owned[key]=true
+    end
+    for _,key in ipairs(releasedKeys) do
+        if not owned[key] or drop[key] then return false,'RESOURCE_SET_CHANGED' end drop[key]=true
+    end
+    local bucket=token.capacityKey and self.capacity[token.capacityKey]
+    local claim=bucket and bucket.entries[token.taskId]
+    if token.capacityKey and (not claim or claim.token~=token) then return false,'STALE_CLAIM' end
+    for _,key in ipairs(token.resources) do if not drop[key] then keep[#keep+1]=key end end
+    for _,key in ipairs(releasedKeys) do
+        if string.sub(key,1,5)=='item:' then self:releaseCapacity(token,tonumber(string.sub(key,6))) end
+        self.owners[key]=nil
+    end
+    token.resources=keep
+    if #releasedKeys>0 then self.revision=self.revision+1 end
+    return true
+end
 -- Validate both sets before mutation. Retained tools/surface never lose ownership.
 function methods:replace(token,resources)
-    if not token or token.capacityKey then return false,"STALE_CLAIM" end
+    if not token then return false,"STALE_CLAIM" end
+    if token.capacityKey then
+        local b=self.capacity[token.capacityKey] local c=b and b.entries[token.taskId]
+        if not c or c.token~=token or c.count>0 then return false,'STALE_CLAIM' end
+    end
     local seen={}
     for _,key in ipairs(token.resources) do if self.owners[key]~=token then return false,"STALE_CLAIM" end end
     for _,key in ipairs(resources) do
         if seen[key] then return false,"RESOURCE_DUPLICATED" end seen[key]=true
         if self.owners[key] and self.owners[key]~=token then return false,"ITEM_RESERVED" end
     end
-    for _,key in ipairs(token.resources) do if not seen[key] then self.owners[key]=nil end end
-    for _,key in ipairs(resources) do self.owners[key]=token end
+    local changed=false
+    for _,key in ipairs(token.resources) do if not seen[key] then self.owners[key]=nil changed=true end end
+    for _,key in ipairs(resources) do if not self.owners[key] then changed=true end self.owners[key]=token end
+    if changed then self.revision=self.revision+1 end
     token.resources=resources return true
 end
 -- Add freshly created original outputs without releasing inputs/tools in between.
@@ -54,6 +83,7 @@ function methods:extend(token,resources)
         end
     end
     for _,key in ipairs(added) do token.resources[#token.resources+1]=key self.owners[key]=token end
+    if #added>0 then self.revision=self.revision+1 end
     return true
 end
 function methods:reserve(token,key,itemId,amount,free)
@@ -90,7 +120,9 @@ function methods:releaseCapacity(token,itemId)
 end
 function methods:release(token)
     if not token then return end
-    for _,key in ipairs(token.resources) do if self.owners[key]==token then self.owners[key]=nil end end
+    local changed=false
+    for _,key in ipairs(token.resources) do if self.owners[key]==token then self.owners[key]=nil changed=true end end
+    if changed then self.revision=self.revision+1 end
     self:releaseCapacity(token)
 end
 -- Loading conservative reservations does not assert that space still exists.
@@ -112,6 +144,26 @@ function methods:restore(token,key,itemId,amount)
 end
 function methods:available(key,free)
     return math.max(0,free-(self.capacity[key] and self.capacity[key].total or 0))
+end
+-- A stable batch promise, independent of food IDs that may be replaced by the
+-- native recipe. Shares the SAME capacity buckets with hauling reservations.
+function methods:restoreWork(token,key,amount)
+    if not token or not self:valid(token,'cooking:capacity:'..token.taskId)
+        or type(key)~='string' or type(amount)~='number' or amount<=0 or amount~=amount or amount==math.huge
+        or token.capacityKey and token.capacityKey~=key then return false end
+    local bucket=self.capacity[key] or {entries={},total=0,count=0}
+    local claim=bucket.entries[token.taskId]
+    if claim and (claim.token~=token or claim.count>0) then return false end
+    if not claim then bucket.count=bucket.count+1 end
+    claim=claim or {token=token,items={},count=0,amount=0}
+    bucket.total=bucket.total-claim.amount+amount claim.amount=amount claim.workAmount=amount
+    bucket.entries[token.taskId]=claim self.capacity[key]=bucket token.capacityKey=key
+    return true
+end
+function methods:availableWork(token,key,free)
+    local bucket=self.capacity[key] local claim=bucket and token and bucket.entries[token.taskId]
+    local own=claim and claim.token==token and claim.workAmount or 0
+    return math.max(0,free-(bucket and bucket.total or 0)+own)
 end
 function methods:availableFor(token,key,itemId,free)
     local bucket=self.capacity[key] local claim=bucket and token and bucket.entries[token.taskId]

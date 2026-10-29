@@ -2,12 +2,29 @@ local Filter=require "EmberRoutesProbe/StorageFilter"
 local Editor={}
 function Editor.new(config,descriptions)
     local copy=Filter.copy(config)
-    return {draft=copy or Filter.new(),descriptions=descriptions or {},status=""}
+    return {draft=copy or Filter.new(),descriptions=descriptions or {},collapsed={},status=""}
+end
+function Editor.isCollapsed(model,id)
+    return model and model.collapsed and model.collapsed[id]==true
+end
+function Editor.toggleCollapse(model,id)
+    if not model then return end
+    model.collapsed=model.collapsed or {}
+    model.collapsed[id]=not model.collapsed[id]
+    return model.collapsed[id]
 end
 function Editor.value(config,id)
     local current=id
     while current do
         if config.groups[current]~=nil then return config.groups[current] end
+        current=Filter.nodes[current] and Filter.nodes[current].parent
+    end
+    return false
+end
+local function isAncestorCollapsed(model,id)
+    local current=Filter.nodes[id] and Filter.nodes[id].parent
+    while current do
+        if Editor.isCollapsed(model,current) then return true end
         current=Filter.nodes[current] and Filter.nodes[current].parent
     end
     return false
@@ -18,11 +35,21 @@ function Editor.rows(model)
     rows[#rows+1]={kind="private",label="private"}
     for _,id in ipairs(Filter.treeOrder()) do
         local node=Filter.nodes[id]
-        rows[#rows+1]={kind="group",id=id,depth=node.depth}
-        for _,description in ipairs(model.descriptions) do
-            if description.node==id then
-                rows[#rows+1]={kind="type",id=description.fullType,depth=node.depth+1}
-                seen[description.fullType]=true
+        if not isAncestorCollapsed(model,id) then
+            rows[#rows+1]={
+                kind="group",
+                id=id,
+                depth=node.depth,
+                hasChildren=node.hasChildren==true,
+                collapsed=Editor.isCollapsed(model,id)
+            }
+            if not Editor.isCollapsed(model,id) then
+                for _,description in ipairs(model.descriptions) do
+                    if description.node==id then
+                        rows[#rows+1]={kind="type",id=description.fullType,depth=node.depth+1}
+                        seen[description.fullType]=true
+                    end
+                end
             end
         end
     end

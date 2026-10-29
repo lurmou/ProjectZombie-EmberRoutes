@@ -92,12 +92,12 @@ class KahluaUiTextTest {
                 }
                 frame.push(module); return 1;
             });
-            run(thread,env,Files.readString(Path.of("tests/lua/ui-foundation-test.lua")),"ui-foundation");
-            run(thread,env,Files.readString(Path.of("tests/lua/settlement-storage-test.lua")),"settlement-storage");
-            run(thread,env,Files.readString(Path.of("tests/lua/warehouse-query-test.lua")),"warehouse-query");
-            run(thread,env,Files.readString(Path.of("tests/lua/warehouse-metrics-test.lua")),"warehouse-metrics");
-            run(thread,env,Files.readString(Path.of("tests/lua/warehouse-locator-test.lua")),"warehouse-locator");
-            run(thread,env,Files.readString(Path.of("tests/lua/storage-panel-test.lua")),"real-panel-fixture");
+            run(thread,env,Files.readString(Path.of("tests/lua/ui-foundation-test.lua"),StandardCharsets.UTF_8),"ui-foundation");
+            run(thread,env,Files.readString(Path.of("tests/lua/settlement-storage-test.lua"),StandardCharsets.UTF_8),"settlement-storage");
+            run(thread,env,Files.readString(Path.of("tests/lua/warehouse-query-test.lua"),StandardCharsets.UTF_8),"warehouse-query");
+            run(thread,env,Files.readString(Path.of("tests/lua/warehouse-metrics-test.lua"),StandardCharsets.UTF_8),"warehouse-metrics");
+            run(thread,env,Files.readString(Path.of("tests/lua/warehouse-locator-test.lua"),StandardCharsets.UTF_8),"warehouse-locator");
+            run(thread,env,Files.readString(Path.of("tests/lua/storage-panel-test.lua"),StandardCharsets.UTF_8),"real-panel-fixture");
             run(thread,env,"""
                 local resolutions={{1920,1080,16},{2560,1440,24},{3840,2160,32},{1280,720,28}}
                 for _,r in ipairs(resolutions) do
@@ -120,8 +120,8 @@ class KahluaUiTextTest {
                 print("PASS real Kahlua + actual translations: panel labels/heights at 1080p, 2K, 4K, 720p large font; ISUI host mocked")
                 ""","chinese-panel-layout");
             preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN");
-            run(thread,env,Files.readString(Path.of("tests/lua/storage-tabs-test.lua")),"real-tabs-fixture");
-            run(thread,env,Files.readString(Path.of("tests/lua/settlement-ui-test.lua")),"settlement-ui");
+            run(thread,env,Files.readString(Path.of("tests/lua/storage-tabs-test.lua"),StandardCharsets.UTF_8),"real-tabs-fixture");
+            run(thread,env,Files.readString(Path.of("tests/lua/settlement-ui-test.lua"),StandardCharsets.UTF_8),"settlement-ui");
             preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN","warehouse");
             preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN","selector");
         }

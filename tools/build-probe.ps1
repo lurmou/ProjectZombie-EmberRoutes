@@ -79,21 +79,33 @@ $manifest = "Manifest-Version: 1.0`nImplementation-Title: EmberRoutes Carrier Pr
 & $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/ProbeStoreTableTest.java') 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'store-table-compile.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Checkpoint table test compilation failed" }
-& $javaCommand '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProbeStoreTableTest' 2>&1 |
+& $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProbeStoreTableTest' 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'store-table-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Checkpoint table migration tests failed" }
 & $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/ProbeSaveReceiptTest.java') 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'save-receipt-compile.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Save receipt test compilation failed" }
-& $javaCommand '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProbeSaveReceiptTest' 2>&1 |
+& $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProbeSaveReceiptTest' 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'save-receipt-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Save receipt tests failed" }
 & $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/RecipeMetadataTest.java') 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'recipe-metadata-compile.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Recipe metadata test compilation failed" }
-& $javaCommand '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.RecipeMetadataTest' 2>&1 |
+& $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.RecipeMetadataTest' 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'recipe-metadata-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Recipe metadata test failed" }
+& $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/InventoryReadsTest.java') 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'inventory-reads-compile.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Native inventory-read test compilation failed" }
+& $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.InventoryReadsTest' 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'inventory-reads-tests.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Native inventory-read tests failed" }
+& $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/WarehouseFastIndexTest.java') 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'warehouse-fast-index-compile.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix WarehouseFastIndex test compilation failed" }
+& $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.WarehouseFastIndexTest' 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'warehouse-fast-index-tests.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix WarehouseFastIndex tests failed" }
 $manifestPath = Join-Path $staging 'MANIFEST.MF'
 [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 $builtJar = Join-Path $staging 'EmberRoutesProbe.jar'

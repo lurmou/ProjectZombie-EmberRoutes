@@ -18,9 +18,9 @@ $rows=foreach ($key in $translations.Keys) {
 }
 $fixture=Join-Path $projectRoot "build/ui-$Language.tsv"
 [IO.File]::WriteAllLines($fixture,[string[]]$rows,[Text.UTF8Encoding]::new($false))
-$javaArgs=@('--class-path',"$gameRoot/*",(Join-Path $projectRoot 'tests/java/KahluaUiTextTest.java'),$fixture,"--language=$Language")
+$javaArgs=@('-Dfile.encoding=UTF-8','--class-path',"$gameRoot/*",(Join-Path $projectRoot 'tests/java/KahluaUiTextTest.java'),$fixture,"--language=$Language")
 if ($SettlementTabs) {
-    $javaArgs=@('--class-path',"$gameRoot/*",(Join-Path $projectRoot 'tests/java/KahluaLaborTest.java'),"--translations=$fixture",'settlement-tabs-test.lua','logistics-page-test.lua')
+    $javaArgs=@('-Dfile.encoding=UTF-8','--class-path',"$gameRoot/*",(Join-Path $projectRoot 'tests/java/KahluaLaborTest.java'),"--translations=$fixture",'settlement-tabs-test.lua','logistics-page-test.lua')
 }
 if ($Legacy) { $javaArgs+='--legacy' }
 if ($Preview -and $SettlementTabs) { $javaArgs+='--preview' }

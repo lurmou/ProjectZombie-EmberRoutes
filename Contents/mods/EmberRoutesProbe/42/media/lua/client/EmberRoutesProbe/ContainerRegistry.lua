@@ -46,7 +46,16 @@ function Registry.changed(id)
 end
 
 function Registry.data()
-    local data = ModData.getOrCreate("EmberRoutes/Work/v1")
+    -- Native root-handle cache turns the per-call ModData bridge into one map
+    -- lookup; the extension clears it on world lifecycle. Missing/noop bridge
+    -- (tests) keeps the direct getOrCreate path.
+    local bridge=EmberRoutesProbeJava
+    local data
+    if bridge and bridge.cachedModData then
+        local ok,cached=pcall(bridge.cachedModData,"EmberRoutes/Work/v1")
+        if ok then data=cached end
+    end
+    if not data then data=ModData.getOrCreate("EmberRoutes/Work/v1") end
     if data.format and data.format ~= 1 then error("WORK_FORMAT_UNSUPPORTED") end
     data.format, data.containers = 1, data.containers or {}
     return data

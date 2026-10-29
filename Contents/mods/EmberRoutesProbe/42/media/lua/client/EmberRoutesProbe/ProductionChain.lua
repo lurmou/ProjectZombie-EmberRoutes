@@ -10,10 +10,14 @@ local Surfaces=require "EmberRoutesProbe/CraftSurfaces"
 local Catalog=require "EmberRoutesProbe/CraftingCatalog"
 local Direct=require "EmberRoutesProbe/ProductionSupply"
 local Chain={}
-function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
-    local self={root=Registry.data(),stock={},actor=actor,npc=npc,entry=entry,offset=0,read=0,seen={},cache={},needsChain=knownMissing==true}
+function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing,preferences,options)
+    local typedRoot=options and options.root
+    local self={root=Registry.data(),stock={},actor=actor,npc=npc,entry=entry,offset=0,read=0,seen={},cache={},needsChain=knownMissing==true or typedRoot~=nil,preferences=preferences}
     function self:cancel() self.cancelled=true self.planner=nil self.stock={} self.source=nil end
     local function resolve(spec)
+        -- A capability-checked cooking root supplies typed composite slots.
+        -- Child producers still pass the unchanged ordinary execution gate.
+        if typedRoot and spec.id==typedRoot.id then return typedRoot end
         if self.cache[spec.id] then return self.cache[spec.id] end
         local surface=spec.surface and object or nil
         if spec.surface and not surface then
@@ -43,7 +47,8 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
         end
         self.cache[spec.id]=r return r
     end
-    function self:step()
+    function self:step(budget)
+        budget=budget or 32
         if self.cancelled then return nil,"WORLD_RESET" end
         if self.root~=Registry.data() then self:cancel() return nil,"WORLD_RESET" end
         if self.done then return self.result,self.reason end
@@ -52,13 +57,17 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
             if not self.direct then
                 local spec,why=Recipe.read(recipeId)
                 if not spec then self.done=true self.reason=why return nil,why end
+                self.directRecipe=spec
                 self.directSpec=resolve(spec)
                 if self.directSpec.reason then self.done=true self.reason=self.directSpec.reason return nil,self.reason end
                 self.direct,why=Direct.new(entry,npc,spec,{id=taskId,materials={},tools={},outputs={}},true,math.ceil(quantity/spec.yield))
                 if not self.direct then self.done=true self.reason=why return nil,why end
             end
-            local ready,why=self.direct:step(32)
+            local ready,why=self.direct:step(budget)
             if ready then
+                if not require('EmberRoutesProbe/ProductionCarry').plan(npc,self.directRecipe,self.direct) then
+                    self.done=true self.reason='CAPACITY_UNAVAILABLE' return nil,self.reason
+                end
                 local r=self.directSpec local target=math.ceil(quantity/r.yield)*r.yield
                 if target>9999 then self.done=true self.reason="CHAIN_PLAN_LIMIT" return nil,self.reason end
                 local assets={}
@@ -71,7 +80,7 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
                 self.done=true self.result={assets=assets,nodes={{recipeId=r.id,signature=r.signature,product=r.product,
                     recipeName=r.name,requested=target,unitYield=r.yield,surface=r.surface,benchId=r.benchId,location=r.location}}}
                 return self.result
-            elseif why=="MATERIALS_UNAVAILABLE" or why=="TOOLS_UNAVAILABLE" then self.needsChain=true self.direct=nil
+            elseif why=="MATERIALS_UNAVAILABLE" or why=="TOOLS_UNAVAILABLE" then self.needsChain=true self.direct=nil return
             elseif why then self.done=true self.reason=why return nil,why
             else return end
         end
@@ -86,7 +95,7 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
             if self.size>512 then self.done=true self.reason="INVENTORY_LIMIT" return nil,self.reason end
         end
         if not self.scanned then
-            for _=1,32 do
+            for _=1,budget do
                 local container=self.source and self.source.container
                 if container then
                     local items=container:getItems()
@@ -102,8 +111,15 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
                         if item:getContainer()~=container or self.seen[id] then self.done=true self.reason="ITEM_ID_CONFLICT" return nil,self.reason end
                         self.seen[id]=true
                         if Producers.eligible(item) and not item:getIsCraftingConsumed() and (not owner or owner.taskId==taskId)
-                            and (self.source.npcOnly or Registry.accepts(self.source.endpoint,item)) then
-                            self.stock[#self.stock+1]={id=id,item=item,fullType=item:getFullType(),npcOnly=self.source.npcOnly}
+                            and (self.source.npcOnly or Registry.accepts(self.source.endpoint,item))
+                            and (not options or not options.acceptStock or options.acceptStock(item)) then
+                            local amount
+                            if typedRoot and item.getFluidContainer and item:getFluidContainer() then
+                                local snapshot,why=require('EmberRoutesProbe/CraftFluids').read(item:getFluidContainer())
+                                if not snapshot then self.done=true self.reason=why return nil,why end
+                                amount=snapshot.amount
+                            end
+                            self.stock[#self.stock+1]={id=id,item=item,fullType=item:getFullType(),npcOnly=self.source.npcOnly,fluidAmount=amount}
                         end
                     end
                 else
@@ -118,14 +134,14 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing)
                     end
                 end
             end
-            if not self.scanned then return end
+            return -- Inventory and dependency search never spend two slices together.
         end
         if not self.planner then
-            local root=byId[recipeId]
+            local root=typedRoot or byId[recipeId]
             if not root then self.done=true self.reason="RECIPE_UNAVAILABLE" return nil,self.reason end
-            self.planner=Planner.new(resolve(root),quantity,self.stock,index,resolve)
+            self.planner=Planner.new(resolve(root),quantity,self.stock,index,resolve,self.preferences)
         end
-        local result,reason=self.planner:step(32)
+        local result,reason=self.planner:step(budget)
         if result or reason then
             self.done=true self.result=result self.reason=self.partial and reason and "CHAIN_INVENTORY_UNKNOWN" or reason
             self.missing=self.planner.missing
