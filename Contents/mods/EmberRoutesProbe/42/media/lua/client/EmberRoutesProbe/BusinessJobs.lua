@@ -26,18 +26,17 @@ local function load()
     local c,h={},{format=2,tasks={},byNpc={},routes=root.taskRoutes or {}}
     for id,j in pairs(root.taskJobs.byId) do
         local r=j.payload
-        if j.providerType=='CRAFT' or j.providerType=='HAUL' then
-        if r.id~=id or r.npcId~=j.npcId then error('JOB_PAYLOAD_INVALID') end
-        if j.providerType=='CRAFT' then
+        if j.providerType=='CRAFT' and r.format==3 then
+            if r.id~=id or r.npcId~=j.npcId then error('JOB_PAYLOAD_INVALID') end
             local previous=c[r.npcId]
             if previous and not previous.released and not r.released then error('NPC_TASK_CONFLICT') end
             if not previous or previous.released then c[r.npcId]=r end
-        else
+        elseif j.providerType=='HAUL' and (r.format==1 or r.format==2) then
+            if r.id~=id or r.npcId~=j.npcId then error('JOB_PAYLOAD_INVALID') end
             local previous=h.tasks[h.byNpc[r.npcId]]
             if previous and previous.state~='DONE' and r.state~='DONE' then error('NPC_TASK_CONFLICT') end
             h.tasks[id]=r
             if not previous or previous.state=='DONE' then h.byNpc[r.npcId]=id end
-        end
         end
     end
     root.taskRoutes=h.routes world,store,craft,haul=root,opened,c,h
@@ -56,7 +55,8 @@ end
 function M.hauls() load() return haul end
 function M.refresh(id)
     load() local j=world.taskJobs.byId[id]
-    if not j or j.providerType~='CRAFT' and j.providerType~='HAUL' then return false end
+    if not j or not j.payload then return false end
+    if not ((j.providerType=='CRAFT' and j.payload.format==3) or (j.providerType=='HAUL' and (j.payload.format==1 or j.payload.format==2))) then return false end
     local r=j.payload local state,effects,cleared=derived(r)
     if not obligationsMatch(j.obligations,cleared) then j.obligations=cleared and {} or {business=true} end
     if j.state~=state or j.effects~=effects or j.businessGeneration~=r.generation then j.revision=j.revision+1 end
@@ -66,7 +66,7 @@ function M.flush()
     load()
     if store:ordinaryCount()==0 then return end
     for _,j in pairs(world.taskJobs.byId) do
-        if j.providerType=='CRAFT' or j.providerType=='HAUL' then
+        if (j.providerType=='CRAFT' and j.payload and j.payload.format==3) or (j.providerType=='HAUL' and j.payload and (j.payload.format==1 or j.payload.format==2)) then
         local r=j.payload
         if r.id~=j.id or r.npcId~=j.npcId then error('JOB_ID_CHANGED') end
         local state,effects,cleared=derived(r)

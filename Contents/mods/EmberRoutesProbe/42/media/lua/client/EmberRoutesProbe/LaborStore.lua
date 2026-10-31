@@ -19,7 +19,7 @@ local function nativeRecords()
     local okJobs,BusinessJobs=pcall(require,'EmberRoutesProbe/BusinessJobs')
     local crafts=okJobs and BusinessJobs and BusinessJobs.crafts and BusinessJobs.crafts() or {}
     for id,r in pairs(crafts) do
-        if CraftRecord.valid and not CraftRecord.valid(id,r) then error('CRAFT_RECORD_INVALID') end
+        if r.format == 3 and CraftRecord.valid and not CraftRecord.valid(id,r) then error('CRAFT_RECORD_INVALID') end
     end
     return crafts
 end
@@ -28,6 +28,10 @@ function Store.data()
     if current~=root then
         local data=require('EmberRoutesProbe/BusinessJobs').hauls()
         local rebuilt,newTokens=Claims.new(),{}
+        current.quarantineResources = current.quarantineResources or {}
+        for qKey, _ in pairs(current.quarantineResources) do
+            rebuilt:quarantine(qKey)
+        end
         for id,record in pairs(data.tasks) do
             if type(record)~="table" or type(id)~="string" or record.id~=id or type(record.npcId)~="string"
                 or (record.state~='DONE' and data.byNpc[record.npcId]~=id) or (record.format~=1 and not Manifest.valid(record)) or record.kind~="EXPLICIT_TRANSFER"
@@ -58,7 +62,7 @@ function Store.data()
         end
         local rebuiltNative={}
         for npcId,record in pairs(nativeRecords()) do
-            if not record.released then
+            if record.format == 3 and not record.released then
                 local other=data.tasks[data.byNpc[npcId]]
                 if other and other.state~="DONE" then error("NPC_TASK_CONFLICT") end
                 local token=rebuilt:acquire(record.id,record.generation,CraftRecord.resources(record))
@@ -112,6 +116,60 @@ function Store.data()
                 if cap and not rebuilt:restore(token,cap.key,cap.itemId,cap.amount) then error('FIELD_CAPACITY_INVALID') end
             end
         end
+        local rebuiltCraft={}
+        if current.taskJobs and current.taskJobs.byId then
+            for id,job in pairs(current.taskJobs.byId) do
+                if job.providerType=='CRAFT' and job.payload and job.payload.format==4 then
+                    if not require('EmberRoutesProbe/CraftJobRecord').valid(job) then error('CRAFT_JOB_RECORD_INVALID') end
+                    if #job.payload.claims>0 and job.state~='DONE' and job.state~='CANCELLED' then
+                        local token,reason=rebuilt:acquire(id,job.payload.sequence or 0,job.payload.claims)
+                        if not token then
+                            if reason=='RESOURCE_SYSTEM_QUARANTINED' then
+                                job.state='RECONCILE_REQUIRED'
+                                job.effects='UNKNOWN'
+                            else
+                                error(reason or 'CRAFT_CLAIM_CONFLICT')
+                            end
+                        else
+                            rebuiltCraft[id]=token
+                            newTokens[id]=token
+                        end
+                    end
+                end
+            end
+        end
+        local rebuiltHaul={}
+        if current.taskJobs and current.taskJobs.byId then
+            for id,job in pairs(current.taskJobs.byId) do
+                if job.providerType=='HAUL' and job.payload and job.payload.format==3 then
+                    if not require('EmberRoutesProbe/HaulJobRecord').valid(job) then error('HAUL_JOB_RECORD_INVALID') end
+                    if #job.payload.claims>0 and job.state~='DONE' and job.state~='CANCELLED' then
+                        local token,reason=rebuilt:acquire(id,job.payload.sequence or 0,job.payload.claims)
+                        if not token then
+                            if reason=='RESOURCE_SYSTEM_QUARANTINED' then
+                                job.state='RECONCILE_REQUIRED'
+                                job.effects='UNKNOWN'
+                            else
+                                error(reason or 'HAUL_CLAIM_CONFLICT')
+                            end
+                        else
+                            local r=job.payload.reservation
+                            if r and type(r)=='table' then
+                                if type(r.items)=='table' then
+                                    for itemId,amount in pairs(r.items) do
+                                        if not rebuilt:restore(token,r.key,itemId,amount) then error('HAUL_CAPACITY_INVALID') end
+                                    end
+                                elseif r.itemId and r.amount then
+                                    if not rebuilt:restore(token,r.key,r.itemId,r.amount) then error('HAUL_CAPACITY_INVALID') end
+                                end
+                            end
+                            rebuiltHaul[id]=token
+                            newTokens[id]=token
+                        end
+                    end
+                end
+            end
+        end
         local rebuiltCustody={}
         if current.toolCustody and current.toolCustody.byId then
             local CustodyRecord=require('EmberRoutesProbe/ToolCustodyRecord')
@@ -158,11 +216,115 @@ function Store.recent(npcId)
     if not saved then return nil end
     local copy={} for key,value in pairs(saved) do copy[key]=value end return copy
 end
-function Store.owner(itemId) Store.data() return claims.owners["item:"..itemId] end
-function Store.resourceOwner(key) Store.data() return claims.owners[key] end
--- Cheap observation fence, including ordinary hauling/crafting/personal claims.
--- Identity also changes after a world/ledger rebuild. Not a second asset ledger.
-function Store.claimsVersion() Store.data() return claims,claims.revision end
+local function snapshotOwner(owner)
+    if not owner then return nil end
+    if owner.kind=='SYSTEM_QUARANTINE' then
+        return {kind='SYSTEM_QUARANTINE',ownerId='SYSTEM_QUARANTINE',taskId='SYSTEM_QUARANTINE'}
+    end
+    local resCopy={}
+    if type(owner.resources)=='table' then
+        for i,r in ipairs(owner.resources) do resCopy[i]=r end
+    end
+    return {
+        taskId=owner.taskId,
+        generation=owner.generation,
+        resources=resCopy,
+        capacityKey=owner.capacityKey
+    }
+end
+function Store.owner(itemId) Store.data() return snapshotOwner(claims.owners["item:"..itemId]) end
+function Store.resourceOwner(key) Store.data() return snapshotOwner(claims.owners[key]) end
+function Store.claimsVersion() Store.data() return claims.revision end
+function Store.claimsInstance() Store.data() return claims end
+function Store.getToken(jobId)
+    Store.data()
+    if claims.tokensByTaskId and claims.tokensByTaskId[jobId] then return claims.tokensByTaskId[jobId] end
+    return tokens[jobId] or nativeTokens[jobId] or personalTokens[jobId] or cookingTokens[jobId] or activityTokens[jobId] or fieldTokens[jobId]
+end
+function Store.quarantineResource(key,reason,evidence)
+    Store.data()
+    claims:quarantine(key)
+    if root then
+        root.quarantineResources=root.quarantineResources or {}
+        root.quarantineResources[key]={
+            reason=reason or "UNKNOWN",
+            evidence=evidence,
+            at=(os and os.time and os.time() or 0)
+        }
+    end
+    return true
+end
+function Store.createClaimedJob(job)
+    local JobStore=require('EmberRoutesProbe/JobStore')
+    if not JobStore.validate(job) or job.state~='PREPARING' or job.revision~=1 then
+        return false,'INVALID_JOB_ENVELOPE'
+    end
+    Store.data()
+    local p=job.payload
+    local keys=p.claims or {}
+    local token,why=claims:acquireNew(job.id,p.sequence or job.generation or 0,keys)
+    if not token then return false,'CLAIMS_ACQUIRE_FAILED:'..tostring(why) end
+    if p.reservation and type(p.reservation)=='table' then
+        local r=p.reservation
+        if type(r.items)=='table' then
+            for itemId,amt in pairs(r.items) do
+                local okRes=claims:reserve(token,r.key,itemId,amt)
+                if not okRes then
+                    claims:release(token)
+                    return false,'CAPACITY_RESERVE_FAILED'
+                end
+            end
+        elseif r.itemId and r.amount then
+            local okRes=claims:reserve(token,r.key,r.itemId,r.amount)
+            if not okRes then
+                claims:release(token)
+                return false,'CAPACITY_RESERVE_FAILED'
+            end
+        end
+    end
+    local TaskJobs=require('EmberRoutesProbe/TaskJobs')
+    local store=TaskJobs.current()
+    local ok,err=store:create(job)
+    if not ok then
+        claims:release(token)
+        return false,'JOB_CREATE_FAILED_ROLLED_BACK:'..tostring(err)
+    end
+    tokens[job.id]=token
+    return true,job.id
+end
+function Store.mutateJob(jobId,expectedRevision,proposedPayload,mutation)
+    Store.data()
+    local TaskJobs=require('EmberRoutesProbe/TaskJobs')
+    local store=TaskJobs.current()
+    local job=store:get(jobId)
+    if not job or job.revision~=expectedRevision then return false,'STALE_REVISION' end
+    local token=claims.tokensByTaskId and claims.tokensByTaskId[jobId] or tokens[jobId]
+    if not token then return false,'NO_RUNTIME_TOKEN' end
+    if mutation and mutation.addKeys and #mutation.addKeys>0 then
+        local okExt,whyExt=claims:extend(token,mutation.addKeys)
+        if not okExt then return false,'EXTEND_FAILED:'..tostring(whyExt) end
+    end
+    local patch={payload=proposedPayload}
+    if mutation and mutation.state then patch.state=mutation.state end
+    if mutation and mutation.effects then patch.effects=mutation.effects end
+    if mutation and mutation.generation then patch.generation=mutation.generation end
+    local okCAS,nextRev=store:update(jobId,expectedRevision,patch)
+    if not okCAS then
+        Store.quarantineResource(jobId..":mutation_fail","CAS_FAILED",{jobId=jobId,rev=expectedRevision})
+        return false,'CAS_FAILED_ISOLATED:'..tostring(nextRev)
+    end
+    if mutation and mutation.removeKeys and #mutation.removeKeys>0 then
+        claims:shrink(token,mutation.removeKeys)
+    end
+    if patch.state=='DONE' or patch.state=='CANCELLED' then
+        claims:release(token)
+        if tokens then tokens[jobId]=nil end
+    end
+    return true,nextRev
+end
+function Store.updateJobPayload(jobId,expectedRevision,proposedPayload,mutation)
+    return Store.mutateJob(jobId,expectedRevision,proposedPayload,mutation)
+end
 function Store.hasTaskClaims(taskId)
     Store.data()
     if nativeTokens[taskId] or tokens[taskId] or personalTokens[taskId] or cookingTokens[taskId] then return true end

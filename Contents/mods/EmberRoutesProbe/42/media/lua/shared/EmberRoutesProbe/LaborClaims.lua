@@ -1,13 +1,76 @@
 -- Logical coordination only. Tokens fence callbacks; no world assets are changed.
 local Claims={}
 local methods={} methods.__index=methods
-function Claims.new() return setmetatable({owners={},capacity={},revision=0},methods) end
+
+local SYSTEM_QUARANTINE_OWNER = {
+    kind = "SYSTEM_QUARANTINE",
+    ownerId = "SYSTEM_QUARANTINE",
+    taskId = "SYSTEM_QUARANTINE",
+    resources = {}
+}
+
+function Claims.new()
+    return setmetatable({
+        owners = {},
+        capacity = {},
+        tokensByTaskId = {},
+        revision = 0
+    }, methods)
+end
+
+function methods:quarantine(key)
+    self.owners[key] = SYSTEM_QUARANTINE_OWNER
+    self.revision = self.revision + 1
+    return true
+end
+
+function methods:unquarantine(key)
+    local current = self.owners[key]
+    if current and current.kind == "SYSTEM_QUARANTINE" then
+        self.owners[key] = nil
+        self.revision = self.revision + 1
+        return true
+    end
+    return false
+end
+
+function methods:acquireNew(taskId, generation, resources)
+    if self.tokensByTaskId and self.tokensByTaskId[taskId] then
+        return nil, "TASK_ALREADY_HAS_CLAIMS"
+    end
+    for _, token in pairs(self.owners) do
+        if token.taskId == taskId then
+            return nil, "TASK_ALREADY_HAS_CLAIMS"
+        end
+    end
+    local seen = {}
+    for _, key in ipairs(resources) do
+        if seen[key] then return nil, "RESOURCE_DUPLICATED" end
+        seen[key] = true
+        local owner = self.owners[key]
+        if owner then
+            if owner.kind == "SYSTEM_QUARANTINE" then
+                return nil, "RESOURCE_SYSTEM_QUARANTINED"
+            end
+            return nil, "ITEM_RESERVED"
+        end
+    end
+    local token = { taskId = taskId, generation = generation, resources = resources }
+    for _, key in ipairs(resources) do self.owners[key] = token end
+    if self.tokensByTaskId then self.tokensByTaskId[taskId] = token end
+    if #resources > 0 then self.revision = self.revision + 1 end
+    return token
+end
+
 function methods:acquire(taskId,generation,resources)
     local seen,previous={},nil
     for _,key in ipairs(resources) do
         if seen[key] then return nil,"RESOURCE_DUPLICATED" end seen[key]=true
         local owner=self.owners[key]
-        if owner and owner.taskId~=taskId then return nil,"ITEM_RESERVED" end
+        if owner then
+            if owner.kind == "SYSTEM_QUARANTINE" then return nil, "RESOURCE_SYSTEM_QUARANTINED" end
+            if owner.taskId~=taskId then return nil,"ITEM_RESERVED" end
+        end
         previous=previous or owner
     end
     if previous then
@@ -16,6 +79,7 @@ function methods:acquire(taskId,generation,resources)
     end
     local token={taskId=taskId,generation=generation,resources=resources}
     for _,key in ipairs(resources) do self.owners[key]=token end
+    if self.tokensByTaskId then self.tokensByTaskId[taskId]=token end
     if not previous and #resources>0 then self.revision=self.revision+1 end
     if previous and previous.capacityKey then
         local bucket=self.capacity[previous.capacityKey]
@@ -60,7 +124,11 @@ function methods:replace(token,resources)
     for _,key in ipairs(token.resources) do if self.owners[key]~=token then return false,"STALE_CLAIM" end end
     for _,key in ipairs(resources) do
         if seen[key] then return false,"RESOURCE_DUPLICATED" end seen[key]=true
-        if self.owners[key] and self.owners[key]~=token then return false,"ITEM_RESERVED" end
+        local owner=self.owners[key]
+        if owner and owner~=token then
+            if owner.kind=="SYSTEM_QUARANTINE" then return false,"RESOURCE_SYSTEM_QUARANTINED" end
+            return false,"ITEM_RESERVED"
+        end
     end
     local changed=false
     for _,key in ipairs(token.resources) do if not seen[key] then self.owners[key]=nil changed=true end end
@@ -78,7 +146,11 @@ function methods:extend(token,resources)
     local added={}
     for _,key in ipairs(resources) do
         if not seen[key] then
-            if self.owners[key] and self.owners[key]~=token then return false,"ITEM_RESERVED" end
+            local owner=self.owners[key]
+            if owner and owner~=token then
+                if owner.kind=="SYSTEM_QUARANTINE" then return false,"RESOURCE_SYSTEM_QUARANTINED" end
+                return false,"ITEM_RESERVED"
+            end
             added[#added+1]=key seen[key]=true
         end
     end
@@ -88,14 +160,18 @@ function methods:extend(token,resources)
 end
 function methods:reserve(token,key,itemId,amount,free)
     if not token or not self:valid(token,"item:"..itemId) then return false,"STALE_CLAIM" end
-    if type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge
-        or type(free)~="number" or free~=free or free<0 or free==math.huge then return false,"CAPACITY_UNAVAILABLE" end
+    if type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge then
+        return false,"CAPACITY_UNAVAILABLE"
+    end
+    if free~=nil and (type(free)~="number" or free~=free or free<0 or free==math.huge) then
+        return false,"CAPACITY_UNAVAILABLE"
+    end
     if token.capacityKey and token.capacityKey~=key then return false,"CAPACITY_TARGET_CHANGED" end
     local bucket=self.capacity[key] or {entries={},total=0,count=0}
     local previous=bucket.entries[token.taskId]
     local oldWeight=previous and previous.items[itemId] or 0
     local proposed=bucket.total-oldWeight+amount
-    if proposed>free then return false,"CAPACITY_RESERVED" end
+    if free~=nil and proposed>free then return false,"CAPACITY_RESERVED" end
     if not previous then bucket.count=bucket.count+1 end
     local claim=previous or {token=token,items={},amount=0,count=0}
     if claim.items[itemId]==nil then claim.count=claim.count+1 end
@@ -122,6 +198,9 @@ function methods:release(token)
     if not token then return end
     local changed=false
     for _,key in ipairs(token.resources) do if self.owners[key]==token then self.owners[key]=nil changed=true end end
+    if self.tokensByTaskId and token.taskId and self.tokensByTaskId[token.taskId]==token then
+        self.tokensByTaskId[token.taskId]=nil
+    end
     if changed then self.revision=self.revision+1 end
     self:releaseCapacity(token)
 end
