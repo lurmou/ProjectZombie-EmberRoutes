@@ -2,6 +2,8 @@
 -- Phase 3A Stage B Unit Tests: LaborClaims (F2/F3) & LaborStore Atomic Operations
 -- =========================================================================
 
+package.path = './Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;./Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;./tests/lua/?.lua;' .. package.path
+
 local Claims = require 'EmberRoutesProbe/LaborClaims'
 local Store = require 'EmberRoutesProbe/LaborStore'
 local JobStore = require 'EmberRoutesProbe/JobStore'
@@ -94,6 +96,95 @@ assertFalse(claims:valid(t1, "item:102"), "item:102 released")
 -- task-1 can now be acquired as a fresh task
 local t1_new, err1_new = claims:acquireNew("task-1", 1, { "item:101" })
 assertTrue(t1_new ~= nil, "acquireNew with task-1 after release should succeed")
+
+-- Test 1.9: B.1 - Quarantine independent per-resource ownership
+claims:quarantine("item:901")
+claims:quarantine("item:902")
+local q1 = claims.owners["item:901"]
+local q2 = claims.owners["item:902"]
+assertTrue(q1 ~= nil and q2 ~= nil, "Quarantine records exist")
+assertEq(q1.kind, "SYSTEM_QUARANTINE", "q1 is SYSTEM_QUARANTINE")
+assertEq(q2.kind, "SYSTEM_QUARANTINE", "q2 is SYSTEM_QUARANTINE")
+assertEq(q1.resource, "item:901", "q1 resource key matches")
+assertEq(q2.resource, "item:902", "q2 resource key matches")
+assertTrue(q1 ~= q2, "Each quarantined resource MUST have independent ownership record")
+
+-- Test 1.10: B.1 - Quarantine strips resource from original token without breaking shrink
+local t_strip, err_strip = claims:acquireNew("task-strip", 1, { "item:501", "item:502" })
+assertTrue(t_strip ~= nil, "acquireNew task-strip")
+assertEq(#t_strip.resources, 2, "Original resources length is 2")
+-- Quarantine item:501
+claims:quarantine("item:501")
+local q_stripped = claims.owners["item:501"]
+assertEq(q_stripped.originalTaskId, "task-strip", "Quarantine records original taskId")
+assertTrue(q_stripped.originalToken == t_strip, "Quarantine records original token")
+assertEq(#t_strip.resources, 1, "item:501 stripped from token resources")
+assertEq(t_strip.resources[1], "item:502", "item:502 remains in token resources")
+-- Normal shrink on remaining resource MUST NOT fail with STALE_CLAIM!
+local okShrinkRem, errShrinkRem = claims:shrink(t_strip, { "item:502" })
+assertTrue(okShrinkRem, "shrink on remaining resource must succeed: " .. tostring(errShrinkRem))
+assertFalse(claims:valid(t_strip, "item:502"), "item:502 released")
+
+-- Test 1.11: B.1 - canShrink non-destructive pre-validation
+local t_cs, err_cs = claims:acquireNew("task-cs", 1, { "item:601", "item:602" })
+assertTrue(t_cs ~= nil, "acquireNew task-cs")
+local revBefore = claims.revision
+-- Valid shrink precheck
+assertTrue(claims:canShrink(t_cs, { "item:601" }), "canShrink valid key returns true")
+assertEq(claims.revision, revBefore, "canShrink MUST NOT mutate revision")
+assertTrue(claims:valid(t_cs, "item:601"), "canShrink MUST NOT release owner")
+-- Invalid prechecks
+assertFalse(claims:canShrink(t_cs, { "item:99999" }), "canShrink non-owned key returns false")
+assertFalse(claims:canShrink(t_cs, { "item:601", "item:601" }), "canShrink duplicate keys returns false")
+assertFalse(claims:canShrink(nil, { "item:601" }), "canShrink nil token returns false")
+
+-- Test 1.12: B.1 - shrink handles quarantined resource cleanup & deferred capacity release
+local t_def, err_def = claims:acquireNew("task-deferred", 1, { "item:701" })
+assertTrue(t_def ~= nil, "acquireNew task-deferred")
+local okResDef, errResDef = claims:reserve(t_def, "box-def", 701, 10.0, 20.0)
+assertTrue(okResDef, "reserve on box-def must succeed: " .. tostring(errResDef))
+assertEq(claims.capacity["box-def"].total, 10.0, "Capacity reserved is 10.0")
+
+-- Quarantine item:701; capacity must be DEFERRED, not released prematurely
+claims:quarantine("item:701")
+assertEq(claims.capacity["box-def"].total, 10.0, "Capacity remains deferred in bucket on quarantine")
+
+-- Another token CANNOT shrink task-deferred's quarantined item
+local t_other, _ = claims:acquireNew("task-other", 1, { "item:702" })
+assertFalse(claims:canShrink(t_other, { "item:701" }), "Foreign token cannot shrink other token's quarantine")
+assertFalse(claims:shrink(t_other, { "item:701" }), "Foreign token shrink must fail")
+
+-- Original token CAN shrink its quarantined item to release deferred capacity
+assertTrue(claims:canShrink(t_def, { "item:701" }), "Original token canShrink quarantined item returns true")
+local okShrinkDef, errShrinkDef = claims:shrink(t_def, { "item:701" })
+assertTrue(okShrinkDef, "shrink quarantined item by original owner must succeed: " .. tostring(errShrinkDef))
+-- Verify deferred capacity is cleanly released!
+assertTrue(claims.capacity["box-def"] == nil or claims.capacity["box-def"].total == 0, "Capacity cleanly released after shrink")
+-- Verify resource itself remains quarantined from world
+assertEq(claims.owners["item:701"].kind, "SYSTEM_QUARANTINE", "Item remains system quarantined")
+assertFalse(claims.owners["item:701"].originalTaskId ~= nil, "Original taskId unlinked after shrink")
+
+-- Test 1.13: B.1 - reserve enforces mandatory realtime free capacity
+local t_cap, err_cap = claims:acquireNew("task-cap", 1, { "item:801" })
+assertTrue(t_cap ~= nil, "acquireNew task-cap")
+-- Missing free capacity (nil) MUST fail with CAPACITY_UNAVAILABLE
+local okNoFree, errNoFree = claims:reserve(t_cap, "box-cap", 801, 5.0, nil)
+assertFalse(okNoFree, "reserve without free capacity MUST fail")
+assertEq(errNoFree, "CAPACITY_UNAVAILABLE", "Error must be CAPACITY_UNAVAILABLE")
+
+-- Negative or NaN free capacity MUST fail
+assertFalse(claims:reserve(t_cap, "box-cap", 801, 5.0, -1.0), "Negative free must fail")
+assertFalse(claims:reserve(t_cap, "box-cap", 801, 5.0, 0/0), "NaN free must fail")
+
+-- Exceeding free capacity MUST fail with CAPACITY_RESERVED
+local okOver, errOver = claims:reserve(t_cap, "box-cap", 801, 10.0, 5.0)
+assertFalse(okOver, "Exceeding capacity must fail")
+assertEq(errOver, "CAPACITY_RESERVED", "Error must be CAPACITY_RESERVED")
+
+-- Valid realtime free capacity succeeds
+local okValidCap, errValidCap = claims:reserve(t_cap, "box-cap", 801, 10.0, 15.0)
+assertTrue(okValidCap, "reserve with valid free capacity must succeed: " .. tostring(errValidCap))
+assertEq(claims.capacity["box-cap"].total, 10.0, "Capacity reserved total matches")
 
 print("PASS Part 1: LaborClaims F2 & F3 invariants.")
 
@@ -233,6 +324,68 @@ assertFalse(okCapFail, "Job creation with capacity failure must fail")
 assertEq(errCapFail, "CAPACITY_RESERVE_FAILED", "Error should be CAPACITY_RESERVE_FAILED")
 -- Item 401 must be rolled back and NOT owned
 assertFalse(Store.owner(401) ~= nil, "Item 401 claim was cleanly rolled back")
+
+-- Test 3.4: B.1 - createClaimedJob without free capacity fact MUST fail and rollback
+local haulNoFree = {
+    id = "haul-no-free",
+    npcId = "npc-b4",
+    providerType = "HAUL",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "PREPARING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 3,
+        sequence = 1,
+        source = "cont-a",
+        destination = "cont-b",
+        manifest = { { itemId = 402, custodyState = "UNCOLLECTED" } },
+        claims = { "item:402" },
+        reservation = {
+            format = 2,
+            key = "cont-b",
+            items = { [402] = 5.0 } -- item 402 is in claims, but no free capacity fact
+        }
+    }
+}
+local okNoFreeJob, errNoFreeJob = Store.createClaimedJob(haulNoFree)
+assertFalse(okNoFreeJob, "Job creation without free capacity must fail")
+assertEq(errNoFreeJob, "CAPACITY_RESERVE_FAILED", "Error should be CAPACITY_RESERVE_FAILED")
+assertFalse(Store.owner(402) ~= nil, "Item 402 claim was cleanly rolled back")
+
+-- Test 3.5: B.1 - createClaimedJob with valid free capacity fact succeeds
+local haulWithFree = {
+    id = "haul-with-free",
+    npcId = "npc-b5",
+    providerType = "HAUL",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "PREPARING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 3,
+        sequence = 1,
+        source = "cont-a",
+        destination = "cont-b",
+        manifest = { { itemId = 403, custodyState = "UNCOLLECTED" } },
+        claims = { "item:403" },
+        reservation = {
+            format = 2,
+            key = "cont-b",
+            items = { [403] = 5.0 },
+            free = 15.0 -- Valid realtime free capacity
+        }
+    }
+}
+local okWithFree, jobIdWithFree = Store.createClaimedJob(haulWithFree)
+assertTrue(okWithFree, "createClaimedJob with valid free capacity must succeed: " .. tostring(jobIdWithFree))
+assertEq(jobIdWithFree, "haul-with-free", "Job ID match")
+local tokenWithFree = Store.getToken("haul-with-free")
+assertTrue(tokenWithFree ~= nil, "Token exists for created haul job")
+local claimsInst = Store.claimsInstance()
+assertEq(claimsInst.capacity["cont-b"].total, 5.0, "Capacity reserved in bucket")
 
 print("PASS Part 3: Store.createClaimedJob Atomic Creation & Rollback.")
 

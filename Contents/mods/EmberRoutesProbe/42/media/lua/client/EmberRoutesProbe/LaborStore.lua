@@ -268,14 +268,14 @@ function Store.createClaimedJob(job)
         local r=p.reservation
         if type(r.items)=='table' then
             for itemId,amt in pairs(r.items) do
-                local okRes=claims:reserve(token,r.key,itemId,amt)
+                local okRes=claims:reserve(token,r.key,itemId,amt,r.free)
                 if not okRes then
                     claims:release(token)
                     return false,'CAPACITY_RESERVE_FAILED'
                 end
             end
         elseif r.itemId and r.amount then
-            local okRes=claims:reserve(token,r.key,r.itemId,r.amount)
+            local okRes=claims:reserve(token,r.key,r.itemId,r.amount,r.free)
             if not okRes then
                 claims:release(token)
                 return false,'CAPACITY_RESERVE_FAILED'

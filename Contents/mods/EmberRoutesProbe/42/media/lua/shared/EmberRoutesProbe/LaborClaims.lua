@@ -19,7 +19,34 @@ function Claims.new()
 end
 
 function methods:quarantine(key)
-    self.owners[key] = SYSTEM_QUARANTINE_OWNER
+    local previous = self.owners[key]
+    local origTaskId = nil
+    local origToken = nil
+    if previous and previous.kind ~= "SYSTEM_QUARANTINE" then
+        origTaskId = previous.taskId
+        origToken = previous
+        if previous.resources then
+            local keep = {}
+            for _, r in ipairs(previous.resources) do
+                if r ~= key then
+                    keep[#keep + 1] = r
+                end
+            end
+            previous.resources = keep
+        end
+    elseif previous and previous.kind == "SYSTEM_QUARANTINE" then
+        origTaskId = previous.originalTaskId
+        origToken = previous.originalToken
+    end
+
+    self.owners[key] = {
+        kind = "SYSTEM_QUARANTINE",
+        ownerId = "SYSTEM_QUARANTINE",
+        taskId = "SYSTEM_QUARANTINE",
+        resource = key,
+        originalTaskId = origTaskId,
+        originalToken = origToken
+    }
     self.revision = self.revision + 1
     return true
 end
@@ -91,26 +118,63 @@ function methods:acquire(taskId,generation,resources)
     return token
 end
 function methods:valid(token,key) return token and self.owners[key]==token end
+
+-- Non-destructive validation for shrink operations.
+function methods:canShrink(token, releasedKeys)
+    if not token or type(releasedKeys) ~= 'table' then return false, 'STALE_CLAIM' end
+    local owned, drop = {}, {}
+    for _, key in ipairs(token.resources) do
+        if self.owners[key] ~= token then return false, 'STALE_CLAIM' end
+        owned[key] = true
+    end
+    for _, key in ipairs(releasedKeys) do
+        if drop[key] then return false, 'RESOURCE_SET_CHANGED' end
+        drop[key] = true
+        if not owned[key] then
+            local owner = self.owners[key]
+            local isMyQuarantine = owner and owner.kind == "SYSTEM_QUARANTINE" and
+                (owner.originalTaskId == token.taskId or owner.originalToken == token)
+            if not isMyQuarantine then
+                return false, 'RESOURCE_SET_CHANGED'
+            end
+        end
+    end
+    local bucket = token.capacityKey and self.capacity[token.capacityKey]
+    local claim = bucket and bucket.entries[token.taskId]
+    if token.capacityKey and (not claim or claim.token ~= token) then return false, 'STALE_CLAIM' end
+    return true
+end
+
 -- Validate the whole removal before touching owners, resources or capacity.
-function methods:shrink(token,releasedKeys)
-    if not token or type(releasedKeys)~='table' then return false,'STALE_CLAIM' end
-    local owned,drop,keep={},{},{}
-    for _,key in ipairs(token.resources) do
-        if self.owners[key]~=token then return false,'STALE_CLAIM' end owned[key]=true
+-- Supports releasing quarantined resources originally belonging to this token,
+-- with deferred capacity release.
+function methods:shrink(token, releasedKeys)
+    local ok, reason = self:canShrink(token, releasedKeys)
+    if not ok then return false, reason end
+
+    local drop, keep = {}, {}
+    for _, key in ipairs(releasedKeys) do drop[key] = true end
+    for _, key in ipairs(token.resources) do
+        if not drop[key] then keep[#keep + 1] = key end
     end
-    for _,key in ipairs(releasedKeys) do
-        if not owned[key] or drop[key] then return false,'RESOURCE_SET_CHANGED' end drop[key]=true
+
+    for _, key in ipairs(releasedKeys) do
+        if string.sub(key, 1, 5) == 'item:' then
+            self:releaseCapacity(token, tonumber(string.sub(key, 6)))
+        end
+        local owner = self.owners[key]
+        if owner == token then
+            self.owners[key] = nil
+        elseif owner and owner.kind == "SYSTEM_QUARANTINE" then
+            if owner.originalTaskId == token.taskId or owner.originalToken == token then
+                owner.originalTaskId = nil
+                owner.originalToken = nil
+            end
+        end
     end
-    local bucket=token.capacityKey and self.capacity[token.capacityKey]
-    local claim=bucket and bucket.entries[token.taskId]
-    if token.capacityKey and (not claim or claim.token~=token) then return false,'STALE_CLAIM' end
-    for _,key in ipairs(token.resources) do if not drop[key] then keep[#keep+1]=key end end
-    for _,key in ipairs(releasedKeys) do
-        if string.sub(key,1,5)=='item:' then self:releaseCapacity(token,tonumber(string.sub(key,6))) end
-        self.owners[key]=nil
-    end
-    token.resources=keep
-    if #releasedKeys>0 then self.revision=self.revision+1 end
+
+    token.resources = keep
+    if #releasedKeys > 0 then self.revision = self.revision + 1 end
     return true
 end
 -- Validate both sets before mutation. Retained tools/surface never lose ownership.
@@ -163,7 +227,7 @@ function methods:reserve(token,key,itemId,amount,free)
     if type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge then
         return false,"CAPACITY_UNAVAILABLE"
     end
-    if free~=nil and (type(free)~="number" or free~=free or free<0 or free==math.huge) then
+    if type(free)~="number" or free~=free or free<0 or free==math.huge then
         return false,"CAPACITY_UNAVAILABLE"
     end
     if token.capacityKey and token.capacityKey~=key then return false,"CAPACITY_TARGET_CHANGED" end
@@ -171,7 +235,7 @@ function methods:reserve(token,key,itemId,amount,free)
     local previous=bucket.entries[token.taskId]
     local oldWeight=previous and previous.items[itemId] or 0
     local proposed=bucket.total-oldWeight+amount
-    if free~=nil and proposed>free then return false,"CAPACITY_RESERVED" end
+    if proposed>free then return false,"CAPACITY_RESERVED" end
     if not previous then bucket.count=bucket.count+1 end
     local claim=previous or {token=token,items={},amount=0,count=0}
     if claim.items[itemId]==nil then claim.count=claim.count+1 end
