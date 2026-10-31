@@ -512,6 +512,211 @@ local savedJob = recoveryRoot.taskJobs.byId["craft-saved"]
 assertEq(savedJob.state, "RECONCILE_REQUIRED", "Job conflicting with quarantine must be marked RECONCILE_REQUIRED")
 assertEq(savedJob.effects, "UNKNOWN", "Job effects demoted to UNKNOWN")
 
+-- Test 5.2: B.2 - Multi-provider immunity against Quarantine crash
+-- Verify COOKING, FIELD_WORK, ACTIVITY, SELF_CARE, and HAUL all demote gracefully on quarantine
+local CookingRecord = require 'EmberRoutesProbe/CookingRecord'
+local SelfCareRecord = require 'EmberRoutesProbe/SelfCareRecord'
+local ActivityRecord = require 'EmberRoutesProbe/ActivityRecord'
+local LeisureRecord = require 'EmberRoutesProbe/LeisureRecord'
+
+local cookJob = CookingRecord.new("cook-q", "npc-cook", "settlement-1", "Soup", "AUTO", "policy:base", 0.5, 0.5)
+cookJob.payload.assets = { { id = 777, fullType = "Base.Pot", custody = "HELD", role = "TOOL" } }
+cookJob.payload.claims = { "item:777" }
+
+local selfJob = SelfCareRecord.create("self-q", "npc-self")
+selfJob.payload.kind = "EAT"
+selfJob.payload.sequence = 1
+selfJob.payload.attemptId = "self-q:1"
+selfJob.payload.step = "RESTORE_PENDING"
+selfJob.payload.claims = { "item:777" }
+
+local pnt = { x = 15, y = 15, z = 0 }
+local tileK = LeisureRecord.tileKey(pnt)
+local actJob = ActivityRecord.create("act-q", "npc-act", {
+    id = "campfire-1",
+    settlementId = "settlement-1",
+    controlEpoch = 1,
+    roster = { ["npc-act"] = { participantEpoch = 1 } }
+})
+actJob.payload.sequence = 1
+actJob.payload.step = "WAITING"
+actJob.payload.point = pnt
+actJob.payload.claims = { tileK }
+
+local fieldJob = {
+    id = "field-q",
+    npcId = "npc-field",
+    providerType = "FIELD_WORK",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "RUNNING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 1,
+        category = "farming",
+        offerKey = "plot-1",
+        sequence = 1,
+        phase = "WORK",
+        target = { x = 10, y = 10, z = 0, kind = "PLOT", identity = "plot-1" },
+        assets = { { id = 777, fullType = "Base.Shovel", custody = "HELD" } },
+        claims = { "item:777" }
+    }
+}
+
+local haulJob = {
+    id = "haul-q",
+    npcId = "npc-haul",
+    providerType = "HAUL",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "RUNNING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 3,
+        sequence = 1,
+        source = "cont-a",
+        destination = "cont-b",
+        manifest = { { itemId = 777, custodyState = "UNCOLLECTED" } },
+        claims = { "item:777" }
+    }
+}
+
+local multiProvRoot = {
+    format = 1,
+    containers = {},
+    quarantineResources = {
+        ["item:777"] = { reason = "MANUAL_QUARANTINE", evidence = "multi-provider test" },
+        [tileK] = { reason = "MANUAL_QUARANTINE", evidence = "activity tile test" }
+    },
+    taskJobs = {
+        format = 1,
+        byId = {
+            ["cook-q"] = cookJob,
+            ["field-q"] = fieldJob,
+            ["self-q"] = selfJob,
+            ["act-q"] = actJob,
+            ["haul-q"] = haulJob
+        }
+    },
+    toolCustody = {
+        byId = {
+            ["cust-q"] = {
+                format = 1,
+                id = "cust-q",
+                itemId = 777,
+                role = "HAMMER",
+                npcId = "npc-cust",
+                sequence = 1,
+                state = "HELD",
+                claims = { "item:777" }
+            }
+        }
+    }
+}
+
+ContainerRegistry.data = function() return multiProvRoot end
+-- Cold boot recovery MUST NOT throw error on any provider!
+Store.data()
+
+assertEq(multiProvRoot.taskJobs.byId["cook-q"].state, "RECONCILE_REQUIRED", "COOKING demoted to RECONCILE_REQUIRED")
+assertEq(multiProvRoot.taskJobs.byId["cook-q"].effects, "UNKNOWN", "COOKING effects demoted to UNKNOWN")
+assertEq(multiProvRoot.taskJobs.byId["field-q"].state, "RECONCILE_REQUIRED", "FIELD_WORK demoted to RECONCILE_REQUIRED")
+assertEq(multiProvRoot.taskJobs.byId["field-q"].effects, "UNKNOWN", "FIELD_WORK effects demoted to UNKNOWN")
+assertEq(multiProvRoot.taskJobs.byId["self-q"].state, "RECONCILE_REQUIRED", "SELF_CARE demoted to RECONCILE_REQUIRED")
+assertEq(multiProvRoot.taskJobs.byId["self-q"].effects, "UNKNOWN", "SELF_CARE effects demoted to UNKNOWN")
+assertEq(multiProvRoot.taskJobs.byId["act-q"].state, "RECONCILE_REQUIRED", "ACTIVITY demoted to RECONCILE_REQUIRED")
+assertEq(multiProvRoot.taskJobs.byId["act-q"].effects, "UNKNOWN", "ACTIVITY effects demoted to UNKNOWN")
+assertEq(multiProvRoot.taskJobs.byId["haul-q"].state, "RECONCILE_REQUIRED", "HAUL demoted to RECONCILE_REQUIRED")
+assertEq(multiProvRoot.taskJobs.byId["haul-q"].effects, "UNKNOWN", "HAUL effects demoted to UNKNOWN")
+assertEq(multiProvRoot.toolCustody.byId["cust-q"].state, "HELD", "Tool custody remains in safe HELD state")
+
+-- Test 5.3: B.2 - Cross-provider overlap conflict auto-quarantine (BOOT_CONFLICT arbitration)
+-- Two jobs (COOKING and FIELD_WORK) contending for unquarantined item:888
+local cookConflict = CookingRecord.new("cook-conflict", "npc-c1", "settlement-1", "Soup", "AUTO", "policy:base", 0.5, 0.5)
+cookConflict.payload.assets = { { id = 888, fullType = "Base.Pot", custody = "HELD", role = "TOOL" } }
+cookConflict.payload.claims = { "item:888" }
+
+local fieldConflict = {
+    id = "field-conflict",
+    npcId = "npc-f1",
+    providerType = "FIELD_WORK",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "RUNNING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 1,
+        category = "farming",
+        offerKey = "plot-2",
+        sequence = 1,
+        phase = "WORK",
+        target = { x = 20, y = 20, z = 0, kind = "PLOT", identity = "plot-2" },
+        assets = { { id = 888, fullType = "Base.Shovel", custody = "HELD" } },
+        claims = { "item:888" }
+    }
+}
+
+local innocentCraft = {
+    id = "innocent-craft",
+    npcId = "npc-i1",
+    providerType = "CRAFT",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "RUNNING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 4,
+        id = "innocent-craft",
+        npcId = "npc-i1",
+        sequence = 1,
+        recipeId = "Base.MakeAxe",
+        target = 1,
+        produced = 0,
+        materials = { { id = 999, consumed = false } },
+        tools = {},
+        outputs = {},
+        claims = { "item:999" }
+    }
+}
+
+local conflictRoot = {
+    format = 1,
+    containers = {},
+    quarantineResources = {},
+    taskJobs = {
+        format = 1,
+        byId = {
+            ["cook-conflict"] = cookConflict,
+            ["field-conflict"] = fieldConflict,
+            ["innocent-craft"] = innocentCraft
+        }
+    }
+}
+
+ContainerRegistry.data = function() return conflictRoot end
+-- Cold boot recovery MUST detect collision, isolate item:888, demote both contenders without crashing
+Store.data()
+
+-- item:888 must be auto-quarantined with BOOT_CONFLICT reason
+assertTrue(conflictRoot.quarantineResources["item:888"] ~= nil, "Conflicted resource 888 auto-quarantined")
+assertEq(conflictRoot.quarantineResources["item:888"].reason, "BOOT_CONFLICT", "Quarantine reason is BOOT_CONFLICT")
+assertEq(Store.owner(888).kind, "SYSTEM_QUARANTINE", "Item 888 owner is SYSTEM_QUARANTINE")
+
+-- Contenders demoted
+assertEq(conflictRoot.taskJobs.byId["cook-conflict"].state, "RECONCILE_REQUIRED", "cook-conflict demoted")
+assertEq(conflictRoot.taskJobs.byId["cook-conflict"].effects, "UNKNOWN", "cook-conflict effects UNKNOWN")
+assertEq(conflictRoot.taskJobs.byId["field-conflict"].state, "RECONCILE_REQUIRED", "field-conflict demoted")
+assertEq(conflictRoot.taskJobs.byId["field-conflict"].effects, "UNKNOWN", "field-conflict effects UNKNOWN")
+
+-- Innocent job unaffected and acquired its claim
+assertEq(conflictRoot.taskJobs.byId["innocent-craft"].state, "RUNNING", "Innocent job unaffected")
+assertEq(Store.owner(999).taskId, "innocent-craft", "Innocent job owns item:999")
+assertTrue(Store.getToken("innocent-craft") ~= nil, "Innocent job holds valid runtime token")
+
 print("PASS Part 5: Two-Pass Cold Boot Recovery with Quarantine Precedence.")
 
 print("PASS: All Phase 3A Stage B LaborClaims & LaborStore tests passed successfully!")
