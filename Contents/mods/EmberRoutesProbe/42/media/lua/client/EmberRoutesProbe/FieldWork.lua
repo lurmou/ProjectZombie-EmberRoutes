@@ -119,7 +119,8 @@ local function submit(actor,job,careId)
         if not c.valid() then c.reason='FIELD_CONTEXT_CHANGED' c.done=true return end
         if getTimestampMs()<c.nextTick then return end c.nextTick=getTimestampMs()+100
         local result
-        if c.job.payload.phase=='WORK' then result=def.step(c)
+        if c.job.payload.phase=='PREPARE' then result=require('EmberRoutesProbe/FieldSupplies').step(c)
+        elseif c.job.payload.phase=='WORK' then result=def.step(c)
         else result=require('EmberRoutesProbe/FieldCargo').step(c,def) end
         if result=='Success' and c.job.payload.phase=='WORK' then
             c.change(function(j) j.payload.phase=def.collect and 'COLLECT' or 'DELIVER' end)
@@ -273,12 +274,30 @@ function F.provider(def)
         local j={id=jobId,npcId=npcId,providerType='FIELD_WORK',scopeId=env.entry.id,
             revision=1,state='PREPARING',effects='KNOWN',obligations={work=true},
             payload={format=1,category=def.category,offerKey=selected.key,target=target,
-                phase='WORK',sequence=0,claims=keys,assets={}}}
-        local ok,err=Jobs.current():create(j) if not ok then return err end
+                phase=target.toolSupply and 'PREPARE' or 'WORK',sequence=0,claims=keys,assets={},
+                toolSupply=target.toolSupply}}
+        local ok,err=Jobs.current():create(j)
+        if not ok then
+            if target.toolSupply and target.toolSupply.requirements then
+                for _,req in ipairs(target.toolSupply.requirements) do Store.releaseCustody(req.custodyId) end
+            end
+            return err
+        end
+        if target.tools then
+            for _,itemId in ipairs(target.tools) do
+                local c=Store.custodyByItem(itemId)
+                if c then Store.assignToolUse(c.id,jobId) end
+            end
+        elseif target.toolSupply and target.toolSupply.requirements then
+            for _,req in ipairs(target.toolSupply.requirements) do Store.assignToolUse(req.custodyId,jobId) end
+        end
         local token=Store.claimField(Jobs.current():get(jobId))
         if not token then
+            if target.toolSupply and target.toolSupply.requirements then
+                for _,req in ipairs(target.toolSupply.requirements) do Store.releaseCustody(req.custodyId) end
+            end
             local saved=Jobs.current():get(jobId)
-            saved.payload.claims={} saved.payload.phase='SETTLED'
+            saved.payload.claims={} saved.payload.phase='SETTLED' saved.payload.toolSupply=nil
             assert(Jobs.current():update(jobId,saved.revision,{state='SETTLING',payload=saved.payload,obligations={}}))
             saved=Jobs.current():get(jobId)
             assert(Jobs.current():update(jobId,saved.revision,{state='CANCELLED'}))
@@ -290,6 +309,7 @@ function F.provider(def)
         return 'STARTED'
     end
     p.advance=F.advance
+    p.continue=def.continue
     function p.hasWork()
         local root=Registry.data()
         for _,j in pairs(root and root.taskJobs and root.taskJobs.byId or {}) do

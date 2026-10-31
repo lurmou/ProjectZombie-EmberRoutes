@@ -42,6 +42,9 @@ function D.object(t)
                 or not t.identity and b:getItem() and b:getItem():getID()==t.itemId then return b end
         end
     end
+    if t.kind=='STAIN' then
+        return (not EmberRoutesProbeJava or not EmberRoutesProbeJava.cleaningSquareHasStains or EmberRoutesProbeJava.cleaningSquareHasStains(sq)) and sq or nil
+    end
 end
 function D.policy(category,scope) return Policy.get(scope,category) end
 function D.waterGoal(plant)

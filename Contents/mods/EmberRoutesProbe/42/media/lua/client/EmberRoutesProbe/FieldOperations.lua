@@ -18,33 +18,30 @@ local Cargo=require 'EmberRoutesProbe/FieldCargo'
 local Native=require 'EmberRoutesProbe/FieldActions'
 local Record=require 'EmberRoutesProbe/FieldRecord'
 local Store=require 'EmberRoutesProbe/LaborStore'
+local ToolReq=require 'EmberRoutesProbe/ToolRequirements'
 local O={}
-local function available(item,jobId)
-    if not item or item:isBroken() then return false end
-    local owner=Store.owner(item:getID()) return not owner or owner.taskId==jobId
+local function canUse(npc,item,jobId)
+    if not item or (item.isBroken and item:isBroken()) then return false end
+    local npcId=npc and npc.getDescriptor and npc:getDescriptor():getID() or 0
+    if jobId then
+        return Store.validToolUse(npcId,jobId,item:getID()) or Store.canClaimTool(npcId,item:getID())
+    end
+    return Store.canClaimTool(npcId,item:getID())
 end
 function O.supplies(npc,kind,jobId)
     local inv=npc:getInventory()
     if kind=='TREE' then
-        local axe=inv:getFirstEvalRecurse(function(i) return available(i,jobId) and i:hasTag(ItemTag.CHOP_TREE) end)
+        local axe=inv:getFirstEvalRecurse(function(i) return canUse(npc,i,jobId) and ToolReq.matchPhysical(i,'CHOP_TREE') end)
         return axe and {axe} or nil
     elseif kind=='STAIN' then
-        local tool=inv:getFirstEvalRecurse(function(i) return available(i) and i:hasTag(ItemTag.CLEAN_STAINS) end)
-        local cleaner=inv:getFirstEvalRecurse(function(i)
-            local f=i:getFluidContainer()
-            return f and not Store.owner(i:getID()) and (f:contains(Fluid.Bleach) or f:contains(Fluid.CleaningLiquid))
-                and f:getAmount()>=ZomboidGlobals.CleanBloodBleachAmount
-        end)
+        local tool=inv:getFirstEvalRecurse(function(i) return canUse(npc,i,jobId) and ToolReq.matchPhysical(i,'CLEAN_TOOL') end)
+        local cleaner=inv:getFirstEvalRecurse(function(i) return canUse(npc,i,jobId) and ToolReq.matchPhysical(i,'CLEAN_FLUID') end)
         return tool and cleaner and {tool,cleaner} or nil
     elseif kind=='WATER' then
-        local water=inv:getFirstEvalRecurse(function(i)
-            local f=i:getFluidContainer()
-            return not Store.owner(i:getID()) and f and f:isFilledWithCleanWater()
-                and ISFarmingMenu.getWaterUsesInteger(i)>0
-        end)
+        local water=inv:getFirstEvalRecurse(function(i) return canUse(npc,i,jobId) and ToolReq.matchPhysical(i,'WATER_FLUID') end)
         return water and {water} or nil
     elseif kind=='CLEAR' then
-        local tool=inv:getFirstEvalRecurse(function(i) return available(i) and i:hasTag(ItemTag.DIG_PLOW) end)
+        local tool=inv:getFirstEvalRecurse(function(i) return canUse(npc,i,jobId) and ToolReq.matchPhysical(i,'DIG_PLOW') end)
         return tool and {tool} or nil
     end
     return {}
@@ -53,7 +50,9 @@ local function ownedTools(c)
     local result={}
     for _,id in ipairs(c.job.payload.target.tools or {}) do
         local inv=c.npc:getInventory() local item=inv:getFirstEvalRecurse(function(i) return i:getID()==id end)
-        if not item or not Store.validField(c.job,c.token,'item:'..id) then return nil end
+        local valid=item and (Store.validField(c.job,c.token,'item:'..id)
+            or Store.validToolUse(c.job.npcId,c.job.id,id))
+        if not valid then return nil end
         result[#result+1]=item
     end
     return result

@@ -366,6 +366,30 @@ end
 function EmberRoutesPublicOrderDialog:query()
     if self.releaseCatalog then self.releaseCatalog() self.releaseCatalog=nil end
     if self.disposed then return end
+
+    -- Fast-path for direct recipe injection (from vanilla crafting menu or direct context)
+    if self.context.recipeId then
+        local targetId=self.context.recipeId
+        local cooking=require('EmberRoutesProbe/CookingOrders').describe(targetId)
+        local spec=cooking or Recipe.read(targetId)
+        if spec then
+            local desc=cooking or Recipe.describe(spec)
+            self.rows={desc}
+            self.recipeCombo:clear()
+            self.recipeCombo:addOption(desc.name or spec.name)
+            self.recipeCombo.selected=1
+            self.selectedRecipe=targetId
+            self.context.recipeId=nil
+            self.page=1
+            self.totalPages=1
+            if self.previous then self.previous:setVisible(false) end
+            if self.next then self.next:setVisible(false) end
+            self:loadRule()
+            self:describe()
+            return
+        end
+    end
+
     local token={}
     self.catalogToken=token
     local release=Crafting.watchCatalog(self.actor,self.entry.id,{search=self.search:getText(),category=false,unsupported=false,page=self.page,size=12},function(snapshot)
@@ -393,8 +417,15 @@ function EmberRoutesPublicOrderDialog:query()
         self:loadRule()
         self.page=snapshot.page or 1
         self.totalPages=snapshot.pages or 1
-        Theme.enable(self.previous,self.page>1)
-        Theme.enable(self.next,self.page<self.totalPages)
+        local hasMultiplePages = self.totalPages > 1
+        if self.previous then
+            self.previous:setVisible(hasMultiplePages)
+            Theme.enable(self.previous,self.page>1)
+        end
+        if self.next then
+            self.next:setVisible(hasMultiplePages)
+            Theme.enable(self.next,self.page<self.totalPages)
+        end
         self:describe()
     end)
     if self.disposed or self.catalogToken~=token then
@@ -743,6 +774,13 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
         else
             self.statusNotice=text('statusReady')
             self.statusColor={r=0.35,g=0.88,b=0.60,a=1.0}
+        end
+
+        if preview.eligibleWorkerCount~=nil then
+            local workerMsg = (preview.eligibleWorkerCount>0)
+                and getText('IGUI_EmberRoutesProbe_Public_workersReady',preview.eligibleWorkerCount)
+                or getText('IGUI_EmberRoutesProbe_Public_noWorkersReady')
+            self.statusNotice = self.statusNotice .. ' · ' .. workerMsg
         end
     else
         self.statusNotice=text('statusChecking')

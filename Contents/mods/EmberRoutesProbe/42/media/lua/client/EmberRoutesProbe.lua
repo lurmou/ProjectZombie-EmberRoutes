@@ -18,6 +18,7 @@ local Commands=require "EmberRoutesProbe/NpcCommands"
 require "EmberRoutesProbe/StorageTabs"
 local SettlementMenu=require "EmberRoutesProbe/SettlementMenu"
 require "EmberRoutesProbe/RecipeOrderEntry"
+require "EmberRoutesProbe/VanillaCraftingHook"
 local LogisticsMenu=require "EmberRoutesProbe/LogisticsMenu"
 LogisticsMenu.initialize()
 require "EmberRoutesProbe/DebugMenu"

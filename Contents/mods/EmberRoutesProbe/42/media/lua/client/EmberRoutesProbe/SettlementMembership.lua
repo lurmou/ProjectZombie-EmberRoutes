@@ -49,5 +49,7 @@ function Membership.query(settlement)
     table.sort(result)
     return result
 end
-Registry.listeners[#Registry.listeners+1]=function() Membership.dirty=true end
+if Registry.listeners then
+    Registry.listeners[#Registry.listeners+1]=function() Membership.dirty=true end
+end
 return Membership

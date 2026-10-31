@@ -9,6 +9,7 @@ local personalTokens={}
 local cookingTokens={}
 local activityTokens={}
 local fieldTokens={}
+local custodyTokens={}
 local recoveredGenerations={}
 local recent={}
 local function resources(record)
@@ -111,6 +112,18 @@ function Store.data()
                 if cap and not rebuilt:restore(token,cap.key,cap.itemId,cap.amount) then error('FIELD_CAPACITY_INVALID') end
             end
         end
+        local rebuiltCustody={}
+        if current.toolCustody and current.toolCustody.byId then
+            local CustodyRecord=require('EmberRoutesProbe/ToolCustodyRecord')
+            for id,entry in pairs(current.toolCustody.byId) do
+                if not CustodyRecord.valid(entry) then error('TOOL_CUSTODY_RECORD_INVALID') end
+                local token,why=rebuilt:acquire(id,entry.sequence,entry.claims)
+                if not token then error(why or 'TOOL_CUSTODY_CLAIM_CONFLICT') end
+                rebuiltCustody[id]=token
+            end
+        else
+            current.toolCustody={byId={},byNpc={},byItem={}}
+        end
         -- Publish the cache only after the entire ledger passed validation.
         local generations={}
         for id,record in pairs(data.tasks) do
@@ -125,6 +138,7 @@ function Store.data()
         cookingTokens=rebuiltCooking
         activityTokens=rebuiltActivity
         fieldTokens=rebuiltField
+        custodyTokens=rebuiltCustody
         recoveredGenerations=generations
         recent={}
     end
@@ -507,5 +521,115 @@ function Store.route(npcId)
         data.routes[npcId]=route
     end
     return route
+end
+function Store.canClaimTool(npcId,itemId)
+    Store.data()
+    npcId=tostring(npcId)
+    local key='item:'..itemId
+    local owner=claims.owners[key]
+    if not owner then return true end
+    if root.toolCustody and root.toolCustody.byItem then
+        local c=root.toolCustody.byItem[itemId]
+        if c and tostring(c.npcId)==npcId and owner.taskId==c.id then return true end
+    end
+    return false
+end
+function Store.validToolUse(npcId,jobId,itemId)
+    Store.data()
+    npcId=tostring(npcId)
+    local key='item:'..itemId
+    local owner=claims.owners[key]
+    if not owner then return false end
+    if owner.taskId==jobId then return true end
+    if root.toolCustody and root.toolCustody.byItem then
+        local c=root.toolCustody.byItem[itemId]
+        if c and tostring(c.npcId)==npcId and owner.taskId==c.id and c.activeJobId==jobId then
+            return true
+        end
+    end
+    return false
+end
+function Store.claimCustody(npcId,itemId,role,sourceContainerId,activeJobId)
+    Store.data()
+    npcId=tostring(npcId)
+    local custodyStore=root.toolCustody
+    if not custodyStore then
+        custodyStore={byId={},byNpc={},byItem={}}
+        root.toolCustody=custodyStore
+    end
+    local custodyId='custody:'..npcId..':'..itemId
+    local existing=custodyStore.byId[custodyId]
+    if existing then
+        if existing.activeJobId and existing.activeJobId~=activeJobId then
+            return nil,'TOOL_ALREADY_ASSIGNED'
+        end
+        existing.activeJobId=activeJobId
+        return existing
+    end
+    local entry={
+        format=1,
+        id=custodyId,
+        npcId=npcId,
+        itemId=itemId,
+        role=role,
+        state='RESERVED',
+        sequence=1,
+        activeJobId=activeJobId,
+        sourceContainerId=sourceContainerId,
+        claims={'item:'..itemId}
+    }
+    if not require('EmberRoutesProbe/ToolCustodyRecord').valid(entry) then
+        return nil,'TOOL_CUSTODY_INVALID'
+    end
+    local token,why=claims:acquire(custodyId,entry.sequence,entry.claims)
+    if not token then return nil,why or 'TOOL_CLAIM_CONFLICT' end
+    custodyTokens[custodyId]=token
+    custodyStore.byId[custodyId]=entry
+    custodyStore.byNpc[npcId]=custodyStore.byNpc[npcId] or {}
+    custodyStore.byNpc[npcId][custodyId]=entry
+    custodyStore.byItem[itemId]=entry
+    return entry
+end
+function Store.releaseCustody(custodyId)
+    Store.data()
+    local custodyStore=root.toolCustody
+    if not custodyStore or not custodyStore.byId then return false end
+    local entry=custodyStore.byId[custodyId]
+    if not entry then return false end
+    local token=custodyTokens[custodyId]
+    if token then
+        claims:release(token)
+        custodyTokens[custodyId]=nil
+    end
+    custodyStore.byId[custodyId]=nil
+    if custodyStore.byNpc[entry.npcId] then
+        custodyStore.byNpc[entry.npcId][custodyId]=nil
+    end
+    custodyStore.byItem[entry.itemId]=nil
+    return true
+end
+function Store.assignToolUse(custodyId,jobId)
+    Store.data()
+    local custodyStore=root.toolCustody
+    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
+    if not entry then return false,'CUSTODY_NOT_FOUND' end
+    entry.activeJobId=jobId
+    return true
+end
+function Store.custodyForNpc(npcId)
+    Store.data()
+    npcId=tostring(npcId)
+    local result={}
+    local custodyStore=root.toolCustody
+    if custodyStore and custodyStore.byNpc and custodyStore.byNpc[npcId] then
+        for _,entry in pairs(custodyStore.byNpc[npcId]) do
+            result[#result+1]=entry
+        end
+    end
+    return result
+end
+function Store.custodyByItem(itemId)
+    Store.data()
+    return root.toolCustody and root.toolCustody.byItem and root.toolCustody.byItem[itemId] or nil
 end
 return Store

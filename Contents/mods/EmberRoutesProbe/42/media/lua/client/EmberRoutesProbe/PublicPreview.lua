@@ -1,5 +1,8 @@
--- One active read-only request per dialog, evaluated sequentially across workers.
+-- Settlement-wide read-only demand matching with executor feasibility hint.
+-- Decouples material availability from current worker availability.
 local Crafting=require 'EmberRoutesProbe/CraftingService'
+local Driver=require 'EmberRoutesProbe/Driver'
+local Recipe=require 'EmberRoutesProbe/ProductionRecipe'
 local M={}
 function M.watch(actor,scope,recipe,quantity,surface,callback,preferences)
     local cooking=require('EmberRoutesProbe/CookingOrders').describe(recipe)
@@ -7,27 +10,40 @@ function M.watch(actor,scope,recipe,quantity,surface,callback,preferences)
         callback({state='WAITING',conditions={'COOKING_ASSIGNMENT_PREVIEW'},counts={},cooking=true,recipe=cooking})
         return function() end
     end
+
     local workers=Crafting.status(actor,scope).workers or {}
-    local stopped=false local release local position=0 local best local token
-    local function advance()
-        position=position+1
-        if position>#workers then callback(best or {state='WAITING',conditions={'WAITING_CLAIM'},counts={}}) return end
-        local current={} token=current
-        local unsubscribe=Crafting.preview(actor,scope,workers[position].id,recipe,quantity,surface,function(result)
-            if stopped or token~=current then return end
-            if result.state=='CHECKING' then return end
-            token=nil
-            if release then release() release=nil end
-            if result.state=='READY' then callback(result)
-            else
-                best=best or result
-                if result.conditions and result.conditions[1]~='NPC_RECIPE_UNKNOWN' and result.conditions[1]~='NPC_SKILL_TOO_LOW' then best=result end
-                advance()
+    local eligibleCount=0
+    local spec=Recipe.read(recipe)
+    if spec and spec.recipe then
+        for _,w in ipairs(workers) do
+            local binding=Driver.bindId(actor,w.id)
+            if binding and Driver.valid(binding) and not (binding.handle.isDead and binding.handle:isDead())
+                and binding.handle:isRecipeKnown(spec.recipe,true) then
+                local meetSkills=true
+                for i=0,spec.recipe:getRequiredSkillCount()-1 do
+                    local skill=spec.recipe:getRequiredSkill(i)
+                    if binding.handle:getPerkLevel(skill:getPerk())<skill:getLevel() then
+                        meetSkills=false break
+                    end
+                end
+                if meetSkills then eligibleCount=eligibleCount+1 end
             end
-        end,preferences)
-        if stopped or token~=current then if unsubscribe then unsubscribe() end else release=unsubscribe end
+        end
     end
-    advance()
-    return function() stopped=true token=nil if release then release() release=nil end end
+
+    local stopped=false
+    local release=Crafting.preview(actor,scope,nil,recipe,quantity,surface,function(result)
+        if stopped then return end
+        if result and result.state~='CHECKING' then
+            result.eligibleWorkerCount=eligibleCount
+            result.totalWorkerCount=#workers
+        end
+        callback(result)
+    end,preferences)
+
+    return function()
+        stopped=true
+        if release then release() release=nil end
+    end
 end
 return M

@@ -5,22 +5,50 @@ local Spatial=require 'EmberRoutesProbe/FieldSpatial'
 local Record=require 'EmberRoutesProbe/FieldRecord'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local ToolDiscovery=require 'EmberRoutesProbe/ToolDiscovery'
 local M={}
 local providers={}
 local priorities={cleaning=2,farming=3,lumberjack=3,forager=3}
 local function claim(category,selected,npc,entry,jobId)
     local t,keys,why=Discovery.claim(selected.point,npc,entry,category)
     if not t then return nil,nil,why end
-    local tools=Operations.supplies(npc,t.kind,jobId)
-    if not tools then return nil,nil,'FIELD_TOOLS_UNAVAILABLE' end
+    local supplies=ToolDiscovery.findSupplies(entry,npc,t.kind)
+    if not supplies then return nil,nil,'FIELD_TOOLS_UNAVAILABLE' end
     t.tools={}
-    for _,item in ipairs(tools) do
-        keys[#keys+1]='item:'..item:getID() t.tools[#t.tools+1]=item:getID()
+    local npcId=tostring((npc.getDescriptor and npc:getDescriptor():getID()) or 0)
+    local toolSupplyReqs={}
+    for _,req in ipairs(supplies.requirements) do
+        local itemId=req.item:getID()
+        t.tools[#t.tools+1]=itemId
+        if req.inInventory then
+            local existing=Store.custodyByItem(itemId)
+            if existing then
+                if jobId then Store.assignToolUse(existing.id,jobId) end
+            else
+                local custody,err=Store.claimCustody(npcId,itemId,req.role,nil,jobId)
+                if not custody then return nil,nil,err or 'TOOL_CUSTODY_CONFLICT' end
+                custody.state='HELD'
+            end
+        else
+            local custody,err=Store.claimCustody(npcId,itemId,req.role,req.endpoint.id,jobId)
+            if not custody then return nil,nil,err or 'TOOL_CUSTODY_CONFLICT' end
+            toolSupplyReqs[#toolSupplyReqs+1]={
+                role=req.role,
+                itemId=itemId,
+                custodyId=custody.id,
+                containerId=req.endpoint.id
+            }
+        end
+    end
+    if #toolSupplyReqs>0 then
+        t.toolSupply={requirements=toolSupplyReqs}
     end
     for _,item in pairs({primary=npc:getPrimaryHandItem(),secondary=npc:getSecondaryHandItem()}) do
-        local key='item:'..item:getID() local seen=false
-        for _,existing in ipairs(keys) do if key==existing then seen=true break end end
-        if not seen then keys[#keys+1]=key end
+        if not Store.custodyByItem(item:getID()) then
+            local key='item:'..item:getID() local seen=false
+            for _,existing in ipairs(keys) do if key==existing then seen=true break end end
+            if not seen then keys[#keys+1]=key end
+        end
     end
     if t.kind=='ROTTEN' then keys[#keys+1]='item:'..t.itemId end
     if t.kind=='CORPSE' then
@@ -39,6 +67,16 @@ local function policyReady(env,category)
     end
     return true
 end
+local function hasSupplies(entry,npc,kind)
+    if ToolDiscovery and ToolDiscovery.findSupplies then
+        local s=ToolDiscovery.findSupplies(entry,npc,kind)
+        if s~=nil then return true end
+    end
+    if Operations.supplies then
+        return Operations.supplies(npc,kind)~=nil
+    end
+    return false
+end
 function M.get(category)
     if providers[category] then return providers[category] end
     local def={category=category,defaultPriority=priorities[category],step=Operations.step,collect=category=='lumberjack'}
@@ -53,7 +91,7 @@ function M.get(category)
         if not policyReady(env,category) then return end
         local offered=0
         for _,t in ipairs(Discovery.targets(env,category)) do
-            if Discovery.allowed(category,env.entry,t,env.npc) and Operations.supplies(env.npc,t.kind) then
+            if Discovery.allowed(category,env.entry,t,env.npc) and hasSupplies(env.entry,env.npc,t.kind) then
                 if Field.offer(env,category,t,t.kind=='HARVEST' and 0.95 or 0.8) then
                     offered=offered+1 if offered>=3 then break end
                 end
@@ -62,9 +100,12 @@ function M.get(category)
     end
     function def.claim(selected,npc,entry) return claim(category,selected,npc,entry) end
     function def.continue(c)
-        if category~='lumberjack' or (c.job.payload.batchCount or 1)>=4
-            or Discovery.policy(category,c.job.scopeId).continuousBatch==false then return false end
-        if (require('EmberRoutesProbe/PublicWork').priorities(c.job.npcId).lumberjack or 0)==0 then return false end
+        local policy=Discovery.policy(category,c.job.scopeId)
+        local maxBatch=policy and policy.maxContinuousBatch or (category=='lumberjack' and 4 or 8)
+        if (c.job.payload.batchCount or 1)>=maxBatch
+            or (policy and policy.continuousBatch==false) then return false end
+        local priorities=require('EmberRoutesProbe/PublicWork').priorities(c.job.npcId)
+        if priorities and (priorities[category] or 0)==0 then return false end
         local entry=require('EmberRoutesProbe/SettlementLedger').get(c.job.scopeId)
         if not entry or not policyReady({entry=entry,npc=c.npc},category) then return false end
         local previous=c.job.payload.target
