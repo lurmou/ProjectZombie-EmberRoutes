@@ -76,7 +76,9 @@ function CustomKits.create(name, typesArray)
         end
     end
 
-    if not next(typesMap) then
+    local hasAny = false
+    for _ in pairs(typesMap) do hasAny = true break end
+    if not hasAny then
         return nil, "KIT_TYPES_EMPTY"
     end
 

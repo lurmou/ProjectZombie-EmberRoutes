@@ -29,6 +29,21 @@ public final class ProbeBaselineTest {
             if (Files.isSameFile(actualSource, baseline.gameJar())) throw new AssertionError("class source confused with installation jar");
             System.out.println("PASS real override-first class loading: IsoPlayerCodeSource=" + actualSource
                     + "; installation baseline remains accepted; IsoPlayer NOT initialized");
+
+            // Verify PZ 42 zero-allocation invariant: square.getObjects returns PZArrayList whose iterator() throws UnsupportedOperationException
+            Class<?> squareClass = Class.forName("zombie.iso.IsoGridSquare", false, ClassLoader.getSystemClassLoader());
+            Class<?> pzListClass = Class.forName("zombie.util.list.PZArrayList", false, ClassLoader.getSystemClassLoader());
+            var getObjectsReturn = squareClass.getMethod("getObjects").getReturnType();
+            if (!pzListClass.isAssignableFrom(getObjectsReturn))
+                throw new AssertionError("IsoGridSquare.getObjects() return type changed from PZArrayList: " + getObjectsReturn);
+            Object pzList = pzListClass.getConstructor(Class.class, int.class).newInstance(Object.class, 2);
+            try {
+                pzListClass.getMethod("iterator").invoke(pzList);
+                throw new AssertionError("PZArrayList.iterator() must throw UnsupportedOperationException");
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                if (!(ite.getCause() instanceof UnsupportedOperationException)) throw ite;
+            }
+            System.out.println("PASS PZArrayList zero-allocation invariant verified (iterator poisoned)");
         }
         System.out.println("PASS installed-file baseline regression: exact game JAR, strict hash, no override fallback");
         System.out.println("gameJar=" + baseline.gameJar() + " sha256=" + baseline.hash()

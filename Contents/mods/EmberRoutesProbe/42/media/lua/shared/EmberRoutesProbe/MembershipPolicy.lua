@@ -1,6 +1,6 @@
 -- Macro eligibility only. Never grants a body, consumes an asset or changes identity.
 local P={}
-local purposes={WORK=true,LEISURE=true,STUDY=true,SELF_CARE=true,RECOVERY=true,RETURN=true}
+local purposes={WORK=true,FIELD_WORK=true,LEISURE=true,STUDY=true,SELF_CARE=true,RECOVERY=true,RETURN=true}
 local function inside(entry,o)
     if not o or type(o.x)~='number' or type(o.y)~='number' then return false end
     for _,a in ipairs(entry.areas or {}) do
@@ -29,7 +29,9 @@ function P.evaluate(row,entry,purpose,observation,expected)
     if not entry or entry.id~=row.settlementId then return reject('TARGET_LOST') end
     if entry.factionId~=row.factionId then return reject('ACCESS_DENIED') end
     if observation and observation.scopeId and observation.scopeId~=row.settlementId then return reject('SCOPE_MISMATCH') end
-    if purpose~='RETURN' and not inside(entry,observation) then return reject('OUTSIDE_SETTLEMENT') end
+    -- Field executors must independently prove their registered work target and
+    -- endpoints. A member may travel to an explicitly assigned offsite work zone.
+    if purpose~='RETURN' and purpose~='FIELD_WORK' and not inside(entry,observation) then return reject('OUTSIDE_SETTLEMENT') end
     result.allowed=true result.reason=nil return result
 end
 P.inside=inside

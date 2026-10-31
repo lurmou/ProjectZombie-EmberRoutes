@@ -3,6 +3,8 @@ local Craft=require 'EmberRoutesProbe/CookingCraft'
 local Inputs=require 'EmberRoutesProbe/CraftRecipeInputs'
 local Fluids=require 'EmberRoutesProbe/CraftFluids'
 local Food=require 'EmberRoutesProbe/CookingFood'
+local PolicyService=require 'EmberRoutesProbe/JobPolicyService'
+local FoodEvaluator=require 'EmberRoutesProbe/FoodPolicyEvaluator'
 local Supply=require 'EmberRoutesProbe/ProductionSupply'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local Planner=require 'EmberRoutesProbe/ProductionChainPlan'
@@ -17,9 +19,10 @@ end
 function M.chain(actor,entry,npc,recipeId,object,orderId,preferences)
     local profile,why=Craft.profile(recipeId) if not profile then return nil,why end
     local spec,reason=Inputs.planning(profile,npc) if not spec then return nil,reason end
+    local cookPolicy = entry and entry.id and PolicyService.get(entry.id, 'cooking')
     for _,input in ipairs(spec.inputs) do
         local accept=input.accept
-        input.accept=function(item) return safe(item) and accept(item) end
+        input.accept=function(item) return safe(item) and FoodEvaluator.allows(cookPolicy, item) and accept(item) end
     end
     return require('EmberRoutesProbe/ProductionChain').new(actor,npc,entry,recipeId,spec.yield,
         object,'offer:'..orderId,true,preferences,{root=spec,acceptStock=safe})
@@ -27,17 +30,20 @@ end
 function M.new(entry,npc,recipeId,jobId)
     local profile,why=Craft.profile(recipeId) if not profile then return nil,why end
     local spec,reason=Inputs.planning(profile,npc) if not spec then return nil,reason end
+    local cookPolicy = entry and entry.id and PolicyService.get(entry.id, 'cooking')
     for _,input in ipairs(spec.inputs) do
         local accept=input.accept
         input.accept=function(item)
             if instanceof(item,'Food') then
                 local food=Food.read(item)
                 if not food or not food.safe or food.frozen then return false end
+                if not FoodEvaluator.allows(cookPolicy, item) then return false end
             end
             return accept(item)
         end
     end
-    local scan,err=Supply.new(entry,npc,spec,{id=jobId,materials={},tools={},outputs={}},true,1)
+    local scan,err=Supply.new(entry,npc,spec,{id=jobId,materials={},tools={},outputs={}},true,1,
+        {less=require('EmberRoutesProbe/CookingDirectives').less(entry.id)})
     if not scan then return nil,err end
     local self={scan=scan,root=Registry.data(),stock={},entries={},index=1}
     function self:cancel() self.cancelled=true self.planner=nil self.scan=nil self.stock={} self.entries={} end

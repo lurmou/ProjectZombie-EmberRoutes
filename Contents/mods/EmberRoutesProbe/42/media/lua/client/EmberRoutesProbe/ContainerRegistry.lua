@@ -2,6 +2,7 @@ local Rules = require "EmberRoutesProbe/HaulRules"
 local Policy = require "EmberRoutesProbe/InventoryPolicy"
 local Filter = require "EmberRoutesProbe/StorageFilter"
 local Log = require "EmberRoutesProbe/Log"
+local Gate = require "EmberRoutesProbe/RuntimeGate"
 local Registry = {}
 Registry.tags = Policy.order
 Registry.listeners = {}
@@ -147,7 +148,7 @@ function Registry.revalidate(endpoint,intent,scopeId)
     return current
 end
 
-function Registry.tag(actor, object, name, deferNotification, container)
+function Registry.tag(actor, object, name, deferNotification, container, bypassDistance)
     if not Policy.tags[name] and name ~= "untag" then return "INVALID_TAG" end
     container=container or (object and object:getContainer())
     local index=Registry.containerIndex(object,container)
@@ -155,7 +156,7 @@ function Registry.tag(actor, object, name, deferNotification, container)
     if index==nil or not square or not square:getObjects():contains(object) or not object:getContainer() then return "WORLD_CONTAINER_REQUIRED" end
     local cell = getCell()
     if not cell or cell:getGridSquare(square:getX(), square:getY(), square:getZ()) ~= square then return "CONTAINER_UNLOADED" end
-    if not Rules.near(actor:getX(), actor:getY(), actor:getZ(), square:getX()+0.5, square:getY()+0.5, square:getZ()) then
+    if actor and not bypassDistance and not Rules.near(actor:getX(), actor:getY(), actor:getZ(), square:getX()+0.5, square:getY()+0.5, square:getZ()) then
         return "TOO_FAR_TO_TAG"
     end
     local data = Registry.data()
@@ -180,12 +181,12 @@ function Registry.tag(actor, object, name, deferNotification, container)
     return "TAGGED " .. name .. " id=" .. tag.id
 end
 
-function Registry.configure(actor,object,config,container,logisticsRole)
-    if isClient() or isServer() or not actor or actor:isDead() then return "DRIVER_UNAVAILABLE" end
+function Registry.configure(actor,object,config,container,logisticsRole,bypassDistance)
+    if not Gate.isSinglePlayer() or (actor and not Gate.isLiveActor(actor)) then return "DRIVER_UNAVAILABLE" end
     local copy,reason=Filter.copy(config)
     if not copy then return reason end
     if logisticsRole~=nil and logisticsRole~="INPUT" and logisticsRole~="STORAGE" and logisticsRole~="EXCLUDED" then return "INVALID_ROLE" end
-    local result=Registry.tag(actor,object,"inbox",true,container)
+    local result=Registry.tag(actor,object,"inbox",true,container,bypassDistance)
     if not string.find(result,"^TAGGED") then return result end
     local tag=Registry.metadata(object,container)
     if not tag then return "CONTAINER_CHANGED" end
@@ -208,7 +209,7 @@ function Registry.logistics(endpoint)
 end
 
 function Registry.configureLogistics(actor,object,container,role)
-    if isClient() or isServer() or not actor or actor:isDead() then return "DRIVER_UNAVAILABLE" end
+    if not Gate.canExecute(actor) or not actor then return "DRIVER_UNAVAILABLE" end
     if role~="STORAGE" and role~="INPUT" and role~="EXCLUDED" then return "INVALID_ROLE" end
     local tag=Registry.metadata(object,container)
     -- Explicitly assigning a logistics role registers a previously unconfigured

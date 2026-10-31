@@ -64,6 +64,9 @@ function M.new(entry,npc,target,recipeId,accept,options)
     local world,watch=Registry.data(),Wake.capture(entry)
     local owner,revision=Store.claimsVersion()
     local q={recipes={},types={},pantry={},seen={},recipeIndex=0,phase='CATALOG',position=1,read=0}
+    local directives=require 'EmberRoutesProbe/CookingDirectives'
+    local less=directives.less(entry.id)
+    local cookPolicy=require('EmberRoutesProbe/JobPolicyService').get(entry.id,'cooking')
     local waterAmount,waterSeen,waterRequest=0,{},nil
     local portableAmounts={}
     local actor=options and options.actor or getSpecificPlayer and getSpecificPlayer(0)
@@ -77,6 +80,7 @@ function M.new(entry,npc,target,recipeId,accept,options)
         if Store.owner(id) or not Producers.eligible(item) or item:getIsCraftingConsumed()
             or not Registry.accepts(endpoint,item) then return true end
         local food,err=Food.read(item) if not food then return false,err end
+        if not require('EmberRoutesProbe/FoodPolicyEvaluator').allows(cookPolicy,item) then return true end
         if food.food and (not food.safe or food.frozen) then return true end
         local container=item.getFluidContainer and item:getFluidContainer()
         local water=container and Fluids.water(container)
@@ -96,7 +100,7 @@ function M.new(entry,npc,target,recipeId,accept,options)
                     local candidate={kind='HEAT',base=q.pantry[#q.pantry],entries={},estimated=amount,minimum=amount,
                         target=math.min(target,amount),fresh=remaining,tier=tier,cost=1,profileId='heat:'..item:getFullType()}
                     local best=q.rawBest
-                    if not best or candidate.tier<best.tier or candidate.tier==best.tier and candidate.fresh<best.fresh then q.rawBest=candidate end
+                    if not best or less(candidate.base,best.base) then q.rawBest=candidate end
                 end
             end
         end
@@ -105,7 +109,7 @@ function M.new(entry,npc,target,recipeId,accept,options)
     local function finishRecipe()
         local r=q.current
         if r.base and #r.main>0 and (not r.recipe:isCookable() or q.hasStove) then
-            table.sort(r.main,better)
+            table.sort(r.main,less)
             local selected,total,minimum,locations={},0,nil,{}
             locations[r.base.endpoint.id]=true
             for _,row in ipairs(r.main) do
@@ -126,11 +130,12 @@ function M.new(entry,npc,target,recipeId,accept,options)
                 end
                 local candidate={recipe=r.recipe,signature=r.signature,base=r.base,entries=selected,
                     target=math.min(target,total),minimum=minimum,estimated=total,fresh=r.main[1].fresh,tier=r.main[1].tier,
-                    cost=r.baseRank+(r.recipe:isCookable() and 1 or 0)}
+                    cost=r.baseRank+(r.recipe:isCookable() and 1 or 0),rank=r.main[1]}
                 local best=q.best
-                if not best or candidate.tier<best.tier or candidate.tier==best.tier and (candidate.fresh<best.fresh
-                    or candidate.fresh==best.fresh and (candidate.cost<best.cost or candidate.cost==best.cost
-                        and r.recipe:getOriginalname()<(best.recipe and best.recipe:getOriginalname() or best.profileId))) then q.best=candidate end
+                local bestRank=best and (best.rank or best.base)
+                if not best or less(candidate.rank,bestRank) or not less(bestRank,candidate.rank)
+                    and (candidate.cost<best.cost or candidate.cost==best.cost
+                        and r.recipe:getOriginalname()<(best.recipe and best.recipe:getOriginalname() or best.profileId)) then q.best=candidate end
             end
         end
         q.current=nil q.offset=nil
@@ -180,7 +185,7 @@ function M.new(entry,npc,target,recipeId,accept,options)
                     else
                         local oven=Supply.endpoint(entry,id,'put')
                         local stove=oven and require('EmberRoutesProbe/CookingFacilities').stove(oven)
-                        if stove and stove.powered and not stove.active and not stove.broken
+                        if stove and directives.kitchen(entry.id,oven.object) and stove.powered and not stove.active and not stove.broken
                             and not Store.resourceOwner(stove.siteKey) and oven.container:getItems():size()==0 then self.hasStove=true end
                         local endpoint,err=Supply.endpoint(entry,id,'take')
                         if not endpoint and err=='CONTAINER_UNLOADED' then return nil,err end
@@ -230,7 +235,7 @@ function M.new(entry,npc,target,recipeId,accept,options)
                                     -- Keep bounded alternatives; no extra pantry walk for seasoning.
                                     if #r.spices<16 then r.spices[#r.spices+1]=candidate end
                                 elseif candidate.contribution>0 then
-                                    r.main[#r.main+1]=candidate table.sort(r.main,better)
+                                    r.main[#r.main+1]=candidate table.sort(r.main,less)
                                     if #r.main>r.recipe:getMaxItems() then table.remove(r.main) end
                                 end
                             end

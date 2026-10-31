@@ -126,14 +126,18 @@ function EmberRoutesWarehousePage:createChildren()
     Input.focus(self,self.itemList)
 
     local footBounds={x=columns[1].x,y=regions[4].y,width=columns[1].width,height=regions[4].height}
-    local foot=assert(Layout.axis(footBounds,{{grow=1.0},{grow=1.0},{grow=0.6}},{gap=p}))
-    for i,definition in ipairs({{text("refresh"),EmberRoutesWarehousePage.refresh},
-            {text("edit"),EmberRoutesWarehousePage.editArea},{text("help"),EmberRoutesWarehousePage.help}}) do
+    local foot=assert(Layout.axis(footBounds,{{grow=1.0},{grow=1.0},{grow=1.2},{grow=0.6}},{gap=p}))
+    for i,definition in ipairs({
+            {text("refresh"),EmberRoutesWarehousePage.refresh},
+            {text("edit"),EmberRoutesWarehousePage.editArea},
+            {getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneBtn"),EmberRoutesWarehousePage.autoZoneSettlement},
+            {text("help"),EmberRoutesWarehousePage.help}}) do
         local r=foot[i]
         local button=ISButton:new(r.x,r.y,r.width,r.height,definition[1],self,definition[2])
         button:initialise() Theme.button(button,i==1) self:addChild(button)
         if i==1 then self.refreshButton=button end
-        if i==3 then self.helpButton=button button.tooltip=text("coverageHint").."\n\n"..text("shortHint") end
+        if i==3 then button.tooltip=getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneTooltip") end
+        if i==4 then self.helpButton=button button.tooltip=text("coverageHint").."\n\n"..text("shortHint") end
     end
     local cartBtn=ISButton:new(columns[2].x,regions[4].y,columns[2].width,regions[4].height,
         getText('IGUI_EmberRoutesProbe_Warehouse_cartButton','0'),self,EmberRoutesWarehousePage.toggleCartDrawer)
@@ -158,9 +162,10 @@ function EmberRoutesWarehousePage:activate()
         function(snapshot) self:receive(snapshot) end)
 end
 function EmberRoutesWarehousePage:deactivate()
-    if self.active then
+    if self.active and (not self.resume or self.store.value.snapshot.state=="READY") then
         local selection=self.store.value.selection
-        self.resume={fullType=selection and selection.fullType,page=self.actualPage,scroll=self.itemList:getYScroll()}
+        self.resume={fullType=selection and selection.fullType,page=self.actualPage,scroll=self.itemList:getYScroll(),
+            gridScroll=self.itemGrid and self.itemGrid.scrollY or 0}
     end
     Lifecycle.unmount(self)
     self.deliveryMiddleDown=nil
@@ -224,6 +229,11 @@ function EmberRoutesWarehousePage:receive(snapshot)
         end
         return label
     end)
+    if not self.resume and self.itemGrid and snapshot.state=='UPDATING' and not snapshot.retain then
+        local selection=self.store.value.selection
+        self.resume={fullType=selection and selection.fullType,page=self.actualPage,
+            scroll=self.itemList:getYScroll(),gridScroll=self.itemGrid.scrollY}
+    end
     local restore=self.resume and snapshot.state=="READY"
     local selection=self.store.value.selection
     if restore then
@@ -264,6 +274,7 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
         local explicit=changed.search or changed.category or changed.sort or changed.page
         if explicit then
             self.itemList.selected=1 self.itemList:setYScroll(0) self.itemList.smoothScrollTargetY=nil
+            if self.itemGrid then self.itemGrid.scrollY=0 end
         end
         local anchor=not explicit and snapshot.selection and snapshot.selection.fullType or nil
         local measured=Metrics.begin("ui.query")
@@ -290,6 +301,9 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
         end
         if self.itemGrid then
             self.itemGrid:setRows(rows,selection)
+            if self.resume and snapshot.snapshot.state=='READY' then
+                self.itemGrid.scrollY=math.max(0,math.min(self.resume.gridScroll or 0,self.itemGrid.maxScrollY))
+            end
             local gridEmpty=snapshot.snapshot.state=="UPDATING" and "waitingItems" or "noItems"
             self.itemGrid.emptyLabel=snapshot.snapshot.state=="ERROR" and text(snapshot.snapshot.reason or "ERROR") or text(gridEmpty)
         end
@@ -304,6 +318,7 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
 end
 function EmberRoutesWarehousePage:queryChanged()
     if not self.active or not self.itemList then return end
+    self.resume=nil
     self.store:setState({search=self.search:getText(),category=self.categoryIds[self.categories.selected] or false,page=1,
         sort=self.controls.sortIds[self.controls.sort.selected]})
 end
@@ -389,6 +404,30 @@ function EmberRoutesWarehousePage:editArea()
     local actor,entry=self.actor,Ledger.get(self.entry.id)
     self:close()
     Selector.open(actor,entry,function(updated) require("EmberRoutesProbe/SettlementDashboard").open(actor,updated.id) end)
+end
+function EmberRoutesWarehousePage:autoZoneSettlement()
+    local actor,entry=self.actor,Ledger.get(self.entry.id)
+    if not actor or not entry then return end
+    local sw,sh=getCore():getScreenWidth(),getCore():getScreenHeight()
+    local modalW,modalH=380,140
+    local prompt=getText("IGUI_EmberRoutesProbe_Warehouse_autoZonePrompt")
+    local modal=ISModalDialog:new((sw-modalW)/2,(sh-modalH)/2,modalW,modalH,prompt,true,self,function(_,button)
+        if button.internal=="YES" then
+            local Batch=require "EmberRoutesProbe/BatchStoragePainting"
+            local containers=Batch.scanSettlement(entry)
+            if #containers==0 then
+                actor:Say(getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneEmpty"))
+                return
+            end
+            local result=Batch.apply(containers,"auto",actor)
+            local msg=getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneSuccess",tostring(result.updated))
+            actor:Say(msg)
+            self:refresh()
+        end
+    end)
+    modal:initialise()
+    modal:addToUIManager()
+    if actor:getJoypadBind()~=-1 then setJoypadFocus(actor:getIndex(),modal) end
 end
 local function getItemWeight(fullType)
     local sm=type(getScriptManager)=="function" and getScriptManager()

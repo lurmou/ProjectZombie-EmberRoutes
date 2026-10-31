@@ -273,7 +273,6 @@ package.loaded['EmberRoutesProbe/PublicWork'] = {
 -- Module references
 local Query = require "EmberRoutesProbe/WarehouseQuery"
 local PinyinHelper = require "EmberRoutesProbe/PinyinHelper"
-local LiquidRegistry = require "EmberRoutesProbe/LiquidRegistry"
 local Dashboard = require "EmberRoutesProbe/SettlementDashboard"
 local WarehousePage = require "EmberRoutesProbe/UI/WarehousePage"
 local WarehouseGrid = require "EmberRoutesProbe/UI/WarehouseGrid"

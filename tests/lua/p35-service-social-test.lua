@@ -18,7 +18,8 @@ package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {forNpc=f
 package.loaded['EmberRoutesProbe/StudyService']={changed=function() end,
     decorateLeisure=function(c) c.study=true return c end}
 package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end}
+local settlementRoot={format=1,revision=1,entries={[entry.id]=entry},publicLifeZones={format=1,revision=0,byId={}}}
+package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end,data=function() return settlementRoot end}
 package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
 package.loaded['EmberRoutesProbe/SettlementFacilities']={describe=function() end,watch=function() return {slots={}} end,
     advance=function() return 0 end,reason=function() return 'PENDING' end}

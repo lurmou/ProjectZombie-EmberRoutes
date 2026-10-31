@@ -99,7 +99,8 @@ package.loaded['EmberRoutesProbe/ContainerRegistry']={
     data=function() return rootData end,
     resolve=function() return nil end,
     id=function() return 'gen-id-1' end,
-    listeners={}
+    listeners={},
+    inventoryListeners={}
 }
 local Boot=require 'EmberRoutesProbe/Boot'
 Boot.ready=true
@@ -109,7 +110,7 @@ function isClient() return false end
 function isServer() return false end
 
 package.loaded['EmberRoutesProbe/SettlementLedger']={
-    view=function(actor,scope) return {id=scope} end
+    view=function(actor,scope) return {id=scope} end, listeners={}
 }
 package.loaded['EmberRoutesProbe/ProductionRecipe']={
     read=function(id) return {id=id,name='Make Table',product='Base.Table',yield=1,recipe={}} end

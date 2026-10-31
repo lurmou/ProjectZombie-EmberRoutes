@@ -10,7 +10,6 @@ local Resources=require 'EmberRoutesProbe/SelfCareResources'
 local Observer=require 'EmberRoutesProbe/NeedsObserver'
 local Policy=require 'EmberRoutesProbe/NeedsPolicy'
 local Driver=require 'EmberRoutesProbe/Driver'
-local Execution=require 'EmberRoutesProbe/SelfCareExecution'
 local Facilities=require 'EmberRoutesProbe/SettlementFacilities'
 local Performance=require 'EmberRoutesProbe/RuntimeMetrics'
 local Log=require 'EmberRoutesProbe/Log'
@@ -84,7 +83,7 @@ end
 local function submit(actor,binding,job,candidate,row,settle,items,reliefOnly,interruptCompanion)
     local runtime=Runtime.current()
     if not runtime or not runtime:accepting() then return end
-    local spec=Execution.new(actor,binding,job,candidate,function() return budget end,settle,items,function()
+    local spec=use('SelfCareExecution').new(actor,binding,job,candidate,function() return budget end,settle,items,function()
         return row.sample and row.sample.safe and getTimestampMs()-row.sample.observedAt<=2000
             and not binding.handle:isOnFire() and binding.handle:getSurroundingAttackingZombies(false)==0
     end,reliefOnly,interruptCompanion)
@@ -103,10 +102,18 @@ local function settle(actor,binding,job,row)
     if p.step=='RECONCILE_REQUIRED' or job.effects~='KNOWN' then return end
     if p.resume and p.resume.state=='REQUESTED' then row.reason='PREDECESSOR_STOP_PENDING' return end
     if (p.step=='REQUESTED' or p.step=='STOP_CONFIRMED') and p.kind~='STUDY'
+        and not (p.activityRef and p.activityRef.dutyId)
         and not p.consumption and not p.transfer and not p.repose and not p.reading then
         idle(job,row,'CANDIDATE_NOT_STARTED') return
     end
-    if not p.sourceId then idle(job,row,'PERSONAL_STOPPED') return end
+    if not p.sourceId then
+        -- A loaded duty attempt needs its actual owner stop path, even when it
+        -- carries no item. IDLE alone is not native/asset cleanup evidence.
+        if p.activityRef and p.activityRef.dutyId then
+            if not Runtime.current():owns(binding.id) then submit(actor,binding,job,nil,row,true,{}) end
+        else idle(job,row,'PERSONAL_STOPPED') end
+        return
+    end
     local current=Runtime.current():status(binding.id)
     local interruptCompanion=current and current.kind=='COMPANION' and current.state=='ACTIVE' and current.started and not current.pending
     if current and not interruptCompanion then return end
@@ -205,6 +212,7 @@ local function advance(actor,binding,row,now)
         if active and active.payload.kind=='LEISURE' then
             local need=Policy.choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true})
             if active.payload.leisure and active.payload.leisure.activity=='OBSERVE'
+                and not active.payload.leisure.roleDuty
                 and use('SocialCoordinator').pending(id) then
                 runtime:stopJob(id,active.id,'SOCIAL_INVITE')
             end
@@ -275,6 +283,7 @@ local function advance(actor,binding,row,now)
             if not p then use('LeisureService').note(id,'PERSONAL_ATTEMPT_RETAINED') return end
             p.leisure=candidate.leisure p.settlementId=candidate.entry.id p.membershipRevision=candidate.membershipRevision
             p.activityRef=candidate.activityRef
+            if p.leisure.roleDuty then p.claims={use('LeisureRecord').tileKey(p.leisure.point)} end
             p.settlementRevision=candidate.settlementRevision
             if candidate.item then p.itemId=candidate.item:getID() p.claims={'item:'..p.itemId,'item:'..candidate.fire:getID()} end
             if p.leisure.socialId then

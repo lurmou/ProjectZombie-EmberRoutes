@@ -95,7 +95,7 @@ function M.new(actor,binding,job,object,budgets,safe,options)
                     if not recipe then c.reason=why return 'Failure' end
                     local sig=Evolved.signature(recipe)
                     if sig~=c.job.payload.evolved.signature then
-                        print('[EmberRoutes] EVOLVED_PROFILE_CHANGED: id='..tostring(c.job.payload.evolved.recipeId)..' expected='..tostring(c.job.payload.evolved.signature)..' actual='..tostring(sig))
+                        require('EmberRoutesProbe/Log').write('COOKING','EVOLVED_PROFILE_CHANGED: id='..tostring(c.job.payload.evolved.recipeId)..' expected='..tostring(c.job.payload.evolved.signature)..' actual='..tostring(sig))
                         c.reason='EVOLVED_PROFILE_CHANGED' return 'Failure'
                     end
                     local added,weight=0,0
@@ -118,6 +118,7 @@ function M.new(actor,binding,job,object,budgets,safe,options)
                     end
                     weight=output:getActualWeight()
                     tree=assert(Tree.new({kind='Sequence',children={Cargo.coldGate(c,weight),phase('FETCHING'),Cargo.fetch(c),
+                        require('EmberRoutesProbe/CookingKitchen').leaf(c),
                         {kind='Action',run=function()
                             if not mixture then
                                 local why
@@ -147,7 +148,7 @@ function M.new(actor,binding,job,object,budgets,safe,options)
                         if not profile.facts.workstation and not profile.facts.surface then return 'Success' end
                         local site,why=Stations.reserve(c,object,profile.facts)
                         if not site then c.reason=why return 'Failure' end return 'Success'
-                    end},phase('FETCHING'),Cargo.fetch(c),phase('ADDING'),
+                    end},phase('FETCHING'),Cargo.fetch(c),require('EmberRoutesProbe/CookingKitchen').leaf(c),phase('ADDING'),
                     {kind='Action',run=function()
                         if not profile.facts.workstation and not profile.facts.surface then return 'Success' end
                         c.craftMove=c.craftMove or Cargo.move(c,{object=object},function() return Stations.valid(c,object,profile.facts) end)
@@ -251,6 +252,17 @@ function M.new(actor,binding,job,object,budgets,safe,options)
         c.tree=assert(Tree.new({kind='Sequence',children={Cargo.locate(c),preparation(),craft(),outputs(),Cargo.store(c,false),heat(),
             phase('DELIVERING'),deliver(),phase('RETURNING'),Cargo.store(c,false),
             {kind='Action',run=function()
+                if not c.cancelled then
+                    local heat=c.job.payload.heat local delivered=0
+                    if not heat or not heat.closed or heat.aborted then c.reason='HEAT_STOPPED_BEFORE_COOKED' return 'Failure' end
+                    for _,asset in ipairs(c.job.payload.assets) do
+                        if asset.role=='OUTPUT' then
+                            if asset.custody~='DELIVERED' then c.reason='COOKING_OUTPUT_MISSING' return 'Failure' end
+                            delivered=delivered+1
+                        end
+                    end
+                    if delivered==0 then c.reason='COOKING_OUTPUT_MISSING' return 'Failure' end
+                end
                 if not require('EmberRoutesProbe/CookingCapacity').release(c) then return 'Failure' end
                 if #c.job.payload.claims>0 or c.job.payload.station or c.job.payload.duty then return 'Failure' end
                 local j=Record.copy(c.job) j.state='SETTLING'

@@ -97,6 +97,21 @@ public final class ProbeRuntime {
             if (recipe.hasLuaCall(call)) return true;
         return false;
     }
+    public static se.krka.kahlua.vm.KahluaTable cleaningScanStains(zombie.iso.IsoChunk chunk, int maxCount) {
+        return CleaningFastScan.scanChunkStains(chunk, maxCount);
+    }
+    public static se.krka.kahlua.vm.KahluaTable cleaningScanCorpses(zombie.iso.IsoChunk chunk, int maxCount) {
+        return CleaningFastScan.scanChunkCorpses(chunk, maxCount);
+    }
+    public static boolean cleaningSquareHasStains(zombie.iso.IsoGridSquare square) {
+        return CleaningFastScan.squareHasStains(square);
+    }
+    public static se.krka.kahlua.vm.KahluaTable lumberjackScanTrees(zombie.iso.IsoChunk chunk, int maxCount) {
+        return CleaningFastScan.scanChunkTrees(chunk, maxCount);
+    }
+    public static boolean lumberjackSquareHasTree(zombie.iso.IsoGridSquare square) {
+        return CleaningFastScan.squareHasTree(square);
+    }
     public static String recipeKey(zombie.scripting.entity.components.crafting.CraftRecipe recipe) {
         if (recipe == null || recipe.getModule() == null) return "";
         String name=recipe.getName(), module=recipe.getModule().getName();

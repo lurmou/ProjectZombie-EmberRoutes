@@ -104,7 +104,7 @@ function E.new(c,recipe,base,ingredients,target)
             target=target,minimum=Policy.unit/2,completed=false}
         if not Context.publish(c,j) then return nil,c.reason end
     elseif c.job.payload.evolved.signature~=stamp then
-        print('[EmberRoutes] Evolved.new signature mismatch: expected='..tostring(c.job.payload.evolved.signature)..' actual='..tostring(stamp))
+        require('EmberRoutesProbe/Log').write('COOKING','Evolved.new signature mismatch: expected='..tostring(c.job.payload.evolved.signature)..' actual='..tostring(stamp))
         return nil,'EVOLVED_PROFILE_CHANGED'
     end
     local water,leaf

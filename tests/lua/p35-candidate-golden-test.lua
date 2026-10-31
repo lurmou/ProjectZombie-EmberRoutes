@@ -18,14 +18,16 @@ package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {forNpc=f
 package.loaded['EmberRoutesProbe/StudyService']={changed=function() end,
     decorateLeisure=function(c) c.study=true return c end}
 package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end}
+local settlementRoot={format=1,revision=1,entries={[entry.id]=entry},publicLifeZones={format=1,revision=0,byId={}}}
+package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end,data=function() return settlementRoot end}
 package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
 package.loaded['EmberRoutesProbe/SettlementFacilities']={describe=function() end,watch=function() return {slots={}} end,
     advance=function() return 0 end,reason=function() return 'PENDING' end}
 package.loaded['EmberRoutesProbe/SocialCoordinator']={
     advertise=function() end,withdraw=function() end,reset=function() end,
     pending=function() return mode.socialPending and 'k1' or nil end,
-    invite=function() return 'k2' end}
+    invite=function() return 'k2' end,
+    view=function(key,id) return {other='b',point={x=1,y=1,z=0}} end}
 package.loaded['EmberRoutesProbe/LibraryIndex']={choose=function(actor,npc,e,_,budget,offset,leisure)
     if mode.requireContainer then assert(budget.containers==1) budget.containers=budget.containers-1 end
     budget.scan=budget.scan-1

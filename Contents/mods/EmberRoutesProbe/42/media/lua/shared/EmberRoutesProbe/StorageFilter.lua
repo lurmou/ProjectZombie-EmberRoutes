@@ -20,6 +20,7 @@ for _, definition in ipairs({
     {"medical",nil,{0.8,0.85,0.9}}, {"medical.bandages","medical"}, {"medical.pills","medical"},
     {"weapons",nil,{0.85,0.35,0.25}}, {"weapons.guns","weapons"}, {"weapons.ammo","weapons"}, {"weapons.parts","weapons"}, {"weapons.other","weapons"},
     {"apparel",nil,{0.5,0.7,0.85}}, {"apparel.armor","apparel"}, {"apparel.clothing","apparel"}, {"apparel.bags","apparel"},
+    {"literature",nil,{0.75,0.6,0.9}}, {"literature.skills","literature"}, {"literature.entertainment","literature"},
     {"tools",nil,{0.4,0.65,0.9}},
     {"materials",nil,{0.8,0.65,0.3}}, {"materials.electronics","materials"},
     {"trade",nil,{0.95,0.8,0.3}}, {"trade.currency","trade"}, {"trade.valuables","trade"},
@@ -148,7 +149,17 @@ function Filter.classify(description, item)
         return "apparel.clothing"
     end
 
-    -- 7. Scrap & Waste (Explicit Junk/Trash/Scrap or Rotten/Dirty)
+    -- 7. Literature & Media (Books / Comics / Magazines / Manuals / Maps / VHS)
+    if d.category=="literature" or d.display=="literature" or d.display=="book" or d.display=="media"
+        or f:find("book") or f:find("comic") or f:find("magazine") or f:find("manual") or f:find("newspaper")
+        or f:find("map") or f:find("vhs") or f:find("tape") or f:find("cd") then
+        if f:find("skill") or f:find("recipe") or f:find("vol.") or f:find("volume") then
+            return "literature.skills"
+        end
+        return "literature.entertainment"
+    end
+
+    -- 8. Scrap & Waste (Explicit Junk/Trash/Scrap or Rotten/Dirty)
     if d.display=="junk" or d.display=="trash" or d.display=="scrap" or d.rotten or f:find("dirty") then
         return "scrap.waste"
     end

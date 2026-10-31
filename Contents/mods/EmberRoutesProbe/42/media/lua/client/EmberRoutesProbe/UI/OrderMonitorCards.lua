@@ -16,7 +16,7 @@ function Cards.reason(key)
 end
 
 local function state(row)
-    return row.closed and 'done' or row.bucket=='attention' and 'blocked' or row.bucket=='active' and 'active' or 'paused'
+    return row.closed and (row.state=='CANCELLED' and 'paused' or 'done') or row.bucket=='attention' and 'blocked' or row.bucket=='active' and 'active' or 'paused'
 end
 
 function Cards.title(row)
@@ -76,8 +76,8 @@ local BOX_CORNER = makeStr({9492, 9472, 9472, 32}, '└── ')
 
 local STAGE_KEYS={'IGUI_EmberRoutesProbe_Order_stage_source','IGUI_EmberRoutesProbe_Order_stage_staging',
     'IGUI_EmberRoutesProbe_Order_stage_craft','IGUI_EmberRoutesProbe_Order_stage_store'}
-local function stageLabel(index)
-    local key=STAGE_KEYS[index]
+local function stageLabel(index,row)
+    local key=row and row.stages and row.stages[index] and row.stages[index].labelKey or STAGE_KEYS[index]
     return key and (getTextOrNull(key) or key) or ''
 end
 
@@ -97,8 +97,16 @@ local BOM_COLORS={
     TRANSIT={r=0.25,g=0.75,b=1.0,a=1.0},
 }
 
+function Cards.stageNames(row)
+    local result={}
+    for i=1,row and row.stages and #row.stages or #STAGE_KEYS do result[i]=stageLabel(i,row) end
+    return result
+end
+
 function Cards.phaseIndex(row)
     if not row then return 1 end
+    if row.closed and row.state=='CANCELLED' then return 0 end
+    if row.stages then return row.closed and #row.stages+1 or row.stageIndex or 1 end
     if row.closed or row.state=='DONE' then return 5 end
     local phase=row.phase or row.state or ''
     local bMode=row.bodyMode or ''
@@ -106,9 +114,10 @@ function Cards.phaseIndex(row)
         or bMode=='RETURNING' then
         return 4
     elseif phase=='CRAFTING' or phase=='COMMITTING' or phase=='PROCESSING' or phase=='HAULING'
+        or phase=='ADDING' or phase=='HEATING' or phase=='UNLOADING'
         or bMode=='CRAFTING' or bMode=='HAULING' then
         return 3
-    elseif phase=='COLLECTING' or phase=='COLLECT' or phase=='STAGING' or phase=='PREPARING'
+    elseif phase=='COLLECTING' or phase=='COLLECT' or phase=='STAGING' or phase=='PREPARING' or phase=='FETCHING'
         or bMode=='COLLECT' or bMode=='COLLECTING' then
         return 2
     elseif phase=='PLANNING' or phase=='TARGETS' or phase=='WAITING_CLAIM' or phase=='SEARCHING'
@@ -128,6 +137,7 @@ end
 
 function Cards.stageProgress(row,stage)
     if not row then return '' end
+    if row.stages then return row.stages[stage] and row.stages[stage].progress or '' end
     local target=row.target or 0
     if stage==3 then
         if row.progressPercent~=nil then
@@ -162,12 +172,12 @@ end
 
 local function buildTrackCandidate(row,tier,isChinese)
     local cur=Cards.phaseIndex(row)
-    local names={stageLabel(1),stageLabel(2),stageLabel(3),stageLabel(4)}
+    local names=Cards.stageNames(row)
     local arrow=(tier<=2) and ARROW_WIDE or ARROW_NARROW
     local segments={}
     local fullText=''
 
-    for i=1,4 do
+    for i=1,#names do
         local nodeState=(i<cur) and 'done' or (i==cur) and 'active' or 'wait'
         local icon=(nodeState=='done') and ICON_DONE or (nodeState=='active') and ICON_ACTIVE or ICON_WAIT
         local col=(nodeState=='done') and COLOR_DONE
@@ -205,7 +215,7 @@ local function buildTrackCandidate(row,tier,isChinese)
         segments[#segments+1]={text=textPart,color=col}
         fullText=fullText..textPart
 
-        if i<4 then
+        if i<#names then
             segments[#segments+1]={text=arrow,color=COLOR_ARROW}
             fullText=fullText..arrow
         end
@@ -244,18 +254,23 @@ local function bomCapsule(status)
     return label, badge.color or BOM_COLORS[status] or Theme.muted
 end
 
-local function determineAssetStatus(row,asset)
+function Cards.assetStatus(row,asset)
     if asset.custodyState=='UNCOLLECTED' then return 'WAITING' end
     if asset.custodyState=='WITHDRAWN' then return 'WITHDRAWN' end
-    if asset.custodyState=='RECONCILE' then return 'MISSING' end
-    if asset.delivered or asset.kind=='outputs' then
+    if asset.custodyState=='RECONCILE' then return 'RECONCILE' end
+    if asset.custodyState=='STORED' then return 'STORED' end
+    if asset.custodyState=='STATION' or asset.custodyState=='RETURNED' or asset.custodyState=='CONSUMED' then
+        return asset.custodyState
+    end
+    if asset.held then return 'WITHDRAWN' end
+    if asset.delivered then
         return 'STORED'
     end
     if row.reason=='ITEM_MISSING' and (asset.kind=='materials' or asset.kind=='cargo') then
         return 'MISSING'
     end
     if asset.kind=='held' then
-        return 'PROCESSING'
+        return 'WITHDRAWN'
     end
     local phase=row.phase or row.state or ''
     if (phase=='CRAFTING' or phase=='COMMITTING') and asset.kind=='materials' then
@@ -265,9 +280,9 @@ local function determineAssetStatus(row,asset)
         return 'TRANSIT'
     end
     if row.bucket=='attention' and not asset.delivered then
-        return 'MISSING'
+        return 'RECONCILE'
     end
-    return 'STORED'
+    return 'WAITING'
 end
 
 local icons=require('EmberRoutesProbe/UI/ItemPresentation').new()
@@ -282,7 +297,7 @@ function Cards.rows()
         local blockerText=nil
         if (row.bucket=='attention' or row.reason=='ITEM_MISSING') and row.assets then
             for _,asset in ipairs(row.assets) do
-                local st=determineAssetStatus(row,asset)
+                local st=Cards.assetStatus(row,asset)
                 if st=='MISSING' and asset.fullType then
                     local resolve=_G.getItemNameFromFullType
                     local rawName=type(resolve)=='function' and resolve(asset.fullType) or asset.fullType
@@ -292,14 +307,15 @@ function Cards.rows()
                 end
             end
         end
-        local names={stageLabel(1),stageLabel(2),stageLabel(3),stageLabel(4)}
+        local names=Cards.stageNames(row)
         local stageName=names[curPhase] or ''
-        local activeLabel=stageName..(curProg~='' and (' '..curProg) or '')
+        local activeLabel=curPhase==0 and Cards.reason(row.state) or stageName..(curProg~='' and (' '..curProg) or '')
         local lines={Cards.title(row),row.name or ''}
         for i=1,2 do lines[i]=Text.wrapLimited(lines[i],width,UIFont.Small,1)[1] or '' end
         return {
             lines=lines,
             curPhase=curPhase,
+            nodeCount=#names,
             activeLabel=activeLabel,
             blockerText=blockerText,
             height=h*3+p*2,
@@ -322,10 +338,11 @@ function Cards.rows()
         local railX=x
         local railY=y+p/2+2*h+math.floor(h/2)
         local totalRailW=math.min(130,list.width-x-p*2)
-        local nodeSpacing=math.floor(totalRailW/3)
+        local nodeCount=v.nodeCount or 4
+        local nodeSpacing=math.floor(totalRailW/math.max(1,nodeCount-1))
         local curPhase=v.curPhase or 1
 
-        for seg=1,3 do
+        for seg=1,nodeCount-1 do
             local x1=railX+(seg-1)*nodeSpacing
             local x2=railX+seg*nodeSpacing
             local segDone=(seg<curPhase)
@@ -336,7 +353,7 @@ function Cards.rows()
 
         local nowMs=getTimestampMs()
         local pulseA=0.65+0.35*math.sin(nowMs*0.006)
-        for i=1,4 do
+        for i=1,nodeCount do
             local nx=railX+(i-1)*nodeSpacing
             if i<curPhase then
                 Theme.rect(list,nx-3,railY-3,6,6,COLOR_DONE)
@@ -355,7 +372,7 @@ function Cards.rows()
         local textAfterRail=railX+totalRailW+p/2
         if v.blockerText then
             Theme.text(list,v.blockerText,textAfterRail,y+p/2+2*h,Theme.status.ERROR)
-        elseif curPhase<=4 then
+        elseif curPhase<=nodeCount then
             local isAttention=(entry.item.value.bucket=='attention')
             local lblCol=isAttention and Theme.status.ERROR or Theme.gold
             Theme.text(list,v.activeLabel,textAfterRail,y+p/2+2*h,lblCol)
@@ -385,7 +402,7 @@ function Cards.details(owner,bounds)
             add(Cards.title(row),Theme.gold)
 
             local curPhase=Cards.phaseIndex(row)
-            local names={stageLabel(1),stageLabel(2),stageLabel(3),stageLabel(4)}
+            local names=Cards.stageNames(row)
             local stageName=names[curPhase] or ''
             local curProg=Cards.stageProgress(row,curPhase)
             local stageDesc=stageName~='' and (stageName..(curProg~='' and (' '..curProg) or '')) or ''
@@ -404,15 +421,22 @@ function Cards.details(owner,bounds)
 
             if row.membership then add(require('EmberRoutesProbe/MembershipText').summary(row.membership),Theme.muted) end
             if not row.carrierAvailable then add(text('carrierMissing'),Theme.muted) end
-            if row.produced~=nil then add(text('produced',row.produced,row.target)) end
-            add(text('delivered',row.delivered,row.target),Theme.accent)
-            if row.requested~=row.target then add(text('rounded',row.requested,row.target),Theme.muted) end
+            if row.target and row.target>0 then
+                if row.produced~=nil then add(text('produced',row.produced,row.target)) end
+                add(text('delivered',row.delivered,row.target),Theme.accent)
+                if row.requested~=row.target then add(text('rounded',row.requested,row.target),Theme.muted) end
+            end
+            if row.noteKey then add(getText(row.noteKey),Theme.muted) end
+            if row.targetLocation then
+                local target=row.targetLocation
+                add(text('targetLocation',target.x,target.y,target.z),Theme.muted)
+            end
 
             if row.reason and row.reason~='' and row.reason~='WAITING_CLAIM' then
-                local reasonLabel=Cards.reason(row.reason)
+                local reasonLabel=row.reasonText or Cards.reason(row.reason)
                 local isAttention=(row.bucket=='attention' or row.state=='SUSPENDED')
                 add(text('reason',reasonLabel),isAttention and (Visual.colors.blocked or Theme.status.ERROR) or Theme.accent)
-                if isAttention then
+                if isAttention and not row.readOnly then
                     local adviceKey=row.state=='SUSPENDED' and 'advice_suspended' or 'advice_blocked'
                     add('▲ '..text(adviceKey),Theme.gold)
                 end
@@ -454,7 +478,7 @@ function Cards.details(owner,bounds)
                 add(text('originals',#assets),Theme.accent)
                 local grouped,keys={},{}
                 for _,asset in ipairs(assets) do
-                    local status=determineAssetStatus(row,asset)
+                    local status=Cards.assetStatus(row,asset)
                     local key=(asset.fullType or '?')..':'..(asset.kind or '')..':'..status
                     if not grouped[key] then
                         grouped[key]={asset=asset,status=status,count=0}

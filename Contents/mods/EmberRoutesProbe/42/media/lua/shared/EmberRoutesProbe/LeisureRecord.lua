@@ -8,6 +8,10 @@ function R.valid(p)
     if not l then return p.kind~='LEISURE' end
     if p.kind~='LEISURE' or type(l)~='table' or l.format~=1 or not activities[l.activity] or not finite(l.hours) or l.hours<0 then return false end
     if type(p.settlementId)~='string' or #p.settlementId<1 or #p.settlementId>256 then return false end
+    if l.roleDuty~=nil and (l.roleDuty~='ROLE_SPEAK' and l.roleDuty~='ROLE_LISTEN'
+        or l.activity~='OBSERVE' or l.brief~=true or l.zoneVisit~=nil or type(p.activityRef)~='table'
+        or p.activityRef.dutyId~=l.roleDuty or p.activityRef.dutyFormat~=2) then return false end
+    if l.roleHours~=nil and (not finite(l.roleHours) or l.roleHours<0 or l.roleHours>24) then return false end
     for _,field in ipairs({'untilHours','before','after','fireBefore','fireAfter'}) do
         if l[field]~=nil and (not finite(l[field]) or l[field]<0) then return false end
     end
@@ -18,6 +22,8 @@ function R.valid(p)
             or type(zone)~='table' or type(zone.id)~='string' or #zone.id<1 or #zone.id>256
             or not finite(zone.revision) or zone.revision<1 or zone.revision~=math.floor(zone.revision)
             or zone.eventId~=nil and (type(zone.eventId)~='string' or #zone.eventId<1 or #zone.eventId>128)
+              or zone.participantEpoch~=nil and (not finite(zone.participantEpoch) or zone.participantEpoch<1
+                  or zone.participantEpoch~=math.floor(zone.participantEpoch))
             or l.point.z~=math.floor(l.point.z) then return false end
     end
     if l.activity=='SOCIAL' and (type(l.socialId)~='string' or #l.socialId<1 or #l.socialId>256) then return false end

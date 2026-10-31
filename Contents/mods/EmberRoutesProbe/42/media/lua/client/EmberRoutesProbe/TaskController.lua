@@ -188,6 +188,17 @@ function Controller.new()
             return result==true
         end
         function body.snapshot() return api:bodySnapshot(ticket) end
+        -- Owned corpse release is a stop operation, never a new pickup/transfer.
+        function body.releaseCorpse()
+            if live(ticket)~=r or not r.control or calling or r.state~='STOPPING' then return false end
+            local npc=r.control.binding.handle
+            if not driver().stopEvidence(r.control).available then return false end
+            calling=true
+            local ok,why=pcall(function() if npc:isDraggingCorpse() then npc:setDoGrappleLetGo() end end)
+            calling=false
+            if not ok then r.error=tostring(why) end
+            return ok
+        end
         r.body=body
         return body
     end

@@ -1,5 +1,6 @@
 local Geometry=require "EmberRoutesProbe/SettlementGeometry"
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
+local Gate=require "EmberRoutesProbe/RuntimeGate"
 local Ledger={listeners={},validators={}}
 ---@class EmberRoutesSettlement
 ---@field format integer
@@ -25,7 +26,8 @@ function Ledger.data()
     return data
 end
 function Ledger.authorized(actor)
-    return not isClient() and not isServer() and actor and not actor:isDead()
+    return Gate.canExecute(actor)
+        and type(actor.getIndex)=="function"
         and getSpecificPlayer(actor:getIndex())==actor
 end
 -- Detached read DTO: UI edits cannot bypass commit() by mutating persisted tables.
@@ -43,7 +45,6 @@ function Ledger.view(actor,id)
     local entry=Ledger.get(id)
     if not entry then return nil,"SETTLEMENT_MISSING" end
     if entry.factionId~=Ledger.data().factionId then return nil,"ACCESS_DENIED" end
-    if not Geometry.inside(entry,actor:getX(),actor:getY()) then return nil,"OUTSIDE_SETTLEMENT" end
     return entry
 end
 function Ledger.list()
@@ -102,18 +103,32 @@ function Ledger.commit(actor,id,name,area)
     if not Ledger.authorized(actor) then return nil,"DRIVER_UNAVAILABLE" end
     name=nameValue(name)
     if not name then return nil,"INVALID_NAME" end
-    if area and not Geometry.valid(area) then return nil,"INVALID_BOUNDS" end
+    local isList=type(area)=="table" and area[1]~=nil
+    local isSingle=type(area)=="table" and area.x~=nil and not isList
+    if isSingle and not Geometry.valid(area) then return nil,"INVALID_BOUNDS" end
+    if isList then
+        if #area==0 then return nil,"INVALID_BOUNDS" end
+        if #area>(Geometry.MAX_AREAS or 32) then return nil,"AREA_LIMIT" end
+        for _,r in ipairs(area) do if not Geometry.valid(r) then return nil,"INVALID_BOUNDS" end end
+    end
     local data=Ledger.data()
     local entry=id and data.entries[id]
     if id and not entry then return nil,"SETTLEMENT_MISSING" end
     if entry and entry.factionId~=data.factionId then return nil,"ACCESS_DENIED" end
     if not entry and not area then return nil,"INVALID_BOUNDS" end
     if not entry and #Ledger.list()>=32 then return nil,"SETTLEMENT_LIMIT" end
-    if entry and area and #entry.areas>=16 then return nil,"AREA_LIMIT" end
-    if area then
+    if entry and isSingle and #entry.areas>=16 then return nil,"AREA_LIMIT" end
+    if isSingle then
         for _,validate in ipairs(Ledger.validators) do
             local reason=validate(data.factionId,area,id)
             if reason then return nil,reason end
+        end
+    elseif isList then
+        for _,r in ipairs(area) do
+            for _,validate in ipairs(Ledger.validators) do
+                local reason=validate(data.factionId,r,id)
+                if reason then return nil,reason end
+            end
         end
     end
     if not entry then
@@ -121,7 +136,13 @@ function Ledger.commit(actor,id,name,area)
         data.entries[entry.id]=entry
     end
     entry.name=name
-    if area then entry.areas[#entry.areas+1]={x=area.x,y=area.y,w=area.w,h=area.h} end
+    if isList then
+        local sanitized={}
+        for _,r in ipairs(area) do sanitized[#sanitized+1]={x=r.x,y=r.y,w=r.w,h=r.h} end
+        entry.areas=sanitized
+    elseif isSingle then
+        entry.areas[#entry.areas+1]={x=area.x,y=area.y,w=area.w,h=area.h}
+    end
     notify(data,entry)
     return Ledger.get(entry.id),"SETTLEMENT_SAVED"
 end

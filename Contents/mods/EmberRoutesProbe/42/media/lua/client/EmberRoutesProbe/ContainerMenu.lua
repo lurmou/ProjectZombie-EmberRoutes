@@ -6,6 +6,8 @@ local Logistics=require "EmberRoutesProbe/LogisticsMenu"
 local SmartZoning=require "EmberRoutesProbe/SmartZoning"
 local CustomKits=require "EmberRoutesProbe/CustomKits"
 local PlayerStashRoutine=require "EmberRoutesProbe/PlayerStashRoutine"
+local Ledger=require "EmberRoutesProbe/SettlementLedger"
+local Geometry=require "EmberRoutesProbe/SettlementGeometry"
 
 local Menu={}
 
@@ -67,12 +69,30 @@ function Menu.getNearbyStorage(actor, maxDist)
     local px = actor.getX and actor:getX() or 0
     local py = actor.getY and actor:getY() or 0
     local pz = actor.getZ and actor:getZ() or 0
+
+    local currentSettlement = nil
+    local settlements = Ledger.at(px, py)
+    if settlements and #settlements > 0 then
+        currentSettlement = settlements[1]
+    end
+
     local dMaxSq = (maxDist or 15) * (maxDist or 15)
 
     for id, rec in pairs(data.containers or {}) do
         if rec.z == pz then
-            local dx, dy = rec.x - px, rec.y - py
-            if (dx * dx + dy * dy) <= dMaxSq then
+            local isCandidate = false
+            if currentSettlement then
+                if Geometry.inside(currentSettlement, rec.x, rec.y) then
+                    isCandidate = true
+                end
+            else
+                local dx, dy = rec.x - px, rec.y - py
+                if (dx * dx + dy * dy) <= dMaxSq then
+                    isCandidate = true
+                end
+            end
+
+            if isCandidate then
                 local ep = Registry.resolve(id)
                 if ep and ep.object and ep.container then
                     list[#list + 1] = {
@@ -89,8 +109,16 @@ function Menu.getNearbyStorage(actor, maxDist)
 end
 
 function Menu.stashRoutine(actor)
-    local containers = Menu.getNearbyStorage(actor, 15)
-    local plan, reason = PlayerStashRoutine.plan(actor, containers)
+    local px = actor.getX and actor:getX() or 0
+    local py = actor.getY and actor:getY() or 0
+    local settlements = Ledger.at(px, py)
+    local inSettlement = settlements and #settlements > 0
+
+    local containers = Menu.getNearbyStorage(actor, inSettlement and 9999 or 15)
+    local plan, reason = PlayerStashRoutine.plan(actor, containers, {
+        unlimitedDistance = inSettlement,
+        maxDistance = inSettlement and 9999 or 15
+    })
     if not plan then
         local errKey = "IGUI_EmberRoutesProbe_Stash_" .. tostring(reason)
         local errText = getTextOrNull(errKey) or reason

@@ -22,6 +22,14 @@ return function(getEntry,ids)
                 and (r.context=='SETTLEMENT' or r.context=='WAIT') and (not e.areas or not at or require('EmberRoutesProbe/SettlementGeometry').inside(e,at.x,at.y)),
             settlementId=r and r.settlementId,context=r and r.context,entryRevision=e and e.revision}
     end
+    function service.request(actor,id,c)
+        local row=rows[id]
+        if not row then return {state='REJECTED',reason='NO_MEMBERSHIP'} end
+        row.pending=c
+        row.pendingCommand=c
+        row.revision=(row.revision or 1)+1
+        return {state='ACCEPTED',revision=row.revision,requestId=c and c.requestId,kind=c and c.kind}
+    end
     package.loaded['EmberRoutesProbe/MembershipService']=service
     return rows
 end

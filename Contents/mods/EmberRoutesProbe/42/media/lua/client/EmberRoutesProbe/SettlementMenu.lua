@@ -50,13 +50,16 @@ function Menu.fill(actor,menu)
     for _,entry in ipairs(insideEntries) do
         Logistics.fill(actor,menu,entry)
         LifeZones.fill(actor,menu,entry)
+        menu:addOption(getText("IGUI_EmberRoutesProbe_BatchPaint_menuOption"),actor,function()
+            require("EmberRoutesProbe/UI/BatchPaintingSelector").open(actor,entry)
+        end)
         -- 集结点：仅在玩家身处该据点内且右键点击在领地内时提供（由外层 fillMenu 传入 square 时调用，
         -- 此处不重复；fillMenu 主块已移除独立的集结点块，统一由此入口产生）
         menu:addOption(text("management").." - "..entry.name,actor,Menu.open,entry.id)
     end
     if #insideEntries==0 and #outsideEntries<=1 then
         for _,entry in ipairs(outsideEntries) do
-            menu:addOption(text("management").." - "..entry.name.." ("..text("OUTSIDE_SETTLEMENT")..")",
+            menu:addOption(text("management").." - "..entry.name,
                 actor,Menu.open,entry.id)
         end
     elseif #outsideEntries>0 then
@@ -64,7 +67,7 @@ function Menu.fill(actor,menu)
         local otherMenu=ISContextMenu:getNew(menu)
         menu:addSubMenu(otherOpt,otherMenu)
         for _,entry in ipairs(outsideEntries) do
-            otherMenu:addOption(text("management").." - "..entry.name.." ("..text("OUTSIDE_SETTLEMENT")..")",
+            otherMenu:addOption(text("management").." - "..entry.name,
                 actor,Menu.open,entry.id)
         end
     end

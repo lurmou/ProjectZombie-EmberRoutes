@@ -36,7 +36,7 @@ function S.read(object,facts)
     end end
     return nil,'STATION_RECIPE_UNAVAILABLE'
 end
-function S.search(entry,facts)
+function S.search(entry,facts,accept)
     local row=Facilities.watch(entry,Facilities.describe)
     local request={index=1,version=row.version}
     function request:step(budget)
@@ -51,7 +51,7 @@ function S.search(entry,facts)
             end
             if observed then
                 local candidate=S.read(observed.object,facts)
-                if candidate and not candidate.object:getUsingPlayer() then return candidate end
+                if candidate and not candidate.object:getUsingPlayer() and (not accept or accept(candidate.object)) then return candidate end
             end
         end
         return nil,'SITE_OBSERVING'
@@ -76,6 +76,7 @@ local function resolve(station)
 end
 function S.reserve(c,object,facts)
     if not Context.active(c) or c.job.effects~='KNOWN' then return nil,'COOKING_CONTROL_REQUIRED' end
+    if not require('EmberRoutesProbe/CookingDirectives').kitchen(c.job.scopeId,object) then return nil,'KITCHEN_ZONE_UNAVAILABLE' end
     local site,why=S.read(object,facts) if not site then return nil,why end
     local entry=Ledger.view(c.actor,c.job.scopeId)
     if not entry or not Geometry.inside(entry,site.position.x,site.position.y) then return nil,'ACCESS_DENIED' end
@@ -99,6 +100,7 @@ function S.reserve(c,object,facts)
 end
 function S.valid(c,object,facts)
     if not Context.active(c) then return false end
+    if not require('EmberRoutesProbe/CookingDirectives').kitchen(c.job.scopeId,object) then return false end
     local station=c.job.payload.station
     if not station or not Store.validCooking(c.job,c.token,station.siteKey) then return false end
     local entry=Ledger.view(c.actor,c.job.scopeId)

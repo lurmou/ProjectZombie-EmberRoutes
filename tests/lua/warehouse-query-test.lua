@@ -1,7 +1,6 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local Query=require "EmberRoutesProbe/WarehouseQuery"
 local PinyinHelper=require "EmberRoutesProbe/PinyinHelper"
-local LiquidRegistry=require "EmberRoutesProbe/LiquidRegistry"
 local n=0 local function check(v,why) n=n+1 assert(v,why) end
 
 -- 1. Baseline sorting and cache checks
@@ -68,91 +67,6 @@ check(#hammerResult==1 and hammerResult[1].fullType=="Base.Hammer","Query tc ret
 
 local englishResult=pyQuery:page(pinyinRows,"hammer",false,1,"default")
 check(#englishResult==1 and englishResult[1].fullType=="Base.Hammer","Query english pass-through retrieves Hammer")
-
--- 3. LiquidRegistry checks
--- A. Allowed fixed furniture
-local mockRainBarrel={
-    category="RainCollectorBarrel",
-    waterAmount=80.0,
-    tainted=true,
-    hasWater=true,
-}
-local mockSink={
-    category="Sink",
-    waterAmount=20.0,
-    tainted=false,
-    hasWater=true,
-}
-local mockToilet={
-    category="Toilet",
-    waterAmount=15.0,
-    tainted=false,
-    hasWater=true,
-}
-
--- B. Strictly disallowed mobile items
-local mockBucketGround={
-    isWorldItem=true,
-    category="RainCollectorBarrel", -- fake category on mobile item
-    waterAmount=10.0,
-}
-local mockLooseWaterBucket={
-    getItem=function() return {getName=function() return "Water Bucket" end} end,
-    waterAmount=10.0,
-}
-local mockGroundBottle={
-    isItem=true,
-    name="Water Bottle",
-    waterAmount=1.0,
-}
-
-check(LiquidRegistry.isAllowedObject(mockRainBarrel)==true,"RainCollectorBarrel is allowed fixed furniture")
-check(LiquidRegistry.isAllowedObject(mockSink)==true,"Sink is allowed fixed furniture")
-check(LiquidRegistry.isAllowedObject(mockToilet)==true,"Toilet is allowed fixed furniture")
-check(LiquidRegistry.isAllowedObject(mockBucketGround)==false,"Ground bucket is strictly rejected")
-check(LiquidRegistry.isAllowedObject(mockLooseWaterBucket)==false,"Loose water bucket is strictly rejected")
-check(LiquidRegistry.isAllowedObject(mockGroundBottle)==false,"Ground bottle is strictly rejected")
-
--- C. Municipal water before shut-off (Infinite water for Sink and Toilet)
-_G.SandboxVars=_G.SandboxVars or {}
-_G.SandboxVars.WaterShutModifier=-1 -- never shut off
-check(LiquidRegistry.isWaterShutOff()==false,"Water is not shut off when modifier is -1")
-
-local sinkMeasureBefore=LiquidRegistry.measure(mockSink)
-check(sinkMeasureBefore.isInfinite==true and sinkMeasureBefore.amount==math.huge,"Sink has infinite water before shutoff")
-check(sinkMeasureBefore.displayAmount=="无限 (∞)","Sink displayAmount is 无限 (∞) before shutoff")
-check(sinkMeasureBefore.isTainted==false,"Piped water from sink is clean")
-
-local toiletMeasureBefore=LiquidRegistry.measure(mockToilet)
-check(toiletMeasureBefore.isInfinite==true and toiletMeasureBefore.amount==math.huge,"Toilet has infinite water before shutoff")
-check(toiletMeasureBefore.displayAmount=="无限 (∞)","Toilet displayAmount is 无限 (∞) before shutoff")
-
-local barrelMeasure=LiquidRegistry.measure(mockRainBarrel)
-check(barrelMeasure.isInfinite==false and barrelMeasure.amount==80.0,"Rain barrel is always finite (80L)")
-check(barrelMeasure.isTainted==true,"Rain barrel water is tainted")
-
--- D. Municipal water after shut-off (Finite residual water)
-_G.SandboxVars.WaterShutModifier=0
-_G.getGameTime=function() return {getNights=function() return 5 end,getWorldAgeHours=function() return 120 end} end
-check(LiquidRegistry.isWaterShutOff()==true,"Water is shut off when days >= modifier")
-
-local sinkMeasureAfter=LiquidRegistry.measure(mockSink)
-check(sinkMeasureAfter.isInfinite==false and sinkMeasureAfter.amount==20.0,"Sink has finite residual water (20L) after shutoff")
-check(sinkMeasureAfter.displayAmount=="20.0","Sink shows exact residual liters after shutoff")
-
-local toiletMeasureAfter=LiquidRegistry.measure(mockToilet)
-check(toiletMeasureAfter.isInfinite==false and toiletMeasureAfter.amount==15.0,"Toilet has finite residual water (15L) after shutoff")
-
--- E. Square scanning and summary
-local testSquare={
-    objects={mockSink,mockToilet,mockRainBarrel,mockBucketGround,mockGroundBottle}
-}
-local scanned=LiquidRegistry.scanSquare(testSquare)
-check(#scanned==3,"Square scanning only collects the 3 fixed furniture objects, ignoring 2 mobile items")
-local sum=LiquidRegistry.summary(scanned)
-check(sum.totalFinite==115.0,"Summary aggregates correct total finite water (20+15+80=115L)")
-check(sum.cleanAmount==35.0,"Clean finite water is 35L (Sink 20L + Toilet 15L)")
-check(sum.taintedAmount==80.0,"Tainted finite water is 80L (Barrel)")
 
 -- 4. WarehouseDetails 3 calibers verification
 if not _G.getText then

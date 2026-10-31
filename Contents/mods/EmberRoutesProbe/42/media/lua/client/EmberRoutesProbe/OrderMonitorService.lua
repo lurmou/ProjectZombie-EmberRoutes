@@ -9,6 +9,9 @@ local Driver=require 'EmberRoutesProbe/Driver'
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Companion=require 'EmberRoutesProbe/Companion'
 local Probe=require 'EmberRoutesProbe/Boot'
+local Monitors=require 'EmberRoutesProbe/TaskMonitorProviders'
+assert(Monitors.register(require 'EmberRoutesProbe/CookingMonitor'))
+assert(Monitors.register(require 'EmberRoutesProbe/FieldWorkMonitor'))
 local Service={}
 local blocked={ITEM_MISSING=true,ITEM_ID_CONFLICT=true,RECONCILE_REQUIRED=true,INPUT_CHANGED=true}
 local paused={USER=true,REPLACED=true,SAVE=true,LOAD_RECOVERY=true,COMPANION_ORDER=true,SELF_CARE=true}
@@ -31,7 +34,7 @@ function Service.status(actor,id)
     local runtime=Runtime.current()
     local displayBudget={remaining=256}
     local function add(r,kind,order)
-        local demand=kind=='CRAFT' and r.orderId and require('EmberRoutesProbe/PublicWork').order(r.orderId)
+        local demand=kind=='CRAFT' and r.orderId and require('EmberRoutesProbe/PublicWork').order and require('EmberRoutesProbe/PublicWork').order(r.orderId)
         if demand and demand.jobId~=r.id then return end -- A continued demand has one visible current execution.
         local binding=Probe.ready and Probe.hasJava() and Driver.bindId(actor,r.npcId) or nil
         local control=runtime and runtime:status(r.npcId,r.id)
@@ -139,38 +142,13 @@ function Service.status(actor,id)
                 canPause=false,canResume=false,canCancel=not closed}
         end
     end
+    local context={actor=actor,scopeId=id,runtime=runtime,bind=function(npcId)
+        return Probe.ready and Probe.hasJava() and Driver.bindId(actor,npcId) or nil
+    end}
     for _,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do
-        if j.providerType=='COOKING' and j.scopeId==id then
-            local p=j.payload
-            local request=p.source=='REQUEST' and require('EmberRoutesProbe/CookingOrders').get(p.sourceId)
-            local control=runtime and runtime:status(j.npcId,j.id)
-            local attempt=p.attempt
-            local pouring=control and control.state=='ACTIVE' and attempt and attempt.state=='COMMITTING'
-                and (attempt.kind=='WATER' or attempt.kind=='FLUID')
-            local binding=Probe.ready and Probe.hasJava() and Driver.bindId(actor,j.npcId)
-            local closed=(j.state=='DONE' or j.state=='CANCELLED') and j.effects=='KNOWN'
-            local state=control and control.state=='STOPPING' and 'STOPPING' or j.state
-            local row={id=request and 'ORDER:'..request.id or 'COOKING:'..j.id,jobId=j.id,
-                orderId=request and request.id,kind=request and 'ORDER' or 'COOKING',npcId=j.npcId,
-                generation=request and 'ORDER:'..request.revision or j.revision,
-                name=require('EmberRoutesProbe/DisplayNames').name(j.npcId,binding and binding.handle),
-                title=request and request.name or getText('IGUI_EmberRoutesProbe_Public_cooking'),
-                product=request and request.product,state=state,phase=p.phase,reason=p.reason,
-                closed=closed,uncertain=j.effects~='KNOWN' and not pouring,carrierAvailable=binding~=nil,
-                bodyMode=control and 'COOKING' or 'HOLD',
-                bucket=closed and 'closed' or j.effects~='KNOWN' and not pouring and 'attention' or control and 'active' or 'waiting',
-                requested=request and request.quantity or 1,target=request and request.target or 1,
-                delivered=request and request.delivered or 0,produced=0,nodes={},assets={},
-                canPause=not closed and (request and not request.pauseRequested or not request and (state=='RUNNING' or state=='PREPARING' or control~=nil)),
-                canResume=not closed and (request and request.pauseRequested==true or not request and (state=='PAUSED' or state=='SUSPENDED')),
-                canCancel=not closed and (request and not request.cancelRequested or not request and not p.cancelRequested)}
-            for _,asset in ipairs(p.assets) do
-                row.assets[#row.assets+1]={id=asset.id,fullType=asset.fullType,
-                    kind=asset.role=='OUTPUT' and 'outputs' or asset.role=='TOOL' and 'tools' or 'materials',
-                    delivered=asset.custody=='DELIVERED'}
-                if asset.role=='OUTPUT' then row.product=row.product or asset.fullType row.produced=row.produced+1 end
-            end
-            result.rows[#result.rows+1]=row
+        if j.scopeId==id then
+            local row=Monitors.project(context,j)
+            if row then result.rows[#result.rows+1]=row end
         end
     end
     if Probe.publicDispatch then
@@ -192,19 +170,26 @@ function Service.status(actor,id)
 end
 function Service.watch(actor,id,callback)
     local root=Registry.data()
-    return Crafting.watch(actor,id,function(snapshot)
+    local releaseJobs=require('EmberRoutesProbe/TaskJobs').watch(function(scope,jobId,revision,providerType)
+        if scope==id and Monitors.has(providerType) then Crafting.invalidateStatus() end
+    end)
+    local releaseView=Crafting.watch(actor,id,function(snapshot)
         if root~=Registry.data() or snapshot.reason=='WORLD_RESET' then callback({rows={},reason='WORLD_RESET'})
         else callback(Service.status(actor,id)) end
     end)
+    return function() releaseJobs() releaseView() end
 end
 function Service.command(actor,id,key,generation,action)
+    if action~='stop' and action~='resume' and action~='return' then return 'INVALID_COMMAND' end
     local snapshot=Service.status(actor,id)
     if snapshot.reason then return snapshot.reason end
     local row
     for _,candidate in ipairs(snapshot.rows) do if candidate.id==key then row=candidate break end end
     if not row or row.generation~=generation then return 'TASK_CHANGED' end
+    if row.readOnly then return 'TASK_READ_ONLY' end
     if action=='stop' and not row.canPause or action=='resume' and not row.canResume
         or action=='return' and not row.canCancel then return 'TASK_CHANGED' end
+    if row.providerType then return Monitors.command({actor=actor,scopeId=id},row,action) end
     if row.kind=='DELIVERY' then
         if action=='return' then return require('EmberRoutesProbe/DeliveryService').cancel(actor,row.orderId,tonumber(string.sub(generation,7))) end
         local r=Work.record(row.npcId)
@@ -215,9 +200,7 @@ function Service.command(actor,id,key,generation,action)
         return require('EmberRoutesProbe/PublicWork').command(actor,id,row.orderId,tonumber(string.sub(generation,7)),action)
     end
     if row.kind=='CRAFT' then return Crafting.command(actor,id,row.npcId,action) end
-    if row.kind=='COOKING' then
-        return require('EmberRoutesProbe/CookingService').command(actor,id,row.jobId,action)
-    end
-    return Work.taskCommand(actor,row.npcId,row.jobId,generation,action)
+    if row.kind=='HAUL' then return Work.taskCommand(actor,row.npcId,row.jobId,generation,action) end
+    return 'INVALID_COMMAND'
 end
 return Service

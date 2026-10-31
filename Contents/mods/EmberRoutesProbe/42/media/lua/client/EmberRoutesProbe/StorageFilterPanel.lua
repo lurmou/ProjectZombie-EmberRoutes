@@ -1,4 +1,5 @@
 local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local Gate=require "EmberRoutesProbe/RuntimeGate"
 require "ISUI/ISCollapsableWindow"
 require "ISUI/ISScrollingListBox"
 require "ISUI/ISButton"
@@ -248,7 +249,7 @@ end
 
 ---@param container ItemContainer?
 function EmberRoutesStorageFilterPanel.open(actor,object,container,initial)
-    if not actor or actor:isDead() or isClient() or isServer() then return end
+    if not Gate.canExecute(actor) or not actor then return end
     if not object then return end
     container=container or object:getContainer()
     if Registry.containerIndex(object,container)==nil then return end

@@ -117,7 +117,7 @@ function H.new(c,ids,endpoint,cleanupOnly)
                     local id=targets[targetIndex] targetIndex=targetIndex+1
                     if not id then return fail('STOVE_UNAVAILABLE') end
                     local candidate=Supply.endpoint(c.entry,id,'put')
-                    local stove=candidate and Facilities.stove(candidate)
+                    local stove=candidate and require('EmberRoutesProbe/CookingDirectives').kitchen(c.job.scopeId,candidate.object) and Facilities.stove(candidate)
                     if stove and stove.powered and not stove.active and not stove.broken
                         and Duty.contents(c,candidate) then endpoint=candidate break end
                 end

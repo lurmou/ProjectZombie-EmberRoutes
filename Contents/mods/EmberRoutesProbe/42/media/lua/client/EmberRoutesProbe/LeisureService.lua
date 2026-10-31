@@ -82,6 +82,9 @@ function Service.workReady(id)
 end
 function Service.valid(actor,npc,id,p)
     if p.activityRef and not require('EmberRoutesProbe/ActivityService').validRef(id,p.activityRef) then return false end
+    if p.leisure and p.leisure.roleDuty and (not p.leisure.point
+        or require('EmberRoutesProbe/LeisureRecord').tileKey(p.leisure.point)~=require('EmberRoutesProbe/LeisureRecord').tileKey(
+            {x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())})) then return false end
     local M=require 'EmberRoutesProbe/MembershipService'
     local eligible=M.check(id,'LEISURE',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=p.settlementId},p.membershipRevision)
     if not eligible.allowed or p.membershipRevision==nil or p.settlementRevision~=eligible.entryRevision then return false end
@@ -362,7 +365,7 @@ function Service.candidate(actor,binding,sample,budget,memory)
             offer.stateData=offer.stateData or {}
             offer.stateData.ATTENDANCE=offer.stateData.ATTENDANCE or {}
             local env={actor=actor,id=id,npc=npc,entry=entry,s=s,hours=hours,now=now,point=point,
-                budget=budget,memory=memory,offer=offer,state=offer.stateData.ATTENDANCE,eventId=gathering.eventId,
+                budget=budget,memory=memory,offer=offer,state=offer.stateData.ATTENDANCE,eventId=gathering.eventId,activityRef=gathering,
                 destinationZone=LifeZones.get(gathering.id),destination=function(scope,ref,target)
                     return Activities.destination(scope,id,ref,target)
                 end}
@@ -376,6 +379,12 @@ function Service.candidate(actor,binding,sample,budget,memory)
         end
         if not Activities.arrived(actor,binding,gathering) then return nil,true end
         if gathering.phase=='GATHERING' then noteIdle(id,'ACTIVITY_WAITING_FOR_START') return nil,true end
+        if not Activities.readyForAction(id) then noteIdle(id,'ACTIVITY_PERSONAL_SETTLING') return nil,true end
+        local event=require('EmberRoutesProbe/ActivityStore').get(gathering.eventId)
+        if event and event.scriptProfile then
+            Social.withdraw(id)
+            return require('EmberRoutesProbe/ActivityScripted').candidate(event,id,entry,eligible,gathering,hours)
+        end
         state='IDLE' -- Explicit roster intent suppresses ordinary-work discovery.
     end
     if state=='READY' then Social.withdraw(id) noteIdle(id,'WORK_READY') return nil,true end
@@ -539,7 +548,7 @@ function Service.finished(c,stopped)
     if not l.finished and c.reason~='LEISURE_WORK_READY' and c.reason~='SOCIAL_INVITE' then
         Service.failed(c.job.npcId,c.leisureKey,c.reason or 'ACTIVITY_INTERRUPTED')
     end
-    if not l.zoneVisit then
+    if not l.zoneVisit and not l.roleDuty then
         p.leisureMemory=Policy.remember(p.leisureMemory,l.activity,getGameTime():getWorldAgeHours(),l.finished==true)
     else p.leisureMemory=p.leisureMemory or {cooldowns={}} end
     if l.activity=='SIT' and l.seated and p.site then

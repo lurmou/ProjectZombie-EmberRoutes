@@ -37,6 +37,7 @@ function A.move(c,point,arrived,reached)
     end,halt=function() return c.body.stop() end}
 end
 function A.new(c)
+    if c.payload.leisure.roleDuty then return require('EmberRoutesProbe/ActivityRoleActions').new(c) end
     local l=c.payload.leisure
     if l.zoneVisit then
         local Zones=require 'EmberRoutesProbe/SettlementZones'

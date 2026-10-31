@@ -26,6 +26,14 @@ function Table.style(presentation,name,secondary)
             local sub=secondary and Text.wrapLimited(secondary(value),list.width-h-p*2,UIFont.Small,2) or {}
             local quantity=value.pending and "..." or tostring(value.count)
             local block=math.max(columns.icon,#cached*h)
+            local tip=label
+            if value.fullType and value.fullType~=label then
+                tip=tip.."\n"..value.fullType
+            end
+            tip=tip.."\n"..getText("IGUI_EmberRoutesProbe_Settlement_quantity")..": "..quantity
+            if value.sources and #value.sources>0 then
+                tip=tip.." ("..#value.sources.." "..getText("IGUI_EmberRoutesProbe_Settlement_sources")..")"
+            end
             return {
                 lines=cached,
                 secondary=sub,
@@ -36,7 +44,8 @@ function Table.style(presentation,name,secondary)
                 icon=presentation and presentation:icon(value.fullType) or nil,
                 fullType=value.fullType,
                 pending=value.pending,
-                pinned=value.pinned==true
+                pinned=value.pinned==true,
+                tooltip=tip
             }
         end,
         draw=function(list,y,entry)

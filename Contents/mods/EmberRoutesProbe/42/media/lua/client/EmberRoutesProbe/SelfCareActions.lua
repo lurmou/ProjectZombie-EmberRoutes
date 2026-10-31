@@ -1,7 +1,7 @@
 -- Native consumption leaves only. The owning routine supplies persistence and
 -- original-ID custody; this module neither chooses work nor releases claims.
-require 'TimedActions/ISEatFoodAction'
-require 'TimedActions/ISDrinkFluidAction'
+pcall(require, 'TimedActions/ISEatFoodAction')
+pcall(require, 'TimedActions/ISDrinkFluidAction')
 local Actions={}
 local function needs(npc)
     if not npc.getStats or not CharacterStat then return nil end
@@ -99,6 +99,9 @@ function Actions.consumption(c,kind,item,fraction)
             if not fact.before or fact.before<=0 then return 'Failure' end
             lastAmount=fact.before
             save()
+            if (kind=='EAT' and type(ISEatFoodAction)~='table') or (kind=='DRINK' and type(ISDrinkFluidAction)~='table') then
+                c.effects='UNKNOWN' return 'Failure'
+            end
             action=kind=='EAT' and ISEatFoodAction:new(c.npc,item,fraction) or ISDrinkFluidAction:new(c.npc,item,fraction)
             local nativeStart,nativeUpdate,nativeValid=action.start,action.update,action.isValid
             local nativeStop,nativePerform,nativeComplete=action.stop,action.perform,action.complete

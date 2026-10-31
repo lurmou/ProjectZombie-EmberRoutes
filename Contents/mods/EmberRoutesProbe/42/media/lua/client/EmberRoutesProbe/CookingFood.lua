@@ -13,7 +13,7 @@ local required={'getID','getFullType','getHungChange','getHungerChange','getBase
     'isRotten','isBurnt','isPoison','getPoisonPower','isTainted','isCooked','isCookable',
     'isbDangerousUncooked','isFrozen','isSpice','getRequireInHandOrInventory'}
 function F.read(item)
-    if not item or not instanceof(item,'Food') then return {food=false} end
+    if not item or type(instanceof)~='function' or not instanceof(item,'Food') then return {food=false} end
     for _,name in ipairs(required) do if not item[name] then return nil,'FOOD_READ_UNAVAILABLE' end end
     local raw,effective,base=item:getHungChange(),item:getHungerChange(),item:getBaseHunger()
     if type(raw)~='number' or raw~=raw or math.abs(raw)==math.huge

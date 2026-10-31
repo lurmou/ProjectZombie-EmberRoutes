@@ -60,7 +60,8 @@ function PlayerStashRoutine.plan(player, accessibleContainers, options)
         local sq = ep.square or (ep.object and ep.object.getSquare and ep.object:getSquare())
         if sq then
             local sx, sy, sz = sq:getX(), sq:getY(), sq:getZ()
-            if sz == pz and distSq(px, py, sx, sy) <= maxDistSq then
+            local withinDist = (options and options.unlimitedDistance) or (distSq(px, py, sx, sy) <= maxDistSq)
+            if sz == pz and withinDist then
                 local config = ep.filter
                 if config and Filter.access(config) and not config.private then
                     validEndpoints[#validEndpoints + 1] = {

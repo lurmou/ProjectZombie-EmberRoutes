@@ -64,6 +64,7 @@ local pending={id='public-one',settlementId='s',name='Saw',state='WAITING',reaso
 package.loaded['EmberRoutesProbe/Boot'].publicDispatch=true
 local publicRevision
 package.loaded['EmberRoutesProbe/PublicWork']={orders=function() return {pending} end,
+ order=function(id) if pending and pending.id==id then return pending end end,
  command=function(_,scope,id,revision) publicRevision=revision return 'ORDER_UPDATED' end}
 local publicRows=Service.status({},'s').rows
 check(#publicRows==1 and publicRows[1].kind=='ORDER' and publicRows[1].generation=='ORDER:2','unclaimed demand is visible with a distinct command revision domain')

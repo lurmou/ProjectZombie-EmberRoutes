@@ -69,12 +69,15 @@ function S.observe(entry,now,hours,budget)
     local done,err=row.scan:step(allowance)
     if done==nil then row.scan=nil row.watch=nil return nil,err end
     if not done then return nil,'SUPPLY_NOT_OBSERVED' end
-    if not fence(row,live.stamp) or expired(row,now,hours) then
+    -- TTL applies to completed observations, not the time needed to traverse a large pantry.
+    -- Inventory/claims revisions and endpoint checks still fence every scan slice.
+    if not fence(row,live.stamp) or now<row.at or hours<row.hours then
         row.scan=nil row.watch=nil return nil,'SUPPLY_CHANGED'
     end
     local snapshot,err2=row.scan:result()
     row.scan=nil
     if not snapshot then row.watch=nil return nil,err2 end
+    snapshot.scanStartedAt=row.at snapshot.observedAt=now
     row.snapshot=snapshot row.at=now row.hours=hours
     -- No second scan: publish population/demand through the same cached branch.
     return S.observe(entry,now,hours,budget)

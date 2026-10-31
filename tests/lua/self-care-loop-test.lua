@@ -40,7 +40,7 @@ local Registry={data=function() return root end,id=function() nextId=nextId+1 re
     logistics=function() return 'STORAGE' end,accepts=function() return accepted end,inventoryChanged=function() end}
 package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
 package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
+package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end,resources=function() return {} end}
 package.loaded['EmberRoutesProbe/LaborProducers']={transfer=function() return true end}
 package.loaded['EmberRoutesProbe/Driver']={}
 package.loaded['EmberRoutesProbe/SelfCareResources']={eligible=function() return true end,

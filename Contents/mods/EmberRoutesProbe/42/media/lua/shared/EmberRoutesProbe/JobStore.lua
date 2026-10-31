@@ -38,6 +38,7 @@ local function valid(job)
         and type(job.payload)=='table' and (not job.orderId or id(job.orderId))
         and (not terminal[job.state] or job.effects=='KNOWN' and empty(job.obligations))
     return basic and (job.providerType~='COOKING' or require('EmberRoutesProbe/CookingRecord').valid(job))
+        and (job.providerType~='FIELD_WORK' or require('EmberRoutesProbe/FieldRecord').valid(job))
         and (job.providerType~='ACTIVITY' or require('EmberRoutesProbe/ActivityRecord').valid(job))
 end
 local function legacy(root)
@@ -66,6 +67,20 @@ function Store.open(root)
     end
     root.taskJobs=data
     local api={}
+    local listeners={}
+    -- Scalar post-commit notifications. Observers only invalidate read models;
+    -- their failure cannot roll back a Job or the physical effect it records.
+    local function notify(job)
+        for callback in pairs(listeners) do
+            local ok=pcall(callback,job.scopeId,job.id,job.revision,job.providerType)
+            if not ok then listeners[callback]=nil end
+        end
+    end
+    function api:watch(callback)
+        assert(type(callback)=='function','JOB_OBSERVER_REQUIRED')
+        listeners[callback]=true
+        return function() listeners[callback]=nil end
+    end
     function api:ordinaryCount() return count end
     -- Read-only live view for per-frame validation paths. Callers must not
     -- mutate the returned record; detached copies remain the only published form.
@@ -103,6 +118,7 @@ function Store.open(root)
             personal=personal+1 personalByNpc[value.npcId]=value.id
         else count=count+1 end
         byNpc[value.npcId]=byNpc[value.npcId] or {} byNpc[value.npcId][value.id]=true
+        notify(value)
         return true
     end
     function api:update(key,revision,patch)
@@ -123,6 +139,7 @@ function Store.open(root)
         if candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
         data.byId[key]=value
+        notify(value)
         return true,value.revision
     end
     -- Only LaborStore's verified physical handoff uses this narrow operation.
@@ -142,6 +159,7 @@ function Store.open(root)
         data.byId[key]=value byNpc[old.npcId][key]=nil
         if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end
         byNpc[value.npcId]=byNpc[value.npcId] or {} byNpc[value.npcId][key]=true
+        notify(value)
         return true
     end
     function api:removeSettled(key,revision)
@@ -153,6 +171,7 @@ function Store.open(root)
         byNpc[old.npcId][key]=nil
         if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end
         count=count-1
+        notify(old)
         return true
     end
     return api

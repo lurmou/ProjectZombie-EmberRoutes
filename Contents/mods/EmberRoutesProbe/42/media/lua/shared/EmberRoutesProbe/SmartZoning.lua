@@ -46,9 +46,9 @@ function SmartZoning.evaluate(object, container)
         return config, "PHYSICAL_WARDROBE"
     end
 
-    if cType == "bookshelf" or spriteName:find("book") then
+    if cType == "bookshelf" or cType == "bookcase" or spriteName:find("book") or spriteName:find("bookshelf") or spriteName:find("bookcase") then
         local config = Filter.new()
-        config.groups["other"] = true
+        config.groups["literature"] = true
         return config, "PHYSICAL_BOOKSHELF"
     end
 

@@ -45,6 +45,12 @@ local function isChinese()
 end
 
 local DEFINITIONS = {
+    RECONCILE = {
+        labelKey = "IGUI_EmberRoutesProbe_Badge_reconcile", glyph = GLYPH_TRIANGLE,
+        color = {r = 1.00, g = 0.78, b = 0.25, a = 1.0},
+        bg = {r = 0.25, g = 0.20, b = 0.08, a = 0.90},
+        border = {r = 0.70, g = 0.55, b = 0.18, a = 0.85}
+    },
     STORED = {
         labelKey = "IGUI_EmberRoutesProbe_Badge_stored", glyph = GLYPH_CHECK,
         color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
@@ -130,6 +136,13 @@ local DEFINITIONS = {
         border = {r = 0.30, g = 0.32, b = 0.35, a = 0.70}
     }
 }
+
+-- Reuse visual tones; custody labels remain distinct from processing/completion.
+for key,tone in pairs({STATION='PROCESSING',RETURNED='STORED',CONSUMED='DISABLED'}) do
+    local base=DEFINITIONS[tone]
+    DEFINITIONS[key]={labelKey='IGUI_EmberRoutesProbe_Badge_'..string.lower(key),
+        glyph=base.glyph,color=base.color,bg=base.bg,border=base.border}
+end
 
 ---Clean raw strings containing [DEBUG_KEY/文案] into pure clean badges
 ---@param raw string

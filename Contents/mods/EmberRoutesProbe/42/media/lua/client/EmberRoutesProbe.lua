@@ -26,6 +26,10 @@ local ReposeMenu=require "EmberRoutesProbe/ReposeMenu"
 local MembershipMenu=require "EmberRoutesProbe/MembershipMenu"
 local DisplayNames=require "EmberRoutesProbe/DisplayNames"
 local Driver=require "EmberRoutesProbe/Driver"
+require "EmberRoutesProbe/CleaningPolicyDef"
+require "EmberRoutesProbe/CookingPolicyDef"
+require 'EmberRoutesProbe/LumberjackPolicyDef'
+require 'EmberRoutesProbe/ForagerPolicyDef'
 
 local function fillMenu(playerIndex, context, worldobjects, test)
     if test then return end

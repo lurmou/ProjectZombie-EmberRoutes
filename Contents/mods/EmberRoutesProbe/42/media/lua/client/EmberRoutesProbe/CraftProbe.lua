@@ -7,6 +7,7 @@ local Driver=require "EmberRoutesProbe/Driver"
 local Adapter=require "EmberRoutesProbe/CraftRecipeAdapter"
 local Log=require "EmberRoutesProbe/Log"
 local Record=require "EmberRoutesProbe/CraftRecord"
+local BusinessJobs=require "EmberRoutesProbe/BusinessJobs"
 local Supply=require "EmberRoutesProbe/CraftSupply"
 local Transfer=require "EmberRoutesProbe/WorkTransfer"
 local Producers=require "EmberRoutesProbe/LaborProducers"
@@ -44,7 +45,11 @@ local function data()
     local current=Registry.data()
     if current~=root then
         drafts={}
-        local saved={byNpc=Record.records(current)}
+        local crafts=BusinessJobs.crafts()
+        for id,r in pairs(crafts) do
+            if not Record.valid(id,r) then error('CRAFT_RECORD_INVALID') end
+        end
+        local saved={byNpc=crafts}
         for _,record in pairs(saved.byNpc) do
             if record.phase=="COMMITTING" then record.uncertain=true end
             if record.state=="RUNNING" then

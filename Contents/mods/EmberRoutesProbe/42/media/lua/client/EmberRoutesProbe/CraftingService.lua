@@ -20,6 +20,7 @@ local function notify(token,collection,value)
     end
 end
 local function changed() dirty=true end
+function Service.invalidateStatus() changed() end
 Signals.watch(changed)
 Registry.listeners[#Registry.listeners+1]=changed
 Ledger.listeners[#Ledger.listeners+1]=changed

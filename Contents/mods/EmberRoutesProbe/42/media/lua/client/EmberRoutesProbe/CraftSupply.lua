@@ -125,10 +125,10 @@ function Supply.route(plan,item,accept)
 end
 -- Bounded reuse of warehouse target ranking for leftovers/native empty vessels.
 -- No inventory scan and no new stock or claim authority.
-function Supply.returnRoute(actor,npc,scope,item,accept)
+function Supply.returnRoute(actor,npc,scope,item,accept,options)
     local entry,reason=require('EmberRoutesProbe/MembershipService').entry(EmberRoutesProbeJava.carrierId(npc),scope)
     if not entry then return nil,reason end
-    if not Geometry.inside(entry,npc:getX(),npc:getY()) then return nil,'NPC_OUTSIDE_SETTLEMENT' end
+    if not Geometry.inside(entry,npc:getX(),npc:getY()) and not (options and options.allowOutside==true) then return nil,'NPC_OUTSIDE_SETTLEMENT' end
     local ids,why=Membership.query(entry) if not ids then return nil,why end
     local plan={entry=entry,npc=npc,index=Sort.index()}
     local position,route=1,nil

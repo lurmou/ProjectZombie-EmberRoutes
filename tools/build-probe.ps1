@@ -130,9 +130,14 @@ $luaBuild = "return { version = '$probeVersion', prefix = '$prefix' }`n"
 [IO.File]::Copy($builtJar, (Join-Path $javaOutput 'EmberRoutesProbe.jar'), $true)
 $translationRoot = Join-Path $versionRoot 'media/lua/shared/Translate'
 foreach ($filename in @('IG_UI.json', 'Sandbox.json')) {
-    $en = Get-Content (Join-Path $translationRoot "EN/$filename") -Raw | ConvertFrom-Json -AsHashtable
-    $cn = Get-Content (Join-Path $translationRoot "CN/$filename") -Raw | ConvertFrom-Json -AsHashtable
-    if (@(Compare-Object @($en.Keys | Sort-Object) @($cn.Keys | Sort-Object)).Count -ne 0) {
+    $enPath = (Join-Path $translationRoot "EN/$filename").Replace('\', '/')
+    $cnPath = (Join-Path $translationRoot "CN/$filename").Replace('\', '/')
+    & node -e "const fs=require('fs'); const en=JSON.parse(fs.readFileSync('$enPath')); const cn=JSON.parse(fs.readFileSync('$cnPath')); const ek=Object.keys(en).sort(); const ck=Object.keys(cn).sort(); if (ek.length !== ck.length || !ek.every((k,i)=>k===ck[i])) process.exit(1);"
+    if ($LASTEXITCODE -ne 0) { throw "$prefix CN/EN translation mismatch: $filename" }
+# enKeys
+# cn
+# cnKeys
+    if ($false) {
         throw "$prefix CN/EN translation mismatch: $filename"
     }
 }

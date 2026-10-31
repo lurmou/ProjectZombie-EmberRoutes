@@ -267,10 +267,10 @@ public final class ProbeNpc extends IsoPlayer {
                 || !canStandAt(x+0.5f,y+0.5f,z)) return false;
         var objects=square.getObjects();
         if (objects.size()>64 || square.getMovingObjects().size()>64) return false;
-        for (var obj:objects) if (obj instanceof zombie.iso.objects.IsoDoor || obj instanceof zombie.iso.objects.IsoWindow
+        for (int i=0;i<objects.size();i++) { var obj=objects.get(i); if (obj instanceof zombie.iso.objects.IsoDoor || obj instanceof zombie.iso.objects.IsoWindow
                 || obj.getProperties().has(zombie.iso.SpriteDetails.IsoFlagType.bed)
-                || zombie.seating.SeatingManager.getInstance().getTilePositionCount(obj)>0) return false;
-        for (var obj:square.getMovingObjects()) if (obj!=this) return false;
+                || zombie.seating.SeatingManager.getInstance().getTilePositionCount(obj)>0) return false; }
+        for (int i=0;i<square.getMovingObjects().size();i++) if (square.getMovingObjects().get(i)!=this) return false;
         return true;
     }
     boolean beginOwnedFloorPose() {
@@ -458,7 +458,7 @@ public final class ProbeNpc extends IsoPlayer {
         if (poseFurniture!=null && !sameFurnitureRoom(square,poseFurniture.getSquare())) return false;
         var moving=square.getMovingObjects();
         if (moving.size()>64) return false;
-        for (var object:moving) if (object!=this) return false;
+        for (int i=0;i<moving.size();i++) if (moving.get(i)!=this) return false;
         return zombie.pathfind.PolygonalMap2.instance.canStandAt(x,y,z,this,false,false);
     }
     private boolean correctionAllowed(float x,float y) {

@@ -19,6 +19,7 @@ local Wake=require 'EmberRoutesProbe/PlanningWake'
 local S={}
 local world,plans,order,cursor,retained,jobCursor,offers,samples,nextPump,budget,frame,retryJobs,sites
 local crewScan,nextCrew=nil,0
+local failedAuto={}
 local function load()
     local root=Registry.data()
     if root~=world then
@@ -26,9 +27,18 @@ local function load()
         for id,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do
             if j.providerType=='COOKING' and j.state~='DONE' and j.state~='CANCELLED' then retained[#retained+1]=id end
         end
-        table.sort(retained) frame=nil retryJobs={} sites={} crewScan=nil nextCrew=0
+        table.sort(retained) frame=nil retryJobs={} sites={} crewScan=nil nextCrew=0 failedAuto={}
     end
     return root
+end
+-- One shared backoff per settlement: another cook must not immediately repeat
+-- a known failed batch. Capture AFTER returns so our own inventory events do
+-- not immediately wake it; configuration/stock changes can wake it early.
+local function autoBlocked(entry,now)
+    local failed=failedAuto[entry.id]
+    if not failed then return false end
+    if now>=failed.untilWall or Wake.changed(failed.watch) then failedAuto[entry.id]=nil return false end
+    return true,failed.reason
 end
 local function budgets()
     load() local now=math.floor(getTimestampMs()/50)
@@ -67,7 +77,7 @@ local function submit(actor,binding,job,settle)
             if facts.facts.workstation or facts.facts.surface then
             local entry=Members.entry(binding.id,job.scopeId) if not entry then return nil,'NO_MEMBERSHIP' end
             local search=sites[job.id]
-            if not search then search=require('EmberRoutesProbe/CraftStations').search(entry,facts.facts) sites[job.id]=search end
+            if not search then search=require('EmberRoutesProbe/CraftStations').search(entry,facts.facts,function(object) return require('EmberRoutesProbe/CookingDirectives').kitchen(entry.id,object) end) sites[job.id]=search end
             local b=budgets() local n=math.min(16,b.scan) if n<1 then return nil,'SITE_OBSERVING' end b.scan=b.scan-n
             local candidate,reason=search:step(n) if not candidate then return nil,reason end
             object=candidate.object
@@ -147,7 +157,7 @@ local function requestPlan(row,o,entry,binding,b,actor)
         end
         if not require('EmberRoutesProbe/CookingCraft').known(binding.handle,spec.recipe) then row.reason='NPC_SKILL_TOO_LOW' return end
         if spec.profile.facts.workstation or spec.profile.facts.surface then
-            if not row.stationScan then row.stationScan=require('EmberRoutesProbe/CraftStations').search(entry,spec.profile.facts) end
+            if not row.stationScan then row.stationScan=require('EmberRoutesProbe/CraftStations').search(entry,spec.profile.facts,function(object) return require('EmberRoutesProbe/CookingDirectives').kitchen(entry.id,object) end) end
             local allowance=math.min(16,b.scan) if allowance<1 then return end b.scan=b.scan-allowance
             local site,why=row.stationScan:step(allowance)
             if not site then row.reason=why return end
@@ -277,6 +287,9 @@ function S.advance(env)
                     if not supply.demand.active then
                         row.reason='MEALS_SUFFICIENT'
                         row.menu=nil row.ready=nil row.retry=now+2000
+                    elseif autoBlocked(entry,now) then
+                        local _,reason=autoBlocked(entry,now)
+                        row.reason=reason row.menu=nil row.ready=nil row.gate=nil row.selection=nil
                     else
                         if not row.gate then
                             row.cold={entry=entry,npc=binding.handle}
@@ -315,6 +328,7 @@ function S.discover(env)
         if not exists then order[#order+1]=id end
     end
     if row.entry.id~=env.entry.id then plans[id]=nil return end
+    if not row.orderId and autoBlocked(env.entry,env.now or getTimestampMs()) then return end
     if not row.ready then
         if row.studyTarget and env.setStudyTarget then env.setStudyTarget(row.studyTarget) end
         if not row.reason or row.reason=='SUPPLY_NOT_OBSERVED' or row.menu then env.pending=true end
@@ -382,7 +396,9 @@ function S.claim(selected,npcId,jobId,env)
         local selection,why=row.menu:result() if not selection then plans[npcId]=nil return why end
         local snapshot,err=Supply.observe(row.entry,env.now,getGameTime():getWorldAgeHours(),budgets()) if not snapshot then return err end
         if not snapshot.demand.active then return 'MEALS_SUFFICIENT' end
-        selection,why=Menu.fit(selection,snapshot.demand.gap) if not selection then return why end
+        local directives=require('EmberRoutesProbe/JobPolicyService').get(row.entry.id,'cooking')
+        local gap=directives.batchMeals==false and math.min(snapshot.demand.gap,selection.minimum) or snapshot.demand.gap
+        selection,why=Menu.fit(selection,gap) if not selection then return why end
         local batch,err2=Policy.batch(snapshot.demand,selection.minimum) if not batch then return err2 end
         local target=math.min(batch.target,selection.estimated) local quota=math.max(target,selection.minimum)
         local profileId=selection.kind=='HEAT' and 'heat:'..selection.base.item:getFullType() or selection.recipe:getOriginalname()
@@ -417,7 +433,17 @@ function S.reconcile()
         if j then Orders.settle(j) end
         if j and (j.state=='DONE' or j.state=='CANCELLED') and j.effects=='KNOWN' and #j.payload.claims==0 then
             local empty=true for _ in pairs(j.obligations) do empty=false end
-            if empty and offer.directory:release(key,offer.ticket,{effects='KNOWN',obligationsCleared=true}) then offers[key]=nil end
+            if empty and offer.directory:release(key,offer.ticket,{effects='KNOWN',obligationsCleared=true}) then
+                if j.state=='CANCELLED' and j.payload.source=='AUTO' and j.payload.heat and j.payload.heat.aborted
+                    and not j.payload.cancelRequested and not j.payload.pauseRequested then
+                    local entry=Members.entry(j.npcId,j.scopeId)
+                    if entry then failedAuto[entry.id]={watch=Wake.capture(entry),untilWall=getTimestampMs()+30000,
+                        reason=j.payload.reason or j.payload.heat.reason or 'HEAT_STOPPED_BEFORE_COOKED'} end
+                end
+                require('EmberRoutesProbe/Log').write('COOKING','SETTLED job='..j.id..' npc='..j.npcId
+                    ..' state='..j.state..' profile='..j.payload.profileId..' reason='..tostring(j.payload.reason or j.payload.heat and j.payload.heat.reason))
+                offers[key]=nil
+            end
         end
     end
 end
@@ -465,10 +491,13 @@ function S.stock(actor,rule)
     return {state='READY',complete=true,knownCount=(snapshot.readyByType or {})[rule.product] or 0}
 end
 function S.command(actor,scopeId,jobId,action)
+    local entry,reason=require('EmberRoutesProbe/SettlementLedger').view(actor,scopeId)
+    if not entry then return reason or 'ACCESS_DENIED' end
     load()
     local job=Jobs.current():peek(jobId)
-    if not job or job.providerType~='COOKING' then return 'TASK_CHANGED' end
+    if not job or job.providerType~='COOKING' or job.scopeId~=scopeId then return 'TASK_CHANGED' end
     if job.state=='DONE' or job.state=='CANCELLED' then return 'TASK_CHANGED' end
+    if action=='resume' and job.effects~='KNOWN' then return 'COOKING_RECONCILE_REQUIRED' end
     local runtime=Runtime.current()
     local live=runtime and runtime:status(job.npcId,job.id)
 

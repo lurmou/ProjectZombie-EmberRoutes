@@ -282,7 +282,11 @@ function A.transfer(c,sequence,item,endpoint,direction,finalCustody)
     local function eligible()
         local e=Registry.revalidate(endpoint,direction=='TAKE' and 'take' or 'put','local-world')
         if not e or not live() or not claimed(c,item,from,custody) or item:getIsCraftingConsumed()
-            or (custody~='STATION' and not Registry.accepts(e,item)) or not to:hasRoomFor(c.npc,item) then return false end
+            -- A furnace is an authorized workstation, not a storage destination.
+            -- Its temporary load/unload is governed by Duty below; storage
+            -- classification must not veto putting an owned raw meal on heat.
+            or (custody~='STATION' and finalCustody~='STATION' and not Registry.accepts(e,item))
+            or not to:hasRoomFor(c.npc,item) then return false end
         if to==root then return Carry.fits(c.npc,item:getUnequippedWeight()) end
         if item:isFavorite() then return false end
         if finalCustody=='STATION' then

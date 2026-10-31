@@ -28,164 +28,6 @@ local PRIORITY_COLORS={
     [4]={bg={r=0.14,g=0.16,b=0.20,a=0.8},border={r=0.40,g=0.48,b=0.55,a=0.8},text={r=0.60,g=0.68,b=0.75,a=1.0}}
 }
 
-local function getStatVal(char,sel,statName,statEnum)
-    if sel and sel[statName]~=nil then return sel[statName] end
-    if sel and sel.stats and sel.stats[statName]~=nil then return sel.stats[statName] end
-    if not char or not char.getStats then return nil end
-    local ok,stats=pcall(function() return char:getStats() end)
-    if not ok or not stats then return nil end
-    if statEnum and CharacterStat and CharacterStat[statEnum] and stats.get then
-        local okVal,val=pcall(function() return stats:get(CharacterStat[statEnum]) end)
-        if okVal and type(val)=='number' then return val end
-    end
-    local methodName='get'..string.upper(string.sub(statName,1,1))..string.sub(statName,2)
-    if stats[methodName] then
-        local okVal,val=pcall(function() return stats[methodName](stats) end)
-        if okVal and type(val)=='number' then return val end
-    end
-    if type(stats[statName])=='number' then return stats[statName] end
-    return nil
-end
-
-local function readCraftSkill(handle,w)
-    if w and w.craftSkill~=nil then return w.craftSkill end
-    if w and w.skills and type(w.skills)=='table' then
-        local maxFromSkills=nil
-        for _,k in ipairs({'crafting','Woodwork','MetalWelding','Electricity','Mechanics','Tailoring','Cooking'}) do
-            local lvl=w.skills[k]
-            if type(lvl)=='number' then
-                if maxFromSkills==nil or lvl>maxFromSkills then maxFromSkills=lvl end
-            end
-        end
-        if maxFromSkills~=nil then return maxFromSkills end
-    end
-    if not handle or not handle.getPerkLevel or not Perks then return nil end
-    local maxLvl=nil
-    local craftingPerks={
-        Perks.Woodwork,
-        Perks.MetalWelding,
-        Perks.Electricity,
-        Perks.Mechanics,
-        Perks.Tailoring,
-        Perks.Cooking,
-    }
-    for _,perk in ipairs(craftingPerks) do
-        if perk then
-            local ok,lvl=pcall(function() return handle:getPerkLevel(perk) end)
-            if ok and type(lvl)=='number' then
-                if maxLvl==nil or lvl>maxLvl then maxLvl=lvl end
-            end
-        end
-    end
-    return maxLvl
-end
-
-local function readHaulSkill(handle,w)
-    if w and w.haulSkill~=nil then return w.haulSkill end
-    if w and w.skills and type(w.skills)=='table' then
-        local maxFromSkills=nil
-        for _,k in ipairs({'hauling','Strength','Fitness'}) do
-            local lvl=w.skills[k]
-            if type(lvl)=='number' then
-                if maxFromSkills==nil or lvl>maxFromSkills then maxFromSkills=lvl end
-            end
-        end
-        if maxFromSkills~=nil then return maxFromSkills end
-    end
-    if not handle or not handle.getPerkLevel or not Perks then return nil end
-    local maxLvl=nil
-    local haulingPerks={
-        Perks.Strength,
-        Perks.Fitness,
-    }
-    for _,perk in ipairs(haulingPerks) do
-        if perk then
-            local ok,lvl=pcall(function() return handle:getPerkLevel(perk) end)
-            if ok and type(lvl)=='number' then
-                if maxLvl==nil or lvl>maxLvl then maxLvl=lvl end
-            end
-        end
-    end
-    return maxLvl
-end
-
-local function readCookSkill(handle,w)
-    if w and w.cookSkill~=nil then return w.cookSkill end
-    if w and w.skills and type(w.skills)=='table' then
-        local lvl=w.skills.Cooking or w.skills.cooking
-        if type(lvl)=='number' then return lvl end
-    end
-    if not handle or not handle.getPerkLevel or not Perks or not Perks.Cooking then return nil end
-    local ok,lvl=pcall(function() return handle:getPerkLevel(Perks.Cooking) end)
-    if ok and type(lvl)=='number' then return lvl end
-    return nil
-end
-
-local function readBodyDamage(handle,w)
-    local health=w and w.health
-    local isBleeding=w and w.isBleeding or false
-    local isInfected=w and w.isInfected or false
-    local hasInjury=w and w.hasInjury or false
-    if handle and handle.getBodyDamage then
-        local okBd,bd=pcall(function() return handle:getBodyDamage() end)
-        if okBd and bd then
-            if health==nil and bd.getOverallBodyHealth then
-                local okH,h=pcall(function() return math.floor(bd:getOverallBodyHealth()) end)
-                if okH and type(h)=='number' then health=h end
-            end
-            pcall(function()
-                if bd.getNumPartsBleeding and bd:getNumPartsBleeding()>0 then isBleeding=true end
-                if bd.isInfected and bd:isInfected() then isInfected=true end
-                if bd.hasInjury and bd:hasInjury() then hasInjury=true end
-            end)
-        end
-    end
-    return health,isBleeding,isInfected,hasInjury
-end
-
-local function readAvatarInfo(handle,w)
-    local desc=nil
-    if handle and handle.getDescriptor then
-        local ok,d=pcall(function() return handle:getDescriptor() end)
-        if ok then desc=d end
-    end
-    local isFemale=false
-    if desc and desc.isFemale then
-        local ok,f=pcall(function() return desc:isFemale() end)
-        if ok then isFemale=f end
-    elseif handle and handle.isFemale then
-        local ok,f=pcall(function() return handle:isFemale() end)
-        if ok then isFemale=f end
-    end
-
-    local profTitle=nil
-    local profTexture=nil
-    if desc then
-        if CharacterProfessionDefinition and desc.getCharacterProfession then
-            local okDef,def=pcall(function() return CharacterProfessionDefinition.getCharacterProfessionDefinition(desc:getCharacterProfession()) end)
-            if okDef and def then
-                pcall(function()
-                    profTitle=def:getUIName()
-                    profTexture=def:getTexture()
-                end)
-            end
-        end
-        if not profTexture and desc.getProfession then
-            pcall(function()
-                local pName=desc:getProfession()
-                if pName and pName~='' then
-                    profTitle=profTitle or getTextOrNull('UI_prof_'..pName) or pName
-                    if tryGetTexture then
-                        profTexture=tryGetTexture('media/ui/Professions/icon_'..pName..'.png')
-                            or tryGetTexture('media/ui/professions/'..pName..'.png')
-                    end
-                end
-            end)
-        end
-    end
-    return isFemale,profTitle,profTexture
-end
-
 ---@class EmberRoutesPersonnelPage:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
 ---@field actor IsoPlayer
@@ -312,18 +154,30 @@ function EmberRoutesPersonnelPage:createChildren()
 
     self.info=require('EmberRoutesProbe/UI/InfoList').new(self,self.infoBounds)
 
-    local matrixParts=assert(Layout.axis(self.matrixBounds,{{basis=h+p/2},{grow=1}},{direction='column',gap=p/4}))
+    local matrixParts=assert(Layout.axis(self.matrixBounds,{{basis=h*2+p/2},{grow=1}},{direction='column',gap=p/4}))
     self.headerBounds=matrixParts[1]
 
     self.workCategories=Public.categories()
+    self.matrixNameRatio=#self.workCategories>4 and .22 or .4
     self.priorityHeaders={}
-    local colTracks={{grow=40}}
-    for _ in ipairs(self.workCategories) do colTracks[#colTracks+1]={grow=60/#self.workCategories} end
+    local colTracks={{grow=self.matrixNameRatio*100}}
+    for _ in ipairs(self.workCategories) do colTracks[#colTracks+1]={grow=(1-self.matrixNameRatio)*100/#self.workCategories} end
     self.colHeaders=assert(Layout.axis(self.headerBounds,colTracks,{gap=p/3}))
     for i,category in ipairs(self.workCategories) do
         local key=category local bounds=self.colHeaders[i+1]
         local button=ISButton:new(bounds.x,bounds.y,bounds.width,bounds.height,pubText(key),self,function() self:batchCycle(key) end)
         button:initialise() Theme.button(button) button.tooltip=text('priorityHint')
+        local fullTitle=pubText(key)
+        local lines=Text.wrapLimited(fullTitle,bounds.width-p/2,UIFont.Small,2)
+        button.title='' button.tooltip=fullTitle..'\n'..text('priorityHint')
+        local originalRender=button.render
+        button.render=function(btn)
+            if originalRender then originalRender(btn) end
+            for line,label in ipairs(lines) do
+                local tw=getTextManager():MeasureStringX(UIFont.Small,label)
+                Theme.text(btn,label,(btn.width-tw)/2,(btn.height-#lines*h)/2+(line-1)*h,Theme.textColor)
+            end
+        end
         Tooltip.attach(button,'prerender') self:addChild(button) self.priorityHeaders[#self.priorityHeaders+1]=button
     end
     local listBounds=matrixParts[2]
@@ -332,13 +186,9 @@ function EmberRoutesPersonnelPage:createChildren()
             local cells={}
             for _,key in ipairs(self.workCategories) do
                 local n=value.priorities[key] or 3 local label=n==0 and '-' or tostring(n)
-                local skill=key=='crafting' and value.craftSkill or key=='hauling' and value.haulSkill
-                    or key=='cooking' and value.cookSkill
-                local badge=type(skill)=='number' and 'L'..skill or ''
-                cells[#cells+1]={value=n,label=label,width=getTextManager():MeasureStringX(UIFont.Small,label),badge=badge,
-                    badgeWidth=getTextManager():MeasureStringX(UIFont.Small,badge)}
+                cells[#cells+1]={value=n,label=label,width=getTextManager():MeasureStringX(UIFont.Small,label)}
             end
-            return {height=math.floor(h*2.2),name=Text.wrapLimited(value.name,list.width*.4-p*2,UIFont.Small,1)[1] or '',cells=cells}
+            return {height=math.floor(h*2.2),name=Text.wrapLimited(value.name,self.colHeaders[1].width-p*2,UIFont.Small,1)[1] or '',cells=cells}
         end,
         draw=function(list,y,entry)
             local item=entry.item.value local rowH=entry.height
@@ -348,14 +198,14 @@ function EmberRoutesPersonnelPage:createChildren()
             local dot=item.busy and Theme.gold or Theme.accent
             Theme.rect(list,p/2,y+rowH/2-3,6,6,dot)
             Theme.text(list,entry.item.visual.name,p+8,y+(rowH-h)/2,Theme.textColor)
-            local cellW=list.width*.6/#self.workCategories local mx=list:getMouseX()
+            local mx=list:getMouseX()
             for i,cell in ipairs(entry.item.visual.cells) do
-                local x=list.width*.4+(i-1)*cellW+p/4 local w=cellW-p/2
+                local r=self.colHeaders[i+1]
+                local x=r.x-self.headerBounds.x+p/4 local w=r.width-p/2
                 local style=PRIORITY_COLORS[cell.value] or PRIORITY_COLORS[3]
                 local hovered=list.mouseoverselected==entry.index and mx>=x and mx<=x+w
                 Theme.rect(list,x,y+2,w,rowH-4,style.bg) Theme.rect(list,x,y+2,w,rowH-4,hovered and Theme.accent or style.border,true)
                 Theme.text(list,cell.label,x+(w-cell.width)/2,y+(rowH-h)/2,style.text)
-                if cell.badge~='' then Theme.text(list,cell.badge,x+w-cell.badgeWidth-3,y+2,Theme.muted) end
             end
             return y+rowH
         end}
@@ -369,9 +219,10 @@ function EmberRoutesPersonnelPage:createChildren()
     self:addChild(self.matrixList)
 
     local function categoryAt(list,x)
-        if x<=list.width*.4 or x>list.width then return end
-        local i=math.floor((x-list.width*.4)/(list.width*.6/#self.workCategories))+1
-        return self.workCategories[math.min(i,#self.workCategories)]
+        for i,key in ipairs(self.workCategories) do
+            local r=self.colHeaders[i+1] local left=r.x-self.headerBounds.x+p/4
+            if x>=left and x<=left+r.width-p/2 then return key end
+        end
     end
     local origMouseDown=self.matrixList.onMouseDown
     self.matrixList.onMouseDown=function(list,x,y)
@@ -409,9 +260,13 @@ function EmberRoutesPersonnelPage:createChildren()
 end
 
 function EmberRoutesPersonnelPage:setWorkerPriority(worker,category,value)
-    local values={} for _,key in ipairs(Public.categories()) do values[key]=worker.priorities[key] end
+    local values={}
+    for _,key in ipairs(self.workCategories) do
+        values[key]=(worker.priorities and worker.priorities[key]) or 3
+    end
     values[category]=value
-    return Public.setPriorities(self.actor,self.entry.id,worker.id,values,worker.priorities.revision)
+    local rev=(worker.priorities and worker.priorities.revision) or 0
+    return Public.setPriorities(self.actor,self.entry.id,worker.id,values,rev)
 end
 function EmberRoutesPersonnelPage:cycleWorkerPriority(worker,category,delta)
     if not self.active or not self.owner:valid() then return end
@@ -469,48 +324,7 @@ function EmberRoutesPersonnelPage:refresh()
     if not self.active or self.disposed then return end
     local status=Crafting.status(self.actor,self.entry.id)
     local rawWorkers=status.workers or {}
-    local enriched={}
-    local okDriver,Driver=pcall(require,'EmberRoutesProbe/Driver')
-    for _,w in ipairs(rawWorkers) do
-        local p=Public.priorities(w.id)
-        local binding=okDriver and Driver and Driver.bindId and Driver.bindId(self.actor,w.id)
-        local handle=binding and binding.handle
-        local craftSkill=readCraftSkill(handle,w)
-        local haulSkill=readHaulSkill(handle,w)
-        local cookSkill=readCookSkill(handle,w)
-        local fatigue=getStatVal(handle,w,'fatigue','FATIGUE')
-        local hunger=getStatVal(handle,w,'hunger','HUNGER')
-        local thirst=getStatVal(handle,w,'thirst','THIRST')
-        local endurance=getStatVal(handle,w,'endurance','ENDURANCE')
-        local health,isBleeding,isInfected,hasInjury=readBodyDamage(handle,w)
-        local isFemale,profTitle,profTexture=readAvatarInfo(handle,w)
-
-        enriched[#enriched+1]={
-            id=w.id,
-            name=w.name,
-            character=handle,
-            desc=handle and handle.getDescriptor and handle:getDescriptor(),
-            busy=w.busy or false,
-            order=w.order,
-            health=health,
-            isBleeding=isBleeding,
-            isInfected=isInfected,
-            hasInjury=hasInjury,
-            fatigue=fatigue,
-            hunger=hunger,
-            thirst=thirst,
-            endurance=endurance,
-            craftSkill=craftSkill,
-            haulSkill=haulSkill,
-            cookSkill=cookSkill,
-            isFemale=isFemale or (w and w.isFemale),
-            profTitle=profTitle or (w and w.profTitle),
-            profTexture=profTexture or (w and w.profTexture),
-            activity=w.activity,
-            membership=w.membership,
-            priorities=p
-        }
-    end
+    local enriched=require('EmberRoutesProbe/PersonnelService').enrichWorkers(self.actor,self.entry.id,rawWorkers)
     local selected=self.store.value.selected
     if selected then
         local found=false
@@ -731,7 +545,11 @@ function EmberRoutesPersonnelPage:project(value)
     -- 3. Reconcile matrix list
     local signature=function(w)
         local p=w.priorities or {}
-        return w.id..'|'..w.name..'|'..(w.busy and '1' or '0')..'|'..(p.crafting or 0)..'|'..(p.hauling or 0)..'|'..(p.cooking or 0)..'|'..(w.craftSkill or -1)..'|'..(w.haulSkill or -1)..'|'..(w.cookSkill or -1)
+        local prioParts={}
+        for _,cat in ipairs(self.workCategories) do
+            prioParts[#prioParts+1]=cat..'='..(p[cat] or 0)
+        end
+        return w.id..'|'..w.name..'|'..(w.busy and '1' or '0')..'|'..(p.revision or 0)..'|'..table.concat(prioParts,',')
     end
     Cached.reconcile(self.matrixList,rows,signature,function(w) return w.id end,true)
 end
@@ -758,7 +576,7 @@ function EmberRoutesPersonnelPage:update()
     if not self.active or self.disposed then return end
     local now=getTimestampMs()
     if not self.nextSyncCheck or now>self.nextSyncCheck then
-        self.nextSyncCheck=now+1500
+        self.nextSyncCheck=now+5000
         self:refresh()
     end
 end

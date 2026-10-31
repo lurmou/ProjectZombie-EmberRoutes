@@ -82,7 +82,7 @@ check(key==nil and not f.Craft.record(f.npc.id) and not f.Store.owner(material.i
 check(f.Craft.status(f.npc.id).released,'draft remains diagnostic-only')
 material,tool=fresh() check(run()=='QUEUED','draft handoff fixture accepted')
 tick(false) tick(false)
-check(Companion.execute(f.actor,'follow'),'follow can interrupt an unpublished draft')
+check(Companion.debugExecute(f.actor,'follow'),'follow can interrupt an unpublished draft')
 for _=1,25 do tick(false) end
 check(not f.Craft.record(f.npc.id) and not f.Store.owner(material.id)
     and Companion.exportState(f.npc.id).mode=='FOLLOW','draft stop is confirmed before successor moves')
@@ -102,7 +102,7 @@ drain(true)
 check(f.Craft.record(f.npc.id).id==job and f.nativeCalls()==1 and key==nil,'same legacy job completes once after resume')
 material,tool=fresh() check(run()=='QUEUED','handoff fixture accepted')
 queued(true)
-check(Companion.execute(f.actor,'follow'),'follow competes through shared controller')
+check(Companion.debugExecute(f.actor,'follow'),'follow competes through shared controller')
 for _=1,30 do tick(false) end
 check(f.Craft.record(f.npc.id).state=='PAUSED' and f.object.occupant==nil
     and Companion.exportState(f.npc.id).mode=='FOLLOW','bench and old body released before follow starts')
@@ -144,7 +144,7 @@ check(f.Craft.record(f.npc.id).id==job and f.nativeCalls()==1,'automatic continu
 material,tool=fresh() check(run()=='QUEUED','automatic recovery fixture accepted')
 queued(true) f.Work.pause('SAVE',f.npc.id) drain(false)
 f.Craft.afterSave({[f.npc.id]='CHECKPOINT_SAVED'})
-check(Companion.execute(f.actor,'follow'),'new manual follow accepted after saved pause')
+check(Companion.debugExecute(f.actor,'follow'),'new manual follow accepted after saved pause')
 for _=1,20 do tick(false) end
 f.Craft.tickPending()
 for _=1,20 do tick(false) end
@@ -155,10 +155,10 @@ f.materials.container:Remove(material) f.npc.root:AddItem(material)
 f.tools.container:Remove(tool) f.npc.root:AddItem(tool)
 record={format=1,id='legacy-loan',npcId=f.npc.id,requester=f.actor.id,benchId='old-bench',generation=1,
     state='PAUSED',phase='COLLECTING',released=false,materialId=material.id,toolId=tool.id,outputIds={}}
-f.Craft.record(f.npc.id) -- Initialize the legacy persisted-record envelope.
-local rootData=f.registry.data()
-if not rootData.craftProbes then rootData.craftProbes={format=2,byNpc={}} end
-rootData.craftProbes.byNpc[f.npc.id]=record
+require('EmberRoutesProbe/BusinessJobs').publishCraft(record) f.Craft.reset()
+-- P2 unified JobStore craft envelope
+-- P2 unified format
+-- root.taskJobs updated via publishCraft
 local actorInventory=f.actor.getInventory f.actor.getInventory=function(self) return self.root end
 check(f.Craft.execute(f.actor,'return',nil,f.npc.id,true)=='QUEUED','format1 recovery enters shared admission')
 drain(true)

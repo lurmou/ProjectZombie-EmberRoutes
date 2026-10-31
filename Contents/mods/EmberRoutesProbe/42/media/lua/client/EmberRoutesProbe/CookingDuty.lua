@@ -45,6 +45,7 @@ function D.contents(c,endpoint)
 end
 function D.reserve(c,endpoint)
     if not Context.active(c) or c.job.effects~='KNOWN' or c.job.payload.duty then return false,'FURNACE_DUTY_RETAINED' end
+    if not require('EmberRoutesProbe/CookingDirectives').kitchen(c.job.scopeId,endpoint.object) then return false,'KITCHEN_ZONE_UNAVAILABLE' end
     local stove,why=Facilities.stove(endpoint) if not stove then return false,why end
     if stove.active then return false,'STOVE_ALREADY_ACTIVE' end
     if not stove.powered or stove.broken then return false,'STOVE_UNAVAILABLE' end

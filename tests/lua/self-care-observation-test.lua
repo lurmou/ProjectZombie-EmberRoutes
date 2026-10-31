@@ -26,9 +26,9 @@ stats.hunger=0/0 check(not Observer.sample(npc,'a',3102),'invalid Stats is unkno
 local objects={} local container={getItems=function() return list(objects) end}
 npc.getInventory=function() return container end
 local function food(id)
-    return {type='Food',getID=function() return id end,getIsCraftingConsumed=function() return false end,
-        getBaseHunger=function() return -0.3 end,getHungChange=function() return -0.3 end,
-        isRotten=function() return false end,isPoison=function() return false end,getPoisonPower=function() return 0 end,
+    return {type='Food',getID=function() return id end,getFullType=function() return 'Base.Apple' end,getIsCraftingConsumed=function() return false end,
+        getBaseHunger=function() return -0.3 end,getHungChange=function() return -0.3 end,getHungerChange=function() return -0.3 end,
+        isRotten=function() return false end,isBurnt=function() return false end,isPoison=function() return false end,getPoisonPower=function() return 0 end,isTainted=function() return false end,isCooked=function() return false end,isCookable=function() return false end,isFrozen=function() return false end,isSpice=function() return false end,
         isbDangerousUncooked=function() return false end,getRequireInHandOrInventory=function() return nil end,
         getContainer=function() return container end}
 end

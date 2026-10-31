@@ -40,7 +40,7 @@ local function single(x,y,z)
         return {get=function(_,key) if key=='BedType' then return 'goodBed' end end,
             has=function(_,flag) return self.flags[flag]==true end}
     end
-    function object:getSprite() return {} end function object:hasSpriteGrid() return false end
+    function object:getSprite() return {getName=function() return 'furniture_bedding_01_0' end} end function object:hasSpriteGrid() return false end
     function object:isFurnitureOccupied() return self.occupied==true end
     square.rows={object} return object
 end

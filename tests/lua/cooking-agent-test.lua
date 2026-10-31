@@ -13,7 +13,7 @@ local Membership=require 'EmberRoutesProbe/MembershipService'
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local npc,actor=f.npc,f.f.fixture.actor
 function npc:isDead() return not self.alive end
-local entry={id='kitchen',areas={{x=0,y=0,w=2000,h=2000}}}
+local entry={id='kitchen',areas={{x=1000,y=0,w=100,h=100}}}
 local powered,allowed,safe=true,true,true
 Membership.entry=function() return entry end
 Membership.check=function() return {allowed=allowed,sharedResources=allowed} end

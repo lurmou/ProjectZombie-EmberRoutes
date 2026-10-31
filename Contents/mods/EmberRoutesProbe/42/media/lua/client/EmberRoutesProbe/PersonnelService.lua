@@ -31,6 +31,123 @@ local function resolveParentCategory(parent)
     return raw
 end
 
+local function readCraftSkill(handle)
+    if not handle or not handle.getPerkLevel or not Perks then return nil end
+    local maxLvl=nil
+    local craftingPerks={Perks.Woodwork,Perks.MetalWelding,Perks.Electricity,Perks.Mechanics,Perks.Tailoring,Perks.Cooking}
+    for _,perk in ipairs(craftingPerks) do
+        if perk then
+            local ok,lvl=pcall(function() return handle:getPerkLevel(perk) end)
+            if ok and type(lvl)=='number' then if maxLvl==nil or lvl>maxLvl then maxLvl=lvl end end
+        end
+    end
+    return maxLvl
+end
+
+local function readHaulSkill(handle)
+    if not handle or not handle.getPerkLevel or not Perks then return nil end
+    local maxLvl=nil
+    local haulingPerks={Perks.Strength,Perks.Fitness}
+    for _,perk in ipairs(haulingPerks) do
+        if perk then
+            local ok,lvl=pcall(function() return handle:getPerkLevel(perk) end)
+            if ok and type(lvl)=='number' then if maxLvl==nil or lvl>maxLvl then maxLvl=lvl end end
+        end
+    end
+    return maxLvl
+end
+
+local function readCookSkill(handle)
+    if not handle or not handle.getPerkLevel or not Perks or not Perks.Cooking then return nil end
+    local ok,lvl=pcall(function() return handle:getPerkLevel(Perks.Cooking) end)
+    if ok and type(lvl)=='number' then return lvl end
+    return nil
+end
+
+local function readAvatarInfo(handle)
+    local desc=nil
+    if handle and handle.getDescriptor then
+        local ok,d=pcall(function() return handle:getDescriptor() end)
+        if ok then desc=d end
+    end
+    local isFemale=false
+    if desc and desc.isFemale then
+        local ok,f=pcall(function() return desc:isFemale() end)
+        if ok then isFemale=f end
+    elseif handle and handle.isFemale then
+        local ok,f=pcall(function() return handle:isFemale() end)
+        if ok then isFemale=f end
+    end
+
+    local profTitle=nil
+    local profTexture=nil
+    if desc then
+        if CharacterProfessionDefinition and desc.getCharacterProfession then
+            local okDef,def=pcall(function() return CharacterProfessionDefinition.getCharacterProfessionDefinition(desc:getCharacterProfession()) end)
+            if okDef and def then
+                pcall(function()
+                    profTitle=def:getUIName()
+                    profTexture=def:getTexture()
+                end)
+            end
+        end
+        if not profTexture and desc.getProfession then
+            pcall(function()
+                local pName=desc:getProfession()
+                if pName and pName~='' then
+                    profTitle=profTitle or (getTextOrNull and getTextOrNull('UI_prof_'..pName)) or pName
+                    if tryGetTexture then
+                        profTexture=tryGetTexture('media/ui/Professions/icon_'..pName..'.png')
+                            or tryGetTexture('media/ui/professions/'..pName..'.png')
+                    end
+                end
+            end)
+        end
+    end
+    return isFemale,profTitle,profTexture
+end
+
+local function getStatVal(char,sel,statName,statEnum)
+    if sel and sel[statName]~=nil then return sel[statName] end
+    if sel and sel.stats and sel.stats[statName]~=nil then return sel.stats[statName] end
+    if not char or not char.getStats then return nil end
+    local ok,stats=pcall(function() return char:getStats() end)
+    if not ok or not stats then return nil end
+    if statEnum and CharacterStat and CharacterStat[statEnum] and stats.get then
+        local okVal,val=pcall(function() return stats:get(CharacterStat[statEnum]) end)
+        if okVal and type(val)=='number' then return val end
+    end
+    local methodName='get'..string.upper(string.sub(statName,1,1))..string.sub(statName,2)
+    if stats[methodName] then
+        local okVal,val=pcall(function() return stats[methodName](stats) end)
+        if okVal and type(val)=='number' then return val end
+    end
+    if type(stats[statName])=='number' then return stats[statName] end
+    return nil
+end
+
+local function readBodyDamage(handle,w)
+    local health=w and w.health
+    local isBleeding=w and w.isBleeding or false
+    local isInfected=w and w.isInfected or false
+    local hasInjury=w and w.hasInjury or false
+    if handle and handle.getBodyDamage then
+        local okBd,bd=pcall(function() return handle:getBodyDamage() end)
+        if okBd and bd then
+            if health==nil and bd.getOverallBodyHealth then
+                local okH,h=pcall(function() return math.floor(bd:getOverallBodyHealth()) end)
+                if okH and type(h)=='number' then health=h end
+            end
+            pcall(function()
+                if bd.getNumPartsBleeding and bd:getNumPartsBleeding()>0 then isBleeding=true end
+                if bd.isInfected and bd:isInfected() then isInfected=true end
+                if bd.hasInjury and bd:hasInjury() then hasInjury=true end
+            end)
+        end
+    end
+    return health,isBleeding,isInfected,hasInjury
+end
+
 local function static(npc)
     local value={skills={},knowledge={},traits={}}
     if PerkFactory and PerkFactory.PerkList and Perks and npc.getPerkLevel then
@@ -68,6 +185,13 @@ local function static(npc)
             if def then value.traits[#value.traits+1]=def:getLabel() end
         end
     end
+    value.craftSkill=readCraftSkill(npc)
+    value.haulSkill=readHaulSkill(npc)
+    value.cookSkill=readCookSkill(npc)
+    local isFemale,profTitle,profTexture=readAvatarInfo(npc)
+    value.isFemale=isFemale
+    value.profTitle=profTitle
+    value.profTexture=profTexture
     return value
 end
 function Service.details(actor,scope,id,force)
@@ -143,6 +267,57 @@ function Service.rows(value,mode,page)
 
     if #rows==0 and (mode=='skills' or mode=='knowledge') then rows[1]={text=text('detailsUnknown')} end
     return rows
+end
+
+function Service.enrichWorkers(actor,scope,rawWorkers)
+    load()
+    local okDriver,Driver=pcall(require,'EmberRoutesProbe/Driver')
+    local Public=require 'EmberRoutesProbe/PublicWork'
+    local list={}
+    for _,w in ipairs(rawWorkers or {}) do
+        local id=w.id
+        local p=Public.priorities(id)
+        local binding=okDriver and Driver and Driver.bindId and Driver.bindId(actor,id)
+        local handle=binding and binding.handle
+        local row=cache[id]
+        if not row or row.npc~=handle then
+            row={npc=handle,value=static(handle)}
+            cache[id]=row
+        end
+        local staticVal=row.value
+        local health,isBleeding,isInfected,hasInjury=readBodyDamage(handle,w)
+        local fatigue=getStatVal(handle,w,'fatigue','FATIGUE')
+        local hunger=getStatVal(handle,w,'hunger','HUNGER')
+        local thirst=getStatVal(handle,w,'thirst','THIRST')
+        local endurance=getStatVal(handle,w,'endurance','ENDURANCE')
+
+        list[#list+1]={
+            id=id,
+            name=w.name,
+            character=handle,
+            desc=handle and handle.getDescriptor and handle:getDescriptor(),
+            busy=w.busy or false,
+            order=w.order,
+            health=health,
+            isBleeding=isBleeding,
+            isInfected=isInfected,
+            hasInjury=hasInjury,
+            fatigue=fatigue,
+            hunger=hunger,
+            thirst=thirst,
+            endurance=endurance,
+            craftSkill=staticVal.craftSkill or (w and w.craftSkill),
+            haulSkill=staticVal.haulSkill or (w and w.haulSkill),
+            cookSkill=staticVal.cookSkill or (w and w.cookSkill),
+            isFemale=staticVal.isFemale or (w and w.isFemale),
+            profTitle=staticVal.profTitle or (w and w.profTitle),
+            profTexture=staticVal.profTexture or (w and w.profTexture),
+            activity=w.activity,
+            membership=w.membership,
+            priorities=p
+        }
+    end
+    return list
 end
 if Events and Events.LevelPerk then Events.LevelPerk.Add(function(character)
     load()

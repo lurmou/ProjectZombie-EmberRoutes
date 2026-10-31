@@ -17,7 +17,7 @@ function Visits.seek(env,standable)
     if env.budget.scan<1 then return nil,false,'LIFE_ZONE_OBSERVING' end
     local revision,why=Zones.revision() if revision==nil then return nil,true,why end
     local state=env.state
-    local context=env.eventId or false
+    local context=env.eventId and env.eventId..':'..tostring(env.activityRef and env.activityRef.participantEpoch or 1) or false
     local destination=env.destination or Zones.destination
     local position=math.floor(env.point.x)..':'..math.floor(env.point.y)..':'..env.point.z
     if state.revision~=revision or state.parent~=env.entry.revision or state.position~=position or state.context~=context then
@@ -68,6 +68,12 @@ function Visits.seek(env,standable)
             state.offset=state.offset+1
             if state.offset>=math.min(64,w*h) then state.index=state.index+1 state.offset=0 end
             local ref={id=row.id,revision=row.revision,eventId=env.eventId}
+            if env.activityRef then
+                ref.controlEpoch=env.activityRef.controlEpoch
+                ref.participantEpoch=env.activityRef.participantEpoch
+                ref.commandEpoch=env.activityRef.commandEpoch
+                ref.membershipRevision=env.activityRef.membershipRevision
+            end
             if destination(env.entry.id,ref,point)
                 and not require('EmberRoutesProbe/LaborStore').resourceOwner(Visits.tileKey(point))
                 and standable(env.entry,point,{env.npc}) then

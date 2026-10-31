@@ -112,7 +112,17 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
             live=Jobs.current():get(job.id)
         end
         local state=c.effects=='UNKNOWN' and 'RECONCILE_REQUIRED' or 'SUSPENDED'
-        return live.state==state or Jobs.current():update(live.id,live.revision,{state=state})
+        if live.state~=state and not Jobs.current():update(live.id,live.revision,{state=state}) then return false end
+        if c.payload.activityRef and c.payload.activityRef.dutyId then
+            local status=c.result=='Success' and 'SUCCEEDED' or c.result=='Failure' and 'FAILED' or 'CANCELLED'
+            local l=c.payload.leisure local r=c.payload.reading
+            if settle then status=(l and l.finished or r and (r.completed or r.windowEnded)) and 'SUCCEEDED' or 'CANCELLED' end
+            -- The activity may retain an unconfirmed reference, but projection
+            -- rejection cannot revoke already proven physical cleanup.
+            require('EmberRoutesProbe/ActivityOwners').result(job.npcId,job.id,c.payload.attemptId,
+                c.payload.activityRef,fact,status,settle==true)
+        end
+        return true
     end
     local spec={npcId=job.npcId,jobId=job.id,kind='SELF_CARE',binding=binding,replaceReason='SELF_CARE',
         nonPreemptive=c.payload.kind=='LEISURE' or settle==true and interruptCompanion~=true,reconcileErrors=true}
@@ -120,6 +130,8 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         if not c.sameAttempt() or c.effects~='KNOWN' or c.npc:isDead() or not safeRecent() then return false end
         if settle then return true end
         if c.payload.activityRef and not require('EmberRoutesProbe/ActivityService').validRef(job.npcId,c.payload.activityRef) then return false end
+        if c.payload.activityRef and c.payload.activityRef.dutyId
+            and not require('EmberRoutesProbe/ActivityOwners').canStart(job.npcId,job.id,c.payload.attemptId) then return false end
         if c.payload.kind=='STUDY' and not require('EmberRoutesProbe/StudyService').valid(actor,c.npc,job.npcId,c.payload) then return false end
         if c.payload.kind=='LEISURE' then return require('EmberRoutesProbe/LeisureService').valid(actor,c.npc,job.npcId,c.payload) end
         if c.payload.kind=='REST' or c.payload.kind=='SLEEP' then
@@ -145,6 +157,10 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         c.payload.step=settle and 'SETTLING' or 'ACTING'
         if c.payload.kind=='STUDY' then c.payload.reliefOnly=reliefOnly==true end
         if not c.persist() then return false,'PERSONAL_RECORD_CHANGED','UNCHANGED' end
+        if not settle and c.payload.activityRef and c.payload.activityRef.dutyId
+            and not require('EmberRoutesProbe/ActivityOwners').started(job.npcId,job.id,c.payload.attemptId) then
+            return false,'ACTIVITY_CHANGED','UNCHANGED'
+        end
         local leaves={}
         if not settle and c.payload.kind=='LEISURE' then
             leaves[#leaves+1]=require('EmberRoutesProbe/LeisureActions').new(c)
@@ -175,6 +191,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         if not c.valid() then error('PERSONAL_AUTHORITY_LOST') end
         if not c.payload.transfer then Custody.prepareReturn(c) end
         local state=Tree.tick(c.tree,c,c.budget)
+        c.result=state
         c.done=state~='Running' or c.effects=='UNKNOWN'
     end
     function spec.finished() return c.done==true end

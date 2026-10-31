@@ -310,7 +310,8 @@ delivery.claim=function() return 'DELIVERY_CLAIM_MARKER' end
 delivery.advance=function() advanced=true end
 offers.alice={source='box',items={17}}
 local candidates={}
-provider.discover({actor=actor,npc=handles.alice,entry=entry,candidates=candidates})
+provider.discover({actor=actor,npc=handles.alice,entry=entry,candidates=candidates,
+    directory=require('EmberRoutesProbe/TaskDirectory').new()})
 check(discovered and #candidates==2 and candidates[1].delivery and candidates[2].intent.source=='box',
     'same hauling provider contributes delivery and existing logistics offers')
 check(provider.claim({delivery=true},'alice','job',{})=='DELIVERY_CLAIM_MARKER','delivery selected through existing provider claim')

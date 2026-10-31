@@ -22,6 +22,9 @@ local JobStore=require 'EmberRoutesProbe/JobStore'
 local Metrics=require 'EmberRoutesProbe/DispatchMetrics'
 local Wake=require 'EmberRoutesProbe/PlanningWake'
 local Config=require 'EmberRoutesProbe/TickConfig'
+local Gate=require 'EmberRoutesProbe/RuntimeGate'
+local HaulingProvider=require 'EmberRoutesProbe/HaulingProvider'
+local CraftingProvider=require 'EmberRoutesProbe/CraftingProvider'
 local IdleDiscovery=require 'EmberRoutesProbe/IdleDiscovery'
 local CraftYield=require 'EmberRoutesProbe/ProductionYield'
 local idle=IdleDiscovery.new()
@@ -35,14 +38,12 @@ local function business()
     return Business
 end
 if Signals.watch then Signals.watch(function(id) dispatchDirty=true if id then idle:clear(id) end end) end
-local hauling={}
+-- hauling state encapsulated in HaulingProvider
 local stockWatches,ruleCursor={},0
-local evaluations,retryAt=Queue.new(4),{}
+local retryAt={}
 local metrics=Metrics.new()
 local readyWorkers={}
 local tickOps,tickSlices=0,0
-local planGenerations={}
-local decisionScans={}
 local faultWorld
 -- Id+sequence projection of one settlement's orders for the decide scan. The
 -- decision loop reads live order fields by id; only the iteration order needs
@@ -119,10 +120,10 @@ local function load()
                 or o.prerequisiteId~=nil and (type(o.prerequisiteId)~='string' or o.prerequisiteId==o.id) then error('PUBLIC_ORDER_INVALID') end
         end
         root.publicWork=value world,data=root,value directory=Directory.new()
-        evaluations:clear()
-        evaluations,retryAt=Queue.new(4),{} leisureStops={} faultWorld=nil
-        metrics=Metrics.new() readyWorkers={} planGenerations={}
-        cursor,nextTick,orderCursor=0,0,0 hauling={}
+        CraftingProvider.reset()
+        retryAt={} leisureStops={} faultWorld=nil
+        metrics=Metrics.new() readyWorkers={}
+        cursor,nextTick,orderCursor=0,0,0 HaulingProvider.reset()
         nextPrecheck,nextWake,observedWake,dispatchDirty=0,0,nil,true
         Members=nil
     end
@@ -294,7 +295,7 @@ function Service.command(actor,scope,id,revision,action)
     elseif action=='stop' then o.state='PAUSED' directory:withdraw('craft:'..id)
     elseif action=='resume' and o.state=='PAUSED' then o.state='WAITING'
     else return 'INVALID_COMMAND' end
-    planGenerations[id]=(planGenerations[id] or 0)+1
+    CraftingProvider.bumpGeneration(id)
     if Probe.invalidateStudy then Probe.invalidateStudy(scope) end
     o.revision=o.revision+1 catalogEpoch[scope]=(catalogEpoch[scope] or 0)+1
     Signals.changed() return 'ORDER_UPDATED'
@@ -374,12 +375,6 @@ local function stock(actor,now)
     rule.reason=result
     if result=='ORDER_CREATED' then rule.cycle=cycle rule.activeOrder=id data.orders[id].policyId=rule.id end
 end
-local function waiting(o,e)
-    -- UI reason revisions are not planning revisions. Orders have no in-place
-    -- recipe/quantity editor; identity and state fence semantic changes.
-    return o and o.category~='cooking' and o==e.order and not o.jobId and o.state=='WAITING'
-        and e.generation==(planGenerations[o.id] or 0)
-end
 local function cool(o,npcId,e,reason,now)
     local count=0 local oldest,deadline
     for id,r in pairs(retryAt) do
@@ -393,176 +388,17 @@ local function retryReady(o,npcId,now)
     if r and r.untilTime>now then retryWake[npcId]=math.min(retryWake[npcId] or math.huge,r.untilTime) end
     return not r or now>=r.untilTime or Wake.changed(r.watch)
 end
-local craftingProvider={
-    category='crafting',
-    defaultPriority=3,
-    discover=function(env)
-        local evaluation=evaluations:get(env.npcId)
-        if evaluation and evaluation.ready then
-            local o=data.orders[evaluation.orderId]
-            local spec,reason
-            if waiting(o,evaluation) and not Wake.changed(evaluation.watch) and env.now<=evaluation.expires and env.priority>0 then
-                spec,reason=Recipe.inspect(env.actor,env.npc,evaluation.object,o.recipeId,true,false)
-            end
-            if spec then
-                local offer=directory:upsert('craft:'..o.id,o.revision,'crafting',env.entry.id)
-                if offer and not offer.jobId then env.candidates[#env.candidates+1]={key=offer.key,category='crafting',allowed=true,
-                    score=1/(o.sequence+1),order=o,object=evaluation.object,revision=offer.revision} end
-            else
-                if o and reason then signal(o,reason) end evaluations:remove(env.npcId) evaluation=nil
-            end
-        end
-        local orders=orderIds(env.entry.id)
-        local scan=decisionScans[env.npcId]
-        if not scan or scan.sequence~=data.sequence or scan.scope~=env.entry.id or scan.revision~=env.priorities.revision
-            or env.now>=scan.expires or Wake.changed(scan.watch) then
-            scan={sequence=data.sequence,scope=env.entry.id,revision=env.priorities.revision,cursor=0,seen={},expires=env.now+10000,watch=Wake.capture(env.entry)}
-            decisionScans[env.npcId]=scan
-        end
-        for _=1,math.min(3,#orders) do
-            scan.cursor=scan.cursor%#orders+1 local o=data.orders[orders[scan.cursor].id]
-            local rr1 = retryReady(o, env.npcId, env.now)
-            if o.category=='cooking' or o.jobId or o.state~='WAITING' or env.priority==0 or not rr1 then scan.seen[o.id]=true end
-            local eg = evaluations:get(env.npcId)
-            local es = evaluations:size()
-            if o.category~='cooking' and not o.jobId and o.state=='WAITING' and env.priority>0 and not eg
-                and #env.candidates==0 and es<4 and rr1 then
-                local object,reason
-                if o.surfaceId then object,reason=Surfaces.resolve((Registry.data().craftSurfaces or {})[o.surfaceId],o.surfaceId) end
-                local spec,why
-                if not reason then spec,why=Recipe.inspect(env.actor,env.npc,object,o.recipeId,true,false) end
-                scan.seen[o.id]=true
-                if (reason and string.find(reason,'UNLOADED',1,true)) or (why and string.find(why,'UNLOADED',1,true)) then scan.unknown=true end
-                local watch=Wake.capture(env.entry)
-                if spec and not require('EmberRoutesProbe/CookingOrders').parentAllows(o) then
-                    spec=nil why='COOKING_PARENT_WAIT'
-                end
-                if spec then
-                    local e={orderId=o.id,order=o,generation=planGenerations[o.id] or 0,object=object,scopeId=env.entry.id,watch=watch,started=env.now,
-                        request=require('EmberRoutesProbe/ProductionChain').new(env.actor,env.npc,env.entry,o.recipeId,CraftYield.remaining(o),object,'offer:'..o.id,false,o.preferences)}
-                    evaluations:put(env.npcId,e)
-                else
-                    if why=='NPC_RECIPE_UNKNOWN' and Probe.idleStudy then
-                        local read=Recipe.read(o.recipeId)
-                        if read and read.recipe.getName then
-                            local meta=read.recipe.getMetaRecipe and read.recipe:getMetaRecipe()
-                            local keys={read.recipe:getName()}
-                            if meta and meta~='' then keys[#keys+1]=meta end
-                            if read.recipe.getTranslationName then keys[#keys+1]=read.recipe:getTranslationName() end
-                            if env.setStudyTarget then env.setStudyTarget({orderId=o.id,recipeId=o.recipeId,knowledge=keys}) end
-                        end
-                    end
-                    cool(o,env.npcId,{watch=watch},reason or why,env.now) signal(o,reason or why)
-                end
-            end
-        end
-    end,
-    claim=function(selected,npcId,jobId,env)
-        local o=selected.order
-        if not require('EmberRoutesProbe/CookingOrders').parentAllows(o) then return 'TASK_CHANGED' end
-        o.jobId,o.npcId,o.state=jobId,npcId,'CLAIMING' o.revision=o.revision+1
-        local result=Production.execute(env.actor,'run',selected.object,npcId,{recipeId=o.recipeId,quantity=CraftYield.remaining(o),
-            settlementId=env.entry.id,taskId=jobId,orderId=o.id,chain=true,nonPreemptive=true,preferences=o.preferences})
-        if result~='QUEUED' then
-            o.jobId=nil o.npcId=nil o.state='WAITING'
-            cool(o,npcId,{watch=Wake.capture(env.entry)},result,env.now) signal(o,result)
-        end
-        return result
-    end,
-    reconcile=function()
-        local jobs
-        for _,o in pairs(data.orders) do
-            if o.category~='cooking' and o.jobId then
-                local r
-                if business().record then
-                    r=business().record(o.jobId,'CRAFT')
-                else
-                    jobs=jobs or business().records('CRAFT') r=jobs[o.jobId]
-                end
-                if r and r.released and (r.activityYield or o.craftProgress) then
-                    local patch,why=CraftYield.settle(o,r)
-                    if patch then
-                        local npcId,jobId=o.npcId,o.jobId
-                        directory:release('craft:'..o.id,jobId,{effects='KNOWN',obligationsCleared=true})
-                        o.craftProgress=patch.progress o.state=patch.state o.jobId=nil o.npcId=nil
-                        o.reason=o.state=='WAITING' and 'ACTIVITY_YIELD' or nil o.revision=o.revision+1
-                        planGenerations[o.id]=(planGenerations[o.id] or 0)+1
-                        catalogEpoch[o.settlementId]=(catalogEpoch[o.settlementId] or 0)+1
-                        -- Retire only after Runtime confirms the old body stopped.
-                        -- No new demand is created; the original request stays intact.
-                        Signals.changed(npcId)
-                    elseif why then o.state='RECONCILE_REQUIRED' signal(o,why) end
-                elseif r then
-                    local state=r.released and (r.state=='DONE' and 'DONE' or 'CANCELLED') or r.state
-                    if o.state~=state then o.state=state o.revision=o.revision+1 Signals.changed(o.npcId) end
-                    signal(o,r.reason)
-                elseif not Runtime.current():status(o.npcId,o.jobId) then
-                    local saved=(Registry.data().taskJobs or {byId={}}).byId[o.jobId]
-                    if saved then o.state='RECONCILE_REQUIRED' signal(o,'JOB_INDEX_CONFLICT')
-                    else
-                        directory:release('craft:'..o.id,o.jobId,{effects='KNOWN',obligationsCleared=true})
-                        o.jobId=nil o.npcId=nil o.state='WAITING' signal(o,'WAITING_CLAIM')
-                    end
-                end
-            end
-        end
-    end,
-    idle=function(npcId,entry,target)
-        if target and Probe.idleStudy then Probe.idleStudy(npcId,entry,target) end
-    end,
-    hasWork=function()
-        for _ in pairs(data.orders) do return true end
-        return false
-    end
-}
-
-local haulingProvider={
-    category='hauling',
-    defaultPriority=3,
-    discover=function(env)
-        require('EmberRoutesProbe/DeliveryService').discover(env)
-        local Logistics=require 'EmberRoutesProbe/LogisticsService'
-        local intent=Logistics.publicOffer(env.actor,env.entry,env.npc)
-        if intent then
-            local key='haul:'..intent.source..':'..tostring(intent.items[1])
-            local offer=directory:upsert(key,1,'hauling',env.entry.id)
-            if offer and not offer.jobId then
-                env.candidates[#env.candidates+1]={key=key,revision=1,category='hauling',allowed=true,score=0,intent=intent}
-            end
-        end
-    end,
-    claim=function(selected,npcId,jobId,env)
-        if selected.delivery then return require('EmberRoutesProbe/DeliveryService').claim(selected,npcId,jobId,env) end
-        Work.allowAutomation(npcId)
-        selected.intent.jobId=jobId local result=Work.assign(env.actor,npcId,selected.intent)
-        if result=='QUEUED' or result=='STARTED' then hauling[selected.key]={npcId=npcId,jobId=jobId} end
-        return result
-    end,
-    reconcile=function()
-        for key,h in pairs(hauling) do
-            local r=Work.record(h.npcId)
-            if r and r.id==h.jobId and r.state=='DONE' then
-                directory:release(key,h.jobId,{effects='KNOWN',obligationsCleared=true}) hauling[key]=nil
-            elseif (not r or r.id~=h.jobId) and not Runtime.current():status(h.npcId,h.jobId) then
-                directory:release(key,h.jobId,{effects='KNOWN',obligationsCleared=true}) hauling[key]=nil
-            end
-        end
-    end,
-    advance=function(env) require('EmberRoutesProbe/DeliveryService').advance(env) end,
-    hasWork=function()
-        if require('EmberRoutesProbe/DeliveryService').hasWork() then return true end
-        for _ in pairs(hauling) do return true end
-        return false
-    end
-}
-
-Providers.register(craftingProvider)
-Providers.register(haulingProvider)
+Providers.register(CraftingProvider)
+Providers.register(HaulingProvider)
 Providers.register(require 'EmberRoutesProbe/CookingProvider')
+Providers.register(require 'EmberRoutesProbe/CleaningProvider')
+Providers.register(require 'EmberRoutesProbe/FarmingProvider')
+Providers.register(require 'EmberRoutesProbe/LumberjackProvider')
+Providers.register(require 'EmberRoutesProbe/ForagerProvider')
 
 local function reconcile()
     for _,p in ipairs(Providers.all()) do
-        if p.reconcile then p.reconcile() end
+        if p.reconcile then p.reconcile({orders=data.orders,directory=directory,catalogEpoch=catalogEpoch,signal=signal}) end
     end
 end
 function Service.retireSettled(limit)
@@ -603,11 +439,9 @@ function Service.retireSettled(limit)
                     r.activeOrder=nil r.nextCheck=getTimestampMs()+2000
                     require('EmberRoutesProbe/WarehouseIndex').refresh(r.settlementId,false)
                 end end
-                for _,npcId in ipairs(readyWorkers) do
-                    local e=evaluations:get(npcId) if e and e.orderId==id then evaluations:remove(npcId) end
-                end
+                CraftingProvider.cleanupOrder(id,readyWorkers)
                 for key in pairs(retryAt) do if string.sub(key,1,#id+1)==id..':' then retryAt[key]=nil end end
-                planGenerations[id]=nil data.orders[id]=nil count=count+1
+                data.orders[id]=nil count=count+1
                 if count>=limit then break end
             end
         end
@@ -623,6 +457,7 @@ local function eligible(actor,npcId,scope)
     if not binding or not binding.handle or Work.busy(npcId)
         or Probe.careBlocksWork and Probe.careBlocksWork(npcId) and not probing then return end
     if require('EmberRoutesProbe/CookingProvider').retained(npcId) then return end
+    if require('EmberRoutesProbe/FieldWork').retained(npcId) then return end
     local existing=business().crafts()[npcId]
     if existing and not existing.released then return end
     local npc=binding.handle
@@ -637,7 +472,7 @@ local function eligible(actor,npcId,scope)
 end
 local function decide(actor,npcId,now,binding,entry)
     if not binding then binding,entry=eligible(actor,npcId) end
-    if not binding then evaluations:remove(npcId) idle:clear(npcId) return end
+    if not binding then CraftingProvider.cancel(npcId) idle:clear(npcId) return end
     local npc=binding.handle
     local current=Work.record(npcId)
     local Logistics=require 'EmberRoutesProbe/LogisticsService'
@@ -647,17 +482,17 @@ local function decide(actor,npcId,now,binding,entry)
             and not current.controlUncertain and Logistics.preparePublic(actor,entry) then Work.resumeFor(actor,npcId) end
         return
     end
-    if Work.hasCargo(actor,npcId) then evaluations:remove(npcId) return end
+    if Work.hasCargo(actor,npcId) then CraftingProvider.cancel(npcId) return end
     if TaskJobs.current():ordinaryCount()>=JobStore.LIMIT then
-        local e=evaluations:get(npcId)
+        local e=CraftingProvider.pending(npcId)
         if e and data.orders[e.orderId] then signal(data.orders[e.orderId],'JOB_LIMIT') end
-        evaluations:remove(npcId) return
+        CraftingProvider.cancel(npcId) return
     end
     local priorities=Service.priorities(npcId) local candidates={} local studyTarget
     local member=Members and Members.view and Members.view(npcId)
     local stamp=entry.id..':'..tostring(entry.revision)..':'..tostring(member and member.revision)
         ..':'..tostring(priorities.revision)..':'..tostring(catalogEpoch[entry.id] or 0)
-    if not evaluations:get(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Wake.changed) then
+    if not CraftingProvider.pending(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Wake.changed) then
         if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,'IDLE') end
         for _,provider in ipairs(Providers.all()) do
             if (priorities[provider.category] or 0)>0 and provider.idle then
@@ -673,6 +508,13 @@ local function decide(actor,npcId,now,binding,entry)
         now=now,candidates=candidates,
         setStudyTarget=function(t) studyTarget=t end,
         directory=directory,
+        orders=data.orders,
+        orderIds=orderIds(entry.id),
+        sequence=data.sequence,
+        candidateReady=function(key) return retryReady({id=key},npcId,now) end,
+        retryReady=retryReady,
+        cool=cool,
+        signal=signal,
         upsertOffer=function(key,rev,cat,scope)
             return directory:upsert(key,rev,cat,scope or entry.id)
         end
@@ -688,7 +530,7 @@ local function decide(actor,npcId,now,binding,entry)
     for _,candidate in ipairs(candidates) do
         if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
     end
-    local pending=evaluations:get(npcId)
+    local pending=CraftingProvider.pending(npcId)
     -- One bounded grace window, without a body reservation.
     if pending and not pending.ready and now-pending.started<250 and priorities.crafting>0 then
         local craftP=priorities.crafting
@@ -704,19 +546,16 @@ local function decide(actor,npcId,now,binding,entry)
         selected=Selector.choose(candidates,priorities)
         if not selected then
             local orders=orderIds(entry.id)
-            local scan=decisionScans[npcId]
-            local complete=not envDiscover.pending and not (scan and scan.unknown)
-            if scan then
-                for _,order in ipairs(orders) do if not scan.seen[order.id] then complete=false break end end
-            end
+            local complete,scanWatch=CraftingProvider.scanStatus(npcId,orders)
+            if envDiscover.pending then complete=false end
             idleStudyTargets[npcId]=studyTarget
-            idle:empty(npcId,now,stamp,Wake.revision and Wake.revision() or 0,scan and scan.watch,
-                complete and not evaluations:get(npcId),retryWake[npcId])
+            idle:empty(npcId,now,stamp,Wake.revision and Wake.revision() or 0,scanWatch,
+                complete and not CraftingProvider.pending(npcId),retryWake[npcId])
             if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,
-                complete and not evaluations:get(npcId) and 'IDLE' or 'OBSERVING')
-            elseif complete and not evaluations:get(npcId) and Probe.idleLeisure then Probe.idleLeisure(npcId,entry) end
+                complete and not CraftingProvider.pending(npcId) and 'IDLE' or 'OBSERVING')
+            elseif complete and not CraftingProvider.pending(npcId) and Probe.idleLeisure then Probe.idleLeisure(npcId,entry) end
             for _,provider in ipairs(Providers.all()) do
-                if (priorities[provider.category] or 0)>0 and not evaluations:get(npcId) and provider.idle then
+                if (priorities[provider.category] or 0)>0 and not CraftingProvider.pending(npcId) and provider.idle then
                     provider.idle(npcId,entry,studyTarget)
                 end
             end
@@ -737,7 +576,7 @@ local function decide(actor,npcId,now,binding,entry)
         selected.allowed=false selected=nil
     end
     if not selected then return end
-    evaluations:remove(npcId)
+    CraftingProvider.cancel(npcId)
     local result
     local provider=Providers.get(selected.category)
     if provider and provider.claim then
@@ -752,34 +591,30 @@ local function decide(actor,npcId,now,binding,entry)
     Signals.changed(npcId) Log.write('DISPATCH','npc='..npcId..' offer='..selected.key..' job='..jobId..' result='..tostring(result))
 end
 
-local function advance(now,discover)
-    if not Probe.ready or not Probe.runtimeReady or not Probe.hasJava() or isClient() or isServer() then return end
+local function advance(now,discover,providerDue,precheckDue)
+    if not Probe.ready or not Probe.runtimeReady or not Probe.hasJava() or not Gate.isSinglePlayer() then return end
     local runtime=Runtime.current() if not runtime or not runtime:accepting() then return end
     load()
     if world.executionSave and world.executionSave.state=='BLOCKED' then return end
     local actor=getSpecificPlayer(0) if not actor or actor:isDead() then return end
-    for _,provider in ipairs(Providers.all()) do
-        if provider.advance then provider.advance({actor=actor,now=now,directory=directory}) end
-    end
-    if now>=nextPrecheck and evaluations:size()>0 then
-    nextPrecheck=now+Config.precheckMs
-    local ops,slices=evaluations:step(128,function(id,e)
-        local binding=eligible(actor,id,e.scopeId)
-        return binding and not Work.hasCargo(actor,id) and (not Work.record(id) or Work.record(id).state=='DONE')
-            and waiting(data.orders[e.orderId],e) and Service.priorities(id).crafting>0
-            and (not e.ready or now<=e.expires and not Wake.changed(e.watch))
-    end,function(id,e,plan,reason)
-        if plan then e.ready=true e.expires=now+1000 readyWorkers[#readyWorkers+1]=id
-        else
-            local scan=decisionScans[id]
-            if scan and reason and (string.find(reason,'UNLOADED',1,true) or string.find(reason,'OBSERV',1,true)
-                or string.find(reason,'SCAN_LIMIT',1,true)) then scan.unknown=true end
-            cool(e.order,id,e,reason,now) signal(e.order,reason) evaluations:remove(id)
+    if providerDue then
+        for _,provider in ipairs(Providers.all()) do
+            if provider.advance then provider.advance({actor=actor,now=now,directory=directory}) end
         end
-    end,getTimestampMs)
-    tickOps,tickSlices=ops,slices
-    local ready=readyWorkers readyWorkers={}
-    for _,id in ipairs(ready) do if evaluations:get(id) then decide(actor,id,now) end end
+    end
+    if precheckDue and CraftingProvider.evaluations():size()>0 then
+        local ops,slices=CraftingProvider.step({
+            actor=actor,now=now,orders=data.orders,
+            eligible=function(a,id,scope) return eligible(a,id,scope) end,
+            hasCargo=function(a,id) return Work.hasCargo(a,id) end,
+            record=function(id) return Work.record(id) end,
+            priorities=function(id) return Service.priorities(id) end,
+            onReady=function(id) readyWorkers[#readyWorkers+1]=id end,
+            cool=cool,signal=signal
+        })
+        tickOps,tickSlices=ops,slices
+        local ready=readyWorkers readyWorkers={}
+        for _,id in ipairs(ready) do if CraftingProvider.pending(id) then decide(actor,id,now) end end
     end
     if not discover then return end
     nextTick=now+Config.discoveryMs nextWake=now+100 dispatchDirty=false
@@ -797,17 +632,20 @@ function Service.tick()
     local now=getTimestampMs()
     local revision=Wake.revision and Wake.revision()
     if revision~=observedWake then observedWake=revision dispatchDirty=true end
-    local discover=now>=nextTick or dispatchDirty and now>=nextWake
-    -- Ordinary discovery and private planning have independent deadlines.
-    -- A missed deadline is never replayed as a burst of catch-up rounds.
+    local discover=now>=nextTick or (dispatchDirty and now>=nextWake)
+    if not discover and now<nextPrecheck then return end
+    local precheckDue=now>=nextPrecheck
     local providerDue=false
-    if now>=nextPrecheck then
-        for _,p in ipairs(Providers.all()) do if p.advance and p.hasWork and p.hasWork() then providerDue=true break end end
+    if precheckDue then
+        nextPrecheck=now+Config.precheckMs
+        for _,p in ipairs(Providers.all()) do
+            if p.advance and p.hasWork and p.hasWork() then providerDue=true break end
+        end
     end
-    if not discover and not providerDue and (evaluations:size()==0 or now<nextPrecheck) then return end
+    if not discover and not providerDue and CraftingProvider.evaluations():size()==0 then return end
     if faultWorld==Registry.data() then return end
     tickOps,tickSlices=0,0
-    local ok,reason=pcall(advance,now,discover)
+    local ok,reason=pcall(advance,now,discover,providerDue,precheckDue)
     metrics:record(getTimestampMs()-now,tickOps,tickSlices)
     if not ok then
         faultWorld=Registry.data()

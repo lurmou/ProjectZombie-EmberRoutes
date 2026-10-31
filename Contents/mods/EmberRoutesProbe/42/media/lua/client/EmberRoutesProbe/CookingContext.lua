@@ -10,7 +10,8 @@ end
 function C.active(c,attemptId)
     return C.current(c,attemptId) and not c.stopping and c.body and c.body.current() and c.valid()
         and EmberRoutesProbeJava.carrierId(c.npc)==c.job.npcId
-        and EmberRoutesProbeJava.carrierActive(c.npc) or false
+        -- Moving under this session is valid; carrierActive requires standing still.
+        and EmberRoutesProbeJava.carrierPresent(c.npc) or false
 end
 function C.publish(c,proposed)
     local ok,job,token=Store.replaceCooking(c.job,c.token,proposed)

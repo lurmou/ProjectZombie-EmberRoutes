@@ -29,7 +29,7 @@ function M.obligations(id)
     end)
     local craft=use('BusinessJobs').crafts()[id]
     if craft and not craft.released then result[#result+1]={kind='CRAFT_PENDING',jobId=craft.id} end
-    local haul=use('Work').record(id)
+    local work=use('Work') local haul=work and work.record and work.record(id)
     if haul and haul.state~='DONE' then result[#result+1]={kind='CARGO_PENDING',jobId=haul.id} end
     return result
 end

@@ -1,11 +1,12 @@
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Filter=require "EmberRoutesProbe/StorageFilter"
 local Rules=require "EmberRoutesProbe/HaulRules"
+local Gate=require "EmberRoutesProbe/RuntimeGate"
 local Config={presets={
     "food","food.meals","food.perishable","food.stable",
     "medical","medical.bandages","medical.pills",
     "weapons","weapons.guns","weapons.ammo",
-    "apparel","tools","materials","trade","scrap",
+    "apparel","literature","tools","materials","trade","scrap",
     "kit.fishing","kit.farming","kit.tailoring","kit.mechanic"
 }}
 local clipboard=setmetatable({},{__mode="k"})
@@ -16,7 +17,7 @@ function Config.text(key)
     return key
 end
 function Config.validate(actor,object,container)
-    if isClient() or isServer() or not actor or actor:isDead() then return nil,"DRIVER_UNAVAILABLE" end
+    if not Gate.canExecute(actor) or not actor then return nil,"DRIVER_UNAVAILABLE" end
     local square=object and object:getSquare()
     if not square or Registry.containerIndex(object,container)==nil or not square:getObjects():contains(object) then return nil,"WORLD_CONTAINER_REQUIRED" end
     if not getCell() or getCell():getGridSquare(square:getX(),square:getY(),square:getZ())~=square then return nil,"CONTAINER_UNLOADED" end

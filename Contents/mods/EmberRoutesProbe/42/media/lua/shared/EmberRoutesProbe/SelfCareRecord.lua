@@ -1,12 +1,13 @@
 -- A recurring personal routine, not a public Order. Attempts are independently
 -- fenced; unresolved attempts/custody cannot be replaced by a later episode.
+local Validate=require 'EmberRoutesProbe/Validate'
 local Record={}
 local kinds={EAT=true,DRINK=true,REST=true,SLEEP=true,STUDY=true,LEISURE=true}
 local steps={IDLE=true,REQUESTED=true,STOP_CONFIRMED=true,ACTING=true,SETTLING=true,
     RESTORE_PENDING=true,RECONCILE_REQUIRED=true}
-local function finite(v) return type(v)=='number' and v==v and math.abs(v)<math.huge end
-local function itemId(v) return finite(v) and v==math.floor(v) end
-local function stringId(v) return type(v)=='string' and #v>0 and #v<=256 end
+local finite=Validate.finite
+local itemId=Validate.itemId
+local stringId=Validate.stringId
 function Record.create(id,npcId)
     return {id=id,npcId=npcId,providerType='SELF_CARE',scopeId='local-world',revision=1,
         state='PREPARING',effects='KNOWN',obligations={},payload={format=1,step='IDLE',sequence=0,claims={}}}
@@ -21,9 +22,13 @@ function Record.valid(job)
         or not require('EmberRoutesProbe/LeisureRecord').memory(p.leisureMemory) then return false end
     if p.activityRef~=nil then
         local a=p.activityRef
+        if type(a)~='table' then return false end
+        if (a.dutyId~=nil or a.dutyFormat~=nil) and not require('EmberRoutesProbe/ActivityDuties').validRef(a) then return false end
         if p.kind~='LEISURE' and p.kind~='STUDY' or type(a)~='table' or not stringId(a.eventId)
             or not stringId(a.id) or not finite(a.controlEpoch) or a.controlEpoch<1 or a.controlEpoch~=math.floor(a.controlEpoch)
-            or not finite(a.revision) or a.revision<1 or a.revision~=math.floor(a.revision) then return false end
+            or not finite(a.revision) or a.revision<1 or a.revision~=math.floor(a.revision)
+            or a.participantEpoch~=nil and (not finite(a.participantEpoch) or a.participantEpoch<1
+                or a.participantEpoch~=math.floor(a.participantEpoch)) then return false end
     end
     local count,seen=0,{}
     for key,value in pairs(p.claims) do

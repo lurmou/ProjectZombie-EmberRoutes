@@ -8,10 +8,19 @@ local nativeTokens={}
 local personalTokens={}
 local cookingTokens={}
 local activityTokens={}
+local fieldTokens={}
 local recoveredGenerations={}
 local recent={}
 local function resources(record)
     local result={} for _,id in ipairs(Manifest.claimItemIds(record)) do result[#result+1]="item:"..id end return result
+end
+local function nativeRecords()
+    local okJobs,BusinessJobs=pcall(require,'EmberRoutesProbe/BusinessJobs')
+    local crafts=okJobs and BusinessJobs and BusinessJobs.crafts and BusinessJobs.crafts() or {}
+    for id,r in pairs(crafts) do
+        if CraftRecord.valid and not CraftRecord.valid(id,r) then error('CRAFT_RECORD_INVALID') end
+    end
+    return crafts
 end
 function Store.data()
     local current=Registry.data()
@@ -47,7 +56,7 @@ function Store.data()
             if not data.tasks[id] or data.tasks[id].npcId~=npcId then error("TASK_INDEX_INVALID") end
         end
         local rebuiltNative={}
-        for npcId,record in pairs(CraftRecord.records(current)) do
+        for npcId,record in pairs(nativeRecords()) do
             if not record.released then
                 local other=data.tasks[data.byNpc[npcId]]
                 if other and other.state~="DONE" then error("NPC_TASK_CONFLICT") end
@@ -91,6 +100,17 @@ function Store.data()
                 end
             end
         end
+        local rebuiltField={}
+        for id,job in pairs(current.taskJobs.byId) do
+            if job.providerType=='FIELD_WORK' then
+                if not require('EmberRoutesProbe/FieldRecord').valid(job) then error('FIELD_RECORD_INVALID') end
+                local token,why=rebuilt:acquire(id,job.payload.sequence,job.payload.claims)
+                if not token then error(why or 'FIELD_CLAIM_CONFLICT') end
+                rebuiltField[id]=token
+                local cap=job.payload.capacity
+                if cap and not rebuilt:restore(token,cap.key,cap.itemId,cap.amount) then error('FIELD_CAPACITY_INVALID') end
+            end
+        end
         -- Publish the cache only after the entire ledger passed validation.
         local generations={}
         for id,record in pairs(data.tasks) do
@@ -104,6 +124,7 @@ function Store.data()
         personalTokens=rebuiltPersonal
         cookingTokens=rebuiltCooking
         activityTokens=rebuiltActivity
+        fieldTokens=rebuiltField
         recoveredGenerations=generations
         recent={}
     end
@@ -227,6 +248,44 @@ function Store.claimActivity(job)
     local token,why=claims:acquire(job.id,job.payload.sequence,saved.payload.claims)
     if token then activityTokens[job.id]=token end return token,why
 end
+-- Field adapters share this same resource authority with cooking/haul/care.
+function Store.claimField(job)
+    Store.data()
+    local saved=root.taskJobs.byId[job.id]
+    if not saved or saved.providerType~='FIELD_WORK' or saved.revision~=job.revision then return nil,'FIELD_JOB_CHANGED' end
+    local token,why=claims:acquire(job.id,saved.payload.sequence,saved.payload.claims)
+    if token then fieldTokens[job.id]=token end
+    return token,why
+end
+function Store.validField(job,token,key)
+    Store.data() local saved=root.taskJobs.byId[job.id]
+    return saved and saved.providerType=='FIELD_WORK' and saved.revision==job.revision
+        and fieldTokens[job.id]==token and token~=nil and (not key or claims:valid(token,key)) or false
+end
+function Store.replaceField(job,token,proposed)
+    if not Store.validField(job,token) or not require('EmberRoutesProbe/FieldRecord').valid(proposed) then return false,'FIELD_JOB_CHANGED' end
+    local old=job.payload.claims
+    local ok,why=claims:replace(token,proposed.payload.claims)
+    if not ok then return false,why end
+    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    ok,why=jobs:update(job.id,job.revision,{state=proposed.state,effects=proposed.effects,
+        obligations=proposed.obligations,payload=proposed.payload})
+    if not ok then assert(claims:replace(token,old),'FIELD_CLAIM_ROLLBACK_FAILED') return false,why end
+    return true,jobs:get(job.id)
+end
+function Store.reserveField(job,token,key,itemId,amount,free)
+    if not Store.validField(job,token) then return false,'FIELD_JOB_CHANGED' end
+    return claims:reserve(token,key,itemId,amount,free)
+end
+function Store.finishField(job)
+    Store.data() local saved=root.taskJobs.byId[job.id]
+    if not saved or saved.providerType~='FIELD_WORK' or saved.effects~='KNOWN'
+        or (saved.state~='DONE' and saved.state~='CANCELLED') or #saved.payload.claims>0 then return false end
+    for _ in pairs(saved.obligations) do return false end
+    local token=fieldTokens[job.id]
+    if token then claims:release(token) fieldTokens[job.id]=nil end
+    return true
+end
 function Store.validActivity(job,token)
     Store.data() local saved=root.taskJobs.byId[job.id]
     return saved and token and activityTokens[job.id]==token and token.generation==saved.payload.sequence
@@ -282,10 +341,10 @@ function Store.claimNative(record)
     if not CraftRecord.valid(record.npcId,record) or record.released then return nil,"CRAFT_RECORD_INVALID" end
     local other=Store.record(record.npcId)
     if other and other.state~="DONE" then return nil,"NPC_TASK_CONFLICT" end
-    local saved=CraftRecord.records(root)[record.npcId]
+    local saved=nativeRecords()[record.npcId]
     if saved and saved~=record and not saved.released then return nil,"OTHER_TASK_RETAINED" end
     if ledger.tasks[record.id] then return nil,"TASK_ID_DUPLICATED" end
-    for _,otherRecord in pairs(CraftRecord.records(root)) do
+    for _,otherRecord in pairs(nativeRecords()) do
         if otherRecord~=record and otherRecord.id==record.id then return nil,"TASK_ID_DUPLICATED" end
     end
     local token,reason=claims:acquire(record.id,record.generation,CraftRecord.resources(record))
@@ -295,14 +354,14 @@ end
 function Store.validNative(record,token,key)
     Store.data()
     return nativeTokens[record.id]==token and token and token.generation==record.generation
-        and CraftRecord.records(root)[record.npcId]==record and not record.released
+        and nativeRecords()[record.npcId]==record and not record.released
         and (not key or claims:valid(token,key))
 end
 function Store.extendNative(record,token)
     Store.data()
     -- An already committed native result still belongs to its paused owner.
     -- This only records originals; it never authorizes a stale physical action.
-    if nativeTokens[record.id]~=token or CraftRecord.records(root)[record.npcId]~=record
+    if nativeTokens[record.id]~=token or nativeRecords()[record.npcId]~=record
         or record.released then return false,"STALE_CLAIM" end
     return claims:extend(token,CraftRecord.resources(record))
 end
@@ -323,7 +382,7 @@ function Store.claim(record)
     Store.data()
     if record.format==2 and #Manifest.claimItemIds(record)==0
         and not (record.producer=='DELIVERY' and record.returnForNextBatch) then return nil,'HAUL_ALREADY_SETTLED' end
-    local native=CraftRecord.records(root)[record.npcId]
+    local native=nativeRecords()[record.npcId]
     if native and not native.released then return nil,"OTHER_TASK_RETAINED" end
     local generation=(record.generation or 0)+1
     local token,reason=claims:acquire(record.id,generation,resources(record))
@@ -373,7 +432,7 @@ function Store.settleHaulLines(record,token,generation,settlements)
 end
 function Store.publish(record)
     local data=Store.data() local previous=Store.record(record.npcId)
-    local native=CraftRecord.records(root)[record.npcId]
+    local native=nativeRecords()[record.npcId]
     if native and not native.released then return false,"OTHER_TASK_RETAINED" end
     if previous and previous~=record then
         if previous.state~="DONE" then return false,"TASK_EXISTS_RESUME_OR_CLEAR" end

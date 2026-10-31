@@ -1,0 +1,26 @@
+local D=require 'EmberRoutesProbe/ActivityDuties'
+local n=0 local function check(v,m) assert(v,m) n=n+1 end
+check(not D.valid({epoch=1}) and not D.valid({epoch=1,serial='bad'}),'invalid saved fields fail without arithmetic errors')
+local d=D.new()
+check(D.clear(d) and D.canIssue(d,1,'j','a1'),'new duty accepts its first attempt')
+assert(D.issue(d,1,'j','a1')) assert(D.issue(d,1,'j','a1'))
+check(d.serial==1 and not D.issue(d,1,'j','a2'),'duplicate issue is idempotent; unresolved attempt cannot be replaced')
+check(not D.record(d,2,'j','a1','SUCCEEDED',true),'old duty epoch is rejected')
+check(not D.record(d,1,'other','a1','SUCCEEDED',true),'foreign owner is rejected')
+check(not D.record(d,1,'j','old','SUCCEEDED',true),'foreign attempt is rejected')
+check(D.record(d,1,'j','a1','FAILED',false) and not D.clear(d),'known result without cleanup does not release the attempt')
+assert(D.record(d,1,'j','a1','UNKNOWN',false))
+check(not D.canIssue(d,1,'j','a1') and not D.record(d,1,'j','a1','SUCCEEDED',true),'unknown effects block issue and implicit reconciliation')
+assert(D.record(d,1,'j','a1','FAILED',true,true))
+check(D.clear(d) and d.lastStatus=='FAILED','explicit owner reconciliation preserves a known failure')
+local accepted,changed=D.record(d,1,'j','a1','FAILED',true)
+check(accepted and not changed and not D.record(d,1,'j','a1','SUCCEEDED',true,true),'duplicate terminal receipt is harmless and failure cannot turn into success')
+assert(D.issue(d,1,'j','a2'))
+check(d.serial==2 and d.lastAttempt=='a1','same duty admits a distinct second attempt after proven cleanup')
+check(not D.record(d,1,'j','a1','UNKNOWN',false) and d.current.attemptId=='a2','late old result cannot alter the next action')
+assert(D.record(d,1,'j','a2','CANCELLED',true))
+check(not D.issue(d,1,'j','a2'),'closed attempt cannot be replayed')
+for i=3,300 do assert(D.issue(d,1,'j','a'..i)) assert(D.record(d,1,'j','a'..i,'SUCCEEDED',true)) end
+local keys=0 for _ in pairs(d) do keys=keys+1 end
+check(keys==5 and d.serial==300 and d.lastAttempt=='a300','bounded record does not accumulate action history')
+print('activity-duties: '..n..' PASS (pure duty references, no native execution)')

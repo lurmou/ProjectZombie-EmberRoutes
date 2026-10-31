@@ -1,9 +1,10 @@
 -- Pure persisted-record contract, shared by craft execution and the one claims authority.
+local Validate=require 'EmberRoutesProbe/Validate'
 local Record={}
 local states={RUNNING=true,PAUSED=true,RECONCILE_REQUIRED=true,DONE=true,CANCELLED=true}
 local phases={COLLECTING=true,CRAFTING=true,COMMITTING=true,CONFIRMED=true,RETURNING=true,
     RECONCILE_REQUIRED=true,DONE=true,CANCELLED=true}
-local function integer(value) return type(value)=="number" and value==value and math.abs(value)~=math.huge and value==math.floor(value) end
+local integer=Validate.integer
 local function production(id,r)
     if not require('EmberRoutesProbe/ProductionYield').valid(r) then return false end
     if r.npcId~=id or type(id)~="string" or type(r.id)~="string" or type(r.requester)~="string"
@@ -106,9 +107,9 @@ function Record.resources(r)
     for _,id in ipairs(r.outputIds) do result[#result+1]="item:"..id end
     return result
 end
-function Record.records(root)
-    local records=require('EmberRoutesProbe/BusinessJobs').crafts()
-    for id,r in pairs(records) do if not Record.valid(id,r) then error('CRAFT_RECORD_INVALID') end end
-    return records
+function Record.validateAll(records)
+    if type(records)~="table" then return false end
+    for id,r in pairs(records) do if not Record.valid(id,r) then return false end end
+    return true
 end
 return Record

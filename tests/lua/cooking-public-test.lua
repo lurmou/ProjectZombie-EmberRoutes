@@ -76,6 +76,9 @@ local Resume=require 'EmberRoutesProbe/TaskResume'
 local Care=require 'EmberRoutesProbe/SelfCareRecord'
 local pot2=f.item('Base.Pot',false,source.container) pot2.fluid=pot.fluid
 function pot2:getFluidContainer() return self.fluid end
+-- Fixture mutations bypass native container events; publish the same stock
+-- invalidation so the shared failure backoff observes these new originals.
+for _,notify in ipairs(Registry.inventoryListeners or {}) do notify(source.id) end
 env.candidates={} provider.discover(env)
 for _=1,300 do
  now=now+50 env.now=now provider.advance({actor=env.actor,now=now}) env.candidates={} provider.discover(env)

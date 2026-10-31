@@ -14,10 +14,18 @@ local CompactSummaryStrip = {}
 local methods = {}
 methods.__index = methods
 
----Resolve a translation key; never falls back to a hardcoded language string.
+---Resolve a translation key; passes variable arguments directly to getTextOrNull.
 ---@param key string
 ---@return string
-local function text(key)
+local function text(key, ...)
+    if select("#", ...) > 0 then
+        local raw = getTextOrNull(key, ...) or key
+        if raw:find("%%d") or raw:find("%%s") then
+            local ok, formatted = pcall(string.format, raw, ...)
+            if ok then return formatted end
+        end
+        return raw
+    end
     return getTextOrNull(key) or key
 end
 
@@ -42,7 +50,7 @@ function CompactSummaryStrip.new(bounds, h, p)
         pct = 0,
         loadedStr = "--",
         alerts = 0,
-        itemsLabel = text("IGUI_EmberRoutesProbe_Settlement_summaryTotalFormat"),
+        itemsLabel = text("IGUI_EmberRoutesProbe_Settlement_summaryTotalFormat", "--", "--"),
         containerText = "",
         loadText = "",
         probeColor = Theme.status.READY,
@@ -59,7 +67,7 @@ end
 
 function methods:updateSubPills()
     local pct = self.pct or 0
-    self.loadText = string.format(text("IGUI_EmberRoutesProbe_Settlement_subPillLoadFormat"), pct)
+    self.loadText = text("IGUI_EmberRoutesProbe_Settlement_subPillLoadFormat", tostring(pct))
 
     if self.state == "UPDATING" then
         self.containerText = text("IGUI_EmberRoutesProbe_Settlement_subPillScanning")
@@ -72,12 +80,12 @@ function methods:updateSubPills()
         self.probeBg = {r = 0.26, g = 0.10, b = 0.10, a = 0.85}
         self.probeBorder = {r = 0.70, g = 0.28, b = 0.26, a = 0.85}
     elseif self.alerts > 0 then
-        self.containerText = string.format(text("IGUI_EmberRoutesProbe_Settlement_subPillContainersAlert"), self.alerts)
+        self.containerText = text("IGUI_EmberRoutesProbe_Settlement_subPillContainersAlert", tostring(self.alerts))
         self.probeColor = Theme.gold
         self.probeBg = {r = 0.20, g = 0.16, b = 0.08, a = 0.85}
         self.probeBorder = {r = 0.60, g = 0.45, b = 0.18, a = 0.85}
     else
-        self.containerText = string.format(text("IGUI_EmberRoutesProbe_Settlement_subPillContainersReady"), tostring(self.loadedStr))
+        self.containerText = text("IGUI_EmberRoutesProbe_Settlement_subPillContainersReady", tostring(self.loadedStr))
         self.probeColor = Theme.status.READY
         self.probeBg = {r = 0.08, g = 0.16, b = 0.12, a = 0.85}
         self.probeBorder = {r = 0.20, g = 0.50, b = 0.35, a = 0.85}
@@ -92,7 +100,7 @@ function methods:setValues(values, totalTypes)
     local types = totalTypes or "--"
 
     -- 1. Format Items Label
-    self.itemsLabel = string.format(text("IGUI_EmberRoutesProbe_Settlement_summaryTotalFormat"), tostring(items), tostring(types))
+    self.itemsLabel = text("IGUI_EmberRoutesProbe_Settlement_summaryTotalFormat", tostring(items), tostring(types))
 
     -- 2. Probe & Container Alerts
     self.loadedStr = values and (values.loaded or values.containers) or "--"

@@ -23,7 +23,7 @@ local function furniture(s)
  function o:getProperties() return {get=function(_,key) if key=='BedType' then return 'goodBed' end end,
   has=function() return self.bed==true end} end
  function o:hasSpriteGrid() return true end
- function o:getSprite() return {getSpriteGrid=function() return {getSpriteCount=function() return 2 end} end} end
+ function o:getSprite() return {getName=function() return self.bed and 'furniture_bedding_01_0' or 'furniture_seating_indoor_01_0' end,getSpriteGrid=function() return {getSpriteCount=function() return 2 end} end} end
  function o:getSpriteGridObjectsIncludingSelf(out) for _,v in ipairs(parts) do out:add(v) end end
  function o:isFurnitureOccupied() return self.occupied==true end
  s.rows[#s.rows+1]=o return o

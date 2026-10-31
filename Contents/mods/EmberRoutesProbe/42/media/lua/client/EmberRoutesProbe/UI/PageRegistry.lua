@@ -111,6 +111,26 @@ PageRegistry.register({
 })
 
 PageRegistry.register({
+    id = "policies",
+    module = "WorkPolicyPage",
+    isTab = true,
+    titleKey = "tab_policies",
+    tooltipKey = "tabNavigation",
+    order = 35,
+    footerText = function() return getText("IGUI_EmberRoutesProbe_Policy_footer") end
+})
+
+PageRegistry.register({
+    id = "activities",
+    module = "ActivityPage",
+    isTab = true,
+    titleKey = "tab_activities",
+    tooltipKey = "tabNavigation",
+    order = 38,
+    footerText = function() return getText("IGUI_EmberRoutesProbe_Activity_footer") end
+})
+
+PageRegistry.register({
     id = "defense",
     module = "DefensePage",
     isTab = true,

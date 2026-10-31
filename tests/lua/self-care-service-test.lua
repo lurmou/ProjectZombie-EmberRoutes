@@ -8,14 +8,15 @@ local npcs={a={isDead=function() return false end},b={isDead=function() return f
 for _,n in pairs(npcs) do n.getX=function() return 1 end n.getY=function() return 1 end n.getZ=function() return 0 end end
 local members=dofile('tests/lua/membership-fixture.lua')(function() return {id='home'} end,{'a','b'})
 members.a.context='FOLLOW' members.b.context='FOLLOW'
-local main={} local item={getID=function() return 9 end,getHungChange=function() return -0.4 end,
+instanceof=function(it,kind) return kind=='Food' end
+local main={} local item={getID=function() return 9 end,getFullType=function() return 'Base.Apple' end,getHungChange=function() return -0.4 end,getHungerChange=function() return -0.4 end,getBaseHunger=function() return -0.4 end,isRotten=function() return false end,isBurnt=function() return false end,isPoison=function() return false end,getPoisonPower=function() return 0 end,isTainted=function() return false end,isCooked=function() return false end,isCookable=function() return false end,isbDangerousUncooked=function() return false end,isFrozen=function() return false end,isSpice=function() return false end,getRequireInHandOrInventory=function() return nil end,
     getContainer=function() return main end}
 local Probe={} package.loaded['EmberRoutesProbe/Boot']=Probe
 package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,
     id=function() serial=serial+1 return 'care'..serial end}
 package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,
     crafts=function() return {a={id='craft',generation=1,state='RUNNING'}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
+package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end,resources=function() return {} end}
 local Store=require 'EmberRoutesProbe/LaborStore'
 local status={a={jobId='craft',kind='PRODUCTION',state='ACTIVE',started=true}}
 local rejected=true local submitted={}

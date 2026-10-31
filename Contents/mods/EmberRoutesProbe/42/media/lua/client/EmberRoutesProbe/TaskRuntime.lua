@@ -105,6 +105,7 @@ function Runtime.new(options)
             if count>=256 then return nil,'RUNTIME_LIMIT' end
             count=count+1 schedule:add(id)
         end
+        Runtime.wake()
         -- Copy the request shape; callers cannot replace callbacks/identity later.
         local copy={} for key,value in pairs(spec) do copy[key]=value end
         copy.binding={id=spec.binding.id,handle=spec.binding.handle}
@@ -150,6 +151,9 @@ function Runtime.new(options)
         if r then
             -- Hot path avoids the per-tick inspect allocation; the full snapshot
             -- is only needed once the scalar state leaves ACTIVE.
+            if pace>0 and now<(businessNext[id] or 0) and r.attached and r.started and not frozen and not retired then
+                return
+            end
             local s=controller:state(r.ticket)
             if s~='ACTIVE' or frozen or retired then
                 local state=controller:inspect(r.ticket)
@@ -317,29 +321,40 @@ function Runtime.new(options)
         for _,id in ipairs(ids) do self:stop(id,'WORLD_RETIRED') end
         return controller:retire(detachedWorld)
     end
+    function api:count() return count end
     return api
 end
 
 -- P1 enables all business/save entrances together. No live player toggle:
 -- switching only Companion would strand managed NPCs in legacy work.
 local world,service,blocked
+local Boot,Registry
+local nextIdleTick=0
+function Runtime.wake() nextIdleTick=0 end
 function Runtime.current()
-    local Probe=require 'EmberRoutesProbe/Boot'
-    if blocked or Probe.controlledExecution~=true or not Probe.ready
-        or Probe.runtimeReady==false or Probe.enabled==false then return nil end
-    local root=require('EmberRoutesProbe/ContainerRegistry').data()
+    Boot=Boot or require 'EmberRoutesProbe/Boot'
+    if blocked or Boot.controlledExecution~=true or not Boot.ready
+        or Boot.runtimeReady==false or Boot.enabled==false then return nil end
+    Registry=Registry or require('EmberRoutesProbe/ContainerRegistry')
+    local root=Registry.data()
     if root~=world then
         if service then service:retire(true) end
         world,service=root,Runtime.new({pace=18,stopped=function(fact)
-            if require('EmberRoutesProbe/ContainerRegistry').data()~=root then return false end
-            return not Probe.taskStopped or Probe.taskStopped(fact)==true
+            if Registry.data()~=root then return false end
+            return not Boot.taskStopped or Boot.taskStopped(fact)==true
         end})
     end
     return service
 end
 function Runtime.tick()
     local active=Runtime.current()
-    if active then active:step() end
+    if not active then return end
+    if active:count()==0 then
+        local now=getTimestampMs()
+        if now<nextIdleTick then return end
+        nextIdleTick=now+50
+    end
+    active:step()
 end
 function Runtime.reset()
     if service then service:retire() end

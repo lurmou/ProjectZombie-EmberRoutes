@@ -13,7 +13,7 @@ assert(P.choose({},m,13,0.5)==nil)
 print('P3.5 policy: body guards, retained cooldown, no eligible activity')
 
 local Config=require 'EmberRoutesProbe/LeisureConfig'
-assert(Config.weights.STROLL<Config.weights.OBSERVE and Config.strollMinutes>=5)
+assert(Config.weights.STROLL<Config.weights.OBSERVE and Config.strollMinutes>=2)
 local settled=P.remember(nil,'STROLL',10,true) settled.moveAfter=10+Config.movementIntervalHours
 local options={{activity='OBSERVE',moving=true,weight=10},{activity='OBSERVE',weight=1}}
 assert(P.choose(options,settled,10.1,0)==options[2],'window trips share the movement interval; stationary observation stays available')

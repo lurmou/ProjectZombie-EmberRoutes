@@ -54,14 +54,9 @@ function EmberRoutesSettlementDashboard:initialise() ISCollapsableWindow.initial
 function EmberRoutesSettlementDashboard:createChildren()
     ISCollapsableWindow.createChildren(self)
     local h,p=self.fontHeight,self.pad
-    local bar=self:titleBarHeight() local width=h*6
-    self.activityButton=ISButton:new(self.width-width-bar*3,0,width,bar,
-        getText('IGUI_EmberRoutesProbe_Activity_title'),self,function(owner)
-            if owner:valid() then require('EmberRoutesProbe/UI/ActivityDialog').open(owner) end
-        end)
-    self.activityButton:initialise() Theme.button(self.activityButton,false) self:addChild(self.activityButton)
+    local bar=self:titleBarHeight()
     self.title=require('EmberRoutesProbe/UI/Text').wrapLimited(self.title,
-        math.max(h*4,self.width-2*(width+bar*3)),UIFont.Small,1)[1] or self.title
+        math.max(h*4,self.width-bar*3),UIFont.Small,1)[1] or self.title
     local regions=assert(Layout.axis({x=0,y=self:titleBarHeight(),width=self.width,height=self.height-self:titleBarHeight()},
         {{basis=h+p},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
     self.pageBounds=regions[2]
@@ -182,8 +177,13 @@ function EmberRoutesSettlementDashboard:close()
     if self.publicDialog then self.publicDialog:close() end
     if self.priorityDialog then self.priorityDialog:close() end
     if opened==self then opened=nil end
-    if self.activityDialog then self.activityDialog:close() end
-    for _,page in pairs(self.pages) do page:dispose() end
+    for _,page in pairs(self.pages) do
+        if page.dispose then
+            page:dispose()
+        elseif page.deactivate then
+            page:deactivate()
+        end
+    end
     for _,button in pairs(self.tabButtons) do Tooltip.clear(button) end
     ISCollapsableWindow.close(self)
     self:removeFromUIManager()

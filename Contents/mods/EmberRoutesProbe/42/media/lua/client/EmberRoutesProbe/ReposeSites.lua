@@ -5,6 +5,7 @@ local Ledger=require 'EmberRoutesProbe/SettlementLedger'
 local Geometry=require 'EmberRoutesProbe/SettlementGeometry'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local Facilities=require 'EmberRoutesProbe/SettlementFacilities'
+local Log=require 'EmberRoutesProbe/Log'
 local Sites={}
 local Seating=_G.SeatingManager
 local function hasSeatData(object)
@@ -12,6 +13,26 @@ local function hasSeatData(object)
     if not sm or not sm.getInstance then return false end
     local ok, count = pcall(function() return sm.getInstance():getTilePositionCount(object) end)
     return ok and type(count) == 'number' and count > 0 or false
+end
+local function isActualBed(object)
+    local sprite = object and object.getSprite and object:getSprite()
+    local spriteName = sprite and sprite:getName() or ""
+    if string.find(spriteName, "^furniture_bedding_") then
+        return true
+    end
+    local props = object and object.getProperties and object:getProperties()
+    if props then
+        local customName = string.lower(tostring(props:get("CustomName") or ""))
+        local padded = " " .. customName .. " "
+        if string.find(customName, "mattress", 1, true)
+            or string.find(padded, " bed ", 1, true)
+            or string.find(padded, " beds ", 1, true)
+            or string.find(customName, "bunk", 1, true)
+            or string.find(customName, "crib", 1, true) then
+            return true
+        end
+    end
+    return false
 end
 local modes={PUBLIC=true,ASSIGNED=true,DISABLED=true}
 local function live(object)
@@ -31,7 +52,17 @@ function Sites.group(object)
     if object.hasSpriteGrid and object:hasSpriteGrid() then
         local sprite=object:getSprite() local grid=sprite and sprite:getSpriteGrid()
         if not grid or grid:getSpriteCount()>16 then return nil,'SITE_UNAVAILABLE' end
-        local list=ArrayList.new() object:getSpriteGridObjectsIncludingSelf(list)
+        local list
+        if ArrayList and ArrayList.new then
+            list = ArrayList.new()
+        elseif _G.ArrayList and _G.ArrayList.new then
+            list = _G.ArrayList.new()
+        else
+            local ok, l = pcall(function() return luautils.getArrayList and luautils.getArrayList() end)
+            if ok and l then list = l end
+        end
+        if not list then return nil,'SITE_UNAVAILABLE' end
+        object:getSpriteGridObjectsIncludingSelf(list)
         if list:size()~=grid:getSpriteCount() then return nil,'SITE_UNLOADED' end
         parts={} for i=0,list:size()-1 do parts[#parts+1]=list:get(i) end
     end
@@ -224,16 +255,18 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
                         if key then
                             local scope=entryForNpc(npcId,parts,entry.id)
                             local distance=(record.x+0.5-npc:getX())^2+(record.y+0.5-npc:getY())^2+(record.z-npc:getZ())^2*4
+                            local isBed=isActualBed(object)
+                            local hasSeat=(seats and seats>0) or hasSeatData(object)
                             local within=not options or (not options.maxDistance or distance<=options.maxDistance^2)
                                 and (not options.sameFloor or record.z==math.floor(npc:getZ()))
-                                and (not options.seatingOnly or hasSeatData(object))
-                                and (not options.excludeBeds or not object:getProperties():has(IsoFlagType.bed))
+                                and (not options.seatingOnly or hasSeat)
+                                and (not options.excludeBeds or not isBed)
                             if within and scope and scope.id==entry.id and permits(p,npcId)
                                 and not excluded[key]
                                 and not occupied(parts,object,npc,kind) then
                                 local qualityScore=kind=='SLEEP' and ({goodBed=3,averageBed=2,badBed=1})[quality] or 0
                                 if kind=='SLEEP' then
-                                    qualityScore=qualityScore+(object:getProperties():has(IsoFlagType.bed) and 20 or #parts>1 and 10 or 0)
+                                    qualityScore=qualityScore+(isBed and 20 or #parts>1 and 10 or 0)
                                 end
                                 local assigned=p.mode=='ASSIGNED' and 1 or 0
                                 local preferred=options and options.preferredPoint
@@ -243,6 +276,13 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
                                     (qualityScore>best.quality or qualityScore==best.quality and distance<best.distance)) then
                                     best={object=object,revision=p.revision,key=key,settlementId=entry.id,
                                         assigned=assigned,preference=preference,quality=qualityScore,distance=distance}
+                                end
+                            else
+                                if kind=='REST' and seats and seats>0 then
+                                    Log.write('REPOSE_SITES', 'Seat candidate rejected at '..tostring(record.x)..','..tostring(record.y)
+                                        ..' within='..tostring(within)..' isBed='..tostring(isBed)..' hasSeat='..tostring(hasSeat)
+                                        ..' scope='..tostring(scope~=nil)..' permits='..tostring(permits(p,npcId))
+                                        ..' excluded='..tostring(excluded[key]==true)..' occupied='..tostring(occupied(parts,object,npc,kind)))
                                 end
                             end
                         end

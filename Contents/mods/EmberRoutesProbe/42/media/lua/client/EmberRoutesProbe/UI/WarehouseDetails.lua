@@ -117,21 +117,27 @@ function Details.new(owner,bounds,presentation)
         if panel.updateTooltip then panel:updateTooltip() end
     end
 
-    -- Pin button at top-right of hero card
+    -- Pin button at top-right of hero card (measured against both states + padded to avoid right overflow)
     local pinTitleDefault = text("pin") or "收藏"
-    local pinW=math.max(60,getTextManager():MeasureStringX(UIFont.Small,text("unpin") or "已收藏")+p)
-    local pinH=math.floor(h*1.35)
-    local pinX=parts[1].x+parts[1].width-pinW-p/2
-    local pinY=parts[1].y+p/3
-    self.pinButton=ISButton:new(pinX,pinY,pinW,pinH,pinTitleDefault,owner,function()
+    local tm = getTextManager()
+    local wPin = tm:MeasureStringX(UIFont.Small, text("pin") or "★ 收藏置顶")
+    local wUnpin = tm:MeasureStringX(UIFont.Small, text("unpin") or "取消置顶")
+    local pinW = math.max(68, math.max(wPin, wUnpin) + p * 2 + 10)
+    local pinH = math.floor(h * 1.35)
+    local pinX = parts[1].x + parts[1].width - pinW - p / 2
+    local pinY = parts[1].y + p / 3
+    self.pinButton = ISButton:new(pinX, pinY, pinW, pinH, pinTitleDefault, owner, function()
         if self.row and owner.togglePin then
             owner:togglePin(self.row)
         end
     end)
     self.pinButton:initialise()
+    if self.pinButton.setWidth then self.pinButton:setWidth(pinW) else self.pinButton.width = pinW end
+    if self.pinButton.setX then self.pinButton:setX(pinX) else self.pinButton.x = pinX end
+    self.pinButtonWidth = pinW
     Theme.button(self.pinButton)
-    Theme.enable(self.pinButton,false)
-    self.pinButton.tooltip=text("pinHint")
+    Theme.enable(self.pinButton, false)
+    self.pinButton.tooltip = text("pinHint")
     owner:addChild(self.pinButton)
 
     -- 3 action buttons: Locate, Cart, Create Order
@@ -193,8 +199,20 @@ function methods:setItem(row)
         self.reservedLabel=""
         self.inTransitLabel=""
     end
-    self.heroTooltip=nil
-    if self.heroPanel then self.heroPanel.tooltip=nil end
+    if row then
+        local srcCount = row.sources and #row.sources or 0
+        local srcStr = tostring(srcCount).." "..text("sources")
+        local tip = (row.label or row.fullType or "")
+        if row.fullType and row.fullType~=row.label then
+            tip = tip.."\n"..row.fullType
+        end
+        tip = tip.."\n"..text("quantity")..": "..tostring(self.stockCount).." ("..srcStr..")"
+        self.heroTooltip = tip
+        if self.heroPanel then self.heroPanel.tooltip = tip end
+    else
+        self.heroTooltip = nil
+        if self.heroPanel then self.heroPanel.tooltip = nil end
+    end
 
     self.sourceHeading=text("sources")..(row and row.sources and (" ("..#row.sources..")") or "")
     self.selectedSource=Cached.reconcile(self.list,row and row.sources or {},function(source)
@@ -214,6 +232,11 @@ function methods:setItem(row)
         local pinTitleDefault=text("pin") or "收藏"
         if self.pinButton.setTitle then self.pinButton:setTitle(pinTitleDefault) else self.pinButton.title=pinTitleDefault end
         Theme.styleButton(self.pinButton,false,false)
+    end
+    if self.pinButtonWidth and self.hero then
+        if self.pinButton.setWidth then self.pinButton:setWidth(self.pinButtonWidth) else self.pinButton.width = self.pinButtonWidth end
+        local clampedX = self.hero.x + self.hero.width - self.pinButtonWidth - (owner.pad or 6) / 2
+        if self.pinButton.setX then self.pinButton:setX(clampedX) else self.pinButton.x = clampedX end
     end
 
     Theme.enable(self.cartButton,row~=nil,true)

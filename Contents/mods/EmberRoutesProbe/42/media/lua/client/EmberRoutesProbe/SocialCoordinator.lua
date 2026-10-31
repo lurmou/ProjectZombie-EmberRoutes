@@ -22,7 +22,7 @@ function S.available(id)
     local job=require('EmberRoutesProbe/TaskJobs').current():forNpc(id,'SELF_CARE')[1]
     if not job or job.payload.step=='IDLE' then return true end
     local p=job.payload
-    return job.effects=='KNOWN' and p.kind=='LEISURE' and p.leisure and not p.leisure.zoneVisit
+    return job.effects=='KNOWN' and p.kind=='LEISURE' and p.leisure and not p.leisure.zoneVisit and not p.leisure.roleDuty
         and (p.leisure.activity=='OBSERVE' or p.leisure.activity=='SOCIAL') and p.step=='ACTING'
 end
 local function validPair(p)

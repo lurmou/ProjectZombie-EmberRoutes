@@ -47,6 +47,7 @@ function Save.load()
     -- BEFORE the runtime may admit any observation or recovery candidate.
     Craft.prepareRecovery()
     Store.data()
+    require('EmberRoutesProbe/FieldWork').prepareRecovery()
     local root=Registry.data()
     if Probe.publicDispatch then require('EmberRoutesProbe/PublicWork').prepareRecovery() end
     if not validReceipt(root.executionSave) then error('SAVE_RECOVERY_FORMAT_INVALID') end
@@ -155,6 +156,8 @@ function Save.candidate(actor,id)
         return Craft.restoreCandidate(actor,id,r.jobId)
     elseif r.kind=='COOKING' then
         return require('EmberRoutesProbe/CookingService').wake(actor,id,r.jobId)
+    elseif r.kind=='FIELD_WORK' then
+        return require('EmberRoutesProbe/FieldWork').wake(actor,id,r.jobId)
     elseif r.kind=='TRANSFER' then
         local job=Store.record(id)
         if job and job.id==r.jobId and job.producer=='DELIVERY' and not job.controlUncertain and not job.activeAttempt then

@@ -41,7 +41,7 @@ assert(spec.nonPreemptive and spec.validate()) assert(spec.start(body))
 spec.tick() assert(queued and not spec.finished())
 require('EmberRoutesProbe/LeisureService').review=function() return true end
 hours=hours+1
-for _=1,200 do now=now+100 queued:update() end
+for _=1,200 do now=now+100 if queued then queued:update() end end
 budget.nodes=16 spec.tick() assert(spec.finished())
 local controller={inspect=function() return {state='STOPPING',npcId='a',jobId='j'} end,
     bodySnapshot=function() return {available=true,nativeStopped=true} end,stopBody=function() return true end}

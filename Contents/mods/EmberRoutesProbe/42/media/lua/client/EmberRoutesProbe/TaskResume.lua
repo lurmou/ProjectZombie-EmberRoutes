@@ -2,7 +2,7 @@
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Resume={}
-local kinds={PRODUCTION='CRAFT',TRANSFER='HAUL',COMPANION='COMPANION',COOKING='COOKING'}
+local kinds={PRODUCTION='CRAFT',TRANSFER='HAUL',COMPANION='COMPANION',COOKING='COOKING',FIELD_WORK='FIELD_WORK'}
 local function epochs()
     local root=Registry.data()
     if root.careCommandEpochs==nil then root.careCommandEpochs={format=1,byNpc={}} end
@@ -29,7 +29,7 @@ function Resume.invalidate(id,reason)
     return true
 end
 local function business(ref,id)
-    if ref.kind=='COOKING' then
+    if ref.kind=='COOKING' or ref.kind=='FIELD_WORK' then
         local j=Jobs.current():peek(ref.jobId)
         if j and j.npcId==id then return {id=j.id,generation=j.revision,
             state=j.state=='SUSPENDED' and 'PAUSED' or j.state,reason=j.payload.reason,uncertain=j.effects~='KNOWN'} end
@@ -90,7 +90,12 @@ function Resume.stopped(fact)
         ref.state='BLOCKED' ref.reason='PREDECESSOR_EFFECT_UNKNOWN_OR_REPLACED'
     else
         local r=business(ref,job.npcId)
-        if ref.kind~='COMPANION' and (not r or r.id~=ref.jobId or r.state~='PAUSED' or r.reason~='SELF_CARE') then
+        local saved=Jobs.current():peek(ref.jobId)
+        local settled=saved and saved.npcId==job.npcId and saved.effects=='KNOWN'
+            and (saved.state=='DONE' or saved.state=='CANCELLED')
+        if settled then for _ in pairs(saved.obligations) do settled=false break end end
+        if settled then ref.state='INVALIDATED' ref.reason='PREDECESSOR_SETTLED'
+        elseif ref.kind~='COMPANION' and (not r or r.id~=ref.jobId or r.state~='PAUSED' or r.reason~='SELF_CARE') then
             ref.state='BLOCKED' ref.reason='PREDECESSOR_CHANGED'
         else ref.state='STOP_CONFIRMED' ref.generation=r and r.generation end
     end
@@ -127,14 +132,15 @@ function Resume.resume(actor,id,careId)
         return false,ok and 'QUEUED' or reason
     end
     local r=business(ref,id)
-    if ref.kind=='COOKING' then
+    if ref.kind=='COOKING' or ref.kind=='FIELD_WORK' then
         local saved=jobs:peek(ref.jobId)
         if not saved or saved.npcId~=id or saved.state=='DONE' or saved.state=='CANCELLED' then
             ref.state='INVALIDATED' ref.reason='COOKING_SETTLED_OR_TRANSFERRED'
             local ok,why=jobs:update(job.id,job.revision,{payload=job.payload}) return ok,why or 'INTENT_SUPERSEDED'
         end
         if not r or r.generation~=ref.generation or r.state~='PAUSED' or r.uncertain then return false,'PREDECESSOR_CHANGED' end
-        if not require('EmberRoutesProbe/CookingService').wake(actor,id,ref.jobId,job.id) then return false,'WAIT' end
+        local service=ref.kind=='COOKING' and require('EmberRoutesProbe/CookingService') or require('EmberRoutesProbe/FieldWork')
+        if not service.wake(actor,id,ref.jobId,job.id) then return false,'WAIT' end
         ref.state='RESTORE_QUEUED'
         local ok,why=jobs:update(job.id,job.revision,{payload=job.payload}) return false,ok and 'QUEUED' or why
     end

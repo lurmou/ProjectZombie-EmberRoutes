@@ -7,7 +7,7 @@ local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Store=require "EmberRoutesProbe/LaborStore"
 local Producers=require "EmberRoutesProbe/LaborProducers"
 local Plan={}
-function Plan.new(entry,npc,spec,record,select,units)
+function Plan.new(entry,npc,spec,record,select,units,options)
     local ids,why=Membership.query(entry) if not ids then return nil,why end
     local self={entry=entry,npc=npc,spec=spec,ids=ids,index=Sort.index(),locations={},position=1,phase="TARGETS",read=0,
         wanted={},demands={},select=select,matched=0}
@@ -72,7 +72,12 @@ function Plan.new(entry,npc,spec,record,select,units)
             local owner=Store.owner(id)
             if (not owner or owner.taskId==record.id) and (not endpoint or
                 (Registry.logistics(endpoint)=="STORAGE" and Registry.accepts(endpoint,item))) then
-                self.match={frames={{candidate={item=item,endpoint=endpoint,npcOnly=endpoint==nil},index=1}},seen={}}
+                local candidate={item=item,endpoint=endpoint,npcOnly=endpoint==nil}
+                if options and options.less then
+                    self.ranked=self.ranked or {}
+                    if #self.ranked>=2048 then return nil,'RANKED_SUPPLY_LIMIT' end
+                    self.ranked[#self.ranked+1]=candidate
+                else self.match={frames={{candidate=candidate,index=1}},seen={}} end
             end
         end
         return true
@@ -81,6 +86,12 @@ function Plan.new(entry,npc,spec,record,select,units)
         if self.done then return true end
         for _=1,budget do
             if self.match then matchStep()
+            elseif self.rankIndex then
+                local candidate=self.ranked[self.rankIndex]
+                if candidate and self.matched<#self.demands then
+                    self.rankIndex=self.rankIndex+1
+                    self.match={frames={{candidate=candidate,index=1}},seen={}}
+                else self.rankIndex=nil self.materials,self.tools,self.finalUsed={},{},{} self.finalIndex=1 end
             elseif self.finalIndex then
                 local demand=self.demands[self.finalIndex]
                 if not demand then self.done=true return true end
@@ -108,7 +119,9 @@ function Plan.new(entry,npc,spec,record,select,units)
                 local id=not (self.select and self.matched==#self.demands) and self.ids[self.position]
                 if not id then
                     if self.select then
-                        self.materials,self.tools,self.finalUsed={},{},{} self.finalIndex=1
+                        if options and options.less then
+                            self.ranked=self.ranked or {} table.sort(self.ranked,options.less) self.rankIndex=1
+                        else self.materials,self.tools,self.finalUsed={},{},{} self.finalIndex=1 end
                     else
                         self.done=true return true
                     end
