@@ -850,4 +850,150 @@ assertTrue(Store.getToken("innocent-craft") ~= nil, "Innocent job holds valid ru
 
 print("PASS Part 5: Two-Pass Cold Boot Recovery with Quarantine Precedence.")
 
+
+-- =========================================================================
+-- Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios
+-- =========================================================================
+print("Starting Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios...")
+
+-- Test 6.1: Stale revision rejection does NOT corrupt or quarantine resources
+local p6Root = {
+    format = 1,
+    taskJobs = { format = 1, byId = {} }
+}
+ContainerRegistry.data = function() return p6Root end
+Store.data()
+
+local jobP6 = {
+    id = "craft-p6-stale",
+    npcId = "npc-p6",
+    providerType = "CRAFT",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "PREPARING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 4,
+        id = "craft-p6-stale",
+        npcId = "npc-p6",
+        sequence = 1,
+        recipeId = "Base.Axe",
+        target = 1,
+        produced = 0,
+        materials = { { id = 7001, consumed = false } },
+        tools = {},
+        outputs = {},
+        claims = { "item:7001" }
+    }
+}
+local okCreateP6, _ = Store.createClaimedJob(jobP6)
+assertTrue(okCreateP6, "createClaimedJob craft-p6-stale")
+
+-- Mutation with stale expected revision (e.g. 999 instead of 1)
+local okStale, errStale = Store.mutateJob("craft-p6-stale", 999, jobP6.payload, {
+    state = "RUNNING",
+    addKeys = { "item:7002" }
+})
+assertFalse(okStale, "mutateJob with stale revision must fail")
+assertEq(errStale, "STALE_REVISION", "Error must be STALE_REVISION")
+assertFalse(Store.owner(7002) ~= nil, "item:7002 must NOT be claimed or quarantined on stale revision")
+
+-- Test 6.2: Dispute reconciliation and unquarantine recovery
+local okQ = Store.quarantineResource("item:8001", "MANUAL_DISPUTE", { reason = "test" })
+assertTrue(okQ, "quarantineResource item:8001")
+assertEq(Store.owner(8001).kind, "SYSTEM_QUARANTINE", "item:8001 is quarantined")
+
+-- Unquarantine via claims instance restores availability
+local claimsInst = Store.claimsInstance()
+claimsInst:unquarantine("item:8001")
+assertFalse(Store.owner(8001) ~= nil, "item:8001 is now unquarantined and unowned")
+
+-- An unquarantined resource can now be extended into craft-p6-stale
+local pExtend = {}
+for k, v in pairs(jobP6.payload) do pExtend[k] = v end
+pExtend.materials = { { id = 7001, consumed = false }, { id = 8001, consumed = false } }
+pExtend.claims = { "item:7001", "item:8001" }
+
+local okExtendAfter, errExtend = Store.mutateJob("craft-p6-stale", 1, pExtend, {
+    addKeys = { "item:8001" }
+})
+assertTrue(okExtendAfter, "mutateJob extend after unquarantine succeeds: " .. tostring(errExtend))
+assertEq(Store.owner(8001).taskId, "craft-p6-stale", "craft-p6-stale now owns unquarantined item:8001")
+
+-- Test 6.3: Format 1 legacy haul job lifecycle & terminal cleanup in JobStore
+local haulF1 = {
+    id = "haul-f1-test",
+    npcId = "npc-haul-f1",
+    providerType = "HAUL",
+    scopeId = "local-world",
+    revision = 1,
+    state = "PREPARING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        id = "haul-f1-test",
+        npcId = "npc-haul-f1",
+        source = "crate-src",
+        destination = "crate-dest",
+        items = { 9001, 9002 },
+        state = "PAUSED",
+        reason = "CREATED",
+        delivered = 0,
+        format = 1,
+        kind = "EXPLICIT_TRANSFER",
+        claims = { "item:9001", "item:9002" }
+    }
+}
+local okCreateF1, _ = Store.createClaimedJob(haulF1)
+assertTrue(okCreateF1, "createClaimedJob format 1 haul job")
+assertTrue(Store.getToken("haul-f1-test") ~= nil, "Token exists for haul-f1-test")
+
+-- Mutate to RUNNING
+local okRunF1, revRunF1 = Store.mutateJob("haul-f1-test", 1, haulF1.payload, {
+    state = "RUNNING"
+})
+assertTrue(okRunF1, "mutateJob haul-f1-test to RUNNING")
+
+-- Mutate to SETTLING then DONE with shrink of all claims
+local pDoneF1 = {}
+for k, v in pairs(haulF1.payload) do pDoneF1[k] = v end
+pDoneF1.delivered = 2
+pDoneF1.claims = {}
+
+local okSetF1, revSetF1 = Store.mutateJob("haul-f1-test", revRunF1, pDoneF1, {
+    state = "SETTLING",
+    removeKeys = { "item:9001", "item:9002" }
+})
+assertTrue(okSetF1, "mutateJob haul-f1-test to SETTLING: " .. tostring(revSetF1))
+
+pDoneF1.state = "DONE"
+local okDoneF1, revDoneF1 = Store.mutateJob("haul-f1-test", revSetF1, pDoneF1, {
+    state = "DONE"
+})
+assertTrue(okDoneF1, "mutateJob haul-f1-test to DONE: " .. tostring(revDoneF1))
+assertFalse(Store.getToken("haul-f1-test") ~= nil, "Token cleaned on terminal DONE for format 1 haul")
+assertFalse(Store.owner(9001) ~= nil, "item:9001 released on DONE")
+assertFalse(Store.owner(9002) ~= nil, "item:9002 released on DONE")
+
+-- Test 6.4: Capacity reserve bounds (negative, NaN, overflow)
+local dummyToken = Store.getToken("craft-p6-stale")
+assertTrue(dummyToken ~= nil, "craft-p6-stale token available")
+local okNeg, errNeg = claimsInst:reserve(dummyToken, "cap-target", 7001, 10, -5)
+assertFalse(okNeg, "Negative free capacity must be rejected")
+assertEq(errNeg, "CAPACITY_UNAVAILABLE", "Rejection reason is CAPACITY_UNAVAILABLE")
+
+local okNan, errNan = claimsInst:reserve(dummyToken, "cap-target", 7001, 0/0, 100)
+assertFalse(okNan, "NaN amount must be rejected")
+assertEq(errNan, "CAPACITY_UNAVAILABLE", "Rejection reason is CAPACITY_UNAVAILABLE")
+
+local okOverflow, errOverflow = claimsInst:reserve(dummyToken, "cap-target", 7001, 200, 100)
+assertFalse(okOverflow, "Exceeding free capacity must be rejected")
+assertEq(errOverflow, "CAPACITY_RESERVED", "Rejection reason is CAPACITY_RESERVED")
+
+local okValidCap, _ = claimsInst:reserve(dummyToken, "cap-target", 7001, 50, 100)
+assertTrue(okValidCap, "Valid reservation within bounds must succeed")
+
+print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")
+
 print("PASS: All Phase 3A Stage B LaborClaims & LaborStore tests passed successfully!")

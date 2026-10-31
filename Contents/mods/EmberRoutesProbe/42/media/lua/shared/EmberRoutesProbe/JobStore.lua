@@ -48,6 +48,9 @@ local function valid(job)
     elseif job.providerType=='HAUL' then
         local p = job.payload
         if p and p.format == 3 then return require('EmberRoutesProbe/HaulJobRecord').valid(job) end
+        if p and p.format == 1 then
+            return type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'
+        end
         return require('EmberRoutesProbe/HaulManifest').valid(job.payload)
     end
     return true
