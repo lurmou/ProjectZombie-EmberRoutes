@@ -116,6 +116,10 @@ function Store.data()
         if current.toolCustody and current.toolCustody.byId then
             local CustodyRecord=require('EmberRoutesProbe/ToolCustodyRecord')
             for id,entry in pairs(current.toolCustody.byId) do
+                if entry.state=='PENDING_RETURN' then
+                    entry.state='HELD'
+                    entry.returnJobId=nil
+                end
                 if not CustodyRecord.valid(entry) then error('TOOL_CUSTODY_RECORD_INVALID') end
                 local token,why=rebuilt:acquire(id,entry.sequence,entry.claims)
                 if not token then error(why or 'TOOL_CUSTODY_CLAIM_CONFLICT') end
@@ -298,6 +302,11 @@ function Store.finishField(job)
     for _ in pairs(saved.obligations) do return false end
     local token=fieldTokens[job.id]
     if token then claims:release(token) fieldTokens[job.id]=nil end
+    if root.toolCustody and root.toolCustody.byId then
+        for _,c in pairs(root.toolCustody.byId) do
+            if c.activeJobId==job.id then c.activeJobId=nil end
+        end
+    end
     return true
 end
 function Store.validActivity(job,token)
@@ -543,7 +552,7 @@ function Store.validToolUse(npcId,jobId,itemId)
     if owner.taskId==jobId then return true end
     if root.toolCustody and root.toolCustody.byItem then
         local c=root.toolCustody.byItem[itemId]
-        if c and tostring(c.npcId)==npcId and owner.taskId==c.id and c.activeJobId==jobId then
+        if c and tostring(c.npcId)==npcId and owner.taskId==c.id and c.activeJobId==jobId and c.state~='PENDING_RETURN' then
             return true
         end
     end
@@ -631,5 +640,73 @@ end
 function Store.custodyByItem(itemId)
     Store.data()
     return root.toolCustody and root.toolCustody.byItem and root.toolCustody.byItem[itemId] or nil
+end
+function Store.assignToolReturn(custodyId,returnJobId)
+    Store.data()
+    local custodyStore=root.toolCustody
+    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
+    if not entry then return false,'CUSTODY_NOT_FOUND' end
+    if entry.state~='HELD' and entry.state~='RESERVED' then return false,'INVALID_CUSTODY_STATE' end
+    if entry.returnJobId and entry.returnJobId~=returnJobId then return false,'ALREADY_RETURNING' end
+    entry.state='PENDING_RETURN'
+    entry.returnJobId=returnJobId
+    entry.activeJobId=nil
+    return true,entry
+end
+function Store.abortToolReturn(custodyId,returnJobId)
+    Store.data()
+    local custodyStore=root.toolCustody
+    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
+    if not entry then return false,'CUSTODY_NOT_FOUND' end
+    if entry.returnJobId==returnJobId and entry.state=='PENDING_RETURN' then
+        entry.state='HELD'
+        entry.returnJobId=nil
+        return true
+    end
+    return false,'NOT_IN_RETURN_STATE'
+end
+function Store.completeCustodyReturn(custodyId,returnJobId,destinationId,item)
+    Store.data()
+    local custodyStore=root.toolCustody
+    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
+    if not entry then return false,'CUSTODY_NOT_FOUND' end
+    if entry.returnJobId~=returnJobId or entry.state~='PENDING_RETURN' then
+        return false,'RETURN_JOB_MISMATCH'
+    end
+    if not item or item:getID()~=entry.itemId then
+        return false,'RETURN_ITEM_MISMATCH'
+    end
+    local Registry=require('EmberRoutesProbe/ContainerRegistry')
+    local endpoint=Registry.resolve(destinationId,'put','local-world')
+    if not endpoint or not endpoint.container then
+        return false,'DESTINATION_NOT_RESOLVED'
+    end
+    local container=endpoint.container
+    if item:getContainer()~=container or not container:getItems():contains(item) then
+        return false,'ITEM_NOT_IN_DESTINATION'
+    end
+    local token=custodyTokens[custodyId]
+    if token then
+        claims:release(token)
+        custodyTokens[custodyId]=nil
+    end
+    custodyStore.byId[custodyId]=nil
+    if custodyStore.byNpc[entry.npcId] then
+        custodyStore.byNpc[entry.npcId][custodyId]=nil
+    end
+    custodyStore.byItem[entry.itemId]=nil
+    Registry.inventoryChanged(container)
+    return true
+end
+function Store.markNpcCustodiesDead(npcId)
+    Store.data()
+    npcId=tostring(npcId)
+    local list=Store.custodyForNpc(npcId)
+    for _,c in ipairs(list) do
+        c.state='DEAD_CARRIER'
+        c.activeJobId=nil
+        c.returnJobId=nil
+    end
+    return #list
 end
 return Store

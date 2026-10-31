@@ -395,6 +395,7 @@ Providers.register(require 'EmberRoutesProbe/CleaningProvider')
 Providers.register(require 'EmberRoutesProbe/FarmingProvider')
 Providers.register(require 'EmberRoutesProbe/LumberjackProvider')
 Providers.register(require 'EmberRoutesProbe/ForagerProvider')
+Providers.register(require 'EmberRoutesProbe/ToolReturnProvider')
 
 local function reconcile()
     for _,p in ipairs(Providers.all()) do
@@ -454,14 +455,16 @@ local function eligible(actor,npcId,scope)
     if require('EmberRoutesProbe/ActivityAttendance').blocksOrdinary(npcId) then return end
     local binding=Driver.bindId(actor,npcId)
     local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
-    if not binding or not binding.handle or Work.busy(npcId)
+    local ToolReturnService=require 'EmberRoutesProbe/ToolReturnService'
+    local returningInterruptible=ToolReturnService and ToolReturnService.canInterrupt and ToolReturnService.canInterrupt(npcId)
+    if not binding or not binding.handle or (Work.busy(npcId) and not returningInterruptible)
         or Probe.careBlocksWork and Probe.careBlocksWork(npcId) and not probing then return end
     if require('EmberRoutesProbe/CookingProvider').retained(npcId) then return end
     if require('EmberRoutesProbe/FieldWork').retained(npcId) then return end
     local existing=business().crafts()[npcId]
     if existing and not existing.released then return end
     local npc=binding.handle
-    if not probing and not npc:getCharacterActions():isEmpty() or npc:getBodyDamage():getOverallBodyHealth()<95 then return end
+    if not probing and not returningInterruptible and not npc:getCharacterActions():isEmpty() or npc:getBodyDamage():getOverallBodyHealth()<95 then return end
     Members=Members or require 'EmberRoutesProbe/MembershipService'
     local M=Members
     local eligible=M.check(npcId,'WORK',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=scope})
@@ -577,6 +580,10 @@ local function decide(actor,npcId,now,binding,entry)
     end
     if not selected then return end
     CraftingProvider.cancel(npcId)
+    local ToolReturnService=require 'EmberRoutesProbe/ToolReturnService'
+    if selected.category~='toolReturn' and ToolReturnService.canInterrupt(npcId) then
+        ToolReturnService.interrupt(npcId,'PREEMPTED_BY_'..string.upper(selected.category))
+    end
     local result
     local provider=Providers.get(selected.category)
     if provider and provider.claim then

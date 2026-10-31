@@ -3,7 +3,7 @@
 local Validate=require 'EmberRoutesProbe/Validate'
 local R={}
 
-local validStates={RESERVED=true,HELD=true,PENDING_RETURN=true}
+local validStates={RESERVED=true,HELD=true,PENDING_RETURN=true,DEAD_CARRIER=true,RECONCILE_REQUIRED=true}
 
 function R.valid(entry)
     if type(entry)~='table' then return false end
@@ -15,6 +15,7 @@ function R.valid(entry)
     if not validStates[entry.state] then return false end
     if not Validate.integer(entry.sequence,0) then return false end
     if entry.activeJobId~=nil and not Validate.stringId(entry.activeJobId) then return false end
+    if entry.returnJobId~=nil and not Validate.stringId(entry.returnJobId) then return false end
     if entry.sourceContainerId~=nil and not Validate.stringId(entry.sourceContainerId) then return false end
     if type(entry.claims)~='table' or #entry.claims~=1 or entry.claims[1]~=('item:'..entry.itemId) then
         return false

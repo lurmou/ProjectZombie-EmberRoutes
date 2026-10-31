@@ -150,7 +150,12 @@ function S.advance(id,actor,obligations,bodyOwned)
     if c.kind=='FOLLOW' and (not actor or actor:isDead() or S.character(actor)~=c.leaderId) then
         r.reason='LEADER_LOST' return false
     end
+    local hasToolCustody=false
+    for _,o in ipairs(obligations or {}) do
+        if o.kind=='TOOL_CUSTODY' then hasToolCustody=true break end
+    end
     local changing=c.kind=='UNASSIGN' or ((c.kind=='TRANSFER' or c.kind=='SETTLE') and c.settlementId~=r.settlementId)
+        or (c.kind=='FOLLOW' and hasToolCustody)
     if changing and #obligations>0 then r.reason='OBLIGATION_PENDING' r.obligations=copy(obligations) return false end
     if c.kind=='SETTLE' or c.kind=='TRANSFER' then
         local e=Ledger.data().entries[c.settlementId]

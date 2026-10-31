@@ -270,7 +270,19 @@ function F.provider(def)
         local binding=Driver.bindId(env.actor,npcId) if not binding or not Driver.valid(binding) then return 'BINDING_INVALID' end
         local target,keys,why=def.claim(selected,binding.handle,env.entry)
         if not target then return why or 'FIELD_TARGET_CHANGED' end
-        for _,key in ipairs(keys) do if Store.resourceOwner(key) then return 'FIELD_RESOURCE_RESERVED' end end
+        local function rollbackCustodies()
+            if target.createdCustodies then
+                for _,cid in ipairs(target.createdCustodies) do Store.releaseCustody(cid) end
+            elseif target.toolSupply and target.toolSupply.requirements then
+                for _,req in ipairs(target.toolSupply.requirements) do Store.releaseCustody(req.custodyId) end
+            end
+        end
+        for _,key in ipairs(keys) do
+            if Store.resourceOwner(key) then
+                rollbackCustodies()
+                return 'FIELD_RESOURCE_RESERVED'
+            end
+        end
         local j={id=jobId,npcId=npcId,providerType='FIELD_WORK',scopeId=env.entry.id,
             revision=1,state='PREPARING',effects='KNOWN',obligations={work=true},
             payload={format=1,category=def.category,offerKey=selected.key,target=target,
@@ -278,9 +290,7 @@ function F.provider(def)
                 toolSupply=target.toolSupply}}
         local ok,err=Jobs.current():create(j)
         if not ok then
-            if target.toolSupply and target.toolSupply.requirements then
-                for _,req in ipairs(target.toolSupply.requirements) do Store.releaseCustody(req.custodyId) end
-            end
+            rollbackCustodies()
             return err
         end
         if target.tools then
@@ -293,9 +303,7 @@ function F.provider(def)
         end
         local token=Store.claimField(Jobs.current():get(jobId))
         if not token then
-            if target.toolSupply and target.toolSupply.requirements then
-                for _,req in ipairs(target.toolSupply.requirements) do Store.releaseCustody(req.custodyId) end
-            end
+            rollbackCustodies()
             local saved=Jobs.current():get(jobId)
             saved.payload.claims={} saved.payload.phase='SETTLED' saved.payload.toolSupply=nil
             assert(Jobs.current():update(jobId,saved.revision,{state='SETTLING',payload=saved.payload,obligations={}}))

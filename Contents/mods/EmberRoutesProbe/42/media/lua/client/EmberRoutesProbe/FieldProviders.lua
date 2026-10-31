@@ -17,6 +17,7 @@ local function claim(category,selected,npc,entry,jobId)
     t.tools={}
     local npcId=tostring((npc.getDescriptor and npc:getDescriptor():getID()) or 0)
     local toolSupplyReqs={}
+    local createdCustodies={}
     for _,req in ipairs(supplies.requirements) do
         local itemId=req.item:getID()
         t.tools[#t.tools+1]=itemId
@@ -26,12 +27,20 @@ local function claim(category,selected,npc,entry,jobId)
                 if jobId then Store.assignToolUse(existing.id,jobId) end
             else
                 local custody,err=Store.claimCustody(npcId,itemId,req.role,nil,jobId)
-                if not custody then return nil,nil,err or 'TOOL_CUSTODY_CONFLICT' end
+                if not custody then
+                    for _,cid in ipairs(createdCustodies) do Store.releaseCustody(cid) end
+                    return nil,nil,err or 'TOOL_CUSTODY_CONFLICT'
+                end
                 custody.state='HELD'
+                createdCustodies[#createdCustodies+1]=custody.id
             end
         else
             local custody,err=Store.claimCustody(npcId,itemId,req.role,req.endpoint.id,jobId)
-            if not custody then return nil,nil,err or 'TOOL_CUSTODY_CONFLICT' end
+            if not custody then
+                for _,cid in ipairs(createdCustodies) do Store.releaseCustody(cid) end
+                return nil,nil,err or 'TOOL_CUSTODY_CONFLICT'
+            end
+            createdCustodies[#createdCustodies+1]=custody.id
             toolSupplyReqs[#toolSupplyReqs+1]={
                 role=req.role,
                 itemId=itemId,
@@ -40,6 +49,7 @@ local function claim(category,selected,npc,entry,jobId)
             }
         end
     end
+    t.createdCustodies=createdCustodies
     if #toolSupplyReqs>0 then
         t.toolSupply={requirements=toolSupplyReqs}
     end

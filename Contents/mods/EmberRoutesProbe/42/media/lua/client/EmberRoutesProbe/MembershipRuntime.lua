@@ -31,6 +31,15 @@ function M.obligations(id)
     if craft and not craft.released then result[#result+1]={kind='CRAFT_PENDING',jobId=craft.id} end
     local work=use('Work') local haul=work and work.record and work.record(id)
     if haul and haul.state~='DONE' then result[#result+1]={kind='CARGO_PENDING',jobId=haul.id} end
+    local okStore,store=pcall(use,'LaborStore')
+    if okStore and store and store.custodyForNpc then
+        local okCustodies,custodies=pcall(store.custodyForNpc,id)
+        if okCustodies and type(custodies)=='table' then
+            for _,c in ipairs(custodies) do
+                result[#result+1]={kind='TOOL_CUSTODY',custodyId=c.id,itemId=c.itemId,state=c.state,role=c.role,sourceId=c.sourceContainerId}
+            end
+        end
+    end
     return result
 end
 function M.changed(id)
@@ -57,6 +66,26 @@ local function recover(id,actor,row,runtime,now)
     local craft=use('BusinessJobs').crafts()[id]
     if craft and craft.state=='PAUSED' and not craft.released and not craft.uncertain and not craft.controlUncertain then
         use('Production').execute(actor,'resume',nil,id,{nonPreemptive=true})
+        return
+    end
+    local okStore,store=pcall(use,'LaborStore')
+    if okStore and store and store.custodyForNpc then
+        local okCustodies,custodies=pcall(store.custodyForNpc,id)
+        if okCustodies and type(custodies)=='table' then
+            local hasCustody=false
+            for _,c in ipairs(custodies) do
+                if c.state=='HELD' and not c.activeJobId and not c.returnJobId then
+                    hasCustody=true break
+                end
+            end
+            if hasCustody then
+                local okSvc,svc=pcall(use,'ToolReturnService')
+                if okSvc and svc and svc.recoverFor then
+                    svc.recoverFor(actor,id)
+                    return
+                end
+            end
+        end
     end
 end
 local function advance(id,actor,runtime,now)
