@@ -455,6 +455,137 @@ assertFalse(Store.owner(302) ~= nil, "item:302 released on DONE")
 assertFalse(Store.owner(305) ~= nil, "item:305 released on DONE")
 assertFalse(Store.getToken("craft-stage-b-1") ~= nil, "Token removed on terminal state")
 
+-- Test 4.4: B.3 - CAS failure isolates real added resource without fictitious key
+local casJob = {
+    id = "craft-cas-fail",
+    npcId = "npc-cas",
+    providerType = "CRAFT",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "PREPARING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 4,
+        id = "craft-cas-fail",
+        npcId = "npc-cas",
+        sequence = 1,
+        recipeId = "Base.MakeAxe",
+        target = 1,
+        produced = 0,
+        materials = { { id = 4001, consumed = false } },
+        tools = {},
+        outputs = {},
+        claims = { "item:4001" }
+    }
+}
+local okCreateCas, idCas = Store.createClaimedJob(casJob)
+assertTrue(okCreateCas, "createClaimedJob for CAS test: " .. tostring(idCas))
+
+-- Now simulate a CAS collision by passing an invalid payload that causes store:update to fail
+local badPayload = {
+    format = 4,
+    id = "craft-cas-fail",
+    npcId = "npc-cas",
+    sequence = 2,
+    recipeId = "Base.MakeAxe",
+    target = 1,
+    produced = 1,
+    materials = { { id = 4001, consumed = false } },
+    tools = {},
+    outputs = { { id = 9001, delivered = false } },
+    claims = { "item:4001", "item:9001" },
+    released = "INVALID_TYPE_EXPECTED_BOOLEAN" -- Schema violation causes JobStore:update to fail
+}
+
+local okMutFail, errMutFail = Store.mutateJob("craft-cas-fail", 1, badPayload, {
+    state = "RUNNING",
+    addKeys = { "item:9001" }
+})
+assertFalse(okMutFail, "mutateJob with bad payload must fail CAS")
+assertTrue(string.find(errMutFail, "CAS_FAILED_ISOLATED") ~= nil, "Error indicates CAS failure")
+
+-- CRITICAL B.3 VERIFICATION:
+-- 1. Real added item 9001 MUST be quarantined!
+local owner9001 = Store.owner(9001)
+assertTrue(owner9001 ~= nil, "Real item 9001 must have owner")
+assertEq(owner9001.kind, "SYSTEM_QUARANTINE", "Real item 9001 MUST be SYSTEM_QUARANTINE")
+
+-- 2. Fictitious key "craft-cas-fail:mutation_fail" MUST NOT exist!
+local fakeOwner = Store.resourceOwner("craft-cas-fail:mutation_fail")
+assertFalse(fakeOwner ~= nil, "Fictitious key MUST NOT be quarantined")
+
+-- 3. The job must be demoted to RECONCILE_REQUIRED
+local storeInstance = TaskJobs.current()
+local demotedJob = storeInstance:get("craft-cas-fail")
+assertEq(demotedJob.state, "RECONCILE_REQUIRED", "Job demoted to RECONCILE_REQUIRED on CAS failure")
+assertEq(demotedJob.effects, "UNKNOWN", "Job effects demoted to UNKNOWN")
+
+-- Test 4.5: B.3 - Terminal cleanup cleans up all token dictionaries
+local CookingRecord = require 'EmberRoutesProbe/CookingRecord'
+local cookJobLife = CookingRecord.new("cook-lifecycle", "npc-life", "settlement-1", "Soup", "AUTO", "policy:base", 0.5, 0.5)
+cookJobLife.payload.assets = { { id = 5001, fullType = "Base.Pot", custody = "HELD", role = "TOOL" } }
+cookJobLife.payload.claims = { "item:5001" }
+
+local okCreateLife, _ = Store.createClaimedJob(cookJobLife)
+assertTrue(okCreateLife, "createClaimedJob cook-lifecycle")
+assertTrue(Store.getToken("cook-lifecycle") ~= nil, "Token exists for cook-lifecycle")
+
+local pCookSettling = CookingRecord.copy(cookJobLife.payload)
+pCookSettling.phase = "RETURNING"
+pCookSettling.claims = {}
+pCookSettling.assets[1].custody = "RETURNED"
+
+-- Advance to SETTLING then DONE
+local okSetLife, revSetLife = Store.mutateJob("cook-lifecycle", 1, pCookSettling, {
+    state = "SETTLING",
+    removeKeys = { "item:5001" }
+})
+assertTrue(okSetLife, "mutateJob to SETTLING: " .. tostring(revSetLife))
+
+local pCookDone = CookingRecord.copy(pCookSettling)
+pCookDone.phase = "SETTLED"
+local okDoneLife, revDoneLife = Store.mutateJob("cook-lifecycle", revSetLife, pCookDone, {
+    state = "DONE"
+})
+assertTrue(okDoneLife, "mutateJob to DONE: " .. tostring(revDoneLife))
+-- Verification: Token is completely cleaned from all dictionaries
+assertFalse(Store.getToken("cook-lifecycle") ~= nil, "Token removed from all dictionaries on terminal state")
+assertFalse(Store.owner(5001) ~= nil, "item:5001 released on DONE")
+
+-- Test 4.6: B.3 - mutateJob rejects shrink failure without silent ignore
+local testShrinkJob = {
+    id = "craft-shrink-test",
+    npcId = "npc-shrink",
+    providerType = "CRAFT",
+    scopeId = "settlement-1",
+    revision = 1,
+    state = "PREPARING",
+    effects = "KNOWN",
+    obligations = {},
+    payload = {
+        format = 4,
+        id = "craft-shrink-test",
+        npcId = "npc-shrink",
+        sequence = 1,
+        recipeId = "Base.MakeAxe",
+        target = 1,
+        produced = 0,
+        materials = { { id = 6001, consumed = false } },
+        tools = {},
+        outputs = {},
+        claims = { "item:6001" }
+    }
+}
+Store.createClaimedJob(testShrinkJob)
+
+-- Try to shrink an unowned key item:99999
+local okBadShrink, errBadShrink = Store.mutateJob("craft-shrink-test", 1, testShrinkJob.payload, {
+    removeKeys = { "item:99999" }
+})
+assertFalse(okBadShrink, "mutateJob with invalid shrink MUST fail")
+assertTrue(string.find(errBadShrink, "SHRINK_FAILED") ~= nil, "Error indicates SHRINK_FAILED: " .. tostring(errBadShrink))
+
 print("PASS Part 4: Store.mutateJob CAS & Resource Lifecycle.")
 
 -- =========================================================================

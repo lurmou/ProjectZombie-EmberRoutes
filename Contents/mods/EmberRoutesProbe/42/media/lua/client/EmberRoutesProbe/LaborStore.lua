@@ -402,10 +402,20 @@ function Store.owner(itemId) Store.data() return snapshotOwner(claims.owners["it
 function Store.resourceOwner(key) Store.data() return snapshotOwner(claims.owners[key]) end
 function Store.claimsVersion() Store.data() return claims.revision end
 function Store.claimsInstance() Store.data() return claims end
+local function cleanToken(jobId)
+    if not jobId then return end
+    if tokens then tokens[jobId] = nil end
+    if nativeTokens then nativeTokens[jobId] = nil end
+    if personalTokens then personalTokens[jobId] = nil end
+    if cookingTokens then cookingTokens[jobId] = nil end
+    if activityTokens then activityTokens[jobId] = nil end
+    if fieldTokens then fieldTokens[jobId] = nil end
+    if custodyTokens then custodyTokens[jobId] = nil end
+end
 function Store.getToken(jobId)
     Store.data()
     if claims.tokensByTaskId and claims.tokensByTaskId[jobId] then return claims.tokensByTaskId[jobId] end
-    return tokens[jobId] or nativeTokens[jobId] or personalTokens[jobId] or cookingTokens[jobId] or activityTokens[jobId] or fieldTokens[jobId]
+    return tokens[jobId] or nativeTokens[jobId] or personalTokens[jobId] or cookingTokens[jobId] or activityTokens[jobId] or fieldTokens[jobId] or (custodyTokens and custodyTokens[jobId])
 end
 function Store.quarantineResource(key,reason,evidence)
     Store.data()
@@ -455,38 +465,55 @@ function Store.createClaimedJob(job)
         claims:release(token)
         return false,'JOB_CREATE_FAILED_ROLLED_BACK:'..tostring(err)
     end
-    tokens[job.id]=token
-    return true,job.id
+    tokens[job.id] = token
+    if job.providerType == 'COOKING' then cookingTokens[job.id] = token
+    elseif job.providerType == 'FIELD_WORK' then fieldTokens[job.id] = token
+    elseif job.providerType == 'SELF_CARE' then personalTokens[job.id] = token
+    elseif job.providerType == 'ACTIVITY' then activityTokens[job.id] = token
+    end
+    return true, job.id
 end
-function Store.mutateJob(jobId,expectedRevision,proposedPayload,mutation)
+function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
     Store.data()
-    local TaskJobs=require('EmberRoutesProbe/TaskJobs')
-    local store=TaskJobs.current()
-    local job=store:get(jobId)
-    if not job or job.revision~=expectedRevision then return false,'STALE_REVISION' end
-    local token=claims.tokensByTaskId and claims.tokensByTaskId[jobId] or tokens[jobId]
-    if not token then return false,'NO_RUNTIME_TOKEN' end
-    if mutation and mutation.addKeys and #mutation.addKeys>0 then
-        local okExt,whyExt=claims:extend(token,mutation.addKeys)
-        if not okExt then return false,'EXTEND_FAILED:'..tostring(whyExt) end
+    local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+    local store = TaskJobs.current()
+    local job = store:get(jobId)
+    if not job or job.revision ~= expectedRevision then return false, 'STALE_REVISION' end
+    local token = Store.getToken(jobId)
+    if not token then return false, 'NO_RUNTIME_TOKEN' end
+    if mutation and mutation.addKeys and #mutation.addKeys > 0 then
+        local okExt, whyExt = claims:extend(token, mutation.addKeys)
+        if not okExt then return false, 'EXTEND_FAILED:' .. tostring(whyExt) end
     end
-    local patch={payload=proposedPayload}
-    if mutation and mutation.state then patch.state=mutation.state end
-    if mutation and mutation.effects then patch.effects=mutation.effects end
-    if mutation and mutation.generation then patch.generation=mutation.generation end
-    local okCAS,nextRev=store:update(jobId,expectedRevision,patch)
+    local patch = { payload = proposedPayload }
+    if mutation and mutation.state then patch.state = mutation.state end
+    if mutation and mutation.effects then patch.effects = mutation.effects end
+    if mutation and mutation.obligations then patch.obligations = mutation.obligations end
+    local okCAS, nextRev = store:update(jobId, expectedRevision, patch)
     if not okCAS then
-        Store.quarantineResource(jobId..":mutation_fail","CAS_FAILED",{jobId=jobId,rev=expectedRevision})
-        return false,'CAS_FAILED_ISOLATED:'..tostring(nextRev)
+        if mutation and mutation.addKeys and #mutation.addKeys > 0 then
+            for _, addKey in ipairs(mutation.addKeys) do
+                Store.quarantineResource(addKey, "CAS_FAILED", {
+                    jobId = jobId,
+                    rev = expectedRevision,
+                    why = tostring(nextRev)
+                })
+            end
+        end
+        store:update(jobId, expectedRevision, { state = 'RECONCILE_REQUIRED', effects = 'UNKNOWN' })
+        return false, 'CAS_FAILED_ISOLATED:' .. tostring(nextRev)
     end
-    if mutation and mutation.removeKeys and #mutation.removeKeys>0 then
-        claims:shrink(token,mutation.removeKeys)
+    if mutation and mutation.removeKeys and #mutation.removeKeys > 0 then
+        local okShrink, whyShrink = claims:shrink(token, mutation.removeKeys)
+        if not okShrink then
+            return false, 'SHRINK_FAILED:' .. tostring(whyShrink)
+        end
     end
-    if patch.state=='DONE' or patch.state=='CANCELLED' then
+    if patch.state == 'DONE' or patch.state == 'CANCELLED' then
         claims:release(token)
-        if tokens then tokens[jobId]=nil end
+        cleanToken(jobId)
     end
-    return true,nextRev
+    return true, nextRev
 end
 function Store.updateJobPayload(jobId,expectedRevision,proposedPayload,mutation)
     return Store.mutateJob(jobId,expectedRevision,proposedPayload,mutation)
@@ -574,7 +601,7 @@ function Store.finishCooking(job,token)
     local saved=root.taskJobs.byId[job.id]
     if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.payload.phase~='SETTLED'
         or saved.effects~='KNOWN' or #saved.payload.claims>0 then return false,'COOKING_OBLIGATION_RETAINED' end
-    claims:release(token) cookingTokens[job.id]=nil return true
+    claims:release(token) cleanToken(job.id) return true
 end
 function Store.claimPersonal(job)
     Store.data()
@@ -629,7 +656,7 @@ function Store.finishField(job)
         or (saved.state~='DONE' and saved.state~='CANCELLED') or #saved.payload.claims>0 then return false end
     for _ in pairs(saved.obligations) do return false end
     local token=fieldTokens[job.id]
-    if token then claims:release(token) fieldTokens[job.id]=nil end
+    if token then claims:release(token) cleanToken(job.id) end
     if root.toolCustody and root.toolCustody.byId then
         for _,c in pairs(root.toolCustody.byId) do
             if c.activeJobId==job.id then c.activeJobId=nil end
@@ -649,7 +676,7 @@ function Store.finishActivity(job,token)
     for _ in pairs(saved.obligations) do return false,'ACTIVITY_OBLIGATION_RETAINED' end
     local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={}
     if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,{payload=p}) then return false,'JOB_CHANGED' end
-    claims:release(token) activityTokens[job.id]=nil return true
+    claims:release(token) cleanToken(job.id) return true
 end
 function Store.validPersonal(job,token,key)
     Store.data()
@@ -667,7 +694,7 @@ function Store.finishPersonal(job,token)
     local payload=jobs:get(job.id).payload payload.claims={}
     local ok,reason=jobs:update(job.id,saved.revision,{payload=payload})
     if not ok then return false,reason end
-    claims:release(token) personalTokens[job.id]=nil return true
+    claims:release(token) cleanToken(job.id) return true
 end
 -- Only release furniture keys after the caller has physical exit evidence.
 -- Item custody remains exactly as declared in the same Job.
@@ -717,7 +744,7 @@ function Store.extendNative(record,token)
     return claims:extend(token,CraftRecord.resources(record))
 end
 function Store.finishNative(record)
-    Store.data() claims:release(nativeTokens[record.id]) nativeTokens[record.id]=nil
+    Store.data() claims:release(nativeTokens[record.id]) cleanToken(record.id)
 end
 function Store.replaceNative(record,token,proposed)
     Store.data()
@@ -838,7 +865,7 @@ function Store.finish(record)
         recent[record.npcId]={id=record.id,settlementId=record.settlementId,sourceMode=record.sourceMode,
             delivered=record.delivered,total=#record.items}
     end
-    claims:release(tokens[record.id]) tokens[record.id]=nil record.reservation=nil record.generation=(record.generation or 0)+1
+    claims:release(tokens[record.id]) cleanToken(record.id) record.reservation=nil record.generation=(record.generation or 0)+1
 end
 function Store.clear(npcId)
     local record=Store.record(npcId) if not record then return end
