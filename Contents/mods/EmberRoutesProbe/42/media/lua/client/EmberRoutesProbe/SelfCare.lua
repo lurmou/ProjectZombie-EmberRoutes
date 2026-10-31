@@ -106,7 +106,7 @@ local function settle(actor,binding,job,row)
         and not p.consumption and not p.transfer and not p.repose and not p.reading then
         idle(job,row,'CANDIDATE_NOT_STARTED') return
     end
-    if not p.sourceId then
+    if not p.sourceId and not p.readingSite then
         -- A loaded duty attempt needs its actual owner stop path, even when it
         -- carries no item. IDLE alone is not native/asset cleanup evidence.
         if p.activityRef and p.activityRef.dutyId then

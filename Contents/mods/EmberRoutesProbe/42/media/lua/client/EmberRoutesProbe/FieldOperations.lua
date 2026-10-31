@@ -97,12 +97,6 @@ local function stopAt(c,square,avoidPlants)
     if not native.nativeStopped then c.body.stop() return 'Running' end
     return 'Success'
 end
-function O.dragged(npc)
-    local bridge=EmberRoutesProbeJava
-    if not bridge or not bridge.fieldDraggedIdentity then return nil end
-    local id=bridge.fieldDraggedIdentity(npc)
-    return type(id)=='string' and id~='' and id or nil
-end
 function O.dropped(c)
     local cell=getCell() if not cell then return nil end
     local x,y,z=math.floor(c.npc:getX()),math.floor(c.npc:getY()),math.floor(c.npc:getZ())
@@ -126,9 +120,7 @@ function O.settleCorpse(c)
 end
 local function corpse(c,t)
     if c.job.payload.holding then
-        local dragged=O.dragged(c.npc)
         if not c.npc:isDraggingCorpse() then O.settleCorpse(c) return 'Running' end
-        if dragged~=t.identity then c.unknown('FIELD_WRONG_DRAGGED_CORPSE') return 'Failure' end
         local p=Discovery.policy('cleaning',c.job.scopeId)
         local zone=require('EmberRoutesProbe/SettlementZones').get(p.corpseZoneId)
         if not zone or not zone.enabled or zone.settlementId~=c.job.scopeId then c.reason='FIELD_CORPSE_ZONE_REQUIRED' return 'Failure' end
@@ -155,6 +147,7 @@ local function corpse(c,t)
             end})
         return c.node and 'Running' or 'Failure'
     end
+    if c.npc:isDraggingCorpse() then c.reason='FIELD_NPC_ALREADY_DRAGGING_CORPSE' return 'Failure' end
     local b=Discovery.object(t)
     if not b or Spatial.identity(b)~=t.identity then c.reason='FIELD_CORPSE_MOVED' return 'Failure' end
     local state=stopAt(c,b:getSquare()) if state~='Success' then return state end
@@ -168,12 +161,13 @@ local function corpse(c,t)
     end
     c.node=Native.new(c,{kind='GRAB_CORPSE',create=function() return ISGrabCorpseAction:new(c.npc,b) end,
         observe=function(ok,finished)
-            if c.npc:isDraggingCorpse() then
-                local d=O.dragged(c.npc) if not d then return false,false end
-                if d~=t.identity then return false,false end
+            local dragging=c.npc:isDraggingCorpse()
+            local targetStillWorld=b:getStaticMovingObjectIndex()>=0
+            if dragging and not targetStillWorld then
                 return c.change(function(j) j.payload.holding=true end),true
             end
-            return b:getStaticMovingObjectIndex()>=0,false,not finished
+            if not finished and targetStillWorld then return true,false,true end
+            return false,false
         end})
     return c.node and 'Running' or 'Failure'
 end

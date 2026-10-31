@@ -70,7 +70,10 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
     local function finish(fact)
         if fact.effects~='KNOWN' then c.effects='UNKNOWN' end
         if c.payload.readingSite and fact.bodyStopped then
-            if not require('EmberRoutesProbe/StudySeat').release(c) then return false end
+            local seated=c.npc:isSittingOnFurniture() or c.npc:getSitOnFurnitureObject()~=nil
+            if not seated then
+                if not require('EmberRoutesProbe/StudySeat').release(c) then return false end
+            end
         end
         if c.payload.study and (c.payload.study.leisure or not c.payload.study.orderId) then
             c.payload.leisureMemory=require('EmberRoutesProbe/LeisurePolicy').remember(c.payload.leisureMemory,
@@ -93,6 +96,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
                 if endpoint and item and item:getContainer()==endpoint.container then c.obligations={} end
             end
             local owed=false for _ in pairs(c.obligations) do owed=true break end
+            if c.payload.readingSite then owed=true end
             c.payload.step=owed and 'SETTLING' or 'IDLE'
             c.payload.lastKind=c.payload.kind
         end
@@ -174,7 +178,10 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
                 leaves[#leaves+1]=require('EmberRoutesProbe/StudySeat').new(c,candidate.item)
             else leaves[#leaves+1]=Actions.consumption(c,c.payload.kind,candidate.item,c.payload.fraction or 0.25) end
         end
-        if settle and c.payload.kind=='STUDY' then leaves[#leaves+1]=require('EmberRoutesProbe/StudyRelief').new(c) end
+        if settle and c.payload.kind=='STUDY' then
+            leaves[#leaves+1]=require('EmberRoutesProbe/StudySeat').exit(c)
+            leaves[#leaves+1]=require('EmberRoutesProbe/StudyRelief').new(c)
+        end
         if not reliefOnly then leaves[#leaves+1]=Custody.returns(c) end
         c.tree=assert(Tree.new({kind='Sequence',children=leaves}))
         if not settle and c.payload.leisure then

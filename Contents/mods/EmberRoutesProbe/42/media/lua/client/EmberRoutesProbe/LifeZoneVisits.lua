@@ -22,7 +22,19 @@ function Visits.seek(env,standable)
     local position=math.floor(env.point.x)..':'..math.floor(env.point.y)..':'..env.point.z
     if state.revision~=revision or state.parent~=env.entry.revision or state.position~=position or state.context~=context then
         local zones,reason
-        if env.destinationZone then zones={env.destinationZone} else zones,reason=Zones.list(env.entry.id) end
+        if env.destinationZone then zones={env.destinationZone}
+        else
+            local allZones,listReason=Zones.list(env.entry.id)
+            if not allZones then return nil,true,listReason end
+            local cleanPolicy=require('EmberRoutesProbe/JobPolicyService').get(env.entry.id,'cleaning')
+            local corpseZoneId=cleanPolicy and cleanPolicy.corpseZoneId
+            zones={}
+            for _,z in ipairs(allZones) do
+                if not z.isWorkZone and (not corpseZoneId or z.id~=corpseZoneId) then
+                    zones[#zones+1]=z
+                end
+            end
+        end
         if not zones then return nil,true,reason end
         -- At most 32 detached records, once per changed discovery context.
         table.sort(zones,function(a,b)

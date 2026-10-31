@@ -54,7 +54,7 @@ function methods:replace(token,resources)
     if not token then return false,"STALE_CLAIM" end
     if token.capacityKey then
         local b=self.capacity[token.capacityKey] local c=b and b.entries[token.taskId]
-        if not c or c.token~=token or c.count>0 then return false,'STALE_CLAIM' end
+        if not c or c.token~=token then return false,'STALE_CLAIM' end
     end
     local seen={}
     for _,key in ipairs(token.resources) do if self.owners[key]~=token then return false,"STALE_CLAIM" end end

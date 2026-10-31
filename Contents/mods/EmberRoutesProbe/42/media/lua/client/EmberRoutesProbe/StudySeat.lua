@@ -159,4 +159,30 @@ function S.new(c,item)
         return not c.payload.readingSite or S.release(c)
     end}
 end
+function S.exit(c)
+    local requested=false
+    local deadline
+    return {
+        kind='Action',
+        run=function()
+            if not c.payload.readingSite then return 'Success' end
+            deadline=deadline or (getTimestampMs()+8000)
+            local seated=c.npc:isSittingOnFurniture() or c.npc:getSitOnFurnitureObject()~=nil
+            if seated then
+                if not requested then
+                    c.npc:setVariable('forceGetUp',true)
+                    requested=true
+                end
+                if getTimestampMs()>deadline then
+                    c.reason='SIT_EXIT_TIMEOUT'
+                    return 'Failure'
+                end
+                return 'Running'
+            end
+            if not c.body.repose('REST',false) then return 'Running' end
+            if not S.release(c) then return 'Failure' end
+            return 'Success'
+        end
+    }
+end
 return S

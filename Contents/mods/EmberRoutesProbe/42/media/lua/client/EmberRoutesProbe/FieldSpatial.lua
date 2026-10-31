@@ -57,8 +57,13 @@ function S.square(t)
 end
 -- Objects are marked only during claim, never while evaluating a candidate.
 function S.identity(object,create)
-    if not object or not object.getModData then return nil end
-    local data=object:getModData()
+    if not object then return nil end
+    local target=object
+    if not target.getModData and target.getItem then
+        target=target:getItem()
+    end
+    if not target or not target.getModData then return nil end
+    local data=target:getModData()
     if not data.EmberRoutesFieldId and create then data.EmberRoutesFieldId=require('EmberRoutesProbe/ContainerRegistry').id() end
     return data.EmberRoutesFieldId
 end
