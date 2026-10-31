@@ -37,11 +37,20 @@ local function valid(job)
         and (job.effects=='KNOWN' or job.effects=='UNKNOWN') and type(job.obligations)=='table'
         and type(job.payload)=='table' and (not job.orderId or id(job.orderId))
         and (not terminal[job.state] or (job.effects=='KNOWN' and empty(job.obligations) and #(job.payload.claims or {}) == 0))
-    return basic and (job.providerType~='COOKING' or require('EmberRoutesProbe/CookingRecord').valid(job))
-        and (job.providerType~='FIELD_WORK' or require('EmberRoutesProbe/FieldRecord').valid(job))
-        and (job.providerType~='ACTIVITY' or require('EmberRoutesProbe/ActivityRecord').valid(job))
-        and (job.providerType~='CRAFT' or require('EmberRoutesProbe/CraftJobRecord').valid(job))
-        and (job.providerType~='HAUL' or require('EmberRoutesProbe/HaulJobRecord').valid(job))
+    if not basic then return false end
+    if job.providerType=='COOKING' then return require('EmberRoutesProbe/CookingRecord').valid(job)
+    elseif job.providerType=='FIELD_WORK' then return require('EmberRoutesProbe/FieldRecord').valid(job)
+    elseif job.providerType=='ACTIVITY' then return require('EmberRoutesProbe/ActivityRecord').valid(job)
+    elseif job.providerType=='CRAFT' then
+        local p = job.payload
+        if p and p.format == 4 then return require('EmberRoutesProbe/CraftJobRecord').valid(job) end
+        return require('EmberRoutesProbe/CraftRecord').valid(job.npcId, job.payload)
+    elseif job.providerType=='HAUL' then
+        local p = job.payload
+        if p and p.format == 3 then return require('EmberRoutesProbe/HaulJobRecord').valid(job) end
+        return require('EmberRoutesProbe/HaulManifest').valid(job.payload)
+    end
+    return true
 end
 local function legacy(root)
     local craft,labor=root.craftProbes,root.labor
@@ -178,4 +187,5 @@ function Store.open(root)
     end
     return api
 end
+Store.validate = valid
 return Store

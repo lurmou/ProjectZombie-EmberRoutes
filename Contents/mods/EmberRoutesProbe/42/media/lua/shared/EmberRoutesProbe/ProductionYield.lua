@@ -22,7 +22,7 @@ function Y.continuation(r)
 end
 function Y.assetFree(r)
     local y=r.activityYield
-    return r.format==3 and not r.uncertain and type(y)=='table' and y.kind=='MANUAL' and y.cleared==true
+    return (r.format==3 or r.format==4) and not r.uncertain and type(y)=='table' and y.kind=='MANUAL' and y.cleared==true
         and r.unitMade~=true and emptyAssets(r) and r.activityContinuation~=nil and Y.continuation(r) or false
 end
 function Y.goal(r)
