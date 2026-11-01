@@ -2041,7 +2041,7 @@ end
 
 -- R3: force actual enumeration order changes (insertion order alone does not
 -- control Lua 5.1 pairs). All modules and claims are fresh for each variant.
-do
+;(function()
     local function copy(v)
         if type(v)~='table' then return v end
         local r={} for k,x in pairs(v) do r[k]=copy(x) end return r
@@ -2114,6 +2114,34 @@ do
     assertEq(again.taskJobs.byId.A.claimId,w2.taskJobs.byId.A.claimId,'Repeated recovery does not rekey again')
     assertFalse(sAgain.getToken('A')~=nil,'Rekey does not permit reacquisition')
 
+    -- A stale counter must not reissue an identity already in the scan.
+    local staleCounter=copy(conflict)
+    staleCounter.nextClaimSeq=0
+    local staleWorld,staleStore=boot(staleCounter,false)
+    assertFalse(staleWorld.taskJobs.byId.A.claimId=='A:c1','Rekey skips an already recorded identity')
+    assertFalse(staleStore.getToken('A')~=nil,'Counter repair does not grant a token')
+
+    -- Real legacy HAUL projection: both envelope and payload refer to the task.
+    -- The collision is in the payload identity, with an independent capacity promise.
+    local haulId='haul-collision'
+    local legacy={nextClaimSeq=100,containers={},quarantineResources={
+        ['item:22500']={status='ACTIVE',originalTaskId='other-task',originalClaimId=haulId..':c1'}},
+        taskJobs={format=1,byId={}}}
+    legacy.taskJobs.byId[haulId]={id=haulId,npcId='npc-haul',providerType='HAUL',scopeId='local-world',
+        revision=1,state='RUNNING',effects='KNOWN',obligations={business=true},claimId=haulId..':c2',
+        payload={format=1,id=haulId,npcId='npc-haul',kind='EXPLICIT_TRANSFER',executor='ENTITY',
+            scopeId='local-world',source='from',destination='to',items={22501},state='RUNNING',
+            generation=1,claimId=haulId..':c1',reservation={key='haul-bin',itemId=22501,amount=4}}}
+    local legacy1,ls1=boot(legacy,false)
+    local legacyCid=legacy1.taskJobs.byId[haulId].claimId
+    assertEq(legacy1.taskJobs.byId[haulId].payload.claimId,legacyCid,'Envelope and legacy payload rekey together')
+    assertFalse(ls1.getToken(haulId)~=nil,'Legacy colliding haul gets no runtime token')
+    assertEq(ls1.claimsInstance().capacity['haul-bin'].total,4,'Legacy capacity isolated without loss')
+    local legacy2,ls2=boot(legacy1,true)
+    assertEq(legacy2.taskJobs.byId[haulId].claimId,legacyCid,'Legacy replacement identity is stable after reload')
+    assertEq(ls2.claimsInstance().capacity['haul-bin'].total,4,'Legacy reload counts isolated capacity once')
+    assertFalse(ls2.getToken(haulId)~=nil,'Legacy reload cannot reacquire originals')
+
     -- Two custody entries share the same original claim identity. Neither may
     -- escape collision detection through prefix normalization or recover first.
     local custody={nextClaimSeq=100,containers={},taskJobs={format=1,byId={}},quarantineResources={},
@@ -2148,7 +2176,7 @@ do
     end
     assertEq(c.capacity['retain-bin'].entries[t.taskId].amount,8,'Existing and two transferred amounts merged')
     print('PASS RETAIN existing reservation + two transfers: total=8, recipient=8')
-end
+end)()
 
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")
 
