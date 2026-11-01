@@ -23,16 +23,23 @@ local function nativeRecords()
     end
     return crafts
 end
+local function validClaimIdFormat(claimId, entityId)
+    if type(claimId) ~= "string" then return false end
+    local prefix, seq = string.match(claimId, "^(.+):c(%d+)$")
+    return prefix ~= nil and seq ~= nil and prefix == tostring(entityId)
+end
+
 local function nextAuthoritativeClaimId(rootTable, defaultPrefix)
     rootTable.nextClaimSeq = (rootTable.nextClaimSeq or 0) + 1
     return tostring(defaultPrefix or "claim") .. ":c" .. tostring(rootTable.nextClaimSeq)
 end
 
 local function ensureEntityClaimId(rootTable, entity, defaultPrefix)
-    if type(entity) == "table" and entity.claimId then
+    local entityId = (type(entity) == "table" and (entity.id or entity.taskId)) or defaultPrefix or "claim"
+    if type(entity) == "table" and entity.claimId and validClaimIdFormat(entity.claimId, entityId) then
         return entity.claimId
     end
-    local cid = nextAuthoritativeClaimId(rootTable, defaultPrefix or (type(entity) == "table" and entity.id) or "claim")
+    local cid = nextAuthoritativeClaimId(rootTable, entityId)
     if type(entity) == "table" then
         entity.claimId = cid
     end
@@ -71,6 +78,104 @@ function Store.data()
         -- Ensure monotonic claim sequence is initialized and preserved across cold boots
         current.nextClaimSeq = current.nextClaimSeq or 1
         rebuilt.nextClaimSeq = current.nextClaimSeq
+
+        -- Collect the complete identity graph before acquiring ANY token. A
+        -- single-value map would let pairs/provider order choose a winner.
+        local identities, candidates = {}, {}
+        local function identity(cid, taskId, key)
+            if not cid then return end
+            local g = identities[cid]
+            if not g then
+                g = {taskIds={}, resourceKeys={}, count=0}
+                identities[cid] = g
+            end
+            taskId = taskId or 'SYSTEM_QUARANTINE'
+            if not g.taskIds[taskId] then g.taskIds[taskId]=true g.count=g.count+1 end
+            if key then g.resourceKeys[key]=true end
+        end
+        for key,q in pairs(current.quarantineResources) do
+            if type(q)=='table' then identity(q.originalClaimId,q.originalTaskId,key) end
+        end
+        local function candidate(record,id,keys,job)
+            candidates[#candidates+1]={record=record,id=id,keys=keys or {},job=job}
+        end
+        for id,job in pairs(current.taskJobs and current.taskJobs.byId or {}) do
+            if type(job)=='table' and job.state~='DONE' and job.state~='CANCELLED' then
+                candidate(job,id,job.payload.claims,job)
+            end
+        end
+        for id,entry in pairs(current.toolCustody and current.toolCustody.byId or {}) do
+            if type(entry)=='table' then candidate(entry,id,entry.claims) end
+        end
+        -- Legacy adapters acquire with payload identities. Count their task ID
+        -- once even when its envelope references the same claim identity.
+        for id,r in pairs(data.tasks) do
+            if type(r)=='table' and r.state~='DONE' and type(r.items)=='table' then
+                candidate(r,id,resources(r),current.taskJobs and current.taskJobs.byId[id])
+            end
+        end
+        for _,r in pairs(nativeRecords()) do
+            if r.format==3 and not r.released then
+                candidate(r,r.id,CraftRecord.resources(r),current.taskJobs and current.taskJobs.byId[r.id])
+            end
+        end
+        table.sort(candidates,function(a,b)
+            if a.id==b.id then return (a.record.claimId or '') < (b.record.claimId or '') end
+            return a.id<b.id
+        end)
+        for _,e in ipairs(candidates) do
+            -- Preserve even a mismatched legacy/custody identity long enough to
+            -- detect its collision. Repairing it first would erase the evidence.
+            e.claimId=e.record.claimId or ensureEntityClaimId(current,e.record,e.id)
+            identity(e.claimId,e.id)
+            for _,key in ipairs(e.keys) do identity(e.claimId,e.id,key) end
+        end
+        local replacements={}
+        for _,e in ipairs(candidates) do
+            local g=identities[e.claimId]
+            if g.count>1 then
+                local cid=replacements[e.id]
+                if not cid then cid=nextAuthoritativeClaimId(current,e.id) replacements[e.id]=cid end
+                e.record.claimId=cid
+                if e.job then
+                    e.job.claimId=cid
+                    e.job.state,e.job.effects='RECONCILE_REQUIRED','UNKNOWN'
+                    if e.job.providerType=='CRAFT' or e.job.providerType=='HAUL' then
+                        local p=e.job.payload
+                        p.state,p.reason,p.uncertain='PAUSED','CLAIM_IDENTITY_COLLISION',true
+                    end
+                else
+                    e.record.reason,e.record.uncertain='CLAIM_IDENTITY_COLLISION',true
+                end
+                -- New identity is legal; the OLD identity and all participants
+                -- remain on persistent system-owned resources. A restart cannot
+                -- turn the rekey into permission to reacquire those originals.
+                for _,key in ipairs(e.keys) do
+                    local q=current.quarantineResources[key]
+                    if not q then
+                        q={status='ACTIVE',reason='CLAIM_IDENTITY_COLLISION',originalTaskId=e.id,
+                            originalClaimId=e.claimId,originalGeneration=e.record.generation,evidence={}}
+                        local p=e.job and e.job.payload or e.record
+                        local r=p.reservation
+                        local itemId=tonumber(string.match(key,'^item:(%d+)$'))
+                        if itemId and r then
+                            local amount=r.items and r.items[itemId] or r.itemId==itemId and r.amount
+                            if amount then q.capacityKey,q.capacityItemId,q.capacityAmount=r.key,itemId,amount end
+                        end
+                        local cap=p.capacity
+                        if cap and (cap.itemId==itemId or key=='cooking:capacity:'..e.id) then
+                            q.capacityKey,q.capacityItemId,q.capacityAmount=cap.key or cap.endpointId,
+                                cap.itemId or key,cap.amount
+                        end
+                        current.quarantineResources[key]=q
+                        rebuilt:restoreQuarantine(key,q)
+                    end
+                    q.evidence=q.evidence or {}
+                    q.evidence.identityCollision=q.evidence.identityCollision or {
+                        originalTaskId=e.id,originalClaimId=e.claimId,taskIds=g.taskIds,resourceKeys=g.resourceKeys}
+                end
+            end
+        end
 
         local resourceClaimants = {}
         local conflictKeys = {}
@@ -264,18 +369,19 @@ function Store.data()
                                     end
                                 else
                                     newTokens[id] = token
-                                local r = record.reservation
-                                if r and type(r) == "table" then
-                                    if r.format == 2 and type(r.items) == "table" then
-                                        for itemId, amount in pairs(r.items) do
-                                            if not rebuilt:restore(token, r.key, itemId, amount) then
-                                                record.state = "PAUSED"
-                                                record.reason = "CAPACITY_CONFLICT"
-                                                break
+                                    local r = record.reservation
+                                    if r and type(r) == "table" then
+                                        if r.format == 2 and type(r.items) == "table" then
+                                            for itemId, amount in pairs(r.items) do
+                                                if not rebuilt:restore(token, r.key, itemId, amount) then
+                                                    record.state = "PAUSED"
+                                                    record.reason = "CAPACITY_CONFLICT"
+                                                    break
+                                                end
                                             end
+                                        elseif r.itemId and r.amount then
+                                            rebuilt:restore(token, r.key, r.itemId, r.amount)
                                         end
-                                    elseif r.itemId and r.amount then
-                                        rebuilt:restore(token, r.key, r.itemId, r.amount)
                                     end
                                 end
                             end
@@ -284,7 +390,6 @@ function Store.data()
                 end
             end
         end
-    end
         for npcId, id in pairs(data.byNpc) do
             if not data.tasks[id] or data.tasks[id].npcId ~= npcId then error("TASK_INDEX_INVALID") end
         end
@@ -629,6 +734,9 @@ function Store.unquarantineResource(key,resolution,evidence)
     end
 
     local qRec = root and root.quarantineResources and root.quarantineResources[key]
+    if (not qRec) and root and root.quarantineAudit and root.quarantineAudit[key] then
+        return true -- idempotent: already unquarantined and settled in audit ledger
+    end
     if qRec then
         if qRec.status == "RESOLVED" then
             return true -- idempotent
@@ -668,15 +776,17 @@ function Store.unquarantineResource(key,resolution,evidence)
     return true
 end
 function Store.createClaimedJob(job)
+    Store.data()
+    -- Allocate persistent non-reusable claimId at the authoritative root level:
+    -- NEVER allow external caller to inject arbitrary/old claimId!
+    local persistentClaimId = nextAuthoritativeClaimId(root, (type(job) == "table" and job.id) or "claim")
+    if type(job) == "table" then
+        job.claimId = persistentClaimId
+    end
     local JobStore=require('EmberRoutesProbe/JobStore')
     if not JobStore.validate(job) or job.state~='PREPARING' or job.revision~=1 then
         return false,'INVALID_JOB_ENVELOPE'
     end
-    Store.data()
-    -- Allocate persistent non-reusable claimId at the authoritative root level:
-    -- NEVER allow external caller to inject arbitrary/old claimId!
-    local persistentClaimId = nextAuthoritativeClaimId(root, job.id)
-    job.claimId = persistentClaimId
     if claims then claims.nextClaimSeq = math.max(claims.nextClaimSeq or 1, root.nextClaimSeq + 1) end
 
     local p=job.payload

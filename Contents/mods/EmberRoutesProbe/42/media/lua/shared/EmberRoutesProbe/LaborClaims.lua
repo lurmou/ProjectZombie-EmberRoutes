@@ -121,6 +121,21 @@ function methods:restoreQuarantine(key, record)
     local itemId = record and (record.capacityItemId or record.itemId)
     local amt = record and (record.capacityAmount or record.amount)
 
+    -- Restore is reconstruction, never an ownership transfer. Check the existing
+    -- canonical facts before changing either owners, capacity or revision.
+    local previous = self.owners[key]
+    if previous then
+        if previous.kind ~= "SYSTEM_QUARANTINE" then
+            return false, "QUARANTINE_RESTORE_OWNER_CONFLICT"
+        end
+        if previous.originalTaskId ~= origTaskId or previous.originalClaimId ~= origClaimId
+            or previous.originalGeneration ~= origGen or previous.capacityKey ~= capKey
+            or previous.capacityItemId ~= itemId or previous.capacityAmount ~= amt then
+            return false, "QUARANTINE_RESTORE_CONFLICT"
+        end
+        return true, previous
+    end
+
     local owner = {
         kind = "SYSTEM_QUARANTINE",
         ownerId = "SYSTEM_QUARANTINE",
@@ -179,29 +194,46 @@ function methods:unquarantine(key, resolution)
             if not targetToken or type(targetToken) ~= "table" or not targetToken.taskId then
                 return false, "CAPACITY_RETAIN_WITHOUT_RECIPIENT_REJECTED"
             end
+            if not self.tokensByTaskId or self.tokensByTaskId[targetToken.taskId] ~= targetToken then
+                return false, "CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID"
+            end
+
+            local foundBucket, foundCapKey, foundQEntry = nil, nil, nil
             for capKey, bucket in pairs(self.capacity) do
                 if bucket.quarantine and bucket.quarantine[key] then
-                    local qEntry = bucket.quarantine[key]
-                    if targetToken.capacityKey and targetToken.capacityKey ~= capKey then
-                        return false, "CAPACITY_TARGET_CHANGED"
-                    end
-                    bucket.quarantine[key] = nil
-                    targetToken.capacityKey = capKey
-                    local claim = bucket.entries[targetToken.taskId]
-                    if not claim then
-                        claim = { token = targetToken, items = {}, amount = 0, count = 0 }
-                        bucket.entries[targetToken.taskId] = claim
-                        bucket.count = bucket.count + 1
-                    end
-                    if claim.items[qEntry.itemId] == nil then
-                        claim.count = claim.count + 1
-                    end
-                    claim.items[qEntry.itemId] = (claim.items[qEntry.itemId] or 0) + qEntry.amount
-                    claim.amount = claim.amount + qEntry.amount
-                    claim.token = targetToken
+                    foundBucket = bucket
+                    foundCapKey = capKey
+                    foundQEntry = bucket.quarantine[key]
                     break
                 end
             end
+            if not foundQEntry then
+                return false, "QUARANTINE_CAPACITY_ENTRY_NOT_FOUND"
+            end
+
+            if targetToken.capacityKey and targetToken.capacityKey ~= foundCapKey then
+                return false, "CAPACITY_TARGET_CHANGED"
+            end
+
+            local existingClaim = foundBucket.entries[targetToken.taskId]
+            if existingClaim and existingClaim.token ~= targetToken then
+                return false, "CAPACITY_ENTRY_OCCUPIED_BY_ANOTHER_TOKEN"
+            end
+
+            foundBucket.quarantine[key] = nil
+            targetToken.capacityKey = foundCapKey
+            local claim = existingClaim
+            if not claim then
+                claim = { token = targetToken, items = {}, amount = 0, count = 0 }
+                foundBucket.entries[targetToken.taskId] = claim
+                foundBucket.count = foundBucket.count + 1
+            end
+            if claim.items[foundQEntry.itemId] == nil then
+                claim.count = claim.count + 1
+            end
+            claim.items[foundQEntry.itemId] = (claim.items[foundQEntry.itemId] or 0) + foundQEntry.amount
+            claim.amount = claim.amount + foundQEntry.amount
+            claim.token = targetToken
         else
             if string.sub(key, 1, 5) == "item:" then
                 self:releaseQuarantineCapacity(key)

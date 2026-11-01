@@ -31,12 +31,18 @@ local function copy(value,seen,budget,depth)
     seen[value]=nil return result
 end
 local function detached(value) return copy(value,{},{n=0},0) end
+local function validClaimId(claimId, entityId)
+    if type(claimId) ~= 'string' then return false end
+    local prefix, seq = string.match(claimId, '^(.+):c(%d+)$')
+    return prefix ~= nil and seq ~= nil and prefix == tostring(entityId)
+end
 local function valid(job)
     local basic=type(job)=='table' and id(job.id) and id(job.npcId) and id(job.providerType)
         and id(job.scopeId) and integer(job.revision) and job.revision>0 and states[job.state]
         and (job.effects=='KNOWN' or job.effects=='UNKNOWN') and type(job.obligations)=='table'
         and type(job.payload)=='table' and (not job.orderId or id(job.orderId))
         and (not terminal[job.state] or (job.effects=='KNOWN' and empty(job.obligations) and #(job.payload.claims or {}) == 0))
+        and (job.claimId == nil or validClaimId(job.claimId, job.id))
     if not basic then return false end
     if job.providerType=='COOKING' then return require('EmberRoutesProbe/CookingRecord').valid(job)
     elseif job.providerType=='FIELD_WORK' then return require('EmberRoutesProbe/FieldRecord').valid(job)
@@ -127,6 +133,13 @@ function Store.open(root)
             if personal>=Store.PERSONAL_LIMIT then return false,'PERSONAL_JOB_LIMIT' end
         elseif count>=Store.LIMIT then return false,'JOB_LIMIT' end
         local ok,value=pcall(detached,job) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
+        local expectedCid = tostring(job.id) .. ':c' .. tostring(root.nextClaimSeq or 0)
+        if not job.claimId or job.claimId ~= expectedCid then
+            root.nextClaimSeq = (root.nextClaimSeq or 0) + 1
+            value.claimId = tostring(job.id) .. ':c' .. tostring(root.nextClaimSeq)
+        else
+            value.claimId = job.claimId
+        end
         data.byId[value.id]=value
         if value.providerType=='SELF_CARE' then
             personal=personal+1 personalByNpc[value.npcId]=value.id

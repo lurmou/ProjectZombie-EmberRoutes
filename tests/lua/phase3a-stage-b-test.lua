@@ -1161,7 +1161,7 @@ do
     assertEq(bootClaims.capacity["crate-persist-cap"] and bootClaims.capacity["crate-persist-cap"].total or 0, 0, "Capacity released after explicit unquarantine")
 end
 
--- Test 6.6: B.5 - Unquarantine two-phase status recovery from RESOLVING crash (P0-1 closure: keep protected)
+-- Test 6.6: B.5 - Unquarantine two-phase status recovery from RESOLVING crash (P0-1 closure: keep protected & capacity conservation)
 do
     local bootRootCrash = {
         format = 1,
@@ -1170,21 +1170,54 @@ do
         quarantineResources = {
             ["item:8888"] = {
                 status = "RESOLVING",
-                resolution = { reason = "MIDWAY_CRASH" },
-                resolvingEvidence = { note = "system rebooted during unquarantine" }
+                reason = "MIDWAY_CRASH",
+                capacityKey = "cap:main_crate",
+                capacityItemId = 8888,
+                capacityAmount = 25.0,
+                resolution = { reason = "MIDWAY_CRASH_1" },
+                resolvingEvidence = { note = "system rebooted during first unquarantine" }
             }
         }
     }
     ContainerRegistry.data = function() return bootRootCrash end
+    -- First cold boot recovery
     Store.data()
-    local crashClaims = Store.claimsInstance()
+    local crashClaims1 = Store.claimsInstance()
     -- P0-1: Missing verified settlement completion evidence -> MUST REMAIN PROTECTED UNDER SYSTEM_QUARANTINE!
-    assertTrue(crashClaims.owners["item:8888"] ~= nil, "RESOLVING item remains protected under SYSTEM_QUARANTINE in claims memory")
-    assertEq(crashClaims.owners["item:8888"].kind, "SYSTEM_QUARANTINE", "Owner kind is SYSTEM_QUARANTINE")
+    assertTrue(crashClaims1.owners["item:8888"] ~= nil, "RESOLVING item remains protected under SYSTEM_QUARANTINE in claims memory")
+    assertEq(crashClaims1.owners["item:8888"].kind, "SYSTEM_QUARANTINE", "Owner kind is SYSTEM_QUARANTINE")
     assertTrue(bootRootCrash.quarantineResources["item:8888"] ~= nil, "RESOLVING record is NOT cleared from active quarantine")
-    assertEq(bootRootCrash.quarantineResources["item:8888"].status, "ACTIVE", "RESOLVING record restored to ACTIVE status on cold boot")
-    assertEq(bootRootCrash.quarantineResources["item:8888"].interruptedResolution.reason, "MIDWAY_CRASH", "Diagnostic trace preserved in interruptedResolution")
-    assertEq(bootRootCrash.quarantineAudit and bootRootCrash.quarantineAudit["item:8888"], nil, "No false completion audit written for interrupted resolution")
+    assertEq(bootRootCrash.quarantineResources["item:8888"].status, "ACTIVE", "RESOLVING record restored to ACTIVE status on first cold boot")
+    assertEq(bootRootCrash.quarantineResources["item:8888"].interruptedResolution.reason, "MIDWAY_CRASH_1", "Diagnostic trace preserved in interruptedResolution")
+    assertTrue(crashClaims1.capacity["cap:main_crate"] ~= nil, "Capacity bucket cap:main_crate restored")
+    assertEq(crashClaims1.capacity["cap:main_crate"].total, 25.0, "Capacity total restored to 25.0 on first reboot")
+
+    -- Simulate second crash during another unquarantine attempt:
+    bootRootCrash.quarantineResources["item:8888"].status = "RESOLVING"
+    bootRootCrash.quarantineResources["item:8888"].resolution = { reason = "MIDWAY_CRASH_2" }
+    bootRootCrash.quarantineResources["item:8888"].resolvingEvidence = { note = "system rebooted during second unquarantine" }
+
+    -- Second consecutive cold boot recovery (re-load with fresh claims instance)
+    local bootRootCrash2 = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:8888"] = bootRootCrash.quarantineResources["item:8888"]
+        }
+    }
+    ContainerRegistry.data = function() return bootRootCrash2 end
+    Store.data()
+    local crashClaims2 = Store.claimsInstance()
+    assertTrue(crashClaims2.owners["item:8888"] ~= nil, "item:8888 still protected under SYSTEM_QUARANTINE on second reboot")
+    assertEq(crashClaims2.owners["item:8888"].kind, "SYSTEM_QUARANTINE", "Owner kind remains SYSTEM_QUARANTINE on second reboot")
+    assertEq(bootRootCrash2.quarantineResources["item:8888"].status, "ACTIVE", "Restored to ACTIVE on second consecutive reboot")
+    assertEq(bootRootCrash2.quarantineResources["item:8888"].interruptedResolution.reason, "MIDWAY_CRASH_2", "Second interrupted resolution preserved")
+    -- CRITICAL B.5-R3 CAPACITY CONSERVATION:
+    -- Bucket total MUST remain 25.0 across multiple crashes (never double-counted to 50.0 and never leaked to 0.0)
+    assertTrue(crashClaims2.capacity["cap:main_crate"] ~= nil, "Capacity bucket preserved on second reboot")
+    assertEq(crashClaims2.capacity["cap:main_crate"].total, 25.0, "Capacity total strictly conserved at 25.0 across consecutive reboots")
+    assertEq(bootRootCrash2.quarantineAudit and bootRootCrash2.quarantineAudit["item:8888"], nil, "No false completion audit written")
 end
 
 -- Test 6.7: B.5 - Corrupted format 1 legacy schema recovery gracefully demotes without crash (B54-02)
@@ -1667,6 +1700,454 @@ do
     local t_good = Store.getToken("haul-e2e-good")
     assertTrue(t_good ~= nil, "Token acquired for normal job")
     assertEq(Store.claimsInstance().owners["item:7701"], t_good, "Claims owner assigned to token")
+end
+
+-- Test 6.14: B.5-R1 - RETAIN recipient verification, capacity conservation, and fail-close guards
+do
+    local bootRootRetainAudit = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:retain-audit-1"] = {
+                status = "ACTIVE",
+                reason = "RETAIN_AUDIT",
+                at = 2000,
+                capacityKey = "crate-audit-bucket",
+                capacityItemId = 501,
+                capacityAmount = 12.5
+            },
+            ["item:no-cap-quarantine"] = {
+                status = "ACTIVE",
+                reason = "NO_CAP_TEST",
+                at = 2001
+            }
+        }
+    }
+    ContainerRegistry.data = function() return bootRootRetainAudit end
+    Store.data()
+    local claims = Store.claimsInstance()
+    assertEq(claims.capacity["crate-audit-bucket"].total, 12.5, "Bucket total initial quarantined capacity is 12.5")
+
+    -- Case A: Fake token (arbitrary unauthenticated table) -> MUST FAIL with CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID
+    local fakeToken = { taskId = "fake-job-id" }
+    local okFake, errFake = Store.unquarantineResource("item:retain-audit-1", {
+        capacityAction = "RETAIN",
+        targetToken = fakeToken
+    })
+    assertFalse(okFake, "RETAIN with unauthenticated fake token MUST fail")
+    assertEq(errFake, "CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID", "Rejection code matches CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID")
+    assertEq(claims.capacity["crate-audit-bucket"].total, 12.5, "Bucket total untouched after fake token rejection")
+    assertEq(bootRootRetainAudit.quarantineResources["item:retain-audit-1"].status, "ACTIVE", "Quarantine remains ACTIVE")
+
+    -- Case B: Released token (previously valid token that was released) -> MUST FAIL
+    local validTokenA, _ = claims:acquire("job-released-test", 1, {})
+    assertTrue(validTokenA ~= nil, "Token A acquired")
+    claims:release(validTokenA)
+    local okRel, errRel = Store.unquarantineResource("item:retain-audit-1", {
+        capacityAction = "RETAIN",
+        targetToken = validTokenA
+    })
+    assertFalse(okRel, "RETAIN with released token MUST fail")
+    assertEq(errRel, "CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID", "Rejection code matches CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID")
+
+    -- Case C: Mismatched token object (registered token replaced/tampered)
+    local validTokenB, _ = claims:acquire("job-mismatch-test", 1, {})
+    local forgedTokenB = { taskId = "job-mismatch-test", generation = 1 }
+    local okMis, errMis = Store.unquarantineResource("item:retain-audit-1", {
+        capacityAction = "RETAIN",
+        targetToken = forgedTokenB
+    })
+    assertFalse(okMis, "RETAIN with mismatched token object MUST fail")
+    assertEq(errMis, "CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID", "Rejection code matches CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID")
+
+    -- Case D: Quarantine without capacity entry requesting RETAIN -> MUST FAIL with QUARANTINE_CAPACITY_ENTRY_NOT_FOUND
+    local okNoCap, errNoCap = Store.unquarantineResource("item:no-cap-quarantine", {
+        capacityAction = "RETAIN",
+        targetToken = validTokenB
+    })
+    assertFalse(okNoCap, "RETAIN on resource without capacity entry MUST fail")
+    assertEq(errNoCap, "QUARANTINE_CAPACITY_ENTRY_NOT_FOUND", "Rejection code matches QUARANTINE_CAPACITY_ENTRY_NOT_FOUND")
+    assertTrue(bootRootRetainAudit.quarantineResources["item:no-cap-quarantine"] ~= nil, "Resource without capacity entry remains quarantined")
+
+    -- Case E: Target token with mismatched capacityKey -> MUST FAIL with CAPACITY_TARGET_CHANGED
+    validTokenB.capacityKey = "different-capacity-bucket"
+    local okCapChange, errCapChange = Store.unquarantineResource("item:retain-audit-1", {
+        capacityAction = "RETAIN",
+        targetToken = validTokenB
+    })
+    assertFalse(okCapChange, "RETAIN with conflicting capacityKey MUST fail")
+    assertEq(errCapChange, "CAPACITY_TARGET_CHANGED", "Rejection code matches CAPACITY_TARGET_CHANGED")
+    validTokenB.capacityKey = nil -- reset
+
+    -- Case F: Valid RETAIN transfer with legitimate recipient token
+    local okValidRetain, errValidRetain = Store.unquarantineResource("item:retain-audit-1", {
+        capacityAction = "RETAIN",
+        targetToken = validTokenB,
+        reason = "AUDIT_APPROVED"
+    })
+    assertTrue(okValidRetain, "Valid RETAIN unquarantine succeeds: " .. tostring(errValidRetain))
+    assertEq(bootRootRetainAudit.quarantineResources["item:retain-audit-1"], nil, "Quarantine record settled and removed from active")
+    assertEq(validTokenB.capacityKey, "crate-audit-bucket", "Token B capacityKey updated to crate-audit-bucket")
+    local bucketAudit = claims.capacity["crate-audit-bucket"]
+    assertEq(bucketAudit.quarantine["item:retain-audit-1"], nil, "Bucket quarantine entry cleared")
+    assertTrue(bucketAudit.entries["job-mismatch-test"] ~= nil, "Recipient claim entry exists in bucket")
+    assertEq(bucketAudit.entries["job-mismatch-test"].amount, 12.5, "Recipient claim amount is 12.5")
+    assertEq(bucketAudit.total, 12.5, "Bucket total strictly conserved (12.5)")
+
+    -- Repeat call: idempotent/safely rejected
+    local okRepeat, _ = Store.unquarantineResource("item:retain-audit-1", {
+        capacityAction = "RETAIN",
+        targetToken = validTokenB
+    })
+    assertTrue(okRepeat, "Repeat unquarantine is safely idempotent")
+end
+
+-- Test 6.15: B.5-R2 - Authoritative claimId forged injection & cross-provider identity collision isolation
+do
+    -- Part A: Direct JobStore:create with forged or mismatched claimId
+    local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+    local jobStoreRoot = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        nextClaimSeq = 100
+    }
+    ContainerRegistry.data = function() return jobStoreRoot end
+    local jStore = TaskJobs.current()
+
+    -- A.1: Invalid claimId format (prefix mismatch) rejected by JobStore validation
+    local badPrefixJob = {
+        id = "job-auth-1",
+        npcId = "npc-auth-1",
+        providerType = "CRAFT",
+        scopeId = "settlement-1",
+        revision = 1,
+        state = "PREPARING",
+        effects = "KNOWN",
+        obligations = {},
+        claimId = "wrong-prefix:c1", -- prefix does not match id!
+        payload = {
+            format = 4,
+            id = "job-auth-1",
+            npcId = "npc-auth-1",
+            sequence = 1,
+            recipeId = "Base.MakeAxe",
+            target = 1,
+            produced = 0,
+            materials = {},
+            tools = {},
+            outputs = {},
+            claims = {}
+        }
+    }
+    local okBadPrefix, errBadPrefix = jStore:create(badPrefixJob)
+    assertFalse(okBadPrefix, "Job with mismatched claimId prefix MUST be rejected by JobStore")
+    assertEq(errBadPrefix, "JOB_RECORD_INVALID", "Rejection error code is JOB_RECORD_INVALID")
+
+    -- A.2: Forged claimId (attempting to jump sequence or reuse) is authoritatively overwritten
+    local forgedJob = {
+        id = "job-auth-2",
+        npcId = "npc-auth-2",
+        providerType = "CRAFT",
+        scopeId = "settlement-1",
+        revision = 1,
+        state = "PREPARING",
+        effects = "KNOWN",
+        obligations = {},
+        claimId = "job-auth-2:c999", -- Forged jump to 999!
+        payload = {
+            format = 4,
+            id = "job-auth-2",
+            npcId = "npc-auth-2",
+            sequence = 1,
+            recipeId = "Base.MakeAxe",
+            target = 1,
+            produced = 0,
+            materials = {},
+            tools = {},
+            outputs = {},
+            claims = {}
+        }
+    }
+    local okForged, errForged = jStore:create(forgedJob)
+    assertTrue(okForged, "JobStore:create succeeds: " .. tostring(errForged))
+    local savedForged = jStore:get("job-auth-2")
+    assertEq(savedForged.claimId, "job-auth-2:c101", "Forged claimId is overwritten with authoritative sequence (101)")
+    assertEq(jobStoreRoot.nextClaimSeq, 101, "root.nextClaimSeq incremented to 101")
+
+    -- Part B: Cold boot identity collision isolation across jobs & preservation of quarantine
+    local collisionBootRoot = {
+        format = 1,
+        nextClaimSeq = 200,
+        containers = {},
+        quarantineResources = {
+            ["item:5555"] = {
+                status = "ACTIVE",
+                reason = "LEGITIMATE_QUARANTINE",
+                originalTaskId = "job-primary-1",
+                originalClaimId = "job-colliding-2:c1", -- Quarantine registered to primary job using this claimId
+                originalGeneration = 1
+            }
+        },
+        taskJobs = {
+            format = 1,
+            byId = {
+                ["job-primary-1"] = {
+                    id = "job-primary-1",
+                    npcId = "npc-prim",
+                    providerType = "CRAFT",
+                    scopeId = "settlement-1",
+                    revision = 1,
+                    state = "RUNNING",
+                    effects = "KNOWN",
+                    obligations = {},
+                    claimId = "job-primary-1:c1",
+                    payload = {
+                        format = 4,
+                        id = "job-primary-1",
+                        npcId = "npc-prim",
+                        sequence = 1,
+                        recipeId = "Base.MakeAxe",
+                        target = 1,
+                        produced = 0,
+                        materials = { { id = 7771, consumed = false } },
+                        tools = {},
+                        outputs = {},
+                        claims = { "item:7771" }
+                    }
+                },
+                ["job-colliding-2"] = {
+                    id = "job-colliding-2",
+                    npcId = "npc-coll",
+                    providerType = "CRAFT",
+                    scopeId = "settlement-1",
+                    revision = 1,
+                    state = "RUNNING",
+                    effects = "KNOWN",
+                    obligations = {},
+                    claimId = "job-colliding-2:c1", -- Valid prefix for JobStore, but collides with originalTaskId on originalClaimId!
+                    payload = {
+                        format = 4,
+                        id = "job-colliding-2",
+                        npcId = "npc-coll",
+                        sequence = 1,
+                        recipeId = "Base.MakeAxe",
+                        target = 1,
+                        produced = 0,
+                        materials = { { id = 7772, consumed = false } },
+                        tools = {},
+                        outputs = {},
+                        claims = { "item:7772" }
+                    }
+                }
+            }
+        }
+    }
+    ContainerRegistry.data = function() return collisionBootRoot end
+    Store.data()
+
+    -- Primary job recovered normally
+    local env1 = collisionBootRoot.taskJobs.byId["job-primary-1"]
+    assertEq(env1.claimId, "job-primary-1:c1", "Primary job retains legitimate claimId")
+    local t_prim = Store.getToken("job-primary-1")
+    assertTrue(t_prim ~= nil, "Primary job acquired valid runtime token")
+
+    -- Colliding job MUST be isolated without acquiring claims!
+    local env2 = collisionBootRoot.taskJobs.byId["job-colliding-2"]
+    assertEq(env2.state, "RECONCILE_REQUIRED", "Colliding job demoted to RECONCILE_REQUIRED")
+    assertEq(env2.effects, "UNKNOWN", "Colliding job effects UNKNOWN")
+    assertEq(env2.payload.state, "PAUSED", "Colliding job payload state PAUSED")
+    assertEq(env2.payload.reason, "CLAIM_IDENTITY_COLLISION", "Colliding job reason is CLAIM_IDENTITY_COLLISION")
+    assertTrue(env2.payload.uncertain == true, "Colliding job marked uncertain")
+    assertTrue(string.match(env2.claimId, "^job%-colliding%-2:c%d+$") ~= nil, "Colliding job retains a legal claimId")
+    assertFalse(env2.claimId == "job-colliding-2:c1", "Colliding job receives a new authoritative identity")
+    assertFalse(Store.getToken("job-colliding-2") ~= nil, "Colliding job MUST NOT acquire any runtime token")
+
+    -- Colliding job CANNOT shrink or steal primary job's quarantined resource!
+    local reloadedClaims = Store.claimsInstance()
+    local fakeCollidingToken = { taskId = "job-colliding-2", claimId = env2.claimId, resources = {} }
+    assertFalse(reloadedClaims:canShrink(fakeCollidingToken, { "item:5555" }), "Colliding job CANNOT canShrink primary quarantine")
+    assertFalse(reloadedClaims:shrink(fakeCollidingToken, { "item:5555" }), "Colliding job CANNOT shrink primary quarantine")
+
+    -- Primary quarantine item:5555 remains 100% protected under SYSTEM_QUARANTINE!
+    assertEq(reloadedClaims.owners["item:5555"].kind, "SYSTEM_QUARANTINE", "item:5555 remains SYSTEM_QUARANTINE")
+    assertEq(collisionBootRoot.quarantineResources["item:5555"].status, "ACTIVE", "item:5555 quarantine status remains ACTIVE")
+
+    local function clone(value)
+        if type(value) ~= "table" then return value end
+        local result = {}
+        for k, v in pairs(value) do result[k] = clone(v) end
+        return result
+    end
+    local firstClaims = Store.claimsInstance()
+    for boot = 1, 2 do
+        -- Fresh module handles AND a detached persisted root; no runtime token is copied.
+        collisionBootRoot = clone(collisionBootRoot)
+        package.loaded['EmberRoutesProbe/TaskJobs'] = nil
+        package.loaded['EmberRoutesProbe/BusinessJobs'] = nil
+        package.loaded['EmberRoutesProbe/LaborStore'] = nil
+        ContainerRegistry.data = function() return collisionBootRoot end
+        local opened, why = JobStore.open(collisionBootRoot)
+        assertTrue(opened ~= nil, "Collision ledger reopens on boot " .. boot .. ": " .. tostring(why))
+        local freshStore = require('EmberRoutesProbe/LaborStore')
+        freshStore.data()
+        assertFalse(freshStore.claimsInstance() == firstClaims, "Cold boot creates fresh Claims")
+        firstClaims = freshStore.claimsInstance()
+        local saved = collisionBootRoot.taskJobs.byId['job-colliding-2']
+        assertEq(saved.id, 'job-colliding-2', "Stable job ID survives cold boot")
+        assertEq(saved.claimId, env2.claimId, "Replacement claimId stays stable")
+        assertFalse(freshStore.getToken(saved.id) ~= nil, "Isolated job cannot reacquire after boot")
+        assertEq(freshStore.resourceOwner('item:5555').kind, 'SYSTEM_QUARANTINE', "Original quarantine survives")
+        assertEq(freshStore.resourceOwner('item:7772').kind, 'SYSTEM_QUARANTINE', "Colliding task resources stay protected")
+        local evidence = collisionBootRoot.quarantineResources['item:7772'].evidence.identityCollision
+        assertEq(evidence.originalClaimId, 'job-colliding-2:c1', "Original identity preserved")
+        assertTrue(evidence.taskIds['job-primary-1'] and evidence.taskIds['job-colliding-2'], "Both task identities preserved")
+        assertEq(evidence.originalTaskId, saved.id, "Original task ID preserved")
+        print('PASS R2 independent cold boot ' .. boot)
+    end
+end
+
+-- R4: same-instance idempotency is distinct from new-instance reconstruction.
+do
+    local c = Claims.new()
+    local q = {originalTaskId='restore-A', originalClaimId='restore-A:c12', originalGeneration=2,
+        capacityKey='restore-bin', capacityItemId=21001, capacityAmount=3}
+    assertTrue(c:restoreQuarantine('item:21001', q), 'First restore succeeds')
+    local owner, revision = c.owners['item:21001'], c.revision
+    assertTrue(c:restoreQuarantine('item:21001', q), 'Identical restore succeeds')
+    assertEq(c.capacity['restore-bin'].total, 3, 'Repeated restore counts capacity once')
+    assertEq(c.owners['item:21001'], owner, 'Repeated restore preserves owner identity')
+    assertEq(c.revision, revision, 'Idempotent restore does not invalidate snapshots')
+    for _, field in ipairs({'originalTaskId','originalClaimId','originalGeneration','capacityKey','capacityItemId','capacityAmount'}) do
+        local changed = {}
+        for k,v in pairs(q) do changed[k]=v end
+        changed[field] = type(q[field]) == 'number' and q[field]+1 or q[field]..'-changed'
+        local ok, why = c:restoreQuarantine('item:21001', changed)
+        assertFalse(ok, 'Different restore metadata rejected: '..field)
+        assertEq(why, 'QUARANTINE_RESTORE_CONFLICT', 'Explicit metadata conflict')
+        assertEq(c.owners['item:21001'], owner, 'Conflict preserves owner')
+        assertEq(c.capacity['restore-bin'].total, 3, 'Conflict preserves capacity')
+        assertEq(c.revision, revision, 'Conflict is read-only')
+    end
+    local token = c:acquireNew('restore-other', 1, {'item:21002'})
+    assertFalse(c:restoreQuarantine('item:21002', q), 'Restore cannot steal normal ownership')
+    assertEq(c.owners['item:21002'], token, 'Normal owner survives failed restore')
+    local fresh = Claims.new()
+    assertTrue(fresh:restoreQuarantine('item:21001', q), 'New Claims rebuilds persisted record')
+    assertEq(fresh.capacity['restore-bin'].total, 3, 'New-instance capacity restored once')
+    print('PASS R4 same-instance idempotency, metadata conflicts, ownership and cold reconstruction')
+end
+
+-- R3: force actual enumeration order changes (insertion order alone does not
+-- control Lua 5.1 pairs). All modules and claims are fresh for each variant.
+do
+    local function copy(v)
+        if type(v)~='table' then return v end
+        local r={} for k,x in pairs(v) do r[k]=copy(x) end return r
+    end
+    local function same(a,b)
+        if type(a)~=type(b) then return false end
+        if type(a)~='table' then return a==b end
+        for k,v in pairs(a) do if not same(v,b[k]) then return false end end
+        for k in pairs(b) do if a[k]==nil then return false end end
+        return true
+    end
+    local function craft(id,item)
+        return {id=id,npcId='npc-'..id,providerType='CRAFT',scopeId='local-world',revision=1,
+            state='RUNNING',effects='KNOWN',obligations={},claimId=id..':c1',
+            payload={format=4,id=id,npcId='npc-'..id,sequence=1,recipeId='Base.MakeAxe',
+                target=1,produced=0,materials={{id=item}},tools={},outputs={},claims={'item:'..item}}}
+    end
+    local function boot(saved,reverse)
+        local world=copy(saved)
+        ContainerRegistry.data=function() return world end
+        for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do
+            package.loaded['EmberRoutesProbe/'..name]=nil
+        end
+        local basePairs=pairs
+        _G.pairs=function(t)
+            if t~=world.quarantineResources and t~=world.taskJobs.byId
+                and t~=(world.toolCustody and world.toolCustody.byId) then return basePairs(t) end
+            local keys={} for k in basePairs(t) do keys[#keys+1]=k end
+            table.sort(keys,function(a,b) if reverse then return a>b end return a<b end)
+            local n=0
+            return function() n=n+1 local k=keys[n] if k then return k,t[k] end end
+        end
+        local ok,result=pcall(function()
+            local s=require('EmberRoutesProbe/LaborStore')
+            assertTrue(JobStore.open(world)~=nil,'Variant ledger opens before reconstruction')
+            s.data()
+            assertTrue(JobStore.open(world)~=nil,'Variant ledger opens after reconstruction')
+            return s
+        end)
+        _G.pairs=basePairs
+        assertTrue(ok,'Ordered boot succeeds: '..tostring(result))
+        return world,result
+    end
+    -- Same task, three isolated resources plus one free original: no collision.
+    local legitimate={nextClaimSeq=100,containers={},taskJobs={format=1,byId={A=craft('A',22001)}},quarantineResources={}}
+    for _,item in ipairs({22002,22003,22004}) do
+        legitimate.quarantineResources['item:'..item]={status='ACTIVE',originalTaskId='A',originalClaimId='A:c1'}
+    end
+    local normal1,s1=boot(legitimate,false)
+    assertTrue(s1.getToken('A')~=nil,'Same task with three quarantines recovers free originals')
+    local normal2,s2=boot(legitimate,true)
+    assertTrue(s2.getToken('A')~=nil,'Reverse scan does not invent same-task collision')
+    assertTrue(same(normal1,normal2),'Same-task persisted results are order-independent')
+
+    local conflict=copy(legitimate)
+    conflict.quarantineResources['item:22003'].originalTaskId='B'
+    conflict.quarantineResources['item:22004'].originalTaskId='C'
+    local w1,t1=boot(conflict,false)
+    assertFalse(t1.getToken('A')~=nil,'Cross-task quarantine identity blocks A')
+    local w2,t2=boot(conflict,true)
+    assertFalse(t2.getToken('A')~=nil,'Reverse scan cannot choose A as winner')
+    assertTrue(same(w1,w2),'Cross-task persisted results are order-independent')
+    local ev=w2.quarantineResources['item:22001'].evidence.identityCollision
+    assertTrue(ev.taskIds.A and ev.taskIds.B and ev.taskIds.C,'All conflicting task IDs preserved')
+    for _,item in ipairs({22001,22002,22003,22004}) do
+        assertEq(t2.resourceOwner('item:'..item).kind,'SYSTEM_QUARANTINE','Every original remains quarantined')
+        assertTrue(ev.resourceKeys['item:'..item],'Every resource appears in evidence')
+    end
+    local again,sAgain=boot(w2,false)
+    assertEq(again.taskJobs.byId.A.claimId,w2.taskJobs.byId.A.claimId,'Repeated recovery does not rekey again')
+    assertFalse(sAgain.getToken('A')~=nil,'Rekey does not permit reacquisition')
+
+    -- Two custody entries share the same original claim identity. Neither may
+    -- escape collision detection through prefix normalization or recover first.
+    local custody={nextClaimSeq=100,containers={},taskJobs={format=1,byId={}},quarantineResources={},
+        toolCustody={byId={},byNpc={},byItem={}}}
+    for i,id in ipairs({'custody-A','custody-B'}) do
+        custody.toolCustody.byId[id]={format=1,id=id,npcId='npc-'..i,itemId=23000+i,
+            role='CLEAN_TOOL',state='HELD',sequence=1,claims={'item:'..(23000+i)},claimId='custody-A:c1'}
+    end
+    local c1,cs1=boot(custody,false)
+    local c2,cs2=boot(custody,true)
+    assertTrue(same(c1,c2),'Two live claimants have identical results in both scan orders')
+    for _,id in ipairs({'custody-A','custody-B'}) do
+        assertFalse(cs2.getToken(id)~=nil,'No custody collision winner: '..id)
+        assertTrue(string.match(c2.toolCustody.byId[id].claimId,'^'..id:gsub('%-','%%-')..':c%d+$')~=nil,
+            'Custody replacement identity has legal prefix')
+    end
+    print('PASS R3 same-task resources, cross-task quarantine sets, live claimants: forward/reverse scans')
+
+    -- P0-2: keep RETAIN production behavior; exercise successive transfers into
+    -- an existing reservation and a rejection without any partial mutation.
+    local c=Claims.new()
+    local t=c:acquireNew('retain-existing',1,{'item:24000'})
+    assertTrue(c:reserve(t,'retain-bin',24000,2,100),'Existing reservation initialized')
+    for _,item in ipairs({24001,24002}) do
+        assertTrue(c:restoreQuarantine('item:'..item,{capacityKey='retain-bin',capacityItemId=item,capacityAmount=3}),
+            'Quarantine capacity restored')
+    end
+    assertEq(c.capacity['retain-bin'].total,8,'Initial ordinary + quarantine capacity is 8')
+    for _,item in ipairs({24001,24002}) do
+        assertTrue(c:unquarantine('item:'..item,{capacityAction='RETAIN',targetToken=t}),'Same-bucket transfer succeeds')
+        assertEq(c.capacity['retain-bin'].total,8,'Each RETAIN conserves total capacity')
+    end
+    assertEq(c.capacity['retain-bin'].entries[t.taskId].amount,8,'Existing and two transferred amounts merged')
+    print('PASS RETAIN existing reservation + two transfers: total=8, recipient=8')
 end
 
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")
