@@ -23,6 +23,22 @@ local function nativeRecords()
     end
     return crafts
 end
+local function nextAuthoritativeClaimId(rootTable, defaultPrefix)
+    rootTable.nextClaimSeq = (rootTable.nextClaimSeq or 0) + 1
+    return tostring(defaultPrefix or "claim") .. ":c" .. tostring(rootTable.nextClaimSeq)
+end
+
+local function ensureEntityClaimId(rootTable, entity, defaultPrefix)
+    if type(entity) == "table" and entity.claimId then
+        return entity.claimId
+    end
+    local cid = nextAuthoritativeClaimId(rootTable, defaultPrefix or (type(entity) == "table" and entity.id) or "claim")
+    if type(entity) == "table" then
+        entity.claimId = cid
+    end
+    return cid
+end
+
 function Store.data()
     local current=Registry.data()
     if current~=root then
@@ -34,18 +50,19 @@ function Store.data()
         -- and register existing Quarantine locks with independent capacity reservations.
         for qKey, qRecord in pairs(current.quarantineResources) do
             if type(qRecord) == "table" and qRecord.status == "RESOLVING" then
-                -- Crash recovery: complete the resolution!
-                current.quarantineAudit = current.quarantineAudit or {}
-                current.quarantineAudit[qKey] = {
-                    action = "CRASH_RESOLVE",
-                    status = "RESOLVED",
-                    resolution = qRecord.resolution,
-                    evidence = qRecord.resolvingEvidence,
-                    at = (os and os.time and os.time() or 0)
-                }
-                current.quarantineResources[qKey] = nil
+                -- Crash recovery: unquarantine resolution was interrupted before commit!
+                -- RESOLVING only represents intent, NOT verified settlement.
+                -- Revert status to ACTIVE, preserve diagnostic trace, and KEEP QUARANTINE PROTECTED!
+                qRecord.status = "ACTIVE"
+                qRecord.interruptedResolution = qRecord.resolution
+                qRecord.interruptedEvidence = qRecord.resolvingEvidence
+                qRecord.resolution = nil
+                qRecord.resolvingEvidence = nil
+                qRecord.resolvingAt = nil
+                rebuilt:restoreQuarantine(qKey, qRecord)
             elseif type(qRecord) == "table" and qRecord.status == "RESOLVED" then
-                -- Resolved tombstone: skip
+                -- Resolved tombstone: skip/clean from active quarantine
+                current.quarantineResources[qKey] = nil
             else
                 rebuilt:restoreQuarantine(qKey, type(qRecord) == "table" and qRecord or nil)
             end
@@ -229,7 +246,7 @@ function Store.data()
                                     end
                                 end
                             else
-                                local claimId = record.claimId or (id .. ":c" .. tostring((record.generation or 0) + 1))
+                                local claimId = ensureEntityClaimId(current, record, id)
                                 local token = rebuilt:acquire(id, (record.generation or 0) + 1, resourceKeys, { claimId = claimId })
                                 if not token then
                                     record.state = "PAUSED"
@@ -283,7 +300,8 @@ function Store.data()
                     if hasConflict(resKeys) then
                         record.released = true
                     else
-                        local token = rebuilt:acquire(record.id, record.generation, resKeys)
+                        local claimId = ensureEntityClaimId(current, record, record.id)
+                        local token = rebuilt:acquire(record.id, record.generation, resKeys, { claimId = claimId })
                         if not token or newTokens[record.id] or rebuiltNative[record.id] then
                             record.released = true
                         else
@@ -310,7 +328,8 @@ function Store.data()
                             job.state = 'RECONCILE_REQUIRED'
                             job.effects = 'UNKNOWN'
                         else
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims)
+                            local claimId = ensureEntityClaimId(current, job, id)
+                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
                             if not token then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
@@ -330,7 +349,8 @@ function Store.data()
                             job.state = 'RECONCILE_REQUIRED'
                             job.effects = 'UNKNOWN'
                         else
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims)
+                            local claimId = ensureEntityClaimId(current, job, id)
+                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
                             if not token then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
@@ -357,7 +377,8 @@ function Store.data()
                             job.state = 'RECONCILE_REQUIRED'
                             job.effects = 'UNKNOWN'
                         else
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims)
+                            local claimId = ensureEntityClaimId(current, job, id)
+                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
                             if not token then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
@@ -377,7 +398,8 @@ function Store.data()
                             job.state = 'RECONCILE_REQUIRED'
                             job.effects = 'UNKNOWN'
                         else
-                            local token, why = rebuilt:acquire(id, job.payload.sequence, job.payload.claims)
+                            local claimId = ensureEntityClaimId(current, job, id)
+                            local token, why = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
                             if not token then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
@@ -404,7 +426,8 @@ function Store.data()
                             job.state = 'RECONCILE_REQUIRED'
                             job.effects = 'UNKNOWN'
                         else
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, job.payload.claims)
+                            local claimId = ensureEntityClaimId(current, job, id)
+                            local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, job.payload.claims, { claimId = claimId })
                             if not token then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
@@ -446,7 +469,8 @@ function Store.data()
                                     job.state = 'RECONCILE_REQUIRED'
                                     job.effects = 'UNKNOWN'
                                 else
-                                    local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, claimKeys)
+                                    local claimId = ensureEntityClaimId(current, job, id)
+                                    local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, claimKeys, { claimId = claimId })
                                     if not token then
                                         job.state = 'RECONCILE_REQUIRED'
                                         job.effects = 'UNKNOWN'
@@ -491,7 +515,8 @@ function Store.data()
                 if hasConflict(entry.claims) then
                     entry.state = 'HELD'
                 else
-                    local token, why = rebuilt:acquire(id, entry.sequence, entry.claims)
+                    local claimId = ensureEntityClaimId(current, entry, id)
+                    local token, why = rebuilt:acquire(id, entry.sequence, entry.claims, { claimId = claimId })
                     if not token then
                         entry.state = 'HELD'
                     else
@@ -634,7 +659,9 @@ function Store.unquarantineResource(key,resolution,evidence)
             status = "RESOLVED",
             resolution = resObj,
             evidence = evidObj,
-            at = now
+            at = now,
+            capacityAction = resObj.capacityAction or "RELEASE",
+            recipientTaskId = (resObj.targetToken or resObj.recipientToken) and (resObj.targetToken or resObj.recipientToken).taskId
         }
         root.quarantineResources[key] = nil
     end
@@ -647,8 +674,8 @@ function Store.createClaimedJob(job)
     end
     Store.data()
     -- Allocate persistent non-reusable claimId at the authoritative root level:
-    root.nextClaimSeq = (root.nextClaimSeq or 0) + 1
-    local persistentClaimId = job.claimId or (tostring(job.id) .. ":c" .. tostring(root.nextClaimSeq))
+    -- NEVER allow external caller to inject arbitrary/old claimId!
+    local persistentClaimId = nextAuthoritativeClaimId(root, job.id)
     job.claimId = persistentClaimId
     if claims then claims.nextClaimSeq = math.max(claims.nextClaimSeq or 1, root.nextClaimSeq + 1) end
 
@@ -825,7 +852,8 @@ function Store.claimCooking(job)
     local saved=root.taskJobs.byId[job.id]
     if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.npcId~=job.npcId
         or saved.revision~=job.revision or saved.payload.phase=='SETTLED' then return nil,'COOKING_JOB_CHANGED' end
-    local token,why=claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims)
+    local claimId = ensureEntityClaimId(root, saved, saved.id)
+    local token,why=claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId })
     if token then cookingTokens[saved.id]=token end
     return token,why
 end
@@ -838,7 +866,8 @@ function Store.transferCooking(job,token,npcId)
     if not ok then return nil,reason end
     -- Same Job/resource set throughout. Old callbacks fail revision/NPC/token checks.
     local saved=jobs:get(job.id)
-    cookingTokens[job.id]=assert(claims:acquire(job.id,saved.payload.sequence,saved.payload.claims))
+    local claimId = ensureEntityClaimId(root, saved, saved.id)
+    cookingTokens[job.id]=assert(claims:acquire(job.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId }))
     return saved
 end
 function Store.validCooking(job,token,key)
@@ -878,7 +907,8 @@ function Store.replaceCooking(job,token,proposed)
         return false,why
     end
     local saved=jobs:get(job.id)
-    local nextToken=assert(claims:acquire(job.id,saved.payload.sequence,saved.payload.claims))
+    local claimId = ensureEntityClaimId(root, saved, saved.id)
+    local nextToken=assert(claims:acquire(job.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId }))
     cookingTokens[job.id]=nextToken
     return true,saved,nextToken
 end
@@ -899,7 +929,8 @@ function Store.claimPersonal(job)
     if not require('EmberRoutesProbe/SelfCareRecord').valid(saved)
         or saved.npcId~=job.npcId or saved.payload.attemptId~=job.payload.attemptId
         or saved.payload.sequence~=job.payload.sequence then return nil,'STALE_PERSONAL_ATTEMPT' end
-    local token,reason=claims:acquire(job.id,job.payload.sequence,saved.payload.claims)
+    local claimId = ensureEntityClaimId(root, saved, job.id)
+    local token,reason=claims:acquire(job.id,job.payload.sequence,saved.payload.claims, { claimId = claimId })
     if token then personalTokens[job.id]=token end
     return token,reason
 end
@@ -908,7 +939,8 @@ function Store.claimActivity(job)
     local saved=root.taskJobs.byId[job.id]
     if not require('EmberRoutesProbe/ActivityRecord').valid(saved) or saved.npcId~=job.npcId
         or saved.effects~='KNOWN' or saved.payload.sequence~=job.payload.sequence then return nil,'STALE_ACTIVITY_ATTEMPT' end
-    local token,why=claims:acquire(job.id,job.payload.sequence,saved.payload.claims)
+    local claimId = ensureEntityClaimId(root, saved, job.id)
+    local token,why=claims:acquire(job.id,job.payload.sequence,saved.payload.claims, { claimId = claimId })
     if token then activityTokens[job.id]=token end return token,why
 end
 -- Field adapters share this same resource authority with cooking/haul/care.
@@ -916,7 +948,8 @@ function Store.claimField(job)
     Store.data()
     local saved=root.taskJobs.byId[job.id]
     if not saved or saved.providerType~='FIELD_WORK' or saved.revision~=job.revision then return nil,'FIELD_JOB_CHANGED' end
-    local token,why=claims:acquire(job.id,saved.payload.sequence,saved.payload.claims)
+    local claimId = ensureEntityClaimId(root, saved, job.id)
+    local token,why=claims:acquire(job.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId })
     if token then fieldTokens[job.id]=token end
     return token,why
 end
@@ -1015,7 +1048,8 @@ function Store.claimNative(record)
     for _,otherRecord in pairs(nativeRecords()) do
         if otherRecord~=record and otherRecord.id==record.id then return nil,"TASK_ID_DUPLICATED" end
     end
-    local token,reason=claims:acquire(record.id,record.generation,CraftRecord.resources(record))
+    local claimId = ensureEntityClaimId(root, record, record.id)
+    local token,reason=claims:acquire(record.id,record.generation,CraftRecord.resources(record), { claimId = claimId })
     if token then nativeTokens[record.id]=token end
     return token,reason
 end
@@ -1053,7 +1087,8 @@ function Store.claim(record)
     local native=nativeRecords()[record.npcId]
     if native and not native.released then return nil,"OTHER_TASK_RETAINED" end
     local generation=(record.generation or 0)+1
-    local token,reason=claims:acquire(record.id,generation,resources(record))
+    local claimId = ensureEntityClaimId(root, record, record.id)
+    local token,reason=claims:acquire(record.id,generation,resources(record), { claimId = claimId })
     if token then record.generation=generation tokens[record.id]=token end
     return token,reason
 end
@@ -1235,7 +1270,8 @@ function Store.claimCustody(npcId,itemId,role,sourceContainerId,activeJobId)
     if not require('EmberRoutesProbe/ToolCustodyRecord').valid(entry) then
         return nil,'TOOL_CUSTODY_INVALID'
     end
-    local token,why=claims:acquire(custodyId,entry.sequence,entry.claims)
+    local claimId = ensureEntityClaimId(root, entry, custodyId)
+    local token,why=claims:acquire(custodyId,entry.sequence,entry.claims, { claimId = claimId })
     if not token then return nil,why or 'TOOL_CLAIM_CONFLICT' end
     custodyTokens[custodyId]=token
     custodyStore.byId[custodyId]=entry

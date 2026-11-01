@@ -1161,7 +1161,7 @@ do
     assertEq(bootClaims.capacity["crate-persist-cap"] and bootClaims.capacity["crate-persist-cap"].total or 0, 0, "Capacity released after explicit unquarantine")
 end
 
--- Test 6.6: B.5 - Unquarantine two-phase status recovery from RESOLVING crash (B55-01 ~ B55-03)
+-- Test 6.6: B.5 - Unquarantine two-phase status recovery from RESOLVING crash (P0-1 closure: keep protected)
 do
     local bootRootCrash = {
         format = 1,
@@ -1178,10 +1178,13 @@ do
     ContainerRegistry.data = function() return bootRootCrash end
     Store.data()
     local crashClaims = Store.claimsInstance()
-    assertFalse(crashClaims.owners["item:8888"] ~= nil, "RESOLVING item is not re-quarantined on cold boot")
-    assertEq(bootRootCrash.quarantineResources["item:8888"], nil, "RESOLVING record cleared from active quarantine")
-    assertTrue(bootRootCrash.quarantineAudit["item:8888"] ~= nil, "Crash resolution recorded in audit trail")
-    assertEq(bootRootCrash.quarantineAudit["item:8888"].action, "CRASH_RESOLVE", "Audit action is CRASH_RESOLVE")
+    -- P0-1: Missing verified settlement completion evidence -> MUST REMAIN PROTECTED UNDER SYSTEM_QUARANTINE!
+    assertTrue(crashClaims.owners["item:8888"] ~= nil, "RESOLVING item remains protected under SYSTEM_QUARANTINE in claims memory")
+    assertEq(crashClaims.owners["item:8888"].kind, "SYSTEM_QUARANTINE", "Owner kind is SYSTEM_QUARANTINE")
+    assertTrue(bootRootCrash.quarantineResources["item:8888"] ~= nil, "RESOLVING record is NOT cleared from active quarantine")
+    assertEq(bootRootCrash.quarantineResources["item:8888"].status, "ACTIVE", "RESOLVING record restored to ACTIVE status on cold boot")
+    assertEq(bootRootCrash.quarantineResources["item:8888"].interruptedResolution.reason, "MIDWAY_CRASH", "Diagnostic trace preserved in interruptedResolution")
+    assertEq(bootRootCrash.quarantineAudit and bootRootCrash.quarantineAudit["item:8888"], nil, "No false completion audit written for interrupted resolution")
 end
 
 -- Test 6.7: B.5 - Corrupted format 1 legacy schema recovery gracefully demotes without crash (B54-02)
@@ -1400,6 +1403,270 @@ do
     -- CRITICAL B.5 VERIFICATION: Persistent quarantine record MUST NOT be deleted!
     assertTrue(bootRootUnqFail.quarantineResources["item:unq-fail-test"] ~= nil, "Persistent quarantine record RETAINED on unquarantine failure")
     assertEq(bootRootUnqFail.quarantineResources["item:unq-fail-test"].status, "ACTIVE", "Status restored to ACTIVE")
+end
+
+-- Test 6.11: P0-2 - capacityAction = 'RETAIN' requires explicit recipient token; atomic capacity transfer vs rejection
+do
+    local bootRootRetain = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:cap-retain-test"] = {
+                status = "ACTIVE",
+                reason = "RETAIN_TEST",
+                at = 1000,
+                capacityKey = "crate-retain-bucket",
+                capacityItemId = 777,
+                capacityAmount = 10.0
+            }
+        }
+    }
+    ContainerRegistry.data = function() return bootRootRetain end
+    Store.data()
+    local claims = Store.claimsInstance()
+    assertTrue(claims.capacity["crate-retain-bucket"] ~= nil, "Bucket crate-retain-bucket restored")
+    assertEq(claims.capacity["crate-retain-bucket"].total, 10.0, "Bucket total reflects quarantined capacity")
+
+    -- 1. Attempt unquarantine with capacityAction = 'RETAIN' WITHOUT targetToken: MUST BE REJECTED!
+    local okNoTarget, errNoTarget = Store.unquarantineResource("item:cap-retain-test", { capacityAction = "RETAIN" })
+    assertFalse(okNoTarget, "RETAIN without recipient token must be rejected")
+    assertEq(errNoTarget, "CAPACITY_RETAIN_WITHOUT_RECIPIENT_REJECTED", "Rejection error code matches contract")
+    assertEq(bootRootRetain.quarantineResources["item:cap-retain-test"].status, "ACTIVE", "Quarantine record status remains ACTIVE")
+    assertEq(claims.capacity["crate-retain-bucket"].total, 10.0, "Bucket total remains unchanged after rejected retain")
+
+    -- 2. Create a valid recipient token and transfer capacity via RETAIN:
+    local recipientToken, _ = claims:acquire("job-recipient-1", 1, {})
+    assertTrue(recipientToken ~= nil, "Recipient token acquired")
+    local okWithTarget, errWithTarget = Store.unquarantineResource("item:cap-retain-test", {
+        capacityAction = "RETAIN",
+        targetToken = recipientToken,
+        reason = "HANDOFF_TRANSFER"
+    })
+    assertTrue(okWithTarget, "RETAIN with valid recipient token succeeds: " .. tostring(errWithTarget))
+    assertEq(bootRootRetain.quarantineResources["item:cap-retain-test"], nil, "Active quarantine record cleared on successful transfer")
+    assertEq(recipientToken.capacityKey, "crate-retain-bucket", "Recipient token assigned capacityKey")
+    local b = claims.capacity["crate-retain-bucket"]
+    assertEq(b.quarantine["item:cap-retain-test"], nil, "Quarantine entry cleared in bucket")
+    assertTrue(b.entries["job-recipient-1"] ~= nil, "Recipient entry created in bucket")
+    assertEq(b.entries["job-recipient-1"].amount, 10.0, "Capacity amount transferred to recipient")
+    assertEq(b.entries["job-recipient-1"].items[777], 10.0, "Item capacity transferred to recipient")
+    assertEq(b.total, 10.0, "Bucket total correctly preserved without leak or orphan")
+    assertEq(bootRootRetain.quarantineAudit["item:cap-retain-test"].action, "UNQUARANTINE", "Audit action is UNQUARANTINE")
+    assertEq(bootRootRetain.quarantineAudit["item:cap-retain-test"].capacityAction, "RETAIN", "Audit logs capacityAction = RETAIN")
+    assertEq(bootRootRetain.quarantineAudit["item:cap-retain-test"].recipientTaskId, "job-recipient-1", "Audit logs recipientTaskId")
+end
+
+-- Test 6.12: P1 - Authoritative monotonic claimId across creation and cold boot reconstruction
+do
+    local SelfCareRecord = require('EmberRoutesProbe/SelfCareRecord')
+    local careJob = SelfCareRecord.create("care-p1", "npc-care")
+    careJob.state = "RUNNING"
+    careJob.payload.kind = "EAT"
+    careJob.payload.attemptId = "care-p1:1"
+    careJob.payload.step = "RESTORE_PENDING"
+    careJob.payload.sequence = 1
+    careJob.payload.claims = { "item:9988" }
+
+    local bootRootP1 = {
+        format = 1,
+        nextClaimSeq = 50,
+        taskJobs = {
+            format = 1,
+            byId = {
+                ["care-p1"] = careJob,
+                ["craft-p1"] = {
+                    id = "craft-p1",
+                    npcId = "npc-craft",
+                    providerType = "CRAFT",
+                    scopeId = "settlement-1",
+                    revision = 1,
+                    state = "RUNNING",
+                    effects = "KNOWN",
+                    obligations = {},
+                    payload = {
+                        format = 4,
+                        id = "craft-p1",
+                        npcId = "npc-craft",
+                        sequence = 1,
+                        recipeId = "Base.MakeAxe",
+                        target = 1,
+                        produced = 0,
+                        materials = { { id = 7711, consumed = false } },
+                        tools = {},
+                        outputs = {},
+                        claims = { "item:7711" }
+                    }
+                }
+            }
+        },
+        toolCustody = {
+            format = 1,
+            byId = {
+                ["custody-p1"] = {
+                    format = 1,
+                    id = "custody-p1",
+                    npcId = "npc-custody",
+                    itemId = 9999,
+                    role = "BUILDER",
+                    state = "HELD",
+                    sequence = 1,
+                    claims = { "item:9999" }
+                }
+            },
+            byNpc = {},
+            byItem = {}
+        },
+        containers = {},
+        quarantineResources = {}
+    }
+    ContainerRegistry.data = function() return bootRootP1 end
+    Store.data()
+    local t_care = Store.getToken("care-p1")
+    assertTrue(t_care ~= nil, "care token recovered")
+    assertTrue(t_care.claimId ~= nil, "care token has non-nil claimId")
+    assertEq(t_care.claimId, "care-p1:c51", "care token receives authoritative claimId (51)")
+
+    local t_craft = Store.getToken("craft-p1")
+    assertTrue(t_craft ~= nil, "craft token recovered")
+    assertTrue(t_craft.claimId ~= nil, "craft token has non-nil claimId")
+    assertEq(t_craft.claimId, "craft-p1:c52", "craft token receives authoritative claimId (52)")
+
+    local t_custody = Store.getToken("custody-p1")
+    assertTrue(t_custody ~= nil, "custody token recovered")
+    assertTrue(t_custody.claimId ~= nil, "custody token has non-nil claimId")
+    assertEq(t_custody.claimId, "custody-p1:c53", "custody token receives authoritative claimId (53)")
+
+    -- Verify createClaimedJob forces new monotonic claimId even if caller injects an untrusted one:
+    local jobWithInjectedClaim = {
+        id = "craft-injected-test",
+        npcId = "npc-craft-inj",
+        providerType = "CRAFT",
+        scopeId = "settlement-1",
+        revision = 1,
+        state = "PREPARING",
+        effects = "KNOWN",
+        obligations = {},
+        claimId = "FORGED_OLD_CLAIM_ID", -- Untrusted injected identity!
+        payload = {
+            format = 4,
+            id = "craft-injected-test",
+            npcId = "npc-craft-inj",
+            sequence = 1,
+            recipeId = "Base.MakeAxe",
+            target = 1,
+            produced = 0,
+            materials = { { id = 8881, consumed = false } },
+            tools = {},
+            outputs = {},
+            claims = { "item:8881" }
+        }
+    }
+    local okCreateInj, _ = Store.createClaimedJob(jobWithInjectedClaim)
+    assertTrue(okCreateInj, "createClaimedJob succeeds")
+    assertEq(jobWithInjectedClaim.claimId, "craft-injected-test:c54", "Injected claimId is overwritten with authoritative monotonic sequence (54)")
+    local t_inj = Store.getToken("craft-injected-test")
+    assertEq(t_inj.claimId, "craft-injected-test:c54", "Runtime token receives authoritative claimId (54)")
+end
+
+-- Test 6.13: Real cold boot end-to-end integration (TaskJobs.current -> JobStore.open -> BusinessJobs -> LaborStore)
+do
+    -- Boundary 1: Envelope / root corrupted with legacy data
+    local legacyRoot = {
+        format = 1,
+        job = { id = "legacy-envelope" }, -- violates JobStore legacy guard
+        taskJobs = { format = 1, byId = {} }
+    }
+    ContainerRegistry.data = function() return legacyRoot end
+    local okLegacy, errLegacy = pcall(function()
+        local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+        TaskJobs.current()
+    end)
+    assertFalse(okLegacy, "TaskJobs.current() must reject legacy root envelope")
+    assertTrue(string.find(tostring(errLegacy), "LEGACY_TASK_RESET_REQUIRED") ~= nil, "Rejection error code is LEGACY_TASK_RESET_REQUIRED")
+
+    -- Boundary 2: Valid JobStore envelope containing corrupted payload
+    local bootRootE2E = {
+        format = 1,
+        containers = {},
+        quarantineResources = {},
+        taskJobs = {
+            format = 1,
+            byId = {
+                ["haul-e2e-corrupt"] = {
+                    id = "haul-e2e-corrupt",
+                    npcId = "npc-e2e-corrupt",
+                    providerType = "HAUL",
+                    scopeId = "local-world",
+                    revision = 1,
+                    state = "RUNNING",
+                    effects = "KNOWN",
+                    obligations = {},
+                    payload = {
+                        format = 1,
+                        id = "haul-e2e-corrupt",
+                        npcId = "npc-e2e-corrupt",
+                        source = "crate-a",
+                        destination = "crate-b",
+                        items = { "NOT_A_VALID_NUMBER" },
+                        state = "RUNNING"
+                    }
+                }
+            }
+        }
+    }
+    ContainerRegistry.data = function() return bootRootE2E end
+    -- Real production boot chain without mocking BusinessJobs.hauls:
+    local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+    local service = TaskJobs.current()
+    assertTrue(service ~= nil, "JobStore.open and TaskJobs.current succeed for valid envelope structure")
+
+    local okE2ELoad, errE2ELoad = pcall(Store.data)
+    assertTrue(okE2ELoad, "LaborStore.data() must survive corrupted payload in real boot chain: " .. tostring(errE2ELoad))
+    local env = bootRootE2E.taskJobs.byId["haul-e2e-corrupt"]
+    assertEq(env.state, "RECONCILE_REQUIRED", "Envelope demoted to RECONCILE_REQUIRED")
+    assertEq(env.effects, "UNKNOWN", "Envelope effects demoted to UNKNOWN")
+    assertEq(env.payload.state, "PAUSED", "Payload demoted to PAUSED")
+    assertTrue(env.payload.uncertain == true, "Payload marked uncertain")
+
+    -- Normal Path: Valid jobs recover cleanly through real boot chain
+    local bootRootE2EGood = {
+        format = 1,
+        containers = {},
+        quarantineResources = {},
+        taskJobs = {
+            format = 1,
+            byId = {
+                ["haul-e2e-good"] = {
+                    id = "haul-e2e-good",
+                    npcId = "npc-e2e-good",
+                    providerType = "HAUL",
+                    scopeId = "local-world",
+                    revision = 1,
+                    state = "RUNNING",
+                    effects = "KNOWN",
+                    obligations = {},
+                    payload = {
+                        format = 1,
+                        id = "haul-e2e-good",
+                        npcId = "npc-e2e-good",
+                        source = "crate-a",
+                        destination = "crate-b",
+                        items = { 7701 },
+                        state = "RUNNING"
+                    }
+                }
+            }
+        }
+    }
+    ContainerRegistry.data = function() return bootRootE2EGood end
+    local serviceGood = TaskJobs.current()
+    assertTrue(serviceGood ~= nil, "TaskJobs.current succeeds for normal job")
+    local okGoodLoad, errGoodLoad = pcall(Store.data)
+    assertTrue(okGoodLoad, "LaborStore.data succeeds for normal job: " .. tostring(errGoodLoad))
+    local t_good = Store.getToken("haul-e2e-good")
+    assertTrue(t_good ~= nil, "Token acquired for normal job")
+    assertEq(Store.claimsInstance().owners["item:7701"], t_good, "Claims owner assigned to token")
 end
 
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")

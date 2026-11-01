@@ -174,15 +174,42 @@ end
 function methods:unquarantine(key, resolution)
     local current = self.owners[key]
     if current and current.kind == "SYSTEM_QUARANTINE" then
+        if type(resolution) == "table" and resolution.capacityAction == "RETAIN" then
+            local targetToken = resolution.targetToken or resolution.recipientToken
+            if not targetToken or type(targetToken) ~= "table" or not targetToken.taskId then
+                return false, "CAPACITY_RETAIN_WITHOUT_RECIPIENT_REJECTED"
+            end
+            for capKey, bucket in pairs(self.capacity) do
+                if bucket.quarantine and bucket.quarantine[key] then
+                    local qEntry = bucket.quarantine[key]
+                    if targetToken.capacityKey and targetToken.capacityKey ~= capKey then
+                        return false, "CAPACITY_TARGET_CHANGED"
+                    end
+                    bucket.quarantine[key] = nil
+                    targetToken.capacityKey = capKey
+                    local claim = bucket.entries[targetToken.taskId]
+                    if not claim then
+                        claim = { token = targetToken, items = {}, amount = 0, count = 0 }
+                        bucket.entries[targetToken.taskId] = claim
+                        bucket.count = bucket.count + 1
+                    end
+                    if claim.items[qEntry.itemId] == nil then
+                        claim.count = claim.count + 1
+                    end
+                    claim.items[qEntry.itemId] = (claim.items[qEntry.itemId] or 0) + qEntry.amount
+                    claim.amount = claim.amount + qEntry.amount
+                    claim.token = targetToken
+                    break
+                end
+            end
+        else
+            if string.sub(key, 1, 5) == "item:" then
+                self:releaseQuarantineCapacity(key)
+            end
+        end
+
         self.owners[key] = nil
         self.revision = self.revision + 1
-        local shouldReleaseCap = true
-        if type(resolution) == "table" and resolution.capacityAction == "RETAIN" then
-            shouldReleaseCap = false
-        end
-        if shouldReleaseCap and string.sub(key, 1, 5) == "item:" then
-            self:releaseQuarantineCapacity(key)
-        end
         return true
     end
     return false, "NOT_QUARANTINED"
