@@ -1,0 +1,631 @@
+Production/Haul cutover host evidence
+Production source: 14e88780b5a8a42d3e1e481bf572b174086f1cb5
+Native bodies/effects/disk are mocked. Game NOT RUN.
+Display-only diagnostic indentation normalized; original logs remain in build/logs.
+
+LUA_PATH: ./Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;./Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;./tests/lua/?.lua;;
+
+=== lua tests/lua/phase3a-validator-test.lua | exit=0 ===
+Starting Phase 3A Defensive Validator & Compatibility Tests...
+PASS: All 20 Phase 3A Defensive Validator, AssetFree, Legacy Compatibility, and Public Validate tests passed!
+
+=== lua tests/lua/phase3a-stage-b-test.lua | exit=0 ===
+Starting Phase 3A Stage B Tests...
+PASS Part 1: LaborClaims F2 & F3 invariants.
+PASS Part 2: LaborStore Quarantine & Snapshot Isolation.
+PASS Part 3: Store.createClaimedJob Atomic Creation & Rollback.
+PASS Part 4: Store.mutateJob CAS & Resource Lifecycle.
+PASS Part 5: Two-Pass Cold Boot Recovery with Quarantine Precedence.
+Starting Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios...
+PASS R2 independent cold boot 1
+PASS R2 independent cold boot 2
+PASS R4 same-instance idempotency, metadata conflicts, ownership and cold reconstruction
+PASS legacy HAUL reload capacity=4; COOKING reload capacity=6, explicit RELEASE=0
+PASS R3 same-task resources, cross-task quarantine sets, live claimants: forward/reverse scans
+PASS RETAIN existing reservation + two transfers: total=8, recipient=8
+PASS R5 partial quarantine: 7 -> normal release 3 -> reload 3 -> explicit settlement 0
+PASS R5 RETAIN intent/audit contain stable facts; runtime token cycles and mutations do not persist
+PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.
+PASS 482 Evidence snapshot/creation/release/recovery/read-only checks; PZ disk save NOT RUN
+PASS: All Phase 3A Stage B LaborClaims & LaborStore tests passed successfully!
+
+=== lua tests/lua/job-store-test.lua | exit=0 ===
+PASS 35 independent Job store checks; persistence table only, game/save codec NOT RUN
+
+=== lua tests/lua/tool-custody-test.lua | exit=0 ===
+PASS 23 tool custody lifecycle & authorization checks
+
+=== lua tests/lua/tool-return-test.lua | exit=0 ===
+PASS 51 Stage 2 tool return, custody lifecycle & recovery checks
+
+=== lua tests/lua/work-test.lua | exit=0 ===
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified
+
+=== lua tests/lua/cooking-agent-test.lua | exit=0 ===
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified
+PASS 48 multi-worker controller/claim/capacity/recovery assertions; native fakes NOT runtime evidence
+PASS cooking actions 40 checks; installed add/toggle Lua, fake engine objects; no gameplay run
+PASS 25 workstation/compound-fluid checks; installed craft Lua, fake engine; gameplay NOT RUN
+PASS 18 fixed cooking Agent checks; actual Runtime/BT/native Lua, mocked engine; game NOT RUN
+
+=== lua tests/lua/task-runtime-test.lua | exit=0 ===
+PASS 61 runtime/queue checks; native bodies/save NOT RUN
+
+=== lua tests/lua/haul-routing-test.lua | exit=0 ===
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified
+PASS 48 multi-worker controller/claim/capacity/recovery assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-72 target=uuid-70 revision=1
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-72 target=uuid-71 revision=2
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-73 target=uuid-74 revision=1
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-75 target=uuid-70 revision=1
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-76 target=uuid-71 revision=1
+[EmberRoutes v0.29.16] TRANSFER STOP npc=worker-a job=uuid-78 item=154 cause=PRECONDITION check=CONTEXT_INVALID from=? to=crate source=uuid-68 destination=uuid-70 performed=false stopped=true
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-78 target=uuid-77 revision=1
+PASS 30 haul R1 reroute/split/receipts/claims/wake/Session/upgrade/revocation/rebuild assertions; native host mocked
+
+=== lua tests/lua/task-controller-test.lua | exit=0 ===
+PASS 33 controller checks; native bodies/save NOT RUN
+
+=== lua tests/lua/execution-sessions-test.lua | exit=0 ===
+[EmberRoutes v0.29.16] execution sessions: 48 checks; pure protocol, no game bodies
+
+=== lua tests/lua/task-production-runtime-test.lua | exit=0 ===
+PASS classified native crafting: 170 checks; installed Lua, fake engine/inventory/movement/save
+PASS generic production and compatibility: 237 checks; native Lua, fake recipe logic and inventory
+PASS final production contracts: 258 checks; no game engine run
+PASS source-derived Base.CarveWoodenFork variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.CarveWoodenFork variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.CarveWoodenSpoon variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.CraftSheetRope variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.SawLogs variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.ChopLog variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeTentKit variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeTentKit variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenToolbox variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenToolbox variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenIngotCastMold variant 1; native item/tag resolution and effects mocked
+PASS production with installed source coverage: 514 checks; game NOT RUN
+PASS read-only preview contracts: 521 total checks; game/native effects NOT RUN
+PASS dependency execution contracts: 634 total checks; native effects and storage are mocked
+PASS production carry integration: 649 total checks; game NOT RUN
+PASS 100 controlled production checks; native effects mocked
+
+=== lua tests/lua/delivery-service-test.lua | exit=0 ===
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified
+PASS 48 multi-worker controller/claim/capacity/recovery assertions; native fakes NOT runtime evidence
+PASS 46 delivery public/claims/Session/capacity/movement/return assertions; native host mocked
+
+=== lua tests/lua/activity-craft-yield-test.lua | exit=0 ===
+PASS classified native crafting: 170 checks; installed Lua, fake engine/inventory/movement/save
+PASS generic production and compatibility: 237 checks; native Lua, fake recipe logic and inventory
+PASS final production contracts: 258 checks; no game engine run
+PASS source-derived Base.CarveWoodenFork variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.CarveWoodenFork variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.CarveWoodenSpoon variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.CraftSheetRope variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.SawLogs variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.ChopLog variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeTentKit variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeTentKit variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenToolbox variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenToolbox variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenIngotCastMold variant 1; native item/tag resolution and effects mocked
+PASS production with installed source coverage: 514 checks; game NOT RUN
+PASS read-only preview contracts: 521 total checks; game/native effects NOT RUN
+PASS dependency execution contracts: 634 total checks; native effects and storage are mocked
+PASS production carry integration: 649 total checks; game NOT RUN
+activity-craft-yield: 30 PASS (native craft/inventory substitutes; no game run)
+
+=== lua tests/lua/settled-task-retirement-test.lua | exit=0 ===
+PASS 18 settled-task lifecycle checks; native effects mocked
+
+=== lua tests/lua/hauling-provider-test.lua | exit=0 ===
+PASS: hauling-provider-test
+
+=== lua tests/lua/task-save-runtime-test.lua | exit=0 ===
+PASS 71 unified save/runtime checks; native save/load and disk effects mocked
+
+=== lua tests/lua/work-format-admission-test.lua | exit=0 ===
+PASS 57 Work format admission checks; real PZ disk save NOT RUN
+
+=== lua tests/lua/public-work-test.lua | exit=0 ===
+PASS 77 public dispatch/priority/claim/recovery checks; native bodies mocked
+
+=== java --class-path GAME_ROOT/* tests/java/KahluaLaborTest.java task-production-runtime-test.lua haul-routing-test.lua delivery-service-test.lua task-save-runtime-test.lua public-work-test.lua | exit=0 ===
+PASS classified native crafting: 170 checks; installed Lua, fake engine/inventory/movement/save
+PASS generic production and compatibility: 237 checks; native Lua, fake recipe logic and inventory
+PASS final production contracts: 258 checks; no game engine run
+PASS source-derived Base.CarveWoodenFork variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.CarveWoodenFork variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.CarveWoodenSpoon variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.CraftSheetRope variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.SawLogs variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.ChopLog variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeTentKit variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeTentKit variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenToolbox variant 1; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenToolbox variant 2; native item/tag resolution and effects mocked
+PASS source-derived Base.MakeWoodenIngotCastMold variant 1; native item/tag resolution and effects mocked
+PASS production with installed source coverage: 514 checks; game NOT RUN
+PASS read-only preview contracts: 521 total checks; game/native effects NOT RUN
+PASS dependency execution contracts: 634 total checks; native effects and storage are mocked
+PASS production carry integration: 649 total checks; game NOT RUN
+PASS 100 controlled production checks; native effects mocked
+PASS installed Kahlua: task-production-runtime-test.lua; native host mocked
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified
+PASS 48 multi-worker controller/claim/capacity/recovery assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-72 target=uuid-70 revision=1
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-72 target=uuid-71 revision=2
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-73 target=uuid-74 revision=1
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-75 target=uuid-70 revision=1
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-76 target=uuid-71 revision=1
+[EmberRoutes v0.29.16] TRANSFER STOP npc=worker-a job=uuid-78 item=154 cause=PRECONDITION check=CONTEXT_INVALID from=? to=crate source=uuid-68 destination=uuid-70 performed=false stopped=true
+[EmberRoutes v0.29.16] HAUL_ROUTE SELECT job=uuid-78 target=uuid-77 revision=1
+PASS 30 haul R1 reroute/split/receipts/claims/wake/Session/upgrade/revocation/rebuild assertions; native host mocked
+PASS installed Kahlua: haul-routing-test.lua; native host mocked
+PASS 16 Lua action orchestration assertions; native fakes NOT runtime evidence
+[EmberRoutes v0.29.16] ACTION FIXTURES_CLEANED
+PASS 54 Lua world haul assertions; native fakes NOT runtime evidence
+PASS 69 real-haul policy/orchestration checks; engine runtime NOT verified
+PASS 48 multi-worker controller/claim/capacity/recovery assertions; native fakes NOT runtime evidence
+PASS 46 delivery public/claims/Session/capacity/movement/return assertions; native host mocked
+PASS installed Kahlua: delivery-service-test.lua; native host mocked
+PASS 71 unified save/runtime checks; native save/load and disk effects mocked
+PASS installed Kahlua: task-save-runtime-test.lua; native host mocked
+PASS 77 public dispatch/priority/claim/recovery checks; native bodies mocked
+PASS installed Kahlua: public-work-test.lua; native host mocked
+
+=== final candidate adapter syntax checks | exit=0 ===
+
+=== EOL Lua static lint ===
+  OK    C:\Users\MuMu\.codex\qa\business-14e8878-f16958ef\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ProductionJobs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-14e8878-f16958ef\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulJobs.lua
+
+Summary: 2 file(s), 0 error(s), 0 warning(s)
+
+
+=== full preflight on isolated production baseline 44f0a18 | exit=0 ===
+
+=== [lua_lint] node lua_lint.js C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe ===
+
+=== EOL Lua static lint ===
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Actions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityAttendance.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityCalendar.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityOwners.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityParticipant.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityPump.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityRelief.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityResponsibilities.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityRoleActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityScenarioCatalog.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityScripted.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityStore.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ActivityViews.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Batch.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\BusinessJobs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CleaningPolicyDef.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CleaningProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CleaningService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Companion.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CompanionAgent.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ContainerConfiguration.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ContainerMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ContainerRegistry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingAgent.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingCapacity.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingCargo.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingContext.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingCraft.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingDirectives.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingDuty.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingEvolved.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingFacilities.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingFluidTransfer.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingFood.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingHandoff.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingHeat.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingInventory.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingKitchen.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingMonitor.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingOrders.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingPolicyDef.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingPortableWater.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingProfiles.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingRecovery.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingSupply.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingSupplyService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingWater.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CookingWaterSources.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftingCatalog.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftingPreview.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftingProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftingService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftingText.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftProbe.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftRecipeAdapter.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftRecipeFacts.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftRecipeInputs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftStations.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftSupply.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\CraftSurfaces.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\DebugMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\DeliveryFlow.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\DeliveryService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\DeliveryTarget.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\DisplayNames.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Driver.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ExitSave.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FarmingProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FarmingService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldCargo.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldDiscovery.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldForage.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldOperations.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldProviders.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldSpatial.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldSupplies.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldWork.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FieldWorkMonitor.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FloorSleep.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\FollowPolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ForagerPolicyDef.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ForagerProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ForagerService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Haul.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulAgent.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulingProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulJobs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulRouting.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\HaulRules.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ItemDisplay.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ItemLockMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\JobPolicyService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LaborStore.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureContinuity.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureFitness.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureLook.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisurePosture.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureRegistry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureSit.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureSmoke.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LeisureTimed.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LibraryIndex.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LifeZoneMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LifeZoneVisits.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LogisticsDashboard.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LogisticsMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LogisticsPlanner.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LogisticsService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LogisticsStore.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LogisticsText.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LumberjackPolicyDef.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LumberjackProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\LumberjackService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MealSupplyIndex.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MembershipLifecycle.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MembershipMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MembershipReturn.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MembershipRuntime.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MembershipService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\MembershipText.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\NeedsObserver.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\NpcCommands.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\NpcDebugMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\OrderMonitorService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Persistence.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PersistenceSamples.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PersonnelService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PlanningWake.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Production.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ProductionActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ProductionChain.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ProductionJobs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ProductionRecipe.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ProductionSupply.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PublicPreview.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PublicWork.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\PublicWorkProviders.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\RecipeOrderEntry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ReposeMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ReposeSites.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCare.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCareActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCareCustody.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCareExecution.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCareFurniture.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCareRepose.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SelfCareResources.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SettlementDashboard.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SettlementFacilities.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SettlementLedger.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SettlementMembership.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SettlementMenu.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SettlementZones.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SleepBed.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SocialActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\SocialCoordinator.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StockService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StockStore.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StorageFilterPanel.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StorageTabs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StudyActions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StudyRelief.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StudySeat.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\StudyService.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskBusinessStop.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskController.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskDiagnostic.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskJobs.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskMonitorProviders.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskPersistence.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskResume.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskRetirement.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskRuntime.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\TaskStopEvidence.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ToolDiscovery.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ToolRequirements.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ToolReturnProvider.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\ToolReturnService.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ActivityAtmosphereBoard.lua
+	[WARN ] L91: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ActivityDialog.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ActivityPage.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ActivityPresentation.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ActivityScenarioCard.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\Avatar3DView.lua
+	[WARN ] L166: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\BatchPaintingSelector.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\BlueprintRows.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CachedList.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CardPanel.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CompactSummaryStrip.lua
+	[WARN ] L167: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ContainerConfigControls.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ContainerInspectorDialog.lua
+	[WARN ] L87: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+	[WARN ] L165: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CraftingBrowser.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CraftingCards.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CraftingDraft.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CraftingOrders.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\CraftingPage.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\DefensePage.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\DeliveryCartDrawer.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\FilterChips.lua
+	[WARN ] L107: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\FilterList.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\InfoList.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\ItemPresentation.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\JobPolicyEditors.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\Layout.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\LifeZoneRules.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\LifeZoneSelector.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\LogisticsCards.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\LogisticsPage.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\LogisticsPresentation.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\OrderMonitorCards.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\OrderMonitorPage.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\PageLifecycle.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\PageRegistry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\PersonnelDossierDrawer.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\PersonnelPage.lua
+	[WARN ] L595: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\PublicOrderDialog.lua
+	[WARN ] L81: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\RecipeGrid.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\SemanticBadge.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\SettlementSelector.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\State.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\StatMeter.lua
+	[WARN ] L151: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\StatusVisual.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\StepperInput.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\StockRules.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\Text.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\Theme.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\TooltipAnchor.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\TooltipManager.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\UICache.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\Viewport.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehouseControls.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehouseDetails.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehouseGrid.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehouseInput.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehousePage.lua
+	[WARN ] L522: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehouseRows.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WarehouseSourceTable.lua
+  warn  C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UI\WorkPolicyPage.lua
+	[WARN ] L201: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+	[WARN ] L209: hand-rolled proportional column width — table columns must consume EOL.Grid.compute(totalW, cols) so header and data rows share ONE source (Round 8.147); if this is an intentional non-table split, annotate with `-- lint:allow-ratio-math <reason>`
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\UIFlow.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\VanillaCraftingHook.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\WarehouseIndex.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\WarehouseLocator.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\Work.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\WorkAgent.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\WorkBatch.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe\WorkTransfer.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\client\EmberRoutesProbe.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesActivities.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivityDuties.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivityPhaseRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivityRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivityRegistry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivityReliefRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivitySchedule.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ActivityStages.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\BatchStoragePainting.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\BehaviorTree.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Boot.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Build.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CookingBatch.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CookingBudget.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CookingPolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CookingRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CraftFluids.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CraftJobRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CraftRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\CustomKits.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\DispatchMetrics.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\EvenPaused.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ExecutionSessions.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\FieldRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\FilterEditor.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\FoodPolicyEvaluator.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\HaulJobRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\HaulManifest.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\IdleDiscovery.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\InventoryPolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\InventoryRead.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\InventoryView.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ItemLock.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\JobPolicyRegistry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\JobStore.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LaborClaims.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LaborProducers.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LaborSchedule.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LaborSignals.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LeisureConfig.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LeisurePolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\LeisureRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Log.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\MembershipPolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\NeedsPolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\PinyinHelper.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\PlayerStashRoutine.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\PrecheckQueue.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ProductionCarry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ProductionChainPlan.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ProductionYield.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\QuarantineEvidence.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ReposeRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\RuntimeGate.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\RuntimeMetrics.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\SelfCareRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\SettlementGeometry.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\SmartZoning.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\SortPolicy.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\StockRule.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\StorageFilter.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\TaskDirectory.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\TickConfig.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ToolCustodyRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\ToolReturnRecord.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\Validate.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\WarehouseMetrics.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\WarehouseQuery.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\WarehouseRollup.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbe\WorkSelector.lua
+  OK    C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua\shared\EmberRoutesProbeLoader.lua
+
+Summary: 326 file(s), 0 error(s), 12 warning(s)
+
+✓ lua_lint 通过
+
+=== [pz_lint] node tools/pz-lint.mjs C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua ===
+扫描目标 326 个文件 / 知识库 1407 个 / 7189 ms
+建模：derive 类 1162 个，方法 19475 个｜解析覆盖 99.94%（1732/1733），其中 72 个修过 break;，失败 1 个
+  解析失败的文件不产出任何结论（静默跳过），清单见 --json 的 parse.failed_files：
+    D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\media\lua\shared\Fluids\ISFluidEmptyAction.lua:[48:65] 'then' expected near 'f'
+      if self.container:getFluidContainer():getTransferRate() > 0.0f then
+
+未发现问题。
+✓ pz_lint 通过
+
+=== [pz_lint --rule LC01-prerender-must-reach-ancestor] node tools/pz-lint.mjs C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua --rule LC01-prerender-must-reach-ancestor ===
+扫描目标 326 个文件 / 知识库 1407 个 / 6509 ms
+建模：derive 类 1162 个，方法 19475 个｜解析覆盖 99.94%（1732/1733），其中 72 个修过 break;，失败 1 个
+  解析失败的文件不产出任何结论（静默跳过），清单见 --json 的 parse.failed_files：
+    D:\Software\GameApp\steam\steamapps\common\ProjectZomboid\media\lua\shared\Fluids\ISFluidEmptyAction.lua:[48:65] 'then' expected near 'f'
+      if self.container:getFluidContainer():getTransferRate() > 0.0f then
+
+未发现问题。
+✓ pz_lint --rule LC01-prerender-must-reach-ancestor 通过
+
+=== [pz_mine] node tools/pz-mine.mjs --check C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe\42\media\lua --candidates C:\Users\MuMu\Zomboid\Workshop\.workbuddy\tools\invariant-candidates.json ===
+
+用 88 条候选（support ≥ 90.0%）检查 326 个文件 → 0 条命中
+✓ pz_mine 通过
+
+=== [check_health] ⏭ 跳过：无 client/EOL 目录（非 EOL 架构，本项不适用） ===
+
+=== [pz_luals] node tools/pz-luals.mjs C:\Users\MuMu\.codex\qa\business-44f0a18-c4606994\source\Contents\mods\EmberRoutesProbe ===
+
+=== EmberRoutesProbe ===
+  lua 根: ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua
+  0 error(s) [阻塞] · 709 warning(s) [信息性]
+  自动识别 3 个宿主注入全局（Java 侧注册，源码里查不到）
+  诊断分布: undefined-field=412 · need-check-nil=225 · duplicate-set-field=32 · redundant-parameter=26 · unbalanced-assignments=6 · deprecated=4 · redundant-return-value=2 · missing-fields=1
+
+=== 汇总 ===
+  EmberRoutesProbe: 0 error / 709 warning
+
+无 LSP 级 Error。Warning 含结构性噪音（动态字段 / Java 注入全局），真信号看 undefined-field 里 Umbrella 已覆盖的名字。
+✓ pz_luals 通过
+
+=== [pz_fresh] node tools/pz-fresh-smoke.mjs  ===
+
+[1] 产物存在（少了哪份，哪条路由就开始说「读不到」）
+  PASS  符号索引 api-symbols.json  2026-10-17 10:06:08
+  PASS  事件索引 event-symbols.json  2026-10-17 10:06:10
+  PASS  Umbrella 签名索引  2026-10-17 10:06:26
+  PASS  调用解析索引  2026-10-17 10:06:20
+  PASS  缺口榜 coverage-gaps.json  2026-10-17 10:06:21
+
+[2] 新鲜度（产物 mtime >= 来源 mtime）
+  PASS  符号索引 不早于其来源（没过期）  产物 2026-10-17 10:06:08 ← pz_member_index.js 2026-08-10 16:35:21 · _s1_search 2026-09-12 11:50:35 · lua-source-symbols.json 2026-10-17 10:06:07
+  PASS  事件索引 不早于其来源（没过期）  产物 2026-10-17 10:06:10 ← lua 2026-10-16 17:25:57
+  PASS  Umbrella 签名索引 不早于其来源（没过期）  产物 2026-10-17 10:06:26 ← library 2026-10-04 17:04:36
+  PASS  调用解析索引 不早于其来源（没过期）  产物 2026-10-17 10:06:20 ← lua 2026-10-16 17:25:57
+  PASS  缺口榜 不早于其来源（没过期）  产物 2026-10-17 10:06:21 ← resolve-index.json 2026-10-17 10:06:20
+
+合计 10 项：PASS 10 / FAIL 0
+全部通过 —— 预计算产物与来源同代
+✓ pz_fresh 通过
+
+=== preflight 全部通过 ✅ ===
+
+=== separate release scan | exit=1; pre-existing UI print findings ===
+pz-release-check：../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe
+  扫描 326 个 lua，2 个翻译文件
+
+✗ [release-debug-print] 2 条
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua:22  print("[PageLifecycle] Error during resource release: " .. tostring(err))
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua:347  print("[PageLifecycle] Error: attempted to create LifetimeScope for page with disposed scope")
+▲ [release-hardcoded-cjk] 23 条（提示）
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ContainerInspectorDialog.lua:90  关闭
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:148  被动技能
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:149  体能
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:150  敏捷
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:151  战斗
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:152  战斗 - 近战
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:153  战斗 - 远程
+    ../../.codex/qa/business-44f0a18-c4606994/source/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelDossierDrawer.lua:154  枪械
+    … 另有 15 条
+
+合计：error 2 / 提示 23

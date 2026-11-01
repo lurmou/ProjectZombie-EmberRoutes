@@ -1,6 +1,6 @@
 # Production 统一 Job 切换准备与实施计划
 
-> 日期：2026-11-01｜源码基线：`7eb736c`｜状态：已按用户后续授权实施 Production/Haul 切换；集中开发验收进行中，B.5 与实机未宣布通过。
+> 日期：2026-11-01｜源码基线：`7eb736c`｜状态：Production/Haul 切换及集中宿主检查已完成，开发候选可实机；B.5 与玩法未宣布通过。
 
 **Goal:** 将真实 Production 手动制作和公共制作统一接入 JobStore/LaborClaims，保留原生效果、取消、活动让位、BOM 连续制作与正常保存恢复。
 **Architecture:** JobStore 是唯一持久 Job 权威，LaborClaims 是唯一资源权威，Production/ProductionActions 执行物理动作并提供事实。沿现有业务模块切换，不创建通用 Provider 基类、第二调度器、通用事务协调层或新历史账本。

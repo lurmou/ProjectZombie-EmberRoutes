@@ -1,6 +1,6 @@
 # Production / Haul 真实业务切换证据
 
-> 日期：2026-11-01｜修改前 HEAD：`b1146d6`｜分支：`phase-3a-consolidation`｜状态：集中开发检查中，PZ 实机未运行。
+> 日期：2026-11-01｜修改前 HEAD：`b1146d6`｜业务代码 HEAD：`14e8878`｜分支：`phase-3a-consolidation`｜状态：开发候选可集中实机；PZ 实机未运行，B.5 未关闭。
 
 用户后续指令“生产未切换实机验证什么？先做完吧”覆盖此前 Stage C 实施冻结。先完成真实制作、搬运与必要结清，再集中实机；不宣布 B.5 已关闭，不恢复旧档迁移，不加入通用事务层。实机操作仍由用户执行，外部 AI 独立审查。
 
@@ -23,13 +23,23 @@ CraftProbe 的格式 1/2 原生探针及显式搬运仍实际调用旧接口，�
 
 ## 实际检查
 
-集中标准 Lua 回归：原有 11 个核心套件，加 task-production-runtime、delivery-service、activity-craft-yield、settled-task-retirement、hauling-provider、task-save-runtime、work-format-admission，共 18 套件通过。原始输出位于本地 `build/logs/cutover-*.txt` 与 `cutover-regression.json`，套件有嵌套复用，断言数不相加冒充独立数量。
+集中标准 Lua 回归：原有 11 个核心套件，加 task-production-runtime、delivery-service、activity-craft-yield、settled-task-retirement、hauling-provider、task-save-runtime、work-format-admission、public-work-test，共 19 套件通过。[命令及实际输出](production-haul-test-output.txt)随本轮提交；原始分套件输出位于本地 `build/logs/cutover-*.txt` 与 `cutover-regression.json`。套件有嵌套复用，断言数不相加冒充独立数量。
 
-Production 专项增加：native 前 CAS 拒绝零次效果；native 后 Claim 冲突、revision 变化保留产物隔离与 UNKNOWN；回执重报幂等；旧回调不重做；观察抛错保留 COMMITTING 并阻断未知产物作用域；冷启动恢复作用域索引；两次独立内存重建后仍可打开同一完整 Job 并保留同一原件认领。标准 Lua 当前 99 项 controlled 检查，原生身体、物品效果和磁盘均为替身。
+Production 专项增加：native 前 CAS 拒绝零次效果；native 后 Claim 冲突、revision 变化保留产物隔离与 UNKNOWN；回执重报幂等；旧回调不重做；观察抛错保留 COMMITTING 并阻断未知产物作用域；冷启动恢复作用域索引；两次独立内存重建后仍可打开同一完整 Job 并保留同一原件认领。标准 Lua 当前 100 项 controlled 检查，原生身体、物品效果和磁盘均为替身。
 
 测试适配包括：真实格式号/脱离式草稿预期、完整的旧业务夹具字段、重载 Store 时一并重载对应执行适配器、Stage B 腐坏注入改为对应 legacyHauls 边界、保存协调替身补齐 Haul 恢复调用。没有为测试放宽生产 Validator 或删除失败场景。
 
-安装版 Kahlua、静态检查及候选包结果在完成后回填；进行中不记作通过。固定游戏 JAR SHA256：`E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33`。Java 运行时源码本轮未修改，不重复构建；候选包须核对既有 build report 和 JAR 哈希。
+代码提交：`44f0a18` 为真实两链切换，`7ee062f` 保留搬运恢复的既有 UNKNOWN，`14e8878` 区分无写入拒绝与草稿过期，并在意图安全拒绝时恢复执行草稿的原阶段，不制造虚假未决效果。
+
+安装版 Kahlua：制作 100 项、搬运 30 项、配送 46 项、保存协调 71 项、独立公共派发 77 项所在套件通过；数目含既有替身链，不作独立用例加总。原生游戏效果及磁盘仍是替身。末轮两个适配器定向 Lua lint：0 error / 0 warning。
+
+完整 preflight 对 `44f0a18` 隔离源码快照通过，退出码 0：Lua/结构检查、候选规则检查、索引新鲜度均通过；LuaLS 为 0 error / 709 warning，warning 未逐条审查，不宣称全量静态审查已完成。后续两处适配器语义修复（`7ee062f`、`14e8878`，生产 Diff 仅两个文件）已补标准 Lua、安装版 Kahlua 与定向 lint，不把该完整 LuaLS 结果冒称成末轮两个文件的精确版本检查。此前工作区检查因源码仍在修改而取消，不能作为最终证据。
+
+发布扫描：退出码 1，两个 error 均是基线 `UI/PageLifecycle.lua:22,347` 的 print，另有 23 条既有硬编码中文提示。本轮未改并行 UI，不宣称正式发布门禁通过。
+
+独立 `public-work-test.lua` 首次在加载 ToolReturnService 时因夹具缺依赖而失败。已明确提供“无工具保管/无归还任务”的 Store/Service 替身（意外启动归还会报错），保留真实 Provider 注册和发现链，未改生产守卫；77 项在标准 Lua 与安装版 Kahlua 均通过。实际公共制作另经 Runtime/Production 集成验证，不用派发替身冒充原生制作。
+
+候选包 `EmberRoutesProbe-business-14e8878.zip`：341 文件逐一与 Git archive 字节及 manifest SHA256 比对通过（唯一非 Git 文件为下述已核验 JAR），没有 QA overlay，没有包含并行未提交 UI 改动。输出路径保存在本地 `build/logs/cutover-delivery-path.txt`；未安装、未发布、未运行游戏。固定游戏 JAR SHA256：`E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33`。Java 运行时源码本轮未修改，不重复构建；候选包须核对既有 build report 和 JAR 哈希。
 
 ## 集中实机范围
 
