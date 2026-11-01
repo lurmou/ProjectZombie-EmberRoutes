@@ -130,12 +130,30 @@ function Store.data()
             identity(e.claimId,e.id)
             for _,key in ipairs(e.keys) do identity(e.claimId,e.id,key) end
         end
-        local replacements={}
+        local collisions={}
         for _,e in ipairs(candidates) do
             local g=identities[e.claimId]
             if g.count>1 then
+                local conflict=collisions[e.id]
+                if not conflict then
+                    conflict={originalTaskId=e.id,originalClaimId=e.claimId,claimIds={},taskIds={},resourceKeys={}}
+                    collisions[e.id]=conflict
+                end
+                if e.claimId<conflict.originalClaimId then conflict.originalClaimId=e.claimId end
+                conflict.claimIds[e.claimId]=true
+                for id in pairs(g.taskIds) do conflict.taskIds[id]=true end
+                for key in pairs(g.resourceKeys) do conflict.resourceKeys[key]=true end
+            end
+        end
+        local replacements={}
+        for _,e in ipairs(candidates) do
+            local conflict=collisions[e.id]
+            if conflict then
                 local cid=replacements[e.id]
-                if not cid then cid=nextAuthoritativeClaimId(current,e.id) replacements[e.id]=cid end
+                if not cid then
+                    repeat cid=nextAuthoritativeClaimId(current,e.id) until not identities[cid]
+                    replacements[e.id]=cid
+                end
                 e.record.claimId=cid
                 if e.job then
                     e.job.claimId=cid
@@ -154,7 +172,7 @@ function Store.data()
                     local q=current.quarantineResources[key]
                     if not q then
                         q={status='ACTIVE',reason='CLAIM_IDENTITY_COLLISION',originalTaskId=e.id,
-                            originalClaimId=e.claimId,originalGeneration=e.record.generation,evidence={}}
+                            originalClaimId=conflict.originalClaimId,originalGeneration=e.record.generation,evidence={}}
                         local p=e.job and e.job.payload or e.record
                         local r=p.reservation
                         local itemId=tonumber(string.match(key,'^item:(%d+)$'))
@@ -171,8 +189,10 @@ function Store.data()
                         rebuilt:restoreQuarantine(key,q)
                     end
                     q.evidence=q.evidence or {}
-                    q.evidence.identityCollision=q.evidence.identityCollision or {
-                        originalTaskId=e.id,originalClaimId=e.claimId,taskIds=g.taskIds,resourceKeys=g.resourceKeys}
+                    -- Preserve evidence from every task if resource sets also overlap.
+                    q.evidence.identityCollisions=q.evidence.identityCollisions or {}
+                    q.evidence.identityCollisions[e.id]=conflict
+                    q.evidence.identityCollision=q.evidence.identityCollision or conflict
                 end
             end
         end
