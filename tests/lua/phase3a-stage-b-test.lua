@@ -186,6 +186,53 @@ local okValidCap, errValidCap = claims:reserve(t_cap, "box-cap", 801, 10.0, 15.0
 assertTrue(okValidCap, "reserve with valid free capacity must succeed: " .. tostring(errValidCap))
 assertEq(claims.capacity["box-cap"].total, 10.0, "Capacity reserved total matches")
 
+-- Test 1.14: B.5 - Quarantine ownership prevents unauthorized shrink by new token with same taskId
+local t_gen1, _ = claims:acquireNew("task-gen-test", 1, { "item:850" })
+assertTrue(t_gen1 ~= nil, "acquireNew task-gen-test gen 1")
+claims:quarantine("item:850")
+assertEq(claims.owners["item:850"].originalGeneration, 1, "originalGeneration is 1")
+
+-- Release gen 1 token
+claims:release(t_gen1)
+
+-- Create a new token with same taskId but generation = 2
+local t_gen2, _ = claims:acquireNew("task-gen-test", 2, { "item:851" })
+assertTrue(t_gen2 ~= nil, "acquireNew task-gen-test gen 2")
+
+-- Attempt by new token (gen 2) to canShrink old quarantined item 850 MUST FAIL!
+assertFalse(claims:canShrink(t_gen2, { "item:850" }), "New token with same taskId cannot shrink old generation quarantine")
+assertFalse(claims:shrink(t_gen2, { "item:850" }), "shrink by new token must fail")
+
+-- Test 1.15: B.5 - Capacity quarantine lifecycle: reserve -> quarantine -> release(token) -> capacity remains reserved -> unquarantine/shrink -> released
+local t_cap_life, _ = claims:acquireNew("task-cap-life", 1, { "item:860" })
+assertTrue(t_cap_life ~= nil, "acquireNew task-cap-life")
+local okResLife, _ = claims:reserve(t_cap_life, "box-life", 860, 20.0, 50.0)
+assertTrue(okResLife, "reserve 20 on box-life")
+assertEq(claims.capacity["box-life"].total, 20.0, "Capacity is 20")
+
+-- Step 1: Quarantine item:860
+claims:quarantine("item:860")
+assertEq(claims.capacity["box-life"].total, 20.0, "Capacity remains 20 after quarantine")
+
+-- Step 2: Release original token: capacity MUST REMAIN RESERVED in bucket.total!
+claims:release(t_cap_life)
+assertEq(claims.capacity["box-life"].total, 20.0, "Capacity MUST REMAIN 20 after release(originalToken)")
+
+-- Another task trying to reserve 35 (when container only had 50 free, 50 - 20 = 30 available) MUST BE BLOCKED!
+local t_other_cap, _ = claims:acquireNew("task-other-cap", 1, { "item:861" })
+local okOverLife, errOverLife = claims:reserve(t_other_cap, "box-life", 861, 35.0, 50.0)
+assertFalse(okOverLife, "Reservation exceeding available space blocked because quarantined capacity is retained")
+assertEq(errOverLife, "CAPACITY_RESERVED", "Error is CAPACITY_RESERVED")
+
+-- Reservation within available space (30) succeeds (e.g. 25)
+local okValidLife, _ = claims:reserve(t_other_cap, "box-life", 861, 25.0, 50.0)
+assertTrue(okValidLife, "Reservation within remaining space succeeds")
+assertEq(claims.capacity["box-life"].total, 45.0, "Capacity is now 20 + 25 = 45")
+
+-- Step 3: Formally unquarantine item:860: its 20 units of capacity are now cleanly released!
+claims:unquarantine("item:860")
+assertEq(claims.capacity["box-life"].total, 25.0, "Capacity reduced to 25 after unquarantine")
+
 print("PASS Part 1: LaborClaims F2 & F3 invariants.")
 
 -- =========================================================================
@@ -586,6 +633,15 @@ local okBadShrink, errBadShrink = Store.mutateJob("craft-shrink-test", 1, testSh
 assertFalse(okBadShrink, "mutateJob with invalid shrink MUST fail")
 assertTrue(string.find(errBadShrink, "SHRINK_FAILED") ~= nil, "Error indicates SHRINK_FAILED: " .. tostring(errBadShrink))
 
+-- CRITICAL B.5 ATOMICITY VERIFICATION:
+-- JobStore must have ZERO partial modifications: revision is still 1, state is PREPARING, payload untouched!
+local storeAfterFail = TaskJobs.current():get("craft-shrink-test")
+assertEq(storeAfterFail.revision, 1, "Job revision MUST remain 1 on shrink precheck failure (zero partial commit)")
+assertEq(storeAfterFail.state, "PREPARING", "Job state MUST remain PREPARING")
+assertEq(storeAfterFail.effects, "KNOWN", "Job effects MUST remain KNOWN")
+assertEq(#storeAfterFail.payload.claims, 1, "Job claims count MUST remain 1")
+assertEq(storeAfterFail.payload.claims[1], "item:6001", "Job claim item:6001 untouched")
+
 print("PASS Part 4: Store.mutateJob CAS & Resource Lifecycle.")
 
 -- =========================================================================
@@ -899,15 +955,31 @@ assertFalse(okStale, "mutateJob with stale revision must fail")
 assertEq(errStale, "STALE_REVISION", "Error must be STALE_REVISION")
 assertFalse(Store.owner(7002) ~= nil, "item:7002 must NOT be claimed or quarantined on stale revision")
 
--- Test 6.2: Dispute reconciliation and unquarantine recovery
+-- Test 6.2: Dispute reconciliation and persistent unquarantine recovery
 local okQ = Store.quarantineResource("item:8001", "MANUAL_DISPUTE", { reason = "test" })
 assertTrue(okQ, "quarantineResource item:8001")
-assertEq(Store.owner(8001).kind, "SYSTEM_QUARANTINE", "item:8001 is quarantined")
+assertEq(Store.owner(8001).kind, "SYSTEM_QUARANTINE", "item:8001 is quarantined in memory")
+assertTrue(p6Root.quarantineResources["item:8001"] ~= nil, "item:8001 is persisted in root.quarantineResources")
 
--- Unquarantine via claims instance restores availability
-local claimsInst = Store.claimsInstance()
-claimsInst:unquarantine("item:8001")
-assertFalse(Store.owner(8001) ~= nil, "item:8001 is now unquarantined and unowned")
+-- Persistent unquarantine removes memory claim AND deletes persistent root record
+local okUnq = Store.unquarantineResource("item:8001", { resolvedBy = "ARBITRATION", reason = "PROOF_ACCEPTED" })
+assertTrue(okUnq, "Store.unquarantineResource succeeds")
+assertFalse(Store.owner(8001) ~= nil, "item:8001 is now unquarantined and unowned in memory")
+assertFalse(p6Root.quarantineResources["item:8001"] ~= nil, "item:8001 is REMOVED from root.quarantineResources")
+assertTrue(p6Root.quarantineAudit ~= nil and p6Root.quarantineAudit["item:8001"] ~= nil, "Audit trail recorded")
+
+-- CRITICAL PERSISTENCE VERIFICATION:
+-- Cold boot / reload with new root containing saved state: must NOT re-quarantine item:8001!
+local bootReloadRoot = {
+    format = 1,
+    taskJobs = p6Root.taskJobs,
+    containers = p6Root.containers or {},
+    quarantineResources = p6Root.quarantineResources or {},
+    quarantineAudit = p6Root.quarantineAudit or {}
+}
+ContainerRegistry.data = function() return bootReloadRoot end
+Store.data()
+assertFalse(Store.owner(8001) ~= nil, "item:8001 remains unquarantined after cold boot recovery")
 
 -- An unquarantined resource can now be extended into craft-p6-stale
 local pExtend = {}
@@ -921,14 +993,14 @@ local okExtendAfter, errExtend = Store.mutateJob("craft-p6-stale", 1, pExtend, {
 assertTrue(okExtendAfter, "mutateJob extend after unquarantine succeeds: " .. tostring(errExtend))
 assertEq(Store.owner(8001).taskId, "craft-p6-stale", "craft-p6-stale now owns unquarantined item:8001")
 
--- Test 6.3: Format 1 legacy haul job lifecycle & terminal cleanup in JobStore
+-- Test 6.3: Format 1 legacy haul job cold-boot recovery & lifecycle
 local haulF1 = {
     id = "haul-f1-test",
     npcId = "npc-haul-f1",
     providerType = "HAUL",
     scopeId = "local-world",
     revision = 1,
-    state = "PREPARING",
+    state = "RUNNING",
     effects = "KNOWN",
     obligations = {},
     payload = {
@@ -937,23 +1009,41 @@ local haulF1 = {
         source = "crate-src",
         destination = "crate-dest",
         items = { 9001, 9002 },
-        state = "PAUSED",
+        state = "RUNNING",
         reason = "CREATED",
         delivered = 0,
         format = 1,
         kind = "EXPLICIT_TRANSFER",
+        scopeId = "local-world",
+        executor = "ENTITY",
         claims = { "item:9001", "item:9002" }
     }
 }
-local okCreateF1, _ = Store.createClaimedJob(haulF1)
-assertTrue(okCreateF1, "createClaimedJob format 1 haul job")
-assertTrue(Store.getToken("haul-f1-test") ~= nil, "Token exists for haul-f1-test")
+-- Place format 1 haul job alongside existing jobs in a fresh boot root to simulate cold-boot reload!
+local bootRootF1 = {
+    format = 1,
+    taskJobs = {
+        format = 1,
+        byId = {
+            ["craft-p6-stale"] = bootReloadRoot.taskJobs.byId["craft-p6-stale"],
+            ["haul-f1-test"] = haulF1
+        }
+    },
+    containers = {},
+    quarantineResources = {}
+}
+ContainerRegistry.data = function() return bootRootF1 end
 
--- Mutate to RUNNING
-local okRunF1, revRunF1 = Store.mutateJob("haul-f1-test", 1, haulF1.payload, {
-    state = "RUNNING"
-})
-assertTrue(okRunF1, "mutateJob haul-f1-test to RUNNING")
+-- Cold-boot recovery MUST restore format 1 HAUL job with its runtime token!
+Store.data()
+assertTrue(Store.getToken("haul-f1-test") ~= nil, "Format 1 haul job recovered its runtime token on cold boot!")
+assertEq(Store.owner(9001).taskId, "haul-f1-test", "Format 1 haul job owns item:9001 after cold boot")
+assertEq(Store.owner(9002).taskId, "haul-f1-test", "Format 1 haul job owns item:9002 after cold boot")
+
+-- Verify post-boot state and revision: cold boot correctly pauses running tasks into SUSPENDED
+local jobAfterBoot = TaskJobs.current():get("haul-f1-test")
+assertEq(jobAfterBoot.state, "SUSPENDED", "Format 1 haul job envelope is SUSPENDED on LOAD_RECOVERY")
+local revBoot = jobAfterBoot.revision
 
 -- Mutate to SETTLING then DONE with shrink of all claims
 local pDoneF1 = {}
@@ -961,7 +1051,7 @@ for k, v in pairs(haulF1.payload) do pDoneF1[k] = v end
 pDoneF1.delivered = 2
 pDoneF1.claims = {}
 
-local okSetF1, revSetF1 = Store.mutateJob("haul-f1-test", revRunF1, pDoneF1, {
+local okSetF1, revSetF1 = Store.mutateJob("haul-f1-test", revBoot, pDoneF1, {
     state = "SETTLING",
     removeKeys = { "item:9001", "item:9002" }
 })
@@ -969,7 +1059,8 @@ assertTrue(okSetF1, "mutateJob haul-f1-test to SETTLING: " .. tostring(revSetF1)
 
 pDoneF1.state = "DONE"
 local okDoneF1, revDoneF1 = Store.mutateJob("haul-f1-test", revSetF1, pDoneF1, {
-    state = "DONE"
+    state = "DONE",
+    obligations = {}
 })
 assertTrue(okDoneF1, "mutateJob haul-f1-test to DONE: " .. tostring(revDoneF1))
 assertFalse(Store.getToken("haul-f1-test") ~= nil, "Token cleaned on terminal DONE for format 1 haul")
@@ -979,19 +1070,20 @@ assertFalse(Store.owner(9002) ~= nil, "item:9002 released on DONE")
 -- Test 6.4: Capacity reserve bounds (negative, NaN, overflow)
 local dummyToken = Store.getToken("craft-p6-stale")
 assertTrue(dummyToken ~= nil, "craft-p6-stale token available")
-local okNeg, errNeg = claimsInst:reserve(dummyToken, "cap-target", 7001, 10, -5)
+local currentClaims = Store.claimsInstance()
+local okNeg, errNeg = currentClaims:reserve(dummyToken, "cap-target", 7001, 10, -5)
 assertFalse(okNeg, "Negative free capacity must be rejected")
 assertEq(errNeg, "CAPACITY_UNAVAILABLE", "Rejection reason is CAPACITY_UNAVAILABLE")
 
-local okNan, errNan = claimsInst:reserve(dummyToken, "cap-target", 7001, 0/0, 100)
+local okNan, errNan = currentClaims:reserve(dummyToken, "cap-target", 7001, 0/0, 100)
 assertFalse(okNan, "NaN amount must be rejected")
 assertEq(errNan, "CAPACITY_UNAVAILABLE", "Rejection reason is CAPACITY_UNAVAILABLE")
 
-local okOverflow, errOverflow = claimsInst:reserve(dummyToken, "cap-target", 7001, 200, 100)
+local okOverflow, errOverflow = currentClaims:reserve(dummyToken, "cap-target", 7001, 200, 100)
 assertFalse(okOverflow, "Exceeding free capacity must be rejected")
 assertEq(errOverflow, "CAPACITY_RESERVED", "Rejection reason is CAPACITY_RESERVED")
 
-local okValidCap, _ = claimsInst:reserve(dummyToken, "cap-target", 7001, 50, 100)
+local okValidCap, _ = currentClaims:reserve(dummyToken, "cap-target", 7001, 50, 100)
 assertTrue(okValidCap, "Valid reservation within bounds must succeed")
 
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")

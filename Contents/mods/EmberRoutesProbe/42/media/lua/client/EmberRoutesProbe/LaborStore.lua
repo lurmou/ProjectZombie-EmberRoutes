@@ -42,9 +42,18 @@ function Store.data()
         local function recordClaimant(key, claimantInfo)
             resourceClaimants[key] = resourceClaimants[key] or {}
             local list = resourceClaimants[key]
-            list[#list + 1] = claimantInfo
-            if #list > 1 or current.quarantineResources[key] then
-                conflictKeys[key] = true
+            local duplicate = false
+            for _, existing in ipairs(list) do
+                if existing.id == claimantInfo.id then
+                    duplicate = true
+                    break
+                end
+            end
+            if not duplicate then
+                list[#list + 1] = claimantInfo
+                if #list > 1 or current.quarantineResources[key] then
+                    conflictKeys[key] = true
+                end
             end
         end
 
@@ -291,36 +300,59 @@ function Store.data()
             end
 
             for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'HAUL' and job.payload and job.payload.format == 3 then
-                    if not require('EmberRoutesProbe/HaulJobRecord').valid(job) then error('HAUL_JOB_RECORD_INVALID') end
-                    if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                        if hasConflict(job.payload.claims) then
+                if job.providerType == 'HAUL' and job.payload and (job.payload.format == 3 or job.payload.format == 1) then
+                    if newTokens[id] then
+                        rebuiltHaul[id] = newTokens[id]
+                    else
+                        local isValid = false
+                        if job.payload.format == 3 then
+                            isValid = require('EmberRoutesProbe/HaulJobRecord').valid(job)
+                        elseif job.payload.format == 1 then
+                            local p = job.payload
+                            isValid = type(p) == 'table' and type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'
+                        end
+                        if not isValid then
                             job.state = 'RECONCILE_REQUIRED'
                             job.effects = 'UNKNOWN'
                         else
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, job.payload.claims)
-                            if not token then
-                                job.state = 'RECONCILE_REQUIRED'
-                                job.effects = 'UNKNOWN'
-                            else
-                                local r = job.payload.reservation
-                                local okCap = true
-                                if r and type(r) == 'table' then
-                                    if type(r.items) == 'table' then
-                                        for itemId, amount in pairs(r.items) do
-                                            if not rebuilt:restore(token, r.key, itemId, amount) then okCap = false break end
-                                        end
-                                    elseif r.itemId and r.amount then
-                                        if not rebuilt:restore(token, r.key, r.itemId, r.amount) then okCap = false end
-                                    end
+                            local claimKeys = job.payload.claims
+                            if not claimKeys and job.payload.items then
+                                claimKeys = {}
+                                for _, itId in ipairs(job.payload.items) do
+                                    claimKeys[#claimKeys + 1] = "item:" .. itId
                                 end
-                                if not okCap then
+                            end
+                            claimKeys = claimKeys or {}
+                            if #claimKeys > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+                                if hasConflict(claimKeys) then
                                     job.state = 'RECONCILE_REQUIRED'
                                     job.effects = 'UNKNOWN'
-                                    rebuilt:release(token)
                                 else
-                                    rebuiltHaul[id] = token
-                                    newTokens[id] = token
+                                    local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, claimKeys)
+                                    if not token then
+                                        job.state = 'RECONCILE_REQUIRED'
+                                        job.effects = 'UNKNOWN'
+                                    else
+                                        local r = job.payload.reservation
+                                        local okCap = true
+                                        if r and type(r) == 'table' then
+                                            if type(r.items) == 'table' then
+                                                for itemId, amount in pairs(r.items) do
+                                                    if not rebuilt:restore(token, r.key, itemId, amount) then okCap = false break end
+                                                end
+                                            elseif r.itemId and r.amount then
+                                                if not rebuilt:restore(token, r.key, r.itemId, r.amount) then okCap = false end
+                                            end
+                                        end
+                                        if not okCap then
+                                            job.state = 'RECONCILE_REQUIRED'
+                                            job.effects = 'UNKNOWN'
+                                            rebuilt:release(token)
+                                        else
+                                            rebuiltHaul[id] = token
+                                            newTokens[id] = token
+                                        end
+                                    end
                                 end
                             end
                         end
@@ -430,6 +462,22 @@ function Store.quarantineResource(key,reason,evidence)
     end
     return true
 end
+function Store.unquarantineResource(key,evidence)
+    Store.data()
+    local ok = claims:unquarantine(key)
+    if root and root.quarantineResources then
+        root.quarantineResources[key] = nil
+    end
+    if root and evidence then
+        root.quarantineAudit = root.quarantineAudit or {}
+        root.quarantineAudit[key] = {
+            action = "UNQUARANTINE",
+            evidence = evidence,
+            at = (os and os.time and os.time() or 0)
+        }
+    end
+    return ok
+end
 function Store.createClaimedJob(job)
     local JobStore=require('EmberRoutesProbe/JobStore')
     if not JobStore.validate(job) or job.state~='PREPARING' or job.revision~=1 then
@@ -481,6 +529,15 @@ function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
     if not job or job.revision ~= expectedRevision then return false, 'STALE_REVISION' end
     local token = Store.getToken(jobId)
     if not token then return false, 'NO_RUNTIME_TOKEN' end
+
+    -- Preflight shrink BEFORE any CAS or key extension
+    if mutation and mutation.removeKeys and #mutation.removeKeys > 0 then
+        local okCanShrink, whyCanShrink = claims:canShrink(token, mutation.removeKeys)
+        if not okCanShrink then
+            return false, 'SHRINK_FAILED:' .. tostring(whyCanShrink)
+        end
+    end
+
     if mutation and mutation.addKeys and #mutation.addKeys > 0 then
         local okExt, whyExt = claims:extend(token, mutation.addKeys)
         if not okExt then return false, 'EXTEND_FAILED:' .. tostring(whyExt) end
@@ -506,7 +563,15 @@ function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
     if mutation and mutation.removeKeys and #mutation.removeKeys > 0 then
         local okShrink, whyShrink = claims:shrink(token, mutation.removeKeys)
         if not okShrink then
-            return false, 'SHRINK_FAILED:' .. tostring(whyShrink)
+            for _, remKey in ipairs(mutation.removeKeys) do
+                Store.quarantineResource(remKey, "SHRINK_POST_CAS_FAIL", {
+                    jobId = jobId,
+                    rev = nextRev,
+                    why = tostring(whyShrink)
+                })
+            end
+            store:update(jobId, nextRev, { state = 'RECONCILE_REQUIRED', effects = 'UNKNOWN' })
+            return false, 'SHRINK_FAILED_ISOLATED:' .. tostring(whyShrink)
         end
     end
     if patch.state == 'DONE' or patch.state == 'CANCELLED' then
