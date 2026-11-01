@@ -187,51 +187,62 @@ assertTrue(okValidCap, "reserve with valid free capacity must succeed: " .. tost
 assertEq(claims.capacity["box-cap"].total, 10.0, "Capacity reserved total matches")
 
 -- Test 1.14: B.5 - Quarantine ownership prevents unauthorized shrink by new token with same taskId
-local t_gen1, _ = claims:acquireNew("task-gen-test", 1, { "item:850" })
-assertTrue(t_gen1 ~= nil, "acquireNew task-gen-test gen 1")
-claims:quarantine("item:850")
-assertEq(claims.owners["item:850"].originalGeneration, 1, "originalGeneration is 1")
+do
+    local t_gen1, _ = claims:acquireNew("task-gen-test", 1, { "item:850" })
+    assertTrue(t_gen1 ~= nil, "acquireNew task-gen-test gen 1")
+    claims:quarantine("item:850")
+    assertEq(claims.owners["item:850"].originalGeneration, 1, "originalGeneration is 1")
 
--- Release gen 1 token
-claims:release(t_gen1)
+    -- Release gen 1 token
+    claims:release(t_gen1)
 
--- Create a new token with same taskId but generation = 2
-local t_gen2, _ = claims:acquireNew("task-gen-test", 2, { "item:851" })
-assertTrue(t_gen2 ~= nil, "acquireNew task-gen-test gen 2")
+    -- Create a new token with same taskId but generation = 2
+    local t_gen2, _ = claims:acquireNew("task-gen-test", 2, { "item:851" })
+    assertTrue(t_gen2 ~= nil, "acquireNew task-gen-test gen 2")
 
--- Attempt by new token (gen 2) to canShrink old quarantined item 850 MUST FAIL!
-assertFalse(claims:canShrink(t_gen2, { "item:850" }), "New token with same taskId cannot shrink old generation quarantine")
-assertFalse(claims:shrink(t_gen2, { "item:850" }), "shrink by new token must fail")
+    -- Attempt by new token (gen 2) to canShrink old quarantined item 850 MUST FAIL!
+    assertFalse(claims:canShrink(t_gen2, { "item:850" }), "New token with same taskId cannot shrink old generation quarantine")
+    assertFalse(claims:shrink(t_gen2, { "item:850" }), "shrink by new token must fail")
+
+    -- Attempt by recreated token with SAME generation (1) but different claimId MUST ALSO FAIL!
+    claims:release(t_gen2)
+    local t_gen1_recreated, _ = claims:acquireNew("task-gen-test", 1, { "item:852" })
+    assertTrue(t_gen1_recreated ~= nil, "acquireNew task-gen-test recreated at gen 1")
+    assertFalse(claims:canShrink(t_gen1_recreated, { "item:850" }), "Recreated token with same taskId and generation cannot shrink old quarantine (non-reusable claimId)")
+    assertFalse(claims:shrink(t_gen1_recreated, { "item:850" }), "shrink by recreated token must fail")
+end
 
 -- Test 1.15: B.5 - Capacity quarantine lifecycle: reserve -> quarantine -> release(token) -> capacity remains reserved -> unquarantine/shrink -> released
-local t_cap_life, _ = claims:acquireNew("task-cap-life", 1, { "item:860" })
-assertTrue(t_cap_life ~= nil, "acquireNew task-cap-life")
-local okResLife, _ = claims:reserve(t_cap_life, "box-life", 860, 20.0, 50.0)
-assertTrue(okResLife, "reserve 20 on box-life")
-assertEq(claims.capacity["box-life"].total, 20.0, "Capacity is 20")
+do
+    local t_cap_life, _ = claims:acquireNew("task-cap-life", 1, { "item:860" })
+    assertTrue(t_cap_life ~= nil, "acquireNew task-cap-life")
+    local okResLife, _ = claims:reserve(t_cap_life, "box-life", 860, 20.0, 50.0)
+    assertTrue(okResLife, "reserve 20 on box-life")
+    assertEq(claims.capacity["box-life"].total, 20.0, "Capacity is 20")
 
--- Step 1: Quarantine item:860
-claims:quarantine("item:860")
-assertEq(claims.capacity["box-life"].total, 20.0, "Capacity remains 20 after quarantine")
+    -- Step 1: Quarantine item:860
+    claims:quarantine("item:860")
+    assertEq(claims.capacity["box-life"].total, 20.0, "Capacity remains 20 after quarantine")
 
--- Step 2: Release original token: capacity MUST REMAIN RESERVED in bucket.total!
-claims:release(t_cap_life)
-assertEq(claims.capacity["box-life"].total, 20.0, "Capacity MUST REMAIN 20 after release(originalToken)")
+    -- Step 2: Release original token: capacity MUST REMAIN RESERVED in bucket.total!
+    claims:release(t_cap_life)
+    assertEq(claims.capacity["box-life"].total, 20.0, "Capacity MUST REMAIN 20 after release(originalToken)")
 
--- Another task trying to reserve 35 (when container only had 50 free, 50 - 20 = 30 available) MUST BE BLOCKED!
-local t_other_cap, _ = claims:acquireNew("task-other-cap", 1, { "item:861" })
-local okOverLife, errOverLife = claims:reserve(t_other_cap, "box-life", 861, 35.0, 50.0)
-assertFalse(okOverLife, "Reservation exceeding available space blocked because quarantined capacity is retained")
-assertEq(errOverLife, "CAPACITY_RESERVED", "Error is CAPACITY_RESERVED")
+    -- Another task trying to reserve 35 (when container only had 50 free, 50 - 20 = 30 available) MUST BE BLOCKED!
+    local t_other_cap, _ = claims:acquireNew("task-other-cap", 1, { "item:861" })
+    local okOverLife, errOverLife = claims:reserve(t_other_cap, "box-life", 861, 35.0, 50.0)
+    assertFalse(okOverLife, "Reservation exceeding available space blocked because quarantined capacity is retained")
+    assertEq(errOverLife, "CAPACITY_RESERVED", "Error is CAPACITY_RESERVED")
 
--- Reservation within available space (30) succeeds (e.g. 25)
-local okValidLife, _ = claims:reserve(t_other_cap, "box-life", 861, 25.0, 50.0)
-assertTrue(okValidLife, "Reservation within remaining space succeeds")
-assertEq(claims.capacity["box-life"].total, 45.0, "Capacity is now 20 + 25 = 45")
+    -- Reservation within available space (30) succeeds (e.g. 25)
+    local okValidLife, _ = claims:reserve(t_other_cap, "box-life", 861, 25.0, 50.0)
+    assertTrue(okValidLife, "Reservation within remaining space succeeds")
+    assertEq(claims.capacity["box-life"].total, 45.0, "Capacity is now 20 + 25 = 45")
 
--- Step 3: Formally unquarantine item:860: its 20 units of capacity are now cleanly released!
-claims:unquarantine("item:860")
-assertEq(claims.capacity["box-life"].total, 25.0, "Capacity reduced to 25 after unquarantine")
+    -- Step 3: Formally unquarantine item:860: its 20 units of capacity are now cleanly released!
+    claims:unquarantine("item:860")
+    assertEq(claims.capacity["box-life"].total, 25.0, "Capacity reduced to 25 after unquarantine")
+end
 
 print("PASS Part 1: LaborClaims F2 & F3 invariants.")
 
@@ -641,6 +652,29 @@ assertEq(storeAfterFail.state, "PREPARING", "Job state MUST remain PREPARING")
 assertEq(storeAfterFail.effects, "KNOWN", "Job effects MUST remain KNOWN")
 assertEq(#storeAfterFail.payload.claims, 1, "Job claims count MUST remain 1")
 assertEq(storeAfterFail.payload.claims[1], "item:6001", "Job claim item:6001 untouched")
+
+-- Test 4.7: B.5 - Algebraic payload.claims mismatch rejection (newClaims == oldClaims + addKeys - removeKeys)
+local badClaimsPayload = {}
+for k, v in pairs(testShrinkJob.payload) do badClaimsPayload[k] = v end
+badClaimsPayload.claims = { "item:6001", "item:99999" } -- Undeclared phantom claim in payload!
+local okMis, errMis = Store.mutateJob("craft-shrink-test", 1, badClaimsPayload)
+assertFalse(okMis, "mutateJob with undeclared claim in payload must fail algebraic check")
+assertEq(errMis, "CLAIMS_PAYLOAD_MISMATCH", "Rejection reason is CLAIMS_PAYLOAD_MISMATCH")
+
+-- Test 4.8: B.5 - addKeys and removeKeys mutually exclusive violation
+local okOverlap, errOverlap = Store.mutateJob("craft-shrink-test", 1, testShrinkJob.payload, {
+    addKeys = { "item:7001" },
+    removeKeys = { "item:7001" }
+})
+assertFalse(okOverlap, "mutateJob with intersecting addKeys and removeKeys MUST fail")
+assertEq(errOverlap, "MUTATION_KEYS_MUTUALLY_EXCLUSIVE_VIOLATION", "Rejection reason is MUTATION_KEYS_MUTUALLY_EXCLUSIVE_VIOLATION")
+
+-- Test 4.9: B.5 - addKeys already owned by current token must be rejected
+local okAddOwned, errAddOwned = Store.mutateJob("craft-shrink-test", 1, testShrinkJob.payload, {
+    addKeys = { "item:6001" }
+})
+assertFalse(okAddOwned, "mutateJob with addKeys already owned MUST fail")
+assertEq(errAddOwned, "ADD_KEYS_ALREADY_OWNED", "Rejection reason is ADD_KEYS_ALREADY_OWNED")
 
 print("PASS Part 4: Store.mutateJob CAS & Resource Lifecycle.")
 
@@ -1085,6 +1119,288 @@ assertEq(errOverflow, "CAPACITY_RESERVED", "Rejection reason is CAPACITY_RESERVE
 
 local okValidCap, _ = currentClaims:reserve(dummyToken, "cap-target", 7001, 50, 100)
 assertTrue(okValidCap, "Valid reservation within bounds must succeed")
+
+-- Test 6.5: B.5 - Quarantine capacity independent persistence and cold-boot recovery (B52-01 ~ B52-04)
+do
+    local t_p6_cap = Store.getToken("craft-p6-stale")
+    currentClaims:releaseCapacity(t_p6_cap)
+    local okResP6, errResP6 = currentClaims:reserve(t_p6_cap, "crate-persist-cap", 7001, 15.0, 50.0)
+    assertTrue(okResP6, "reserve on crate-persist-cap succeeds: " .. tostring(errResP6))
+    assertEq(currentClaims.capacity["crate-persist-cap"].total, 15.0, "Capacity reserved 15")
+
+    -- Quarantine item:7001: capacity transferred to bucket.quarantine and persisted in root!
+    Store.quarantineResource("item:7001", "CAPACITY_TEST", { test = "persist" })
+    assertEq(currentClaims.capacity["crate-persist-cap"].total, 15.0, "Capacity remains 15 after quarantine")
+    local qPersistRec = bootRootF1.quarantineResources["item:7001"]
+    assertTrue(qPersistRec ~= nil, "quarantineResources contains item:7001")
+    assertEq(qPersistRec.capacityKey, "crate-persist-cap", "Persisted capacityKey matches")
+    assertEq(qPersistRec.capacityAmount, 15.0, "Persisted capacityAmount matches")
+
+    -- Release original token: capacity stays 15!
+    currentClaims:release(t_p6_cap)
+    assertEq(currentClaims.capacity["crate-persist-cap"].total, 15.0, "Capacity remains 15 after release(originalToken)")
+
+    -- Cold boot reload: Pass 1 MUST restore quarantine capacity from root.quarantineResources!
+    local bootRootCap = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:7001"] = qPersistRec
+        }
+    }
+    ContainerRegistry.data = function() return bootRootCap end
+    Store.data()
+    local bootClaims = Store.claimsInstance()
+    assertEq(bootClaims.owners["item:7001"].kind, "SYSTEM_QUARANTINE", "Item 7001 restored as quarantine")
+    assertTrue(bootClaims.capacity["crate-persist-cap"] ~= nil, "Bucket crate-persist-cap restored")
+    assertEq(bootClaims.capacity["crate-persist-cap"].total, 15.0, "Quarantined capacity total restored on cold boot Pass 1")
+
+    -- Unquarantine item 7001: capacity is cleanly settled
+    Store.unquarantineResource("item:7001", { capacityAction = "RELEASE", reason = "ARBITRATED" })
+    assertEq(bootClaims.capacity["crate-persist-cap"] and bootClaims.capacity["crate-persist-cap"].total or 0, 0, "Capacity released after explicit unquarantine")
+end
+
+-- Test 6.6: B.5 - Unquarantine two-phase status recovery from RESOLVING crash (B55-01 ~ B55-03)
+do
+    local bootRootCrash = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:8888"] = {
+                status = "RESOLVING",
+                resolution = { reason = "MIDWAY_CRASH" },
+                resolvingEvidence = { note = "system rebooted during unquarantine" }
+            }
+        }
+    }
+    ContainerRegistry.data = function() return bootRootCrash end
+    Store.data()
+    local crashClaims = Store.claimsInstance()
+    assertFalse(crashClaims.owners["item:8888"] ~= nil, "RESOLVING item is not re-quarantined on cold boot")
+    assertEq(bootRootCrash.quarantineResources["item:8888"], nil, "RESOLVING record cleared from active quarantine")
+    assertTrue(bootRootCrash.quarantineAudit["item:8888"] ~= nil, "Crash resolution recorded in audit trail")
+    assertEq(bootRootCrash.quarantineAudit["item:8888"].action, "CRASH_RESOLVE", "Audit action is CRASH_RESOLVE")
+end
+
+-- Test 6.7: B.5 - Corrupted format 1 legacy schema recovery gracefully demotes without crash (B54-02)
+do
+    local corruptedHaul = {
+        id = "haul-corrupted",
+        npcId = "npc-corrupted",
+        providerType = "HAUL",
+        scopeId = "local-world",
+        revision = 1,
+        state = "RUNNING",
+        effects = "KNOWN",
+        obligations = {},
+        payload = {
+            id = "haul-corrupted",
+            npcId = "npc-corrupted",
+            source = "crate-a",
+            destination = "crate-b",
+            items = { "NOT_A_NUMBER_CORRUPTED" },
+            state = "RUNNING",
+            delivered = 0,
+            format = 1,
+            kind = "EXPLICIT_TRANSFER"
+        }
+    }
+    local bootRootCorrupt = {
+        format = 1,
+        taskJobs = {
+            format = 1,
+            byId = { ["haul-corrupted"] = corruptedHaul }
+        },
+        containers = {},
+        quarantineResources = {}
+    }
+    ContainerRegistry.data = function() return bootRootCorrupt end
+    Store.data()
+    local demotedHaul = bootRootCorrupt.taskJobs.byId["haul-corrupted"]
+    assertEq(demotedHaul.state, "RECONCILE_REQUIRED", "Corrupted haul job envelope demoted to RECONCILE_REQUIRED without crashing")
+    assertEq(demotedHaul.effects, "UNKNOWN", "Corrupted haul job effects demoted to UNKNOWN")
+    assertEq(demotedHaul.payload.state, "PAUSED", "Corrupted haul job payload state demoted to PAUSED")
+    assertEq(demotedHaul.payload.reason, "SCHEMA_INVALID", "Corrupted haul job payload reason is SCHEMA_INVALID")
+end
+
+-- Test 6.8: B.5 - Non-table corrupted records in Pass 1 and Pass 2 (false, number, string, missing fields) do not crash Store.data()
+do
+    local bootRootNonTable = {
+        format = 1,
+        taskJobs = {
+            format = 1,
+            byId = {
+                ["job-bool"] = { id = "job-bool", npcId = "npc-bool", providerType = "HAUL", scopeId = "local-world", revision = 1, state = "RUNNING", effects = "KNOWN", obligations = {}, payload = { format = 1, id = "job-bool", npcId = "npc-bool", items = { 101 }, source = "a", destination = "b", state = "RUNNING" } },
+                ["job-num"] = { id = "job-num", npcId = "npc-num", providerType = "HAUL", scopeId = "local-world", revision = 1, state = "RUNNING", effects = "KNOWN", obligations = {}, payload = { format = 1, id = "job-num", npcId = "npc-num", items = { 102 }, source = "a", destination = "b", state = "RUNNING" } },
+                ["job-str"] = { id = "job-str", npcId = "npc-str", providerType = "HAUL", scopeId = "local-world", revision = 1, state = "RUNNING", effects = "KNOWN", obligations = {}, payload = { format = 1, id = "job-str", npcId = "npc-str", items = { 103 }, source = "a", destination = "b", state = "RUNNING" } },
+                ["job-missing"] = { id = "job-missing", npcId = "npc-missing", providerType = "HAUL", scopeId = "local-world", revision = 1, state = "RUNNING", effects = "KNOWN", obligations = {}, payload = { format = 1, id = "job-missing", npcId = "npc-missing", items = { 104 }, source = "a", destination = "b", state = "RUNNING" } }
+            }
+        },
+        containers = {},
+        quarantineResources = {}
+    }
+    local oldHauls = require('EmberRoutesProbe/BusinessJobs').hauls
+    local mockHaulData = {
+        format = 2,
+        tasks = {
+            ["job-bool"] = false,
+            ["job-num"] = 12345,
+            ["job-str"] = "corrupt-string",
+            ["job-missing"] = { id = "job-missing" } -- missing npcId, items, etc.
+        },
+        byNpc = {
+            ["npc-bool"] = "job-bool",
+            ["npc-num"] = "job-num"
+        },
+        routes = {}
+    }
+    require('EmberRoutesProbe/BusinessJobs').hauls = function() return mockHaulData end
+    ContainerRegistry.data = function() return bootRootNonTable end
+
+    -- Must not throw any unhandled error when scanning non-table tasks in Pass 1 or Pass 2!
+    local okNonTableLoad, errNonTableLoad = pcall(Store.data)
+    require('EmberRoutesProbe/BusinessJobs').hauls = oldHauls
+    assertTrue(okNonTableLoad, "Store.data() MUST survive non-table corrupted task records: " .. tostring(errNonTableLoad))
+
+    -- Verify non-table corrupted records are isolated into corruptedTasks and removed from tasks ledger
+    assertTrue(bootRootNonTable.corruptedTasks ~= nil, "corruptedTasks ledger created")
+    assertTrue(bootRootNonTable.corruptedTasks["job-bool"] ~= nil, "job-bool isolated to corruptedTasks")
+    assertEq(bootRootNonTable.corruptedTasks["job-bool"].raw, false, "Original boolean preserved")
+    assertEq(mockHaulData.tasks["job-bool"], nil, "job-bool removed from tasks ledger")
+    assertEq(mockHaulData.tasks["job-num"], nil, "job-num removed from tasks ledger")
+    assertEq(mockHaulData.tasks["job-str"], nil, "job-str removed from tasks ledger")
+    assertEq(mockHaulData.byNpc["npc-bool"], nil, "Corrupted npc mapping removed from byNpc")
+
+    -- Verify envelopes for all corrupted tasks are demoted
+    assertEq(bootRootNonTable.taskJobs.byId["job-bool"].state, "RECONCILE_REQUIRED", "job-bool envelope demoted")
+    assertEq(bootRootNonTable.taskJobs.byId["job-bool"].effects, "UNKNOWN", "job-bool envelope effects UNKNOWN")
+    assertEq(bootRootNonTable.taskJobs.byId["job-missing"].state, "RECONCILE_REQUIRED", "job-missing envelope demoted")
+    -- And for malformed table record, state is demoted to PAUSED / SCHEMA_INVALID
+    assertEq(mockHaulData.tasks["job-missing"].state, "PAUSED", "job-missing table record state is PAUSED")
+    assertEq(mockHaulData.tasks["job-missing"].reason, "SCHEMA_INVALID", "job-missing table record reason is SCHEMA_INVALID")
+end
+
+-- Test 6.9: B.5 - Authority-level claimId persistence across cold boots preventing claimId collision
+do
+    local bootRootClaims = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {},
+        nextClaimSeq = 10
+    }
+    ContainerRegistry.data = function() return bootRootClaims end
+    Store.data()
+    local jobP9 = {
+        id = "task-persistent-claim-1",
+        npcId = "npc-p9",
+        providerType = "CRAFT",
+        scopeId = "settlement-1",
+        revision = 1,
+        state = "PREPARING",
+        effects = "KNOWN",
+        obligations = {},
+        payload = {
+            format = 4,
+            id = "task-persistent-claim-1",
+            npcId = "npc-p9",
+            sequence = 1,
+            recipeId = "Base.MakeAxe",
+            target = 1,
+            produced = 0,
+            materials = { { id = 9101, consumed = false } },
+            tools = {},
+            outputs = {},
+            claims = { "item:9101" }
+        }
+    }
+    local okCreateP9, _ = Store.createClaimedJob(jobP9)
+    assertTrue(okCreateP9, "createClaimedJob task-persistent-claim-1")
+    local t_p9 = Store.getToken("task-persistent-claim-1")
+    assertTrue(t_p9 ~= nil, "Token exists for task-persistent-claim-1")
+    assertEq(t_p9.claimId, "task-persistent-claim-1:c11", "claimId assigned monotonically from root.nextClaimSeq (11)")
+    assertEq(bootRootClaims.nextClaimSeq, 11, "root.nextClaimSeq updated to 11")
+
+    -- Quarantine item:9101 with owner.originalClaimId = "task-persistent-claim-1:c11"
+    Store.quarantineResource("item:9101", "PERSIST_TEST", { test = "claimId" })
+    assertEq(bootRootClaims.quarantineResources["item:9101"].originalClaimId, "task-persistent-claim-1:c11", "originalClaimId persisted")
+
+    -- Simulate full game restart / cold boot reload with new Claims instance:
+    local bootRootReloadP9 = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:9101"] = bootRootClaims.quarantineResources["item:9101"]
+        },
+        nextClaimSeq = 11 -- Persisted from previous run!
+    }
+    ContainerRegistry.data = function() return bootRootReloadP9 end
+    Store.data()
+
+    -- Attempt to create a NEW job with the SAME taskId and generation:
+    local jobP9_recreated = {
+        id = "task-persistent-claim-1",
+        npcId = "npc-p9-new",
+        providerType = "CRAFT",
+        scopeId = "settlement-1",
+        revision = 1,
+        state = "PREPARING",
+        effects = "KNOWN",
+        obligations = {},
+        payload = {
+            format = 4,
+            id = "task-persistent-claim-1",
+            npcId = "npc-p9-new",
+            sequence = 1,
+            recipeId = "Base.MakeAxe",
+            target = 1,
+            produced = 0,
+            materials = { { id = 9102, consumed = false } },
+            tools = {},
+            outputs = {},
+            claims = { "item:9102" }
+        }
+    }
+    local okCreateRecreated, _ = Store.createClaimedJob(jobP9_recreated)
+    assertTrue(okCreateRecreated, "Recreating job with same taskId succeeds")
+    local t_p9_recreated = Store.getToken("task-persistent-claim-1")
+    assertEq(t_p9_recreated.claimId, "task-persistent-claim-1:c12", "Recreated job receives NEW monotonic claimId (12)")
+
+    -- Recreated token CANNOT canShrink or shrink old quarantined item:9101!
+    local reloadedClaims = Store.claimsInstance()
+    assertFalse(reloadedClaims:canShrink(t_p9_recreated, { "item:9101" }), "Recreated token with new claimId CANNOT shrink old quarantine")
+    assertFalse(reloadedClaims:shrink(t_p9_recreated, { "item:9101" }), "shrink on old quarantine by recreated token fails")
+end
+
+-- Test 6.10: B.5 - unquarantineResource failure retains persistent quarantine record
+do
+    local bootRootUnqFail = {
+        format = 1,
+        taskJobs = { format = 1, byId = {} },
+        containers = {},
+        quarantineResources = {
+            ["item:unq-fail-test"] = {
+                status = "ACTIVE",
+                reason = "FAIL_RETAIN_TEST",
+                at = 12345
+            }
+        }
+    }
+    ContainerRegistry.data = function() return bootRootUnqFail end
+    Store.data()
+    -- Item is restored to claims owners in Pass 1. Now remove it from claims memory to simulate memory inconsistency:
+    Store.claimsInstance().owners["item:unq-fail-test"] = nil
+
+    -- Attempt unquarantine: claims:unquarantine will return false (not found in memory)
+    local okUnqFail, errUnqFail = Store.unquarantineResource("item:unq-fail-test", "SHOULD_FAIL")
+    assertFalse(okUnqFail, "unquarantine on non-existent memory owner must return false")
+    -- CRITICAL B.5 VERIFICATION: Persistent quarantine record MUST NOT be deleted!
+    assertTrue(bootRootUnqFail.quarantineResources["item:unq-fail-test"] ~= nil, "Persistent quarantine record RETAINED on unquarantine failure")
+    assertEq(bootRootUnqFail.quarantineResources["item:unq-fail-test"].status, "ACTIVE", "Status restored to ACTIVE")
+end
 
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")
 

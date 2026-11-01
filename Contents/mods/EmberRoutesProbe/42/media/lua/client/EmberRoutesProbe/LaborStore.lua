@@ -31,10 +31,29 @@ function Store.data()
         current.quarantineResources = current.quarantineResources or {}
 
         -- Pass 1: Pre-scan claims across ALL providers to detect overlapping collisions
-        -- and register existing Quarantine locks.
-        for qKey, _ in pairs(current.quarantineResources) do
-            rebuilt:quarantine(qKey)
+        -- and register existing Quarantine locks with independent capacity reservations.
+        for qKey, qRecord in pairs(current.quarantineResources) do
+            if type(qRecord) == "table" and qRecord.status == "RESOLVING" then
+                -- Crash recovery: complete the resolution!
+                current.quarantineAudit = current.quarantineAudit or {}
+                current.quarantineAudit[qKey] = {
+                    action = "CRASH_RESOLVE",
+                    status = "RESOLVED",
+                    resolution = qRecord.resolution,
+                    evidence = qRecord.resolvingEvidence,
+                    at = (os and os.time and os.time() or 0)
+                }
+                current.quarantineResources[qKey] = nil
+            elseif type(qRecord) == "table" and qRecord.status == "RESOLVED" then
+                -- Resolved tombstone: skip
+            else
+                rebuilt:restoreQuarantine(qKey, type(qRecord) == "table" and qRecord or nil)
+            end
         end
+
+        -- Ensure monotonic claim sequence is initialized and preserved across cold boots
+        current.nextClaimSeq = current.nextClaimSeq or 1
+        rebuilt.nextClaimSeq = current.nextClaimSeq
 
         local resourceClaimants = {}
         local conflictKeys = {}
@@ -58,26 +77,32 @@ function Store.data()
         end
 
         for id, record in pairs(data.tasks) do
-            if record.state ~= "DONE" and type(record.items) == "table" then
+            if type(record) == "table" and record.state ~= "DONE" and type(record.items) == "table" then
                 for _, itemId in ipairs(record.items) do
-                    recordClaimant("item:" .. itemId, { kind = "HAUL_TASK", id = id, record = record })
+                    if type(itemId) == "number" and itemId == itemId and itemId ~= math.huge and itemId ~= -math.huge then
+                        recordClaimant("item:" .. tostring(itemId), { kind = "HAUL_TASK", id = id, record = record })
+                    end
                 end
             end
         end
 
         for npcId, record in pairs(nativeRecords()) do
-            if record.format == 3 and not record.released then
+            if type(record) == "table" and record.format == 3 and not record.released then
                 for _, key in ipairs(CraftRecord.resources(record)) do
-                    recordClaimant(key, { kind = "NATIVE_CRAFT", id = record.id, record = record })
+                    if type(key) == "string" then
+                        recordClaimant(key, { kind = "NATIVE_CRAFT", id = record.id, record = record })
+                    end
                 end
             end
         end
 
         if current.taskJobs and current.taskJobs.byId then
             for id, job in pairs(current.taskJobs.byId) do
-                if job.state ~= 'DONE' and job.state ~= 'CANCELLED' and job.payload and type(job.payload.claims) == 'table' then
+                if type(job) == "table" and job.state ~= 'DONE' and job.state ~= 'CANCELLED' and type(job.payload) == 'table' and type(job.payload.claims) == 'table' then
                     for _, key in ipairs(job.payload.claims) do
-                        recordClaimant(key, { kind = "JOB", id = id, job = job })
+                        if type(key) == "string" then
+                            recordClaimant(key, { kind = "JOB", id = id, job = job })
+                        end
                     end
                 end
             end
@@ -85,9 +110,11 @@ function Store.data()
 
         if current.toolCustody and current.toolCustody.byId then
             for id, entry in pairs(current.toolCustody.byId) do
-                if entry.state ~= 'RETURNED' and type(entry.claims) == 'table' then
+                if type(entry) == "table" and entry.state ~= 'RETURNED' and type(entry.claims) == 'table' then
                     for _, key in ipairs(entry.claims) do
-                        recordClaimant(key, { kind = "CUSTODY", id = id, entry = entry })
+                        if type(key) == "string" then
+                            recordClaimant(key, { kind = "CUSTODY", id = id, entry = entry })
+                        end
                     end
                 end
             end
@@ -116,40 +143,131 @@ function Store.data()
 
         -- Pass 2: Controlled recovery & schema-safe demotion
         for id, record in pairs(data.tasks) do
-            if type(record)~="table" or type(id)~="string" or record.id~=id or type(record.npcId)~="string"
-                or (record.state~='DONE' and data.byNpc[record.npcId]~=id) or (record.format~=1 and not Manifest.valid(record)) or record.kind~="EXPLICIT_TRANSFER"
-                or record.executor~="ENTITY" or record.scopeId~="local-world" or type(record.items)~="table"
-                or #record.items>30 or (record.state~="RUNNING" and record.state~="PAUSED" and record.state~="DONE")
-                or (record.generation and (type(record.generation)~="number" or record.generation<0
-                    or record.generation~=math.floor(record.generation) or record.generation==math.huge)) then error("TASK_RECORD_INVALID") end
-            for _,itemId in ipairs(record.items) do
-                if type(itemId)~="number" or itemId~=itemId or itemId==math.huge or itemId==-math.huge then error("TASK_ITEM_INVALID") end
-            end
-            local resourceKeys = resources(record)
-            if record.state ~= "DONE" and #resourceKeys > 0 then
-                if hasConflict(resourceKeys) then
+            if type(record) ~= "table" then
+                -- Non-table corrupted record! Safe isolation without indexing non-table:
+                current.corruptedTasks = current.corruptedTasks or {}
+                current.corruptedTasks[id] = {
+                    id = id,
+                    raw = record,
+                    at = (os and os.time and os.time() or 0)
+                }
+                data.tasks[id] = nil
+                if data.byNpc then
+                    for nId, mappedId in pairs(data.byNpc) do
+                        if mappedId == id then data.byNpc[nId] = nil end
+                    end
+                end
+                if current.taskJobs and current.taskJobs.byId and current.taskJobs.byId[id] then
+                    local env = current.taskJobs.byId[id]
+                    env.state = "RECONCILE_REQUIRED"
+                    env.effects = "UNKNOWN"
+                    if type(env.payload) == "table" then
+                        env.payload.state = "PAUSED"
+                        env.payload.reason = "CORRUPTED_TASK_RECORD"
+                        env.payload.uncertain = true
+                    end
+                end
+            else
+                local isRecordValid = type(id) == "string" and record.id == id and type(record.npcId) == "string"
+                    and (record.state == 'DONE' or data.byNpc[record.npcId] == id) and (record.format == 1 or Manifest.valid(record)) and record.kind == "EXPLICIT_TRANSFER"
+                    and record.executor == "ENTITY" and record.scopeId == "local-world" and type(record.items) == "table"
+                    and #record.items <= 30 and (record.state == "RUNNING" or record.state == "PAUSED" or record.state == "DONE")
+                    and (not record.generation or (type(record.generation) == "number" and record.generation >= 0
+                        and record.generation == math.floor(record.generation) and record.generation ~= math.huge))
+
+                if not isRecordValid then
                     record.state = "PAUSED"
-                    record.reason = "CLAIM_CONFLICT"
+                    record.reason = "SCHEMA_INVALID"
+                    record.uncertain = true
+                    if current.taskJobs and current.taskJobs.byId and current.taskJobs.byId[id] then
+                        local env = current.taskJobs.byId[id]
+                        env.state = "RECONCILE_REQUIRED"
+                        env.effects = "UNKNOWN"
+                        if type(env.payload) == "table" then
+                            env.payload.state = "PAUSED"
+                            env.payload.reason = "SCHEMA_INVALID"
+                            env.payload.uncertain = true
+                        end
+                    end
                 else
-                    local token = rebuilt:acquire(id, (record.generation or 0) + 1, resourceKeys)
-                    if not token then
+                    local itemsValid = true
+                    for _, itemId in ipairs(record.items) do
+                        if type(itemId) ~= "number" or itemId ~= itemId or itemId == math.huge or itemId == -math.huge then
+                            itemsValid = false
+                            break
+                        end
+                    end
+                    if not itemsValid then
                         record.state = "PAUSED"
-                        record.reason = "CLAIM_CONFLICT"
+                        record.reason = "ITEMS_CORRUPTED"
+                        record.uncertain = true
+                        if current.taskJobs and current.taskJobs.byId and current.taskJobs.byId[id] then
+                            local env = current.taskJobs.byId[id]
+                            env.state = "RECONCILE_REQUIRED"
+                            env.effects = "UNKNOWN"
+                            if type(env.payload) == "table" then
+                                env.payload.state = "PAUSED"
+                                env.payload.reason = "ITEMS_CORRUPTED"
+                                env.payload.uncertain = true
+                            end
+                        end
                     else
-                        newTokens[id] = token
-                        local r = record.reservation
-                        if r then
-                            if type(r) ~= "table" then error("TASK_RESERVATION_INVALID") end
-                            if r.format == 2 and type(r.items) == "table" then
-                                for itemId, amount in pairs(r.items) do
-                                    if not rebuilt:restore(token, r.key, itemId, amount) then error("TASK_RESERVATION_INVALID") end
+                        local resourceKeys = resources(record)
+                        if record.state ~= "DONE" and #resourceKeys > 0 then
+                            if hasConflict(resourceKeys) then
+                                record.state = "PAUSED"
+                                record.reason = "CLAIM_CONFLICT"
+                                record.uncertain = true
+                                if current.taskJobs and current.taskJobs.byId and current.taskJobs.byId[id] then
+                                    local env = current.taskJobs.byId[id]
+                                    env.state = "RECONCILE_REQUIRED"
+                                    env.effects = "UNKNOWN"
+                                    if type(env.payload) == "table" then
+                                        env.payload.state = "PAUSED"
+                                        env.payload.reason = "CLAIM_CONFLICT"
+                                        env.payload.uncertain = true
+                                    end
                                 end
-                            elseif r.format ~= nil or not rebuilt:restore(token, r.key, r.itemId, r.amount) then error("TASK_RESERVATION_INVALID") end
+                            else
+                                local claimId = record.claimId or (id .. ":c" .. tostring((record.generation or 0) + 1))
+                                local token = rebuilt:acquire(id, (record.generation or 0) + 1, resourceKeys, { claimId = claimId })
+                                if not token then
+                                    record.state = "PAUSED"
+                                    record.reason = "CLAIM_CONFLICT"
+                                    record.uncertain = true
+                                    if current.taskJobs and current.taskJobs.byId and current.taskJobs.byId[id] then
+                                        local env = current.taskJobs.byId[id]
+                                        env.state = "RECONCILE_REQUIRED"
+                                        env.effects = "UNKNOWN"
+                                        if type(env.payload) == "table" then
+                                            env.payload.state = "PAUSED"
+                                            env.payload.reason = "CLAIM_CONFLICT"
+                                            env.payload.uncertain = true
+                                        end
+                                    end
+                                else
+                                    newTokens[id] = token
+                                local r = record.reservation
+                                if r and type(r) == "table" then
+                                    if r.format == 2 and type(r.items) == "table" then
+                                        for itemId, amount in pairs(r.items) do
+                                            if not rebuilt:restore(token, r.key, itemId, amount) then
+                                                record.state = "PAUSED"
+                                                record.reason = "CAPACITY_CONFLICT"
+                                                break
+                                            end
+                                        end
+                                    elseif r.itemId and r.amount then
+                                        rebuilt:restore(token, r.key, r.itemId, r.amount)
+                                    end
+                                end
+                            end
                         end
                     end
                 end
             end
         end
+    end
         for npcId, id in pairs(data.byNpc) do
             if not data.tasks[id] or data.tasks[id].npcId ~= npcId then error("TASK_INDEX_INVALID") end
         end
@@ -392,6 +510,7 @@ function Store.data()
             if record.state=="RUNNING" then record.state="PAUSED" record.reason="LOAD_RECOVERY" end
         end
         require('EmberRoutesProbe/BusinessJobs').flush()
+        current.nextClaimSeq = math.max(current.nextClaimSeq or 1, rebuilt.nextClaimSeq or 1)
         root,ledger,claims,tokens=current,data,rebuilt,newTokens
         nativeTokens=rebuiltNative
         personalTokens=rebuiltPersonal
@@ -443,6 +562,7 @@ local function cleanToken(jobId)
     if activityTokens then activityTokens[jobId] = nil end
     if fieldTokens then fieldTokens[jobId] = nil end
     if custodyTokens then custodyTokens[jobId] = nil end
+    if claims and claims.tokensByTaskId then claims.tokensByTaskId[jobId] = nil end
 end
 function Store.getToken(jobId)
     Store.data()
@@ -451,32 +571,74 @@ function Store.getToken(jobId)
 end
 function Store.quarantineResource(key,reason,evidence)
     Store.data()
-    claims:quarantine(key)
+    local ok, owner = claims:quarantine(key)
+    if not ok then return false, "QUARANTINE_FAILED" end
     if root then
         root.quarantineResources=root.quarantineResources or {}
         root.quarantineResources[key]={
+            status="ACTIVE",
             reason=reason or "UNKNOWN",
             evidence=evidence,
-            at=(os and os.time and os.time() or 0)
+            at=(os and os.time and os.time() or 0),
+            originalTaskId=owner and owner.originalTaskId,
+            originalClaimId=owner and owner.originalClaimId,
+            originalGeneration=owner and owner.originalGeneration,
+            capacityKey=owner and owner.capacityKey,
+            capacityItemId=owner and owner.capacityItemId,
+            capacityAmount=owner and owner.capacityAmount
         }
     end
     return true
 end
-function Store.unquarantineResource(key,evidence)
+function Store.unquarantineResource(key,resolution,evidence)
     Store.data()
-    local ok = claims:unquarantine(key)
-    if root and root.quarantineResources then
-        root.quarantineResources[key] = nil
+    local resObj = resolution
+    if type(resolution) == "string" then
+        resObj = { reason = resolution }
+    elseif type(resolution) ~= "table" then
+        resObj = {}
     end
-    if root and evidence then
+    local evidObj = evidence
+    if evidObj == nil and type(resolution) == "table" and resolution.evidence then
+        evidObj = resolution.evidence
+    end
+
+    local qRec = root and root.quarantineResources and root.quarantineResources[key]
+    if qRec then
+        if qRec.status == "RESOLVED" then
+            return true -- idempotent
+        end
+        qRec.status = "RESOLVING"
+        qRec.resolution = resObj
+        qRec.resolvingEvidence = evidObj
+        qRec.resolvingAt = (os and os.time and os.time() or 0)
+    end
+
+    local ok, err = claims:unquarantine(key, resObj)
+    if not ok then
+        -- Failure recovery: retain persistent quarantine record and restore ACTIVE status!
+        if qRec then
+            qRec.status = "ACTIVE"
+            qRec.resolution = nil
+            qRec.resolvingEvidence = nil
+            qRec.resolvingAt = nil
+        end
+        return false, err or "UNQUARANTINE_FAILED"
+    end
+
+    if root and root.quarantineResources and root.quarantineResources[key] then
+        local now = (os and os.time and os.time() or 0)
         root.quarantineAudit = root.quarantineAudit or {}
         root.quarantineAudit[key] = {
             action = "UNQUARANTINE",
-            evidence = evidence,
-            at = (os and os.time and os.time() or 0)
+            status = "RESOLVED",
+            resolution = resObj,
+            evidence = evidObj,
+            at = now
         }
+        root.quarantineResources[key] = nil
     end
-    return ok
+    return true
 end
 function Store.createClaimedJob(job)
     local JobStore=require('EmberRoutesProbe/JobStore')
@@ -484,9 +646,15 @@ function Store.createClaimedJob(job)
         return false,'INVALID_JOB_ENVELOPE'
     end
     Store.data()
+    -- Allocate persistent non-reusable claimId at the authoritative root level:
+    root.nextClaimSeq = (root.nextClaimSeq or 0) + 1
+    local persistentClaimId = job.claimId or (tostring(job.id) .. ":c" .. tostring(root.nextClaimSeq))
+    job.claimId = persistentClaimId
+    if claims then claims.nextClaimSeq = math.max(claims.nextClaimSeq or 1, root.nextClaimSeq + 1) end
+
     local p=job.payload
     local keys=p.claims or {}
-    local token,why=claims:acquireNew(job.id,p.sequence or job.generation or 0,keys)
+    local token,why=claims:acquireNew(job.id,p.sequence or job.generation or 0,keys,job)
     if not token then return false,'CLAIMS_ACQUIRE_FAILED:'..tostring(why) end
     if p.reservation and type(p.reservation)=='table' then
         local r=p.reservation
@@ -529,27 +697,80 @@ function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
     if not job or job.revision ~= expectedRevision then return false, 'STALE_REVISION' end
     local token = Store.getToken(jobId)
     if not token then return false, 'NO_RUNTIME_TOKEN' end
+    if type(proposedPayload) ~= 'table' then return false, 'PROPOSED_PAYLOAD_INVALID' end
 
-    -- Preflight shrink BEFORE any CAS or key extension
-    if mutation and mutation.removeKeys and #mutation.removeKeys > 0 then
-        local okCanShrink, whyCanShrink = claims:canShrink(token, mutation.removeKeys)
+    local addKeys = mutation and mutation.addKeys
+    local removeKeys = mutation and mutation.removeKeys
+
+    -- 1. Mutually exclusive validation: addKeys ∩ removeKeys must be empty
+    if addKeys and removeKeys and #addKeys > 0 and #removeKeys > 0 then
+        local removeSet = {}
+        for _, k in ipairs(removeKeys) do removeSet[k] = true end
+        for _, k in ipairs(addKeys) do
+            if removeSet[k] then
+                return false, 'MUTATION_KEYS_MUTUALLY_EXCLUSIVE_VIOLATION'
+            end
+        end
+    end
+
+    -- 2. Reject addKeys containing resources already held by this token
+    if addKeys and #addKeys > 0 then
+        local currentOwned = {}
+        for _, k in ipairs(token.resources or {}) do currentOwned[k] = true end
+        for _, k in ipairs(addKeys) do
+            if currentOwned[k] then
+                return false, 'ADD_KEYS_ALREADY_OWNED'
+            end
+        end
+    end
+
+    -- 3. Verify addKeys / removeKeys and proposedPayload.claims consistency
+    if proposedPayload.claims ~= nil then
+        local expectedClaims = {}
+        for _, k in ipairs(token.resources or {}) do expectedClaims[k] = true end
+        if removeKeys then
+            for _, k in ipairs(removeKeys) do expectedClaims[k] = nil end
+        end
+        if addKeys then
+            for _, k in ipairs(addKeys) do expectedClaims[k] = true end
+        end
+
+        local proposedSet = {}
+        for _, k in ipairs(proposedPayload.claims) do
+            if proposedSet[k] then return false, 'RESOURCE_DUPLICATED' end
+            proposedSet[k] = true
+        end
+        for k in pairs(expectedClaims) do
+            if not proposedSet[k] then return false, 'CLAIMS_PAYLOAD_MISMATCH' end
+        end
+        for k in pairs(proposedSet) do
+            if not expectedClaims[k] then return false, 'CLAIMS_PAYLOAD_MISMATCH' end
+        end
+    end
+
+    -- 4. Preflight shrink BEFORE any CAS or key extension
+    if removeKeys and #removeKeys > 0 then
+        local okCanShrink, whyCanShrink = claims:canShrink(token, removeKeys)
         if not okCanShrink then
             return false, 'SHRINK_FAILED:' .. tostring(whyCanShrink)
         end
     end
 
-    if mutation and mutation.addKeys and #mutation.addKeys > 0 then
-        local okExt, whyExt = claims:extend(token, mutation.addKeys)
+    -- 5. Extend addKeys
+    if addKeys and #addKeys > 0 then
+        local okExt, whyExt = claims:extend(token, addKeys)
         if not okExt then return false, 'EXTEND_FAILED:' .. tostring(whyExt) end
     end
+
+    -- 6. CAS store:update
     local patch = { payload = proposedPayload }
     if mutation and mutation.state then patch.state = mutation.state end
     if mutation and mutation.effects then patch.effects = mutation.effects end
     if mutation and mutation.obligations then patch.obligations = mutation.obligations end
     local okCAS, nextRev = store:update(jobId, expectedRevision, patch)
     if not okCAS then
-        if mutation and mutation.addKeys and #mutation.addKeys > 0 then
-            for _, addKey in ipairs(mutation.addKeys) do
+        if addKeys and #addKeys > 0 then
+            for _, addKey in ipairs(addKeys) do
                 Store.quarantineResource(addKey, "CAS_FAILED", {
                     jobId = jobId,
                     rev = expectedRevision,
@@ -560,10 +781,12 @@ function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
         store:update(jobId, expectedRevision, { state = 'RECONCILE_REQUIRED', effects = 'UNKNOWN' })
         return false, 'CAS_FAILED_ISOLATED:' .. tostring(nextRev)
     end
-    if mutation and mutation.removeKeys and #mutation.removeKeys > 0 then
-        local okShrink, whyShrink = claims:shrink(token, mutation.removeKeys)
+
+    -- 7. Shrink removeKeys post-CAS
+    if removeKeys and #removeKeys > 0 then
+        local okShrink, whyShrink = claims:shrink(token, removeKeys)
         if not okShrink then
-            for _, remKey in ipairs(mutation.removeKeys) do
+            for _, remKey in ipairs(removeKeys) do
                 Store.quarantineResource(remKey, "SHRINK_POST_CAS_FAIL", {
                     jobId = jobId,
                     rev = nextRev,
@@ -574,6 +797,8 @@ function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
             return false, 'SHRINK_FAILED_ISOLATED:' .. tostring(whyShrink)
         end
     end
+
+    -- 8. Terminal cleanup
     if patch.state == 'DONE' or patch.state == 'CANCELLED' then
         claims:release(token)
         cleanToken(jobId)
