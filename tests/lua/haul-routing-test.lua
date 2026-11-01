@@ -164,6 +164,22 @@ check(r.state=='DONE' and moving:getContainer()==spare.container,'private old ta
 oldPut:stop() oldPut:perform()
 check(moving:getContainer()==spare.container and not Store.owner(moving:getID()),'late revoked callback neither replays original nor changes completed claim')
 food.container.getItems=readFood
+-- UNKNOWN may come from authority/collision recovery, even without an active
+-- transfer intent. Cold normalization must never infer KNOWN from that absence.
+local unresolvedItem=f.fixture.item('tool',source.container)
+local unresolved={id=Registry.id(),npcId=f.b.id,format=3,kind='EXPLICIT_TRANSFER',scopeId='local-world',executor='ENTITY',
+    producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',source=Registry.metadata(source,source.container).id,
+    destination=Registry.metadata(tools,tools.container).id,items={unresolvedItem:getID()},
+    state='PAUSED',reason='CREATED',phase='COLLECT',generation=0,routeRevision=0,attemptSequence=0,plannedCount=1,delivered=0}
+unresolved.manifest=require('EmberRoutesProbe/HaulManifest').create(unresolved)
+assert(require('EmberRoutesProbe/HaulJobs').claim(unresolved))
+local authority=require('EmberRoutesProbe/TaskJobs').current()
+local unknownJob=authority:get(unresolved.id)
+assert(authority:update(unknownJob.id,unknownJob.revision,{effects='UNKNOWN',state='RECONCILE_REQUIRED'}))
+require('EmberRoutesProbe/HaulJobs').prepareRecovery()
+unknownJob=authority:get(unresolved.id)
+check(unknownJob.effects=='UNKNOWN' and unknownJob.state=='RECONCILE_REQUIRED' and unknownJob.payload.controlUncertain,
+    'cold recovery preserves authority UNKNOWN even when activeAttempt is absent')
 -- Rebuild the world-local ledger from a paused, partially settled manifest.
 local reloadHeld=f.fixture.item('tool',npc.root)
 local reloadDone=f.fixture.item('tool',tools.container)

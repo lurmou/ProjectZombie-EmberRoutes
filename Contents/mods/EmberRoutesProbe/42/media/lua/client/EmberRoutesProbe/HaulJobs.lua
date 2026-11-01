@@ -144,7 +144,7 @@ function M.prepareRecovery()
     for id,j in pairs(root.taskJobs.byId) do
 	if j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY'
 	    and j.state~='DONE' and j.state~='CANCELLED' then
-	    local saved=jobs:get(id) local p=saved.payload local unknown=p.controlUncertain or p.activeAttempt~=nil
+	    local saved=jobs:get(id) local p=saved.payload local unknown=saved.effects=='UNKNOWN' or p.controlUncertain or p.activeAttempt~=nil
 	    p.state='PAUSED' p.reason='LOAD_RECOVERY' p.generation=p.generation+1 p.sequence=p.generation
 	    if unknown then p.controlUncertain=true end
 	    local state=unknown and 'RECONCILE_REQUIRED' or 'SUSPENDED'
