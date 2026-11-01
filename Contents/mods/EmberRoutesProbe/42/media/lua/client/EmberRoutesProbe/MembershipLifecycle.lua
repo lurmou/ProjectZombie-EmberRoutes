@@ -26,7 +26,8 @@ function L.install()
     Events.OnInitGlobalModData.Add(function(isNewGame)
         if isNewGame then
             -- Before bridge.begin, use the freshly loaded engine root rather than a previous world's cache.
-            local ok,why=S.newWorld(ModData.getOrCreate('EmberRoutes/Work/v1'))
+	    local fresh=require('EmberRoutesProbe/ContainerRegistry').data(ModData.getOrCreate('EmberRoutes/Work/v1'))
+	    local ok,why=S.newWorld(fresh)
             if not ok then require('EmberRoutesProbe/Log').write('MEMBERSHIP',why) end
         end
     end)

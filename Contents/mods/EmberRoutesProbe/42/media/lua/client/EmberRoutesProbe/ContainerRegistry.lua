@@ -3,7 +3,9 @@ local Policy = require "EmberRoutesProbe/InventoryPolicy"
 local Filter = require "EmberRoutesProbe/StorageFilter"
 local Log = require "EmberRoutesProbe/Log"
 local Gate = require "EmberRoutesProbe/RuntimeGate"
+local Jobs = require "EmberRoutesProbe/JobStore"
 local Registry = {}
+local admittedRoot, admittedJobs
 Registry.tags = Policy.order
 Registry.listeners = {}
 Registry.inventoryListeners = {}
@@ -46,19 +48,32 @@ function Registry.changed(id)
     notify(Registry.listeners,id)
 end
 
-function Registry.data()
+function Registry.data(freshRoot)
     -- Native root-handle cache turns the per-call ModData bridge into one map
     -- lookup; the extension clears it on world lifecycle. Missing/noop bridge
     -- (tests) keeps the direct getOrCreate path.
     local bridge=EmberRoutesProbeJava
-    local data
-    if bridge and bridge.cachedModData then
+    -- OnInitGlobalModData supplies the engine root before the native cache resets.
+    local data=freshRoot
+    if data==nil and bridge and bridge.cachedModData then
         local ok,cached=pcall(bridge.cachedModData,"EmberRoutes/Work/v1")
         if ok then data=cached end
     end
     if not data then data=ModData.getOrCreate("EmberRoutes/Work/v1") end
-    if data.format and data.format ~= 1 then error("WORK_FORMAT_UNSUPPORTED") end
-    data.format, data.containers = 1, data.containers or {}
+    if type(data)~='table' then error('WORK_FORMAT_UNSUPPORTED') end
+    if data.format==nil then
+	-- Only an empty root is a new world. Missing version on existing facts
+	-- is unsupported, never permission to label them as the current schema.
+	for _ in pairs(data) do error('WORK_FORMAT_UNSUPPORTED') end
+    elseif data.format~=1 then error('WORK_FORMAT_UNSUPPORTED') end
+    if data.containers~=nil and type(data.containers)~='table' then error('CONTAINER_FORMAT_UNSUPPORTED') end
+    if data~=admittedRoot or data.taskJobs~=admittedJobs then
+	local ok,reason=Jobs.check(data)
+	if not ok then error(reason) end
+	-- No defaults, normalization or record publication before acceptance.
+	data.format, data.containers = 1, data.containers or {}
+	admittedRoot,admittedJobs=data,data.taskJobs
+    end
     return data
 end
 

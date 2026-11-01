@@ -66,7 +66,7 @@ local function legacy(root)
     return root.job~=nil or craft and (type(craft)~='table' or type(craft.byNpc)~='table' or not empty(craft.byNpc))
         or labor and (type(labor)~='table' or type(labor.tasks)~='table' or not empty(labor.tasks))
 end
-function Store.open(root)
+local function prepare(root)
     if type(root)~='table' then return nil,'JOB_ROOT_INVALID' end
     if legacy(root) then return nil,'LEGACY_TASK_RESET_REQUIRED' end
     local saved=root.taskJobs
@@ -85,6 +85,20 @@ function Store.open(root)
         end
         byNpc[job.npcId]=byNpc[job.npcId] or {} byNpc[job.npcId][key]=true
     end
+    return {data=data,byNpc=byNpc,count=count,personal=personal,personalByNpc=personalByNpc}
+end
+-- Same acceptance contract as open, with no root publication or API creation.
+-- Used once at world admission, before other owners initialize/normalize data.
+function Store.check(root)
+    local prepared,reason=prepare(root)
+    if not prepared then return false,reason end
+    return true
+end
+function Store.open(root)
+    local prepared,reason=prepare(root)
+    if not prepared then return nil,reason end
+    local data,byNpc=prepared.data,prepared.byNpc
+    local count,personal,personalByNpc=prepared.count,prepared.personal,prepared.personalByNpc
     root.taskJobs=data
     local api={}
     local listeners={}

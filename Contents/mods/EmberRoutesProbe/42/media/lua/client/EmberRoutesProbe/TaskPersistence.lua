@@ -41,6 +41,7 @@ local function validReceipt(value)
     return true
 end
 function Save.load()
+    local root=Registry.data() -- Reject unsupported formats before any recovery mutation.
     if Probe.prepareMembershipRecovery then Probe.prepareMembershipRecovery() end
     if Probe.resetStock then Probe.resetStock() end
     -- Normalize legacy records and rebuild every original-ID/capacity claim
@@ -48,7 +49,6 @@ function Save.load()
     Craft.prepareRecovery()
     Store.data()
     require('EmberRoutesProbe/FieldWork').prepareRecovery()
-    local root=Registry.data()
     if Probe.publicDispatch then require('EmberRoutesProbe/PublicWork').prepareRecovery() end
     if not validReceipt(root.executionSave) then error('SAVE_RECOVERY_FORMAT_INVALID') end
     if Probe.prepareCareRecovery and Probe.prepareCareRecovery(root.executionSave)~=true then error('PERSONAL_RECOVERY_FAILED') end
