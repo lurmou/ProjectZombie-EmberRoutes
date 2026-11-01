@@ -18,7 +18,8 @@
    - **`ActivityScenarioCard` 委托绘制**：已完成。卡片背景与左侧状态条委托给 [`UI/CardPanel.lua:34`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/CardPanel.lua#L34)；
    - **`PersonnelPage` 消除双重投影**：已完成。删除了 [`UI/PersonnelPage.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua) 中 `setState()` 后多余的手动 `project()` 调用；
    - **`ActivityDialog.lua` 消除双轨制**：已完成。全库检索确认无外部菜单依赖旧窗口；原 519 行重复旧实现已重构为 20 行透明转发层（Shim），统一导向 [`UI/ActivityPage.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityPage.lua)，回归测试 28 项断言全部通过；
-   - **`TooltipManager` 建设**：已完成。新建生命周期自愈型 [`UI/TooltipManager.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/TooltipManager.lua)，并在 [`UI/PageLifecycle.lua:29`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua#L29) 的 `unmount()` 中接入级联清理，`WarehousePage` 等页面的手动清理代码已简化。
+   - **`TooltipManager` 建设**：已完成。新建生命周期自愈型 [`UI/TooltipManager.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/TooltipManager.lua)，并在 [`UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua) 的 ActivationScope（`dismissOwner`）与 PageLifetimeScope（`unregisterOwner`）中接入级联清理，`WarehousePage` 等页面的手动清理代码已简化；
+   - **`LifecycleScope` 双层作用域建设 (Task 1.6)**：已完成。基于显式释放策略 `own(res, disposer)`、`defer` 与 LIFO 错误隔离，构建了 `PageLifetimeScope` 与 `ActivationScope`，支持安全跨激活抽屉复用（如 Personnel 档案抽屉）与激活内销毁（如 Warehouse 购物车），且向后兼容旧版 `mount/unmount`。
 
 ---
 
@@ -30,7 +31,7 @@
 | 文件路径 | 行数 | 职责与能力 | 现状与问题 |
 | :--- | :---: | :--- | :--- |
 | [`UI/State.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/State.lua) | 52 | 局部状态 Store，支持 `setState` 与监听者订阅 | 缺少精细脏键通知与批量更新合并机制 |
-| [`UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua) | 32 | `mount/unmount` 门禁，基于 activation token 防止孤儿回调 | 已集成 `TooltipManager.clearOwner`，需扩展为通用 Scope |
+| [`UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua) | 307 | 双层生命周期 Scope（PageLifetimeScope 与 ActivationScope），基于 Token 门禁、显式释放函数 `own(res, disposer)`、`defer` 与 LIFO 错误隔离 | 统一托管 Store 订阅、Service Watch、抽屉/子窗口、Tooltip 级联注销，兼容旧版 `mount/unmount` |
 | [`UI/Layout.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/Layout.lua) | 98 | 相对轴向弹性布局计算 (`Layout.axis`) | 运行良好，计算结果必须在 resize/mount 时缓存，严禁逐帧计算 |
 | [`UI/Theme.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/Theme.lua) | 95 | 统一调色板、语义色、按钮与面板样式 | 颜色令牌完整，部分业务页面仍存在局部硬编码 `getCore():getScreenWidth()` 比例 |
 | [`UI/UICache.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/UICache.lua) | 48 | 文本测量与格式化字符串缓存 | 覆盖有限，未在所有列表项中强制接入 |

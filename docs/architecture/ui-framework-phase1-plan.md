@@ -26,7 +26,7 @@ Phase 1 任务看板 (修正版)
 ├── [已完成] Task 1.4: ActivityDialog 消除双轨制，重构为透明转发 Shim
 ├── [已实施] Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0 - 核心重构与仓储补丁完成)
 ├── [待实施] Task 1.5B: 新组件 Static Draw 零 GC 规范合规化 (P1)
-├── [待实施] Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0)
+├── [已实施] Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0 - 契约修正、双层Scope与专项测试完成)
 ├── [待实施] Task 1.7: RefreshScheduler 统一调度器建设 (P0)
 ├── [待实施] Task 1.8: PersonnelPage 刷新重构与数据模型三级解耦 (P0)
 └── [待实施] Task 1.9: 阶段一全量回归测试与质量验收 (P0)
@@ -75,26 +75,38 @@ Phase 1 任务看板 (修正版)
 
 ---
 
-### Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0)
+### Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0 - 已实施)
 - **代码位置**：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua)
-- **架构设计（双层生命周期）**：
+- **架构设计（双层生命周期与显式释放规约）**：
   1. **`ActivationScope`（切页会话生命周期）**：
      - 随 `page:activate()` 创建，随 `page:deactivate()` 销毁；
-     - 托管：Service Watch 订阅、Scheduler 周期任务、临时 Modal / 抽屉关闭、Tooltip Dismiss；
-     - 异步门禁：持有当前 `activation token`，任何异步结果在 token 过期后直接丢弃；
+     - 托管：Service Watch 订阅、Store 激活订阅、临时 Modal / 抽屉关闭、Tooltip Dismiss、通用 defer 清理任务；
+     - 异步门禁：持有当前 `activation token`，任何异步结果在 token 过期后直接静默丢弃；
+     - 同步关闭防御：若 watch 同步回调导致页面关闭，晚到的 release 句柄立即安全调用执行；
   2. **`PageLifetimeScope`（页面实例生命周期）**：
-     - 随 `page:initialise()` 创建，随 `page:dispose()` 销毁；
-     - 托管：子控件所有权、Tooltip 注册引用（Unregister）、本地 Store 实例；
-  3. **契约 API**：
+     - 随 `page:initialise()` / `new` 创建，随 `page:dispose()` 销毁；
+     - 托管：长期子控件/子视图所有权、持久抽屉、实例级 Store 订阅、Tooltip 永久注销 Hook（Unregister）；
+  3. **契约 API（显式释放协议，彻底废弃 Duck Typing 猜测）**：
      ```lua
+     -- 实例级长期资源
+     local lifetime = PageLifecycle.createLifetimeScope(page)
+     lifetime:own(child, function(res) res:dispose() end)
+     lifetime:defer(function() unsub() end)
+     lifetime:dispose()
+
+     -- 会话级活跃资源
      local scope = PageLifecycle.createActivationScope(page)
-     scope:watch(watchFn, callback)
-     scope:schedule(cadence, taskFn)
-     scope:own(childDrawerOrModal)
+     scope:watch(watchFn, receiveFn, guardFn)
+     scope:subscribe(store, projectFn)
+     scope:own(tempModal, function(m) m:destroy() end)
+     scope:defer(function() cancelTask() end)
+     scope:wrapCallback(fn)
      scope:dispose()
      ```
-- **验收标准**：
-  - 编写 `tests/lua/lifecycle-scope-test.lua`，验证页面切出时 Watch 立即注销、Scheduler 停止；再次切入时可重新注册，销毁时资源彻底清空。
+- **验收标准与落地证据**：
+  - `tests/lua/lifecycle-scope-test.lua`：包含 17 组模块与集成测试、502 项断言全部 PASS（覆盖 100 次切页零泄漏、Token 拦截、同步关闭防御、LIFO 逆序释放、错误隔离与 Personnel/Warehouse/Crafting/Defense 真实场景集成）；
+  - 已接入 JVM `tests/java/KahluaUiTextTest.java` 跑通真实 PZ Kahlua 虚拟机断言；
+  - 静态检查 `pz.mjs lint` 323 个文件 0 错误。
 
 ---
 
