@@ -2221,6 +2221,95 @@ end
     print('PASS RETAIN existing reservation + two transfers: total=8, recipient=8')
 end)()
 
+-- R5: ordinary reservations must not dispose a bucket still owned by quarantine.
+;(function()
+    local c=Claims.new()
+    local t=c:acquireNew('partial-A',1,{'item:25001','item:25002'})
+    assertTrue(c:reserve(t,'partial-bin',25001,3,100),'Reserve isolated item')
+    assertTrue(c:reserve(t,'partial-bin',25002,4,100),'Reserve normal item')
+    assertTrue(c:quarantine('item:25001'),'Partial quarantine succeeds')
+    assertEq(c.capacity['partial-bin'].total,7,'Quarantine conserves total 7')
+    c:release(t)
+    assertTrue(c.capacity['partial-bin']~=nil,'Last ordinary release preserves quarantine bucket')
+    assertEq(c.capacity['partial-bin'].total,3,'Only normal capacity 4 is released')
+    assertEq(c:available('partial-bin',10),7,'Quarantine continues to reduce available capacity')
+    assertEq(c.owners['item:25001'].kind,'SYSTEM_QUARANTINE','Original remains protected')
+    assertTrue(c:unquarantine('item:25001'),'Explicit resolution succeeds')
+    assertEq(c.capacity['partial-bin'],nil,'Bucket removed after both kinds are settled')
+    local plain=c:acquireNew('plain',1,{'item:25003'})
+    assertTrue(c:reserve(plain,'plain-bin',25003,2,100),'Plain reservation succeeds')
+    c:releaseCapacity(plain,25003)
+    assertEq(c.capacity['plain-bin'],nil,'Ordinary-only bucket is still cleaned up')
+
+    -- Exercise authoritative quarantine persistence, release, detached saved
+    -- facts and a fresh reconstruction, rather than only checking a return value.
+    local world={containers={},taskJobs={format=1,byId={}}}
+    ContainerRegistry.data=function() return world end
+    for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
+    local s=require('EmberRoutesProbe/LaborStore')
+    s.data()
+    local kernel=s.claimsInstance()
+    local original=kernel:acquireNew('partial-persist',1,{'item:25011','item:25012'})
+    assertTrue(kernel:reserve(original,'persist-bin',25011,3,100),'Persistent original capacity 3')
+    assertTrue(kernel:reserve(original,'persist-bin',25012,4,100),'Persistent normal capacity 4')
+    assertTrue(s.quarantineResource('item:25011','PARTIAL_TEST'),'Persist system quarantine facts')
+    kernel:release(original)
+    assertEq(kernel.capacity['persist-bin'].total,3,'Before reload: isolated capacity remains 3')
+    local function copy(v)
+	if type(v)~='table' then
+	    assertTrue(type(v)=='nil' or type(v)=='string' or type(v)=='number' or type(v)=='boolean',
+		'Persisted facts contain no functions, threads or userdata')
+	    return v
+	end
+	local r={} for k,x in pairs(v) do r[k]=copy(x) end return r
+    end
+    world=copy(world)
+    for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
+    local fresh=require('EmberRoutesProbe/LaborStore')
+    fresh.data()
+    assertFalse(fresh.claimsInstance()==kernel,'Reload uses a different Claims instance')
+    assertEq(fresh.claimsInstance().capacity['persist-bin'].total,3,'After reload: isolated capacity remains 3')
+    assertEq(fresh.resourceOwner('item:25011').kind,'SYSTEM_QUARANTINE','Reload preserves resource protection')
+    assertTrue(fresh.unquarantineResource('item:25011','VERIFIED_RELEASE'),'Explicit settlement after reload')
+    assertEq(fresh.claimsInstance().capacity['persist-bin'],nil,'Final settlement removes empty bucket')
+    print('PASS R5 partial quarantine: 7 -> normal release 3 -> reload 3 -> explicit settlement 0')
+
+    -- A runtime token may legally acquire runtime-only fields. Neither the
+    -- in-progress intent nor the completed audit may hold that object reference.
+    local k=fresh.claimsInstance()
+    local source=k:acquireNew('audit-source',1,{'item:25021'})
+    assertTrue(k:reserve(source,'audit-bin',25021,5,100),'Audit source reserves capacity')
+    assertTrue(fresh.quarantineResource('item:25021','AUDIT_TEST'),'Audit source isolated')
+    local recipient=k:acquireNew('audit-recipient',1,{})
+    recipient.callback=function() end
+    recipient.self=recipient
+    local resolution={reason='VERIFIED_HANDOFF',resolvedBy='review',capacityAction='RETAIN',targetToken=recipient}
+    local nativeUnquarantine=k.unquarantine
+    k.unquarantine=function(self,key,res)
+	local intent=world.quarantineResources[key].resolution
+	assertEq(intent.targetToken,nil,'RESOLVING intent contains no targetToken')
+	assertEq(intent.recipientTaskId,recipient.taskId,'RESOLVING records stable recipient task ID')
+	assertEq(intent.recipientClaimId,recipient.claimId,'RESOLVING records stable claim ID')
+	assertEq(res.targetToken,recipient,'Runtime kernel still receives the real token')
+	return nativeUnquarantine(self,key,res)
+    end
+    assertTrue(fresh.unquarantineResource('item:25021',resolution),'RETAIN audit succeeds')
+    k.unquarantine=nil
+    local audit=world.quarantineAudit['item:25021']
+    assertEq(audit.resolution.targetToken,nil,'Completed audit contains no targetToken')
+    assertEq(audit.resolution.recipientToken,nil,'Completed audit contains no recipientToken')
+    assertEq(audit.recipientClaimId,recipient.claimId,'Audit identifies recipient claim')
+    assertEq(audit.resolution.reason,'VERIFIED_HANDOFF','Audit retains resolution reason')
+    recipient.taskId='changed-runtime-id'
+    resolution.reason='changed-caller-reason'
+    assertEq(audit.recipientTaskId,'audit-recipient','Token mutation cannot rewrite audit')
+    assertEq(audit.resolution.reason,'VERIFIED_HANDOFF','Caller mutation cannot rewrite audit')
+    local savedAudit=copy(world).quarantineAudit['item:25021']
+    assertEq(savedAudit.recipientTaskId,'audit-recipient','Detached persisted audit retains original recipient')
+    assertEq(savedAudit.resolution.reason,'VERIFIED_HANDOFF','Detached persisted audit retains original reason')
+    print('PASS R5 RETAIN intent/audit contain stable facts; runtime token cycles and mutations do not persist')
+end)()
+
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")
 
 print("PASS: All Phase 3A Stage B LaborClaims & LaborStore tests passed successfully!")

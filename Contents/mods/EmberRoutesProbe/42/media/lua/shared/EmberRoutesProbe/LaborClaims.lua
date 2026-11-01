@@ -461,7 +461,12 @@ function methods:releaseCapacity(token,itemId)
         claim.amount=math.max(0,claim.amount-amount) bucket.total=math.max(0,bucket.total-amount)
         if claim.count==0 then
             bucket.entries[token.taskId]=nil token.capacityKey=nil bucket.count=bucket.count-1
-            if bucket.count==0 then self.capacity[key]=nil end
+	    if bucket.count==0 then
+		if bucket.quarantine then
+		    for _ in pairs(bucket.quarantine) do return end
+		end
+		self.capacity[key]=nil
+	    end
         end
     end
 end

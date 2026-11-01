@@ -766,12 +766,22 @@ function Store.unquarantineResource(key,resolution,evidence)
     if (not qRec) and root and root.quarantineAudit and root.quarantineAudit[key] then
         return true -- idempotent: already unquarantined and settled in audit ledger
     end
+    -- Resolution is a runtime command and may contain a live Token. Persist a
+    -- separate scalar intent/result, never the command table or its handles.
+    local resolutionFacts={capacityAction=type(resObj.capacityAction)=='string' and resObj.capacityAction or 'RELEASE'}
+    if type(resObj.reason)=='string' then resolutionFacts.reason=resObj.reason end
+    if type(resObj.resolvedBy)=='string' then resolutionFacts.resolvedBy=resObj.resolvedBy end
+    local recipient=resObj.targetToken or resObj.recipientToken
+    if type(recipient)=='table' then
+	if type(recipient.taskId)=='string' then resolutionFacts.recipientTaskId=recipient.taskId end
+	if type(recipient.claimId)=='string' then resolutionFacts.recipientClaimId=recipient.claimId end
+    end
     if qRec then
         if qRec.status == "RESOLVED" then
             return true -- idempotent
         end
         qRec.status = "RESOLVING"
-        qRec.resolution = resObj
+	qRec.resolution = resolutionFacts
         qRec.resolvingEvidence = evidObj
         qRec.resolvingAt = (os and os.time and os.time() or 0)
     end
@@ -794,11 +804,12 @@ function Store.unquarantineResource(key,resolution,evidence)
         root.quarantineAudit[key] = {
             action = "UNQUARANTINE",
             status = "RESOLVED",
-            resolution = resObj,
+	    resolution = resolutionFacts,
             evidence = evidObj,
             at = now,
-            capacityAction = resObj.capacityAction or "RELEASE",
-            recipientTaskId = (resObj.targetToken or resObj.recipientToken) and (resObj.targetToken or resObj.recipientToken).taskId
+	    capacityAction = resolutionFacts.capacityAction,
+	    recipientTaskId = resolutionFacts.recipientTaskId,
+	    recipientClaimId = resolutionFacts.recipientClaimId
         }
         root.quarantineResources[key] = nil
     end
