@@ -46,6 +46,11 @@ function isClient() return false end function isServer() return false end
 function getTimestampMs() return now end function getSpecificPlayer() return actor end
 EmberRoutesProbeJava={workerCount=function() return #workers end,workerIdAt=function(i) return workers[i+1] end}
 package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'crate'} end}
+-- This dispatch fixture contains no tool custody or return work. Model that
+-- business fact explicitly; do not load native transfer actions as a side effect.
+package.loaded['EmberRoutesProbe/LaborStore']={custodyForNpc=function() return {} end}
+package.loaded['EmberRoutesProbe/ToolReturnService']={canInterrupt=function() return false end,
+ startFor=function() error('unexpected tool return in dispatch-only fixture') end}
 local Public=require 'EmberRoutesProbe/PublicWork'
 local rawCreate=Public.create local requestTokens={}
 Public.create=function(a,s,r,n,surface,label,preferences)
