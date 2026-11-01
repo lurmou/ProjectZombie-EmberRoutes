@@ -181,18 +181,17 @@ function Store.data()
                             if amount then q.capacityKey,q.capacityItemId,q.capacityAmount=r.key,itemId,amount end
                         end
                         local cap=p.capacity
-                        if cap and (cap.itemId==itemId or key=='cooking:capacity:'..e.id) then
+			if cap and (itemId and cap.itemId==itemId or key=='cooking:capacity:'..e.id) then
                             q.capacityKey,q.capacityItemId,q.capacityAmount=cap.key or cap.endpointId,
                                 cap.itemId or key,cap.amount
                         end
                         current.quarantineResources[key]=q
                         rebuilt:restoreQuarantine(key,q)
                     end
-                    q.evidence=q.evidence or {}
+		    if type(q.evidence)~='table' then q.evidence={priorEvidence=q.evidence} end
                     -- Preserve evidence from every task if resource sets also overlap.
                     q.evidence.identityCollisions=q.evidence.identityCollisions or {}
                     q.evidence.identityCollisions[e.id]=conflict
-                    q.evidence.identityCollision=q.evidence.identityCollision or conflict
                 end
             end
         end

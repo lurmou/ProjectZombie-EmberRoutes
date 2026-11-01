@@ -2000,7 +2000,7 @@ do
         assertFalse(freshStore.getToken(saved.id) ~= nil, "Isolated job cannot reacquire after boot")
         assertEq(freshStore.resourceOwner('item:5555').kind, 'SYSTEM_QUARANTINE', "Original quarantine survives")
         assertEq(freshStore.resourceOwner('item:7772').kind, 'SYSTEM_QUARANTINE', "Colliding task resources stay protected")
-        local evidence = collisionBootRoot.quarantineResources['item:7772'].evidence.identityCollision
+	local evidence = collisionBootRoot.quarantineResources['item:7772'].evidence.identityCollisions['job-colliding-2']
         assertEq(evidence.originalClaimId, 'job-colliding-2:c1', "Original identity preserved")
         assertTrue(evidence.taskIds['job-primary-1'] and evidence.taskIds['job-colliding-2'], "Both task identities preserved")
         assertEq(evidence.originalTaskId, saved.id, "Original task ID preserved")
@@ -2104,7 +2104,7 @@ end
     local w2,t2=boot(conflict,true)
     assertFalse(t2.getToken('A')~=nil,'Reverse scan cannot choose A as winner')
     assertTrue(same(w1,w2),'Cross-task persisted results are order-independent')
-    local ev=w2.quarantineResources['item:22001'].evidence.identityCollision
+    local ev=w2.quarantineResources['item:22001'].evidence.identityCollisions.A
     assertTrue(ev.taskIds.A and ev.taskIds.B and ev.taskIds.C,'All conflicting task IDs preserved')
     for _,item in ipairs({22001,22002,22003,22004}) do
         assertEq(t2.resourceOwner('item:'..item).kind,'SYSTEM_QUARANTINE','Every original remains quarantined')
@@ -2141,6 +2141,13 @@ end
     assertEq(legacy2.taskJobs.byId[haulId].claimId,legacyCid,'Legacy replacement identity is stable after reload')
     assertEq(ls2.claimsInstance().capacity['haul-bin'].total,4,'Legacy reload counts isolated capacity once')
     assertFalse(ls2.getToken(haulId)~=nil,'Legacy reload cannot reacquire originals')
+    local failed,why=ls2.unquarantineResource('item:22501',{capacityAction='RETAIN',targetToken={taskId='forged'}})
+    assertFalse(failed,'Unquarantine fails with an unauthenticated recipient')
+    assertEq(why,'CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID','Failure preserves RETAIN guard contract')
+    local failedReload,failedStore=boot(legacy2,false)
+    assertEq(failedReload.quarantineResources['item:22501'].status,'ACTIVE','Failed resolution remains active after reload')
+    assertEq(failedStore.claimsInstance().capacity['haul-bin'].total,4,'Failed resolution reload preserves capacity once')
+    assertEq(failedStore.resourceOwner('item:22501').kind,'SYSTEM_QUARANTINE','Failed resolution reload preserves protection')
 
     -- Two custody entries share the same original claim identity. Neither may
     -- escape collision detection through prefix normalization or recover first.
@@ -2158,6 +2165,18 @@ end
         assertTrue(string.match(c2.toolCustody.byId[id].claimId,'^'..id:gsub('%-','%%-')..':c%d+$')~=nil,
             'Custody replacement identity has legal prefix')
     end
+    local overlap=copy(custody)
+    overlap.toolCustody.byId['custody-B'].itemId=23001
+    overlap.toolCustody.byId['custody-B'].claims={'item:23001'}
+    overlap.quarantineResources['item:23001']={status='ACTIVE',originalTaskId='custody-A',
+	originalClaimId='custody-A:c1',evidence='original diagnostic'}
+    local overlap1=boot(overlap,false)
+    local overlap2=boot(overlap,true)
+    assertTrue(same(overlap1,overlap2),'Shared resource collision remains order-independent')
+    local overlapEvidence=overlap2.quarantineResources['item:23001'].evidence
+    assertEq(overlapEvidence.priorEvidence,'original diagnostic','Existing scalar diagnostics preserved')
+    assertTrue(overlapEvidence.identityCollisions['custody-A']~=nil
+	and overlapEvidence.identityCollisions['custody-B']~=nil,'Shared resource retains both task evidence records')
     print('PASS R3 same-task resources, cross-task quarantine sets, live claimants: forward/reverse scans')
 
     -- P0-2: keep RETAIN production behavior; exercise successive transfers into
