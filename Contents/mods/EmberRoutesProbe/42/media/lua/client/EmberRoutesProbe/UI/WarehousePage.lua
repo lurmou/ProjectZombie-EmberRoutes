@@ -14,7 +14,6 @@ local Selector=require "EmberRoutesProbe/UI/SettlementSelector"
 local Cached=require "EmberRoutesProbe/UI/CachedList"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
-local Table=require "EmberRoutesProbe/UI/WarehouseList"
 local Details=require "EmberRoutesProbe/UI/WarehouseDetails"
 local Summary=require "EmberRoutesProbe/UI/CompactSummaryStrip"
 local Rows=require "EmberRoutesProbe/UI/WarehouseRows"
@@ -36,7 +35,7 @@ local Metrics=require "EmberRoutesProbe/WarehouseMetrics"
 ---@field helpModal ISModalDialog?
 ---@field hintLines string[]
 ---@field itemNames table<string,string>
----@field itemList EmberRoutesCachedList
+---@field itemGrid table
 ---@field sourceList EmberRoutesCachedList
 ---@field search ISTextEntryBox
 ---@field categories ISComboBox
@@ -99,31 +98,12 @@ function EmberRoutesWarehousePage:createChildren()
     self.controls=Controls.new(self,regions[2])
     self.search,self.categories,self.categoryIds=self.controls.search,self.controls.category,self.controls.categoryIds
     local columns=assert(Layout.axis(regions[3],{{grow=3},{grow=2}},{gap=p}))
-    self.itemList=Cached.create(self,columns[1],EmberRoutesWarehousePage.selectItem,
-        Table.style(self.presentation,function(row) return row.label end))
-    self.itemList.emberMetric="ui.items"
-    Theme.list(self.itemList) self:addChild(self.itemList)
-    self.itemList.onRightMouseDown=function(list,x,y)
-        local rowIdx=list:rowAt(x,y)
-        if rowIdx and rowIdx>0 and rowIdx<=#list.items then
-            local entry=list.items[rowIdx]
-            local row=entry and entry.item and (entry.item.value or entry.item)
-            if row then
-                self:selectItem(row)
-                self:openItemContextMenu(row,list:getAbsoluteX()+x,list:getAbsoluteY()+y)
-                return true
-            end
-        end
-        return false
-    end
-    self.listTitles={}
     local Grid=require "EmberRoutesProbe/UI/WarehouseGrid"
     self.itemGrid=Grid.new(self,columns[1],EmberRoutesWarehousePage.selectItem,self.presentation)
     self:addChild(self.itemGrid)
     self.details=Details.new(self,columns[2],self.presentation)
     self.sourceList=self.details.list
-    self:setViewMode("grid")
-    Input.focus(self,self.itemList)
+    Input.focus(self,self.itemGrid)
 
     local footBounds={x=columns[1].x,y=regions[4].y,width=columns[1].width,height=regions[4].height}
     local foot=assert(Layout.axis(footBounds,{{grow=1.0},{grow=1.0},{grow=1.2},{grow=0.6}},{gap=p}))
@@ -164,7 +144,7 @@ end
 function EmberRoutesWarehousePage:deactivate()
     if self.active and (not self.resume or self.store.value.snapshot.state=="READY") then
         local selection=self.store.value.selection
-        self.resume={fullType=selection and selection.fullType,page=self.actualPage,scroll=self.itemList:getYScroll(),
+        self.resume={fullType=selection and selection.fullType,page=self.actualPage,
             gridScroll=self.itemGrid and self.itemGrid.scrollY or 0}
     end
     Lifecycle.unmount(self)
@@ -174,19 +154,7 @@ function EmberRoutesWarehousePage:deactivate()
     if self.containerInspectorDialog then self.containerInspectorDialog:close() self.containerInspectorDialog=nil end
     if self.cartButton then self.cartButton:setVisible(true) end
     if self.helpModal then self.helpModal:destroy() self.helpModal=nil end
-    if self.itemGrid then Tooltip.clear(self.itemGrid) end
-    if self.itemList then Tooltip.clear(self.itemList) end
-    if self.sourceList then Tooltip.clear(self.sourceList) end
-    if self.search then Tooltip.clear(self.search) end
-    if self.helpButton then Tooltip.clear(self.helpButton) end
-    if self.controls and self.controls.sort then Tooltip.clear(self.controls.sort) end
-    if self.details then
-        if self.details.locate then Tooltip.clear(self.details.locate) end
-        if self.details.pinButton then Tooltip.clear(self.details.pinButton) end
-        if self.details.cartButton then Tooltip.clear(self.details.cartButton) end
-        if self.details.maintainStock then Tooltip.clear(self.details.maintainStock) end
-        if self.details.heroPanel then Tooltip.clear(self.details.heroPanel) end
-    end
+    Tooltip.clearOwner(self)
     self.locator:clear()
     for _,combo in ipairs({self.categories,self.controls.sort}) do
         if combo.expanded then combo:hidePopup() combo.expanded=false end
@@ -213,7 +181,7 @@ function EmberRoutesWarehousePage:togglePin(row)
     self:project(self.store.value,{snapshot=true})
 end
 function EmberRoutesWarehousePage:focusContent()
-    Input.focus(self,self.viewMode=="grid" and (self.itemGrid or self.itemList) or (self.focusedList or self.itemList))
+    Input.focus(self,self.focusedList or self.itemGrid)
 end
 function EmberRoutesWarehousePage:receive(snapshot)
     if not self.active then return end
@@ -232,7 +200,7 @@ function EmberRoutesWarehousePage:receive(snapshot)
     if not self.resume and self.itemGrid and snapshot.state=='UPDATING' and not snapshot.retain then
         local selection=self.store.value.selection
         self.resume={fullType=selection and selection.fullType,page=self.actualPage,
-            scroll=self.itemList:getYScroll(),gridScroll=self.itemGrid.scrollY}
+            gridScroll=self.itemGrid.scrollY}
     end
     local restore=self.resume and snapshot.state=="READY"
     local selection=self.store.value.selection
@@ -249,7 +217,7 @@ function EmberRoutesWarehousePage:receive(snapshot)
     end
     self.store:setState({snapshot=copy,selection=selection})
     if restore then self.resume=nil end
-Metrics.finish("ui.update",measured)
+    Metrics.finish("ui.update",measured)
 end
 function EmberRoutesWarehousePage:project(snapshot,changed)
     if not self.active then return end
@@ -273,10 +241,8 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
     if not self.syncingPage and (changed.snapshot or changed.search or changed.category or changed.sort or changed.page) then
         local explicit=changed.search or changed.category or changed.sort or changed.page
         if explicit then
-            self.itemList.selected=1 self.itemList:setYScroll(0) self.itemList.smoothScrollTargetY=nil
             if self.itemGrid then self.itemGrid.scrollY=0 end
         end
-        local anchor=not explicit and snapshot.selection and snapshot.selection.fullType or nil
         local measured=Metrics.begin("ui.query")
         local rows,_,_,total=self.query:all(snapshot.snapshot.rows,snapshot.search,snapshot.category,snapshot.sort)
         Metrics.finish("ui.query",measured)
@@ -287,18 +253,28 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
         Theme.enable(self.refreshButton,snapshot.snapshot.state~="UPDATING",true)
         if self.notice~="" then self.hintLines=Text.wrapLimited(text("shortHint"),self.width-self.pad*2,UIFont.Small,1) end
         self.notice=""
-        local selection=Cached.reconcile(self.itemList,rows,function(row)
-            return row.label.."\n"..text("quantity")..": "..(row.pending and "..." or tostring(row.count)).."\n"..row.fullType
-        end,function(row) return row.fullType end,not explicit)
+
+        local selection=nil
         if self.resume and snapshot.snapshot.state=="READY" then
-            for i,entry in ipairs(self.itemList.items) do
-                if entry.item.value.fullType==self.resume.fullType then
-                    self.itemList.selected=i selection=entry.item.value break
+            for _,row in ipairs(rows) do
+                if row.fullType==self.resume.fullType then
+                    selection=row
+                    break
                 end
             end
-            local total=0 for _,entry in ipairs(self.itemList.items) do total=total+entry.height end
-            self.itemList:setYScroll(math.max(math.min(0,self.resume.scroll),math.min(0,self.itemList.height-total)))
         end
+        if not selection and snapshot.selection then
+            for _,row in ipairs(rows) do
+                if row.fullType==snapshot.selection.fullType then
+                    selection=row
+                    break
+                end
+            end
+        end
+        if not selection and #rows>0 then
+            selection=rows[1]
+        end
+
         if self.itemGrid then
             self.itemGrid:setRows(rows,selection)
             if self.resume and snapshot.snapshot.state=='READY' then
@@ -307,8 +283,6 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
             local gridEmpty=snapshot.snapshot.state=="UPDATING" and "waitingItems" or "noItems"
             self.itemGrid.emptyLabel=snapshot.snapshot.state=="ERROR" and text(snapshot.snapshot.reason or "ERROR") or text(gridEmpty)
         end
-        local empty=snapshot.snapshot.state=="UPDATING" and "waitingItems" or "noItems"
-        Table.empty(self,self.itemList,snapshot.snapshot.state=="ERROR" and text(snapshot.snapshot.reason or "ERROR") or text(empty))
         self.syncingPage=true self.store:setState({page=snapshot.page or 1,selection=selection}) self.syncingPage=false
         if #rows==0 then self.details:setItem(nil) end
     end
@@ -317,7 +291,7 @@ function EmberRoutesWarehousePage:project(snapshot,changed)
     end
 end
 function EmberRoutesWarehousePage:queryChanged()
-    if not self.active or not self.itemList then return end
+    if not self.active or not self.itemGrid then return end
     self.resume=nil
     self.store:setState({search=self.search:getText(),category=self.categoryIds[self.categories.selected] or false,page=1,
         sort=self.controls.sortIds[self.controls.sort.selected]})
@@ -327,7 +301,7 @@ function EmberRoutesWarehousePage:focusList(list) Input.focus(self,list) end
 function EmberRoutesWarehousePage:isListFocused(list) return self.active and Input.active(self,list) end
 function EmberRoutesWarehousePage:onListActivate(list) Input.activate(self,list) end
 function EmberRoutesWarehousePage:onListFocus(list,direction)
-    if ((list==self.itemList or list==self.itemGrid) and direction==-1) or (list==self.sourceList and direction==1) then
+    if (list==self.itemGrid and direction==-1) or (list==self.sourceList and direction==1) then
         self.owner:nextTab(direction)
     else Input.other(self,list) end
 end
@@ -351,32 +325,6 @@ function EmberRoutesWarehousePage:selectItem(row)
             if c.row.fullType==row.fullType then self.itemGrid.selected=i break end
         end
     end
-    if self.itemList and row then
-        for i,entry in ipairs(self.itemList.items) do
-            if entry.item.value.fullType==row.fullType then self.itemList.selected=i break end
-        end
-    end
-end
-
-function EmberRoutesWarehousePage:toggleViewMode()
-    local newMode=(self.viewMode=="grid") and "list" or "grid"
-    self:setViewMode(newMode)
-end
-
-function EmberRoutesWarehousePage:setViewMode(mode)
-    self.viewMode=mode
-    local isGrid=(mode=="grid")
-    if self.itemGrid then
-        if self.itemGrid.setVisible then self.itemGrid:setVisible(isGrid) else self.itemGrid.visible=isGrid end
-    end
-    if self.itemList then
-        if self.itemList.setVisible then self.itemList:setVisible(not isGrid) else self.itemList.visible=not isGrid end
-    end
-    if self.controls and self.controls.viewToggle then
-        local label=isGrid and text("viewGrid") or text("viewList")
-        self.controls.viewToggle:setTitle(label)
-        self.controls.viewToggle.tooltip=text("viewToggleHint")
-    end
 end
 function EmberRoutesWarehousePage:previous() self.store:setState({page=math.max(1,self.actualPage-1)}) end
 function EmberRoutesWarehousePage:nextPage() self.store:setState({page=math.min(self.pages,self.actualPage+1)}) end
@@ -388,7 +336,7 @@ function EmberRoutesWarehousePage:help()
     local modal=ISModalDialog:new(self:getAbsoluteX()+(self.width-w)/2,self:getAbsoluteY()+self.fontHeight*2,w,0,message,false,self,
         function(target)
             target.helpModal=nil
-            target:focusList(target.focusedList or target.itemList)
+            target:focusList(target.focusedList or target.itemGrid)
         end,self.actor:getIndex())
     -- Vanilla confirmation dialogs resume game speed on destroy. Read-only help
     -- owns only its UI lifetime and must preserve the player's pause/speed state.
@@ -702,11 +650,7 @@ function EmberRoutesWarehousePage:prerender()
     if not self.active then return end
     local measured=Metrics.begin("ui.panel")
     self.summary:draw(self)
-    if self.viewMode~="grid" then
-        for _,title in ipairs(self.listTitles) do Theme.text(self,title.label,title.x,title.y,Theme.muted) end
-    end
     if self.details then self.details:draw() end
-    -- No header badge, space fully reclaimed by grid
     Metrics.finish("ui.panel",measured)
 end
 return EmberRoutesWarehousePage

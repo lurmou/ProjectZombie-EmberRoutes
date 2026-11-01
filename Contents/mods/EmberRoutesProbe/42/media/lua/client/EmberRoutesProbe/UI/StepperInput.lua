@@ -96,14 +96,16 @@ function StepperInput:createChildren()
     entryBox.backgroundColor = Theme.panel
     entryBox.borderColor = Theme.border
     entryBox.onTextChangeFunction = function()
+        if self.syncing then return end
         local text = entryBox:getText()
         local n = tonumber(text)
         if n then
             local clamped = math.max(self.min, math.min(self.max, n))
-            if clamped ~= self.value then
-                self.value = clamped
-                if self.onChange then self.onChange(self.value, self) end
-            end
+            self.value = clamped
+            if self.onChange then self.onChange(self.value, self) end
+        else
+            self.value = nil
+            if self.onChange then self.onChange(nil, self) end
         end
     end
     self:addChild(entryBox)
@@ -111,7 +113,7 @@ function StepperInput:createChildren()
 
     -- Increment Button 1
     local d3 = self.steps[3] or 1
-    local b3 = ISButton:new(cols[4].x, cols[4].y, cols[4].width, cols[4].height, "+" .. tostring(d3), self, function()
+    local b3 = ISButton:new(cols[4].x, cols[4].y, cols[4].width, cols[4].height, (d3 > 0 and "+" or "") .. tostring(d3), self, function()
         self:applyDelta(d3)
     end)
     b3:initialise()
@@ -121,7 +123,7 @@ function StepperInput:createChildren()
 
     -- Increment Button 2
     local d4 = self.steps[4] or 5
-    local b4 = ISButton:new(cols[5].x, cols[5].y, cols[5].width, cols[5].height, "+" .. tostring(d4), self, function()
+    local b4 = ISButton:new(cols[5].x, cols[5].y, cols[5].width, cols[5].height, (d4 > 0 and "+" or "") .. tostring(d4), self, function()
         self:applyDelta(d4)
     end)
     b4:initialise()
@@ -131,7 +133,7 @@ function StepperInput:createChildren()
 end
 
 function StepperInput:applyDelta(delta)
-    local cur = tonumber(self.entry:getText()) or self.value
+    local cur = tonumber(self.entry:getText()) or self.value or self.min
     local nextVal = math.max(self.min, math.min(self.max, cur + delta))
     self:setValue(nextVal)
     if self.onChange then
@@ -143,7 +145,9 @@ function StepperInput:setValue(n)
     local clamped = math.max(self.min, math.min(self.max, tonumber(n) or self.min))
     self.value = clamped
     if self.entry then
+        self.syncing = true
         self.entry:setText(tostring(clamped))
+        self.syncing = false
     end
 end
 

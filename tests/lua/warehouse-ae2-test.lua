@@ -9,7 +9,7 @@ local Base={
         o.Type=type return o
     end,
     new=function(self,x,y,w,h)
-        local o={x=x,y=y,width=w,height=h,items={}}
+        local o={x=x or 0,y=y or 0,width=w or 100,height=h or 20,items={}}
         setmetatable(o,self) self.__index=self
         return o
     end,
@@ -17,13 +17,36 @@ local Base={
     addChild=function(self,c) end,
     setWantKeyEvents=function(self,v) end,
     getMouseX=function(self) return 0 end,
-    getMouseY=function(self) return 0 end
+    getMouseY=function(self) return 0 end,
+    getAbsoluteX=function(self) return self.x or 0 end,
+    getAbsoluteY=function(self) return self.y or 0 end
 }
 _G.ISPanel=Base
 _G.ISButton=Base
 _G.ISScrollingListBox=Base
 _G.ISComboBox=Base
 _G.UIFont={Small=0}
+
+local ToolTipBase=Base:derive("ISToolTip")
+function ToolTipBase:new()
+    local o=Base.new(self,0,0,100,50)
+    o.width=100 o.height=50
+    return o
+end
+function ToolTipBase:setOwner() end
+function ToolTipBase:setAlwaysOnTop() end
+function ToolTipBase:setName(n) self.name=n end
+function ToolTipBase:doLayout() end
+function ToolTipBase:addToUIManager() self.inUI=true end
+function ToolTipBase:removeFromUIManager() self.inUI=false end
+function ToolTipBase:getIsVisible() return self.visible==true end
+function ToolTipBase:setVisible(b) self.visible=b end
+function ToolTipBase:setX(x) self.x=x end
+function ToolTipBase:setY(y) self.y=y end
+_G.ISToolTip=ToolTipBase
+
+local mockShift=false
+function isShiftKeyDown() return mockShift end
 
 for _,name in ipairs({"ISButton","ISScrollingListBox","ISPanel","ISComboBox"}) do
     package.loaded['ISUI/'..name]=true
@@ -115,5 +138,22 @@ check(grid.scrollY>0,"Clicking below thumb jumps scroll forward by viewport heig
 -- Test cellAt does not trigger inside scrollbar track
 local hit=grid:cellAt(trackX+2,50)
 check(hit==nil,"cellAt ignores clicks within the AE2 scrollbar track column")
+
+-- 3. Test Shift Dynamic Tooltip in WarehouseGrid
+grid.hoveredCell=grid.cells[1] -- fullType: Item_1, label: Item 1
+mockShift=false
+grid:updateTooltip()
+check(grid.tooltipUI~=nil and grid.tooltipUI:getIsVisible()==true,"Tooltip UI is active for hovered cell")
+check(not grid.tooltipUI.description:find("Item_1"),"Default tooltip without Shift hides fullType")
+
+-- Press Shift: dynamically shows fullType
+mockShift=true
+grid:updateTooltip()
+check(grid.tooltipUI.description:find("Item_1")~=nil,"Pressing Shift shows fullType in tooltip")
+
+-- Release Shift: immediately hides fullType
+mockShift=false
+grid:updateTooltip()
+check(not grid.tooltipUI.description:find("Item_1"),"Releasing Shift immediately hides fullType again")
 
 print("PASS "..count.." warehouse AE2 scrollbar & data stream checks")

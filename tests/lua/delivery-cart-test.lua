@@ -334,19 +334,16 @@ check(not page.deliveryCart['Base.Log'],'press outside then drag inside does not
 down=false page:update() page.helpModal={} down=true page:update() page.helpModal=nil
 check(not page.deliveryCart['Base.Log'],'covering help dialog prevents middle delivery')
 down=false page:update()
-page:setViewMode('list')
-function page.itemList:isMouseOver() return over end
-function page.itemList:getMouseX() return 12 end
-function page.itemList:getMouseY() return 14 end
-function page.itemList:rowAt(x,y) check(x==12 and y==14,'list receives its own local pointer coordinates') return 1 end
-page.itemList.items={{item={value=nailsRow}}}
+local cell2=page.itemGrid.cells[2]
+function page.itemGrid:getMouseX() return cell2.x+1 end
+function page.itemGrid:getMouseY() return cell2.y+1 end
 down=true page:update()
-check(page.deliveryCart['Base.Nails'].count==1,'list mode also adds the hovered stock row')
+check(page.deliveryCart['Base.Nails'].count==1,'middle click on second cell adds the hovered stock row')
 down=false page:update()
-function page.itemList:isMouseOverScrollBar() return true end
+function page.itemGrid:isMouseOverScrollBar() return true end
 down=true page:update()
 check(page.deliveryCart['Base.Nails'].count==1,'middle click on native scrollbar does not add the row underneath')
-function page.itemList:isMouseOverScrollBar() return false end
+function page.itemGrid:isMouseOverScrollBar() return false end
 
 -- Shared row geometry: a vertical miss must not hit the drawn plus button.
 local list=page.cartDrawer.list local row=list.items[1].item local layout=row.layout

@@ -13,6 +13,10 @@ local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
 local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
 local Definitions=require 'EmberRoutesProbe/ActivityRegistry'
+local Catalog=require 'EmberRoutesProbe/ActivityScenarioCatalog'
+local Presentation=require 'EmberRoutesProbe/UI/ActivityPresentation'
+local ScenarioCard=require 'EmberRoutesProbe/UI/ActivityScenarioCard'
+local AtmosphereBoard=require 'EmberRoutesProbe/UI/ActivityAtmosphereBoard'
 
 ---@class EmberRoutesActivityPage:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
@@ -116,10 +120,11 @@ function Page:createChildren()
 
     local right=assert(Layout.axis(columns[2],{{grow=1},{basis=h+p}},{direction='column',gap=p}))
     self.roster=self:list(right[1],'ROSTER',h*1.8,Page.toggleNpc)
-    local all=assert(Layout.axis(right[2],{{grow=1},{grow=1},{grow=1}},{gap=p}))
+    local all=assert(Layout.axis(right[2],{{grow=1},{grow=1},{grow=1},{grow=1.5}},{gap=p}))
     self:button(all[1],t('all'),function(s) for _,row in ipairs(s.roster.items) do s.selectedNpc[row.item.id]=true end s:organizers() end,'ROSTER')
     self:button(all[2],t('none'),function(s) s.selectedNpc={} s:organizers() end,'ROSTER')
     self:button(all[3],t('refreshShort'),Page.refreshRoster,'ROSTER')
+    self.advancedDrawerBtn=self:button(all[4],t('advancedDrawer'),function(s) s:setMode('RULES') end,'ROSTER')
 
     -- RULES mode controls
     self.ruleFields={}
@@ -135,9 +140,11 @@ function Page:createChildren()
     local fields={{'quorum','2'},{'durationMinutes','60'},{'gatherMinutes','10'},
         {'delayMinutes','0'},{'intervalHours','24'},{'occurrences','1'}}
     local timeTracks={} for _ in ipairs(fields) do timeTracks[#timeTracks+1]={grow=1} end
+    timeTracks[#timeTracks+1]={grow=1}
     local timeRows=assert(Layout.axis(columns[2],timeTracks,{direction='column',gap=p/2}))
     self.timeFields={}
     for i,field in ipairs(fields) do self.timeFields[field[1]]=self:field(timeRows[i],field[1],field[2],'RULES') end
+    self.basicDrawerBtn=self:button(timeRows[#timeTracks],t('basicDrawer'),function(s) s:setMode('ROSTER') end,'RULES')
 
     -- Notice / Hint row
     self.noticeBounds=rows[3]
@@ -209,7 +216,8 @@ function Page:refreshRoster()
         local previousMember=self.editing and self.editing.kind=='SCENE' and self.editing.value.roster[id]
         if m and not m.pending and not m.retired and m.context=='SETTLEMENT'
             and not (previousMember and previousMember.withdrawn and not previousMember.settled) then
-            self.roster:addItem(self:name(id),{id=id,name=self:name(id)},self:name(id))
+            local badge=Presentation.statusBadge('READY')
+            self.roster:addItem(self:name(id),{id=id,name=self:name(id),badge=badge},self:name(id))
         end
     end
     self:organizers()
@@ -256,6 +264,8 @@ end
 
 function Page:chooseDefinition()
     local def=datum(self.definition) if not def then return end
+    local scenario=Catalog.fromDefinition(def.id)
+    self.currentScenario=scenario
     local allowed={} for _,id in ipairs(def.behaviors) do allowed[id]=true end
     for id,c in pairs(self.ruleFields) do
         c.selected=not allowed[id] and 2 or def.defaultRules[id]==nil and 1 or def.defaultRules[id]+2
@@ -265,7 +275,14 @@ function Page:chooseDefinition()
     self.speaker:setEnabled(def.scriptProfile~=nil)
     self.timeFields.durationMinutes:setText(tostring(def.defaultDurationHours*60))
     self.timeFields.gatherMinutes:setText(tostring(def.defaultGatherHours*60))
-    self.definition.tooltip=(getTextOrNull(def.descriptionKey) or '')..'\n'..t('definitionLimit',def.maxParticipants)
+    local tip=getTextOrNull(def.descriptionKey) or ''
+    if scenario then
+        local purpose=getTextOrNull(scenario.purposeKey) or ''
+        local benefit=scenario.benefits and getTextOrNull(scenario.benefits.summaryKey) or ''
+        if #purpose>0 then tip=tip..'\n'..t('purposeShort')..': '..purpose end
+        if #benefit>0 then tip=tip..'\n'..t('expectedBenefitLabel')..': '..benefit end
+    end
+    self.definition.tooltip=tip..'\n'..t('definitionLimit',def.maxParticipants)
     self:draftChanged()
 end
 
@@ -316,9 +333,12 @@ function Page:selectScene(row)
         self.cancelButton:setEnable(v.enabled)
         self.editButton:setEnable(true)
     else
+        local stripItem=self.details:addItem(v.name or '',{kind='ATMOSPHERE_STRIP',detail=v},v.name or '')
+        stripItem.height=math.floor(self.fontHeight*4.2)
+
         line(t('activityType'),definitionName(v.definition))
-        line(t('state'),reason(v.state))
-        if v.outcome then line(t('outcome'),reason(v.outcome)) end
+        line(t('state'),Presentation.phaseText(v.state,v.stage))
+        if v.outcome then line(t('outcome'),Presentation.outcomeText(v.outcome)) end
         if v.stage then
             if v.stage.supported then
                 line(t('stage'),v.stage.format==2 and t('phase_'..v.stage.id) or v.stage.id=='free' and t('freePhase') or t('stageNumber',v.stage.index))
@@ -347,13 +367,17 @@ function Page:selectScene(row)
         table.sort(ids,function(a,b) return self:name(a)<self:name(b) end)
         for _,id in ipairs(ids) do
             local m=v.roster[id]
-            local status=m.settled and 'settled' or m.withdrawn and 'left' or m.joined and 'joined'
-                or m.state=='ACCEPTED' and 'ready' or m.attendanceState or 'invited'
+            local mState=m.settled and 'SETTLED' or m.withdrawn and 'REJECTED' or m.joined and 'READY'
+                or m.state=='ACCEPTED' and 'ADMITTED' or m.attendanceState or 'WAIT'
+            local badge=Presentation.statusBadge(mState,m.reason)
             local label=self:name(id)..(v.speakerId and ' · '..t(id==v.speakerId and 'speaker' or 'listener') or '')
-            line(label,t(status)..' · '..t('participation',minutes(m.participationHours))..(m.reason and ' · '..reason(m.reason) or ''))
+            local statusDesc=badge.text..' · '..t('participation',minutes(m.participationHours))
+            if badge.desc and #badge.desc>0 then statusDesc=statusDesc..' ('..badge.desc..')' end
+            line(label,statusDesc)
             if m.relief then
                 local r=m.relief
-                line('',t('relief_'..r.state)..(r.reason and ' · '..t('reliefReason_'..r.reason) or ''))
+                local rDesc=Presentation.benefitText(v.definition,v.state,r)
+                line('  '..t('relief_'..r.state),rDesc)
             end
         end
         self.cancelButton:setEnable(v.state=='GATHERING' or v.state=='RUNNING')
@@ -513,11 +537,18 @@ end
 function Page:cacheRows(list)
     for _,item in ipairs(list.items) do
         local row=item.item local label,value
-        if list.mode=='ROSTER' then label=row.name
+        if list.mode=='ROSTER' then
+            label=row.name
         elseif list==self.scenes then
             label=row.value.name or row.value.args.name
-            value=row.kind=='PLAN' and t(row.value.enabled and 'planned' or 'disabledPlan') or reason(row.value.state)
-        else label=row.label value=row.value end
+            value=row.kind=='PLAN' and t(row.value.enabled and 'planned' or 'disabledPlan') or Presentation.phaseText(row.value.state,row.value.stage)
+        elseif row.kind=='ATMOSPHERE_STRIP' then
+            label='' value=nil
+        elseif row.kind=='RESIDENT_CARD' then
+            label=row.name value=nil
+        else
+            label=row.label value=row.value
+        end
         local x=list.mode=='ROSTER' and self.fontHeight*1.8 or 6
         item.drawLabel=Text.wrapLimited(label or '',list.width-x-20,UIFont.Small,1)[1] or ''
         item.drawValues=value and Text.wrapLimited(value,list.width-26,UIFont.Small,list==self.reviewList and 2 or 1) or {}
@@ -531,10 +562,27 @@ function Page.drawRow(list,y,item,alt)
     if list.selected==item.index then
         local c=Theme.selected list:drawRect(0,y,list.width,item.height,c.a,c.r,c.g,c.b)
     end
+    if row and row.kind=='ATMOSPHERE_STRIP' then
+        AtmosphereBoard.drawStrip(list,4,y+2,list.width-8,item.height-4,row.detail)
+        return y+item.height
+    end
+    if row and row.kind=='RESIDENT_CARD' then
+        AtmosphereBoard.drawResidentCard(list,4,y+2,list.width-8,item.height-4,row.name,row.role,row.member,row.isSpeaker,row.isOrganizer)
+        return y+item.height
+    end
     if list.mode=='ROSTER' then
         local size=math.max(8,h*.7) local yy=y+(item.height-size)/2
         list:drawRectBorder(6,yy,size,size,1,color.r,color.g,color.b)
         if o.selectedNpc[row.id] then list:drawRect(9,yy+3,size-6,size-6,1,Theme.accent.r,Theme.accent.g,Theme.accent.b) end
+        if row.badge then
+            local badgeText=row.badge.text or ''
+            local bw=(getTextManager and getTextManager():MeasureStringX(UIFont.Small,badgeText) or (#badgeText*8))+8
+            local bx=list.width-bw-10
+            local by=y+(item.height-h)/2
+            list:drawRect(bx,by,bw,h,0.9,0.12,0.16,0.20)
+            list:drawRectBorder(bx,by,bw,h,1,0.35,0.75,0.45)
+            Theme.text(list,badgeText,bx+4,by,Theme.accent)
+        end
     end
     Theme.text(list,item.drawLabel or '',list.mode=='ROSTER' and h*1.8 or 6,y+3,color)
     for i,line in ipairs(item.drawValues or {}) do Theme.text(list,line,6,y+h+5+(i-1)*h,Theme.muted) end

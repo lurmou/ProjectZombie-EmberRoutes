@@ -10,10 +10,7 @@ local Controls={sorts=Query.SORTS}
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 function Controls.new(owner,bounds)
     local p=owner.pad
-    local viewLabel=text("viewGrid")
-    if not viewLabel or viewLabel:find("^IGUI_") then viewLabel="⊞" end
-    local viewWidth=math.min(getTextManager():MeasureStringX(UIFont.Small,viewLabel)+p*2+4, owner.fontHeight*5)
-    local r=assert(Layout.axis(bounds,{{grow=3.5},{grow=2},{grow=2},{basis=viewWidth}},{gap=p/2}))
+    local r=assert(Layout.axis(bounds,{{grow=3.5},{grow=2},{grow=2}},{gap=p/2}))
     local self={categoryIds={false},sortIds=Controls.sorts}
     self.search=ISTextEntryBox:new("",r[1].x,r[1].y,r[1].width,r[1].height)
     self.search:initialise()
@@ -46,14 +43,6 @@ function Controls.new(owner,bounds)
     owner:addChild(self.sort)
     Tooltip.attach(self.sort,"prerender")
 
-    self.viewToggle=ISButton:new(r[4].x,r[4].y,r[4].width,r[4].height,viewLabel,owner,function()
-        if owner.toggleViewMode then owner:toggleViewMode() end
-    end)
-    self.viewToggle:initialise()
-    Theme.button(self.viewToggle)
-    self.viewToggle.tooltip=text("viewToggleHint")
-    Tooltip.attach(self.viewToggle,"prerender")
-    owner:addChild(self.viewToggle)
     return self
 end
 return Controls

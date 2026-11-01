@@ -1,29 +1,31 @@
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Input={}
 function Input.active(panel,list)
-    local isTarget=(panel.focusedList==list or ((list==panel.itemList or list==panel.itemGrid) and (panel.focusedList==panel.itemList or panel.focusedList==panel.itemGrid)))
+    local isTarget=(panel.focusedList==list or (list==panel.itemGrid and panel.focusedList==panel.itemGrid))
     return isTarget and not panel.helpModal and not panel.search:isFocused()
         and not panel.categories.expanded and not panel.controls.sort.expanded
 end
 function Input.focus(panel,list)
     if not list then return end
     panel.focusedList=list
-    local isItems=(list==panel.itemList or list==panel.itemGrid)
-    panel.itemList.borderColor=isItems and Theme.accent or Theme.border
+    local isGrid=(list==panel.itemGrid)
     if panel.itemGrid then
-        panel.itemGrid.borderColor=isItems and Theme.accent or Theme.border
+        panel.itemGrid.borderColor=isGrid and Theme.accent or Theme.border
     end
-    panel.sourceList.borderColor=list==panel.sourceList and Theme.accent or Theme.border
-    if panel.actor:getJoypadBind()~=-1 then setJoypadFocus(panel.actor:getIndex(),list) end
+    if panel.sourceList then
+        panel.sourceList.borderColor=list==panel.sourceList and Theme.accent or Theme.border
+    end
+    if panel.actor and panel.actor.getJoypadBind and panel.actor:getJoypadBind()~=-1 then
+        setJoypadFocus(panel.actor:getIndex(),list)
+    end
 end
 function Input.other(panel,list)
     if panel.cartDrawerOpen then panel:toggleCartDrawer(false) end
-    local isItems=(list==panel.itemList or list==panel.itemGrid)
-    local target=isItems and panel.sourceList or (panel.viewMode=="grid" and (panel.itemGrid or panel.itemList) or panel.itemList)
+    local target=(list==panel.itemGrid) and panel.sourceList or panel.itemGrid
     Input.focus(panel,target)
 end
 function Input.activate(panel,list)
-    if list==panel.itemList or list==panel.itemGrid then
+    if list==panel.itemGrid then
         if panel.cartDrawerOpen then panel:toggleCartDrawer(false) end
         Input.focus(panel,panel.sourceList)
     else panel:locateSource() end
@@ -62,21 +64,15 @@ function Input.delivery(panel)
         end
     end
 
-    -- 2. Check if mouse is hovering over main item grid or item list
-    local list=panel.viewMode=='grid' and panel.itemGrid or panel.itemList
-    if not list or not list:isMouseOver() then return end
-    if list.isMouseOverScrollBar and list:isMouseOverScrollBar() then return end
-    local x,y=list:getMouseX(),list:getMouseY()
-    local row
-    if list==panel.itemGrid then
-        local cell=list:cellAt(x,y) row=cell and cell.row
-    else
-        local index=list:rowAt(x,y)
-        local item=index and list.items[index]
-        row=item and item.item and (item.item.value or item.item)
-    end
+    -- 2. Check if mouse is hovering over main item grid
+    local grid=panel.itemGrid
+    if not grid or not grid:isMouseOver() then return end
+    if grid.isMouseOverScrollBar and grid:isMouseOverScrollBar() then return end
+    local x,y=grid:getMouseX(),grid:getMouseY()
+    local cell=grid:cellAt(x,y)
+    local row=cell and cell.row
     if row then
-        Input.focus(panel,list)
+        Input.focus(panel,grid)
         panel:selectItem(row)
         return panel:onMiddleClickItem(row,shift)
     end

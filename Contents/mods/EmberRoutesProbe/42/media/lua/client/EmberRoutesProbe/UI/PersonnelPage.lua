@@ -310,7 +310,7 @@ end
 
 function EmberRoutesPersonnelPage:deactivate()
     Lifecycle.unmount(self)
-    for _,button in ipairs(self.priorityHeaders or {}) do Tooltip.clear(button) end
+    Tooltip.clearOwner(self)
     if self.dossierDrawer then self.dossierDrawer:close() end
     if self.detailNpc then require('EmberRoutesProbe/PersonnelService').release(self.detailNpc) self.detailNpc=nil end
 end
@@ -336,7 +336,6 @@ function EmberRoutesPersonnelPage:refresh()
         selected=enriched[1] or nil
     end
     self.store:setState({workers=enriched,selected=selected,revision=self.store.value.revision+1})
-    self:project(self.store.value)
 end
 
 function EmberRoutesPersonnelPage:project(value)

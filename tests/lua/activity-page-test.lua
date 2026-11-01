@@ -148,14 +148,30 @@ check(tabBtn~=nil,'activities tab button is present in navigation bar')
 local page=panel.pages['activities']
 check(page~=nil and page.mode=='LIST','ActivityPage is instantiated and defaults to LIST mode')
 check(#page.scenes.items==2 and #page.details.items>=6,'scenes and schedule details correctly populate in ActivityPage')
+check(page.details.items[1].item.kind=='ATMOSPHERE_STRIP','atmosphere strip is prepended to activity details')
 
--- Test mode switching and draft lifecycle inside ActivityPage
+-- Test mode switching, scenario integration and drawer toggle inside ActivityPage
 page:newDraft()
 check(page.mode=='ROSTER' and page.hasDraft==true,'newDraft enters ROSTER mode with draft active')
+check(page.currentScenario~=nil and page.currentScenario.id=='free_gathering','currentScenario is initialized from scenario catalog')
 check(#page.roster.items==3 and #page.organizer.options==3,'roster and organizers populate from settlement membership')
+check(page.roster.items[1].item.badge~=nil,'roster items carry live status badges')
+check(page.advancedDrawerBtn~=nil and page.basicDrawerBtn~=nil,'advanced drawer toggle buttons are present')
+
+-- Drawer toggle interactions
+page.advancedDrawerBtn.onclick(page)
+check(page.mode=='RULES' and page.timeFields.quorum~=nil,'clicking advancedDrawerBtn opens RULES drawer')
+page.basicDrawerBtn.onclick(page)
+check(page.mode=='ROSTER','clicking basicDrawerBtn folds back to ROSTER basic setup')
 
 page:setMode('RULES')
 check(page.mode=='RULES' and page.timeFields.quorum~=nil,'RULES mode displays rule options and timing inputs')
+
+-- Verify rendering of atmosphere strip and resident badges without crashing
+local stripItem=page.details.items[1]
+page.drawRow(page.details,0,stripItem)
+local rosterRow=page.roster.items[1]
+page.drawRow(page.roster,0,rosterRow)
 
 page:reviewDraft()
 check(page.mode=='REVIEW' and #page.reviewList.items>0,'reviewDraft performs preflight attendance review')

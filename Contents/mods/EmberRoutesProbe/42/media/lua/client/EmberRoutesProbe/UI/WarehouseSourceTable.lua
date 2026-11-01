@@ -1,7 +1,8 @@
 local Text=require "EmberRoutesProbe/UI/Text"
 local Theme=require "EmberRoutesProbe/UI/Theme"
-local Table={}
-function Table.columns(list,hasIcon)
+local SourceTable={}
+
+function SourceTable.columns(list,hasIcon)
     if list.emberColumns then return list.emberColumns end
     local h,p=list.emberFontHeight,list.emberPad
     local quantityWidth=math.max(getTextManager():MeasureStringX(UIFont.Small,"20000"),
@@ -11,12 +12,13 @@ function Table.columns(list,hasIcon)
     list.emberNames={}
     return list.emberColumns
 end
-function Table.style(presentation,name,secondary)
+
+function SourceTable.style(presentation,name,secondary)
     return {
         emptyColor=Theme.muted,
         prepare=function(list,value)
             local h,p=list.emberFontHeight,list.emberPad
-            local columns=Table.columns(list,presentation~=nil)
+            local columns=SourceTable.columns(list,presentation~=nil)
             local label=name(value)
             local cached=list.emberNames[label]
             if not cached then
@@ -102,7 +104,8 @@ function Table.style(presentation,name,secondary)
         end
     }
 end
-function Table.empty(owner,list,label)
+
+function SourceTable.empty(owner,list,label)
     if list.emberEmptyLabel~=label then
         list.emberEmptyLabel=label
         list.emberEmptyLines=Text.wrap(label,list.width-owner.pad*2,UIFont.Small)
@@ -110,4 +113,5 @@ function Table.empty(owner,list,label)
         while #list.emberEmptyLines>capacity do table.remove(list.emberEmptyLines) end
     end
 end
-return Table
+
+return SourceTable

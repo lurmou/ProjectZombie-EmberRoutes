@@ -1,5 +1,5 @@
 local Cached=require "EmberRoutesProbe/UI/CachedList"
-local Table=require "EmberRoutesProbe/UI/WarehouseList"
+local Table=require "EmberRoutesProbe/UI/WarehouseSourceTable"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Theme=require "EmberRoutesProbe/UI/Theme"

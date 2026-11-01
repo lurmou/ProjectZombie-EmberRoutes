@@ -1,6 +1,7 @@
 -- A watch may notify synchronously and close its window before returning a
 -- release handle. Tokens also reject notifications from earlier watches.
 local Lifecycle={}
+local TooltipManager=require 'EmberRoutesProbe/UI/TooltipManager'
 function Lifecycle.mount(page,watch,receive)
     if page.active or page.disposed then return false end
     local token={}
@@ -26,5 +27,6 @@ function Lifecycle.unmount(page)
     page.release=nil page.unsubscribe=nil
     if unsubscribe then unsubscribe() end
     if release then release() end
+    TooltipManager.clearOwner(page)
 end
 return Lifecycle

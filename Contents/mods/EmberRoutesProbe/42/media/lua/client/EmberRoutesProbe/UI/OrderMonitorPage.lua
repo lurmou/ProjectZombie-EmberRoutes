@@ -242,9 +242,7 @@ function EmberRoutesOrderMonitorPage:deactivate()
         self.cancelModal:destroy()
         self.cancelModal=nil
     end
-    if self.orderList then Tooltip.clear(self.orderList) end
-    if self.details and self.details.list then Tooltip.clear(self.details.list) end
-    for _,btn in pairs(self.buttons or {}) do Tooltip.clear(btn) end
+    Tooltip.clearOwner(self)
 end
 
 function EmberRoutesOrderMonitorPage:dispose()

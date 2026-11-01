@@ -12,6 +12,7 @@ local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local Presentation=require 'EmberRoutesProbe/UI/ItemPresentation'
 local Recipe=require 'EmberRoutesProbe/ProductionRecipe'
 local Catalog=require 'EmberRoutesProbe/CraftingCatalog'
+local StepperInput=require 'EmberRoutesProbe/UI/StepperInput'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
 local function craftText(key,...) return getText('IGUI_EmberRoutesProbe_Crafting_'..key,...) end
@@ -178,124 +179,45 @@ function EmberRoutesPublicOrderDialog:createChildren()
     end
 
     -- 4. Dynamic Parameter Form Controls
-    local function makeStepper(label,r,delta,targetBox,minVal)
-        minVal=minVal or 1
-        local btn=ISButton:new(r.x,r.y,r.width,r.height,label,self,function()
-            self.notice=nil
-            local cur=tonumber(targetBox:getText()) or 0
-            local n=math.max(minVal,math.min(9999,cur+delta))
-            targetBox:setText(tostring(n))
-            self.requestId=Public.requestId()
-            self:describe()
-        end)
-        btn:initialise()
-        Theme.button(btn)
-        self:addChild(btn)
-        return btn
-    end
-
-    local btnW=math.floor(h*2.2)
-
     -- A. Quantity (Single Order: Row 1 Label, Row 2 Stepper Bar)
     local qRows=assert(Layout.axis({x=self.formRegion.x,y=self.formRegion.y,width=self.formRegion.width,height=h*2.5+p/2},
         {{basis=h},{basis=h+p/4}},{direction='column',gap=p/4}))
     self.quantityLabel=qRows[1]
 
-    local qBar=assert(Layout.axis(qRows[2],
-        {{basis=btnW},{basis=btnW},{grow=1},{basis=btnW},{basis=btnW}},{gap=p/4}))
-    self.qStepDec5=makeStepper('-5',qBar[1],-5,nil,1)
-    self.qStepDec1=makeStepper('-1',qBar[2],-1,nil,1)
-
-    self.quantity=ISTextEntryBox:new('1',qBar[3].x,qBar[3].y,qBar[3].width,qBar[3].height)
-    self.quantity:initialise()
-    self.quantity.target=self
+    local qBar=qRows[2]
+    self.quantityStepper=StepperInput:new(qBar.x,qBar.y,qBar.width,qBar.height,1,1,9999,{-5,-1,1,5},function()
+        self.notice=nil
+        self.requestId=Public.requestId()
+        self:describe()
+    end)
+    self.quantity=self.quantityStepper.entry
     self.quantity.tooltip=craftText('quantityHint')
     Tooltip.attach(self.quantity,'prerender')
-    self.quantity.onTextChangeFunction=function()
-        self.notice=nil
-        self.requestId=Public.requestId()
-        self:describe()
-    end
-    self:addChild(self.quantity)
-    self.qStepDec5.onclick=function()
-        self.notice=nil
-        local cur=tonumber(self.quantity:getText()) or 0
-        self.quantity:setText(tostring(math.max(1,cur-5)))
-        self.requestId=Public.requestId()
-        self:describe()
-    end
-    self.qStepDec1.onclick=function()
-        self.notice=nil
-        local cur=tonumber(self.quantity:getText()) or 0
-        self.quantity:setText(tostring(math.max(1,cur-1)))
-        self.requestId=Public.requestId()
-        self:describe()
-    end
-
-    self.qStepInc1=makeStepper('+1',qBar[4],1,self.quantity,1)
-    self.qStepInc5=makeStepper('+5',qBar[5],5,self.quantity,1)
+    self:addChild(self.quantityStepper)
 
     -- B. Stock Thresholds (Maintain Stock)
     local stockRows=assert(Layout.axis({x=self.formRegion.x,y=self.formRegion.y,width=self.formRegion.width,height=self.formRegion.height},
         {{basis=h},{basis=h+p/4},{basis=h},{basis=h+p/4}},{direction='column',gap=p/4}))
 
     self.minimumLabel=stockRows[1]
-    local minBar=assert(Layout.axis(stockRows[2],
-        {{basis=btnW},{basis=btnW},{grow=1},{basis=btnW},{basis=btnW}},{gap=p/4}))
-    self.minStepDec5=makeStepper('-5',minBar[1],-5,nil,0)
-    self.minStepDec1=makeStepper('-1',minBar[2],-1,nil,0)
-    self.minimum=ISTextEntryBox:new('0',minBar[3].x,minBar[3].y,minBar[3].width,minBar[3].height)
-    self.minimum:initialise()
-    self.minimum.target=self
-    self.minimum.onTextChangeFunction=function()
+    local minBar=stockRows[2]
+    self.minimumStepper=StepperInput:new(minBar.x,minBar.y,minBar.width,minBar.height,0,0,9999,{-5,-1,1,5},function()
         self.notice=nil
         self:describe()
-    end
-    self:addChild(self.minimum)
-    self.minStepDec5.onclick=function()
-        self.notice=nil
-        local cur=tonumber(self.minimum:getText()) or 0
-        self.minimum:setText(tostring(math.max(0,cur-5)))
-        self:describe()
-    end
-    self.minStepDec1.onclick=function()
-        self.notice=nil
-        local cur=tonumber(self.minimum:getText()) or 0
-        self.minimum:setText(tostring(math.max(0,cur-1)))
-        self:describe()
-    end
-    self.minStepInc1=makeStepper('+1',minBar[4],1,self.minimum,0)
-    self.minStepInc5=makeStepper('+5',minBar[5],5,self.minimum,0)
+    end)
+    self.minimum=self.minimumStepper.entry
+    self:addChild(self.minimumStepper)
 
     self.batchLabel=stockRows[3]
-    local batchBar=assert(Layout.axis(stockRows[4],
-        {{basis=btnW},{basis=btnW},{grow=1},{basis=btnW},{basis=btnW}},{gap=p/4}))
-    self.bStepDec10=makeStepper('-10',batchBar[1],-10,nil,1)
-    self.bStepDec5=makeStepper('-5',batchBar[2],-5,nil,1)
-    self.batch=ISTextEntryBox:new('10',batchBar[3].x,batchBar[3].y,batchBar[3].width,batchBar[3].height)
-    self.batch:initialise()
-    self.batch.target=self
+    local batchBar=stockRows[4]
+    self.batchStepper=StepperInput:new(batchBar.x,batchBar.y,batchBar.width,batchBar.height,10,1,9999,{-10,-5,5,10},function()
+        self.notice=nil
+        self:describe()
+    end)
+    self.batch=self.batchStepper.entry
     self.batch.tooltip=craftText('quantityHint')
     Tooltip.attach(self.batch,'prerender')
-    self.batch.onTextChangeFunction=function()
-        self.notice=nil
-        self:describe()
-    end
-    self:addChild(self.batch)
-    self.bStepDec10.onclick=function()
-        self.notice=nil
-        local cur=tonumber(self.batch:getText()) or 0
-        self.batch:setText(tostring(math.max(1,cur-10)))
-        self:describe()
-    end
-    self.bStepDec5.onclick=function()
-        self.notice=nil
-        local cur=tonumber(self.batch:getText()) or 0
-        self.batch:setText(tostring(math.max(1,cur-5)))
-        self:describe()
-    end
-    self.bStepInc5=makeStepper('+5',batchBar[4],5,self.batch,1)
-    self.bStepInc10=makeStepper('+10',batchBar[5],10,self.batch,1)
+    self:addChild(self.batchStepper)
 
     -- 6. Main Action Button
     self.actionButton=ISButton:new(self.actionRegion.x,self.actionRegion.y,self.actionRegion.width,self.actionRegion.height,text('submit'),self,function()
@@ -339,23 +261,9 @@ function EmberRoutesPublicOrderDialog:selectTab(tab)
     Theme.styleButton(self.orderTabBtn,isOrder,isOrder)
     Theme.styleButton(self.stockTabBtn,not isOrder,not isOrder)
 
-    self.quantity:setVisible(isOrder)
-    self.qStepDec5:setVisible(isOrder)
-    self.qStepDec1:setVisible(isOrder)
-    self.qStepInc1:setVisible(isOrder)
-    self.qStepInc5:setVisible(isOrder)
-
-    self.minimum:setVisible(not isOrder)
-    self.minStepDec5:setVisible(not isOrder)
-    self.minStepDec1:setVisible(not isOrder)
-    self.minStepInc1:setVisible(not isOrder)
-    self.minStepInc5:setVisible(not isOrder)
-
-    self.batch:setVisible(not isOrder)
-    self.bStepDec10:setVisible(not isOrder)
-    self.bStepDec5:setVisible(not isOrder)
-    self.bStepInc5:setVisible(not isOrder)
-    self.bStepInc10:setVisible(not isOrder)
+    if self.quantityStepper then self.quantityStepper:setVisible(isOrder) end
+    if self.minimumStepper then self.minimumStepper:setVisible(not isOrder) end
+    if self.batchStepper then self.batchStepper:setVisible(not isOrder) end
 
     if not self.submitting then
         self.actionButton:setTitle(text(isOrder and 'submit' or 'saveRule'))
@@ -440,8 +348,10 @@ function EmberRoutesPublicOrderDialog:loadRule()
     if not row or self.ruleProduct==row.product then return end
     self.ruleProduct=row.product
     local rule=Public.rule(self.entry.id,row.product)
-    self.minimum:setText(tostring(rule and rule.minimum or 0))
-    self.batch:setText(tostring(rule and rule.batch or 10))
+    local minVal=rule and rule.minimum or 0
+    local batchVal=rule and rule.batch or 10
+    if self.minimumStepper then self.minimumStepper:setValue(minVal) else self.minimum:setText(tostring(minVal)) end
+    if self.batchStepper then self.batchStepper:setValue(batchVal) else self.batch:setText(tostring(batchVal)) end
 end
 
 function EmberRoutesPublicOrderDialog:updateConversion()

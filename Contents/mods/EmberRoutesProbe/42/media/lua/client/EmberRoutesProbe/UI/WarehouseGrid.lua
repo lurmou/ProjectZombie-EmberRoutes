@@ -317,7 +317,8 @@ function Grid:updateTooltip()
         self.tooltipUI:setName(label)
 
         local desc=""
-        if row.fullType and row.fullType~=label then
+        local showDetailed=type(isShiftKeyDown)=="function" and isShiftKeyDown()
+        if showDetailed and row.fullType and row.fullType~=label then
             desc=desc.."<RGB:0.6,0.64,0.7> "..row.fullType.." <LINE> "
         end
         local qtyLine=getText("IGUI_EmberRoutesProbe_Settlement_quantity")..": "..count.." ("..sources.." "..getText("IGUI_EmberRoutesProbe_Settlement_sources")..")"
@@ -335,8 +336,9 @@ function Grid:updateTooltip()
         local absX=math.floor(self:getAbsoluteX()+c.x)
         local absY=math.floor(self:getAbsoluteY()+drawY+c.height+4)
 
-        local screenW=getCore() and getCore():getScreenWidth() or 1920
-        local screenH=getCore() and getCore():getScreenHeight() or 1080
+        local core=type(getCore)=="function" and getCore()
+        local screenW=core and core:getScreenWidth() or 1920
+        local screenH=core and core:getScreenHeight() or 1080
         if absY+self.tooltipUI.height>screenH-12 then
             absY=math.floor(self:getAbsoluteY()+drawY-self.tooltipUI.height-4)
         end
@@ -380,12 +382,13 @@ function Grid:drawHoverTooltip()
         qtyLine=qtyLine.."  ·  "..getText("IGUI_EmberRoutesProbe_Settlement_cartTitle")..": +"..tostring(inCartCount)
     end
 
+    local showDetailed=type(isShiftKeyDown)=="function" and isShiftKeyDown()
     local tipLines={
         {text=label, color=Theme.gold},
         {text=qtyLine, color=Theme.textColor},
         {text=hint, color=Theme.muted}
     }
-    if row.fullType and row.fullType~=label then
+    if showDetailed and row.fullType and row.fullType~=label then
         table.insert(tipLines, 2, {text=row.fullType, color=Theme.muted})
     end
 
