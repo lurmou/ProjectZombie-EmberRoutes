@@ -22,7 +22,7 @@ foreach($dependency in $report.dependencies){
 }
 New-Item -ItemType Directory -Path $destination | Out-Null
 $sourceZip=Join-Path $destination 'source.zip'
-& git -C $project archive --format=zip "--output=$sourceZip" $commit -- Contents/mods/EmberRoutesProbe tests/pz/B5Acceptance.lua tests/pz/ZZB5AcceptanceMenu.lua
+& git -c core.autocrlf=false -c core.eol=lf -C $project archive --format=zip "--output=$sourceZip" $commit -- Contents/mods/EmberRoutesProbe tests/pz/B5Acceptance.lua tests/pz/ZZB5AcceptanceMenu.lua
 if($LASTEXITCODE -ne 0){throw 'Git archive failed'}
 $archive=Join-Path $destination 'source'
 Expand-Archive -LiteralPath $sourceZip -DestinationPath $archive
