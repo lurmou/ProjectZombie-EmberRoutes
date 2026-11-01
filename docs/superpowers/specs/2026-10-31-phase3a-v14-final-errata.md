@@ -1,16 +1,18 @@
-# Phase 3A v1.4 Final Errata: 最终工程勘误与技术基准冻结补丁 (已锁定四条开工红线)
-# (Phase 3A v1.4 Final Errata & Frozen Engineering Baseline)
+# Phase 3A v1.5 Final Errata：无旧档迁移与业务接入执行基准
+# (Phase 3A v1.5 Final Errata & Execution Baseline)
 
-> 日期：2026-11-01｜基线：HEAD `d43404dc`｜状态：APPROVED FOR IMPLEMENTATION (GO)｜分支：`phase-3a-consolidation`
+> 修订：2026-11-01｜原始设计基线：`d43404dc`｜本轮审查基线：`dc8e17c`｜状态：B.5 待独立验收；Stage C 冻结｜分支：`phase-3a-consolidation`
 
 ---
+
+本修订与[主规格 v1.5](2026-10-31-phase3a-job-contract-standardization-design.md#0-当前执行裁决2026-11-01覆盖旧稿冲突内容)共同执行。用户已取消旧档迁移；旧文件名只保留链接，不表示继续实施 v1.4 的 F4。主路线与阶段门禁以主规格第 0 节及 [BACKLOG](../../BACKLOG.md) 为准。
 
 ## 目录
 1. [开工四条不可逾越红线 (Iron Invariants)](#1-开工四条不可逾越红线-iron-invariants)
 2. [F1: CRAFT/HAUL 新 Validator 与 JobStore.valid 核心接入](#2-f1-crafthaul-新-validator-与-jobstorevalid-核心接入)
 3. [F2: 创建事务防重复接管 (acquireNew) 与统一 mutateJob](#3-f2-创建事务防重复接管-acquirenew-与统一-mutatejob)
 4. [F3: Quarantine 内核不可伪造所有权与持久化闭环](#4-f3-quarantine-内核不可伪造所有权与持久化闭环)
-5. [F4: Migration 真实存档确认点与带状态机 Staging 迁移](#5-f4-migration-真实存档确认点与带状态机-staging-迁移)
+5. [F4: 支持格式校验与写入前拒绝](#5-f4-支持格式校验与写入前拒绝)
 6. [F5: CRAFT COMMITTING 规范与 Scope Fence 8大入口全量拦截](#6-f5-craft-committing-规范与-scope-fence-8大入口全量拦截)
 7. [F6: 状态机 RUNNING -> STOPPING -> SETTLING 全 Provider 严格适配](#7-f6-状态机-running---stopping---settling-全-provider-严格适配)
 8. [F7: BusinessJobs 全库写权限清理与调用点完整迁移表](#8-f7-businessjobs-全库写权限清理与调用点完整迁移表)
@@ -22,7 +24,7 @@
 ## 1. 开工四条不可逾越红线 (Iron Invariants)
 
 1. **红线 1 (F2 唯一新创防接管)**：`LaborStore.createClaimedJob` 必须调用专用的 `claims:acquireNew(...)`，严禁复用恢复任务时的同 ID 继承逻辑。遇到已有 `taskId` 立即拒绝，杜绝 `JobStore.create` 遇 `JOB_EXISTS` 报错时在回滚中误释放已存在的合法 Token；
-2. **红线 2 (F4 磁盘真实落盘确认)**：禁止将内存表引用替换误认为磁盘原子事务。只有当 `STAGED` / `COMMITTED` 数据经过物理存档、且重启验证全量指纹（Fingerprints）与完整账本一致后，方可清理旧账本；
+2. **红线 2 (F4 无旧档迁移与写入前拒绝)**：受支持格式保留正常保存恢复；不支持的历史格式在任何写入、清理或覆盖之前拒绝。禁止导入、Staging、迁移指纹、旧账本替换及自动清理；不得把 ModData 内存写入说成磁盘事务；
 3. **红线 3 (F1 JobStore 核心挂接)**：`CraftJobRecord.valid(job)` 与 `HaulJobRecord.valid(job)` 必须硬编码嵌入 [JobStore.lua:valid()](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/JobStore.lua#L34)，任何创建、更新与打开操作均受其强约束；
 4. **红线 4 (F5 全覆盖安全围栏)**：Scope Quarantine Fence 必须覆盖全部 8 类入口（`PublicWork`、`LogisticsService`、`DeliveryService`、`CraftingService`、`Cooking`、`FieldWork`、通用 Job 创建入口、通用 Job 恢复入口），未决产物对账完成前严禁任何新工单渗漏。
 
@@ -258,17 +260,13 @@ end
 
 ---
 
-## 5. F4: Migration 真实存档确认点与带状态机 Staging 迁移
+## 5. F4: 支持格式校验与写入前拒绝
 
-持久化状态机严格执行：
-$$\text{NOT\_STARTED} \rightarrow \text{STAGING} \rightarrow \text{STAGED} \rightarrow \text{COMMITTED} \rightarrow \text{CLEANED} \rightarrow \text{VERSIONED}$$
+全面旧账本迁移已由用户撤销。不得开发 `JobMigration`、迁移状态机、指纹或旧账本清理；新世界初始化和已有支持格式正常保存恢复继续保留。
 
-1. **真实存档确认点**：
-   - 在 `STAGED` 阶段构建独立表 `stagedTaskJobs` 与 `fingerprints`，调用引擎 ModData 持久化；
-   - 在 `COMMITTED` 阶段整表替换 `root.taskJobs = stagedTaskJobs`，写入 `root.migrationState = 'COMMITTED'` 并调用持久化；
-   - 只有重进检测到 `root.taskJobs` 与 `fingerprints` 100% 吻合后，才清理旧的 `craftProbes`、`labor`、`job`；
-2. **全量覆盖旧账本**：
-   包含 `collectFromOldJob(root)` 与从 `root.labor.routes` 恢复 `root.taskRoutes`。
+默认保证当前受支持存档格式的正常保存与恢复。对于明确不支持的历史格式，不要求迁移兼容；必须在任何数据写入之前识别并明确拒绝加载，不得自动修改、清理或覆盖原始数据。严格最早入口仍需验证，不能把规格修订当作运行门禁已实现。
+
+不提前删除 Production / Haul 仍在调用的旧接口。先完成真实调用切换、新建世界验收及无调用证明，再删除对应旧写路径。
 
 ---
 
@@ -307,7 +305,7 @@ $$\text{NOT\_STARTED} \rightarrow \text{STAGING} \rightarrow \text{STAGED} \righ
 
 ## 9. F8: TaskArbiter 恢复仲裁器与非 Job 意图接入
 
-新增 `shared/EmberRoutesProbe/TaskArbiter.lua`，提供确定性仲裁矩阵：
+若现有恢复入口需要集中候选优先级，仅以纯候选仲裁接入；是否新增 `TaskArbiter.lua` 由真实调用链证明，不能另建活动任务表、身体控制权或库存权威。该后续项不得扩充到当前 B.5 收尾。目标矩阵：
 - Priority 1: `SELF_CARE`（生理危急）；
 - Priority 2: 随从跟随 / 睡眠指令；
 - Priority 3: 必须交付责任（`HAUL` CARRIED/RECONCILE）；
@@ -320,8 +318,8 @@ $$\text{NOT\_STARTED} \rightarrow \text{STAGING} \rightarrow \text{STAGED} \righ
 ## 10. F9: 冷启动完整恢复链路与 T01~T33 压力断言闭环
 
 严格维持 [TaskPersistence.lua:Save.load()](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/TaskPersistence.lua#L43) 六段式恢复序：
-`Migration(Staging)` $\rightarrow$ `Membership/Stock/Care` $\rightarrow$ `Craft.prepareRecovery` $\rightarrow$ `Quarantine+Store.data(Claims)` $\rightarrow$ `FieldWork/PublicWork/Activity` $\rightarrow$ `Runtime Admission`。
+`支持格式最早只读校验（不迁移）` $\rightarrow$ `Membership/Stock/Care` $\rightarrow$ `Craft.prepareRecovery` $\rightarrow$ `Quarantine+Store.data(Claims)` $\rightarrow$ `FieldWork/PublicWork/Activity` $\rightarrow$ `Runtime Admission`。
 
 ---
 
-至此，全部协议与红线已完全固化。
+当前执行以 v1.5 无迁移范围为准。规格不证明实现；B.5 通过独立验收后才解冻 Stage C，后续不再先扩充通用框架。

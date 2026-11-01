@@ -1,9 +1,27 @@
-# 阶段 3A 设计规格书：工单契约标准化与 BusinessJobs 去特权化 (v1.4 最终基准版)
+# 阶段 3A 设计规格书：工单契约标准化与 BusinessJobs 去特权化 (v1.5 执行范围修订版)
 # (Phase 3A: Job Contract Standardization & BusinessJobs Deprivileging)
 
-> 日期：2026-10-31｜版本：v1.4 (最终基准冻结稿)｜状态：FINAL SPECIFICATION FOR BASELINE FREEZE｜基线：HEAD `d43404dc`｜适用：EmberRoutes 阶段 3 基础设施收敛
+> 修订：2026-11-01｜版本：v1.5｜状态：用户已确认主路线；B.5 等待独立验收，Stage C 冻结｜原始设计基线：`d43404dc`｜本轮审查基线：`dc8e17c`
 
 ---
+
+## 0. 当前执行裁决（2026-11-01，覆盖旧稿冲突内容）
+
+用户已明确不需要旧档迁移，并授权本地 Codex 主导实施和进度，外部 AI 负责独立审查。本文与 [Final Errata](2026-10-31-phase3a-v14-final-errata.md) 同步修订；文件名保留以维持既有链接。正文是目标契约，不是实现或实机验收证明，进度只维护 [BACKLOG](../../BACKLOG.md)。
+
+| 顺序 | 范围 | 交付与门禁 |
+|---|---|---|
+| 1 | 收紧 3A | 取消旧账本导入、转换、迁移指纹和迁移状态机。支持的格式正常保存恢复；不支持的历史格式须在写入、清理或覆盖之前明确拒绝。严格门禁仍须沿真实入口验证，不因规格修改即记完成。 |
+| 2 | 关闭 B.5 | 修复重复隔离 F1 和重复 addKeys；保留已通过的身份、容量、Evidence 契约；完成 LuaLS 与 PZ 正常保存、退出、重进的独立证据，再交外部审查。不得以宿主复制替代磁盘验证。 |
+| 3 | Stage C | 制作优先、搬运其次；逐链切换统一创建和 Claim 变更，验证物理执行、中断、取消及保存恢复，再确认无调用后删除对应旧写入口。B.5 未验收不得开始。 |
+| 4 | 3B | Provider 证明业务效果，公共机制核对 Job 原件与责任，Order 判断订单完成；不另建结算权威。 |
+| 5 | 3C / 3D | 先核查制作工具 Custody 的实际接入，复用现有认领、归还和中止链路；按真实缺口补齐，再基于制作与搬运的稳定差异提取资源契约。既有“完成”记录不是重复开发依据。 |
+
+共同验收原则：新接口通过测试不等于重构完成；真实业务切换及旧写入口退出都必须有证据。JobStore 管持久事实，LaborClaims 管资源协调，Provider 管物理执行及业务证据，TaskRuntime 管执行生命周期，Order 管上层订单。候选仲裁不得拥有第二份活动任务状态或身体控制权。
+
+暂缓：继续扩充通用机制、新事务协调层、通用资源框架和大规模拆文件。保持各 Provider 的物理执行、失败处理及释放语义。开发阶段不追加“任意崩溃零损失”门禁；保留原件责任和未知效果保护，正式发布的崩溃恢复范围与数据丢失窗口另行设计并验证。
+
+B.5 F1 边界：Evidence 重复事件使用固定层级集合；每份事实按原深度/节点/表项/字符串限额独立快照，集合最多 64 条。超过集合上限明确记录 `EVENT_HISTORY_LIMIT` 并保留不完整状态，不能伪装 `DEPTH_LIMIT`，不能放宽释放守卫。重复 addKeys 在扩展、CAS 和隔离前拒绝。历史完成审计不自动清洗或迁移。
 
 ## 目录
 1. [基线事实与核心版本概念澄清 (P0-1)](#1-基线事实与核心版本概念澄清-p0-1)
@@ -11,7 +29,7 @@
 3. [统一 Job 创建与 Claim 变动协议 (P0-2)](#3-统一-job-创建与-claim-变动协议-p0-2)
 4. [CRAFT 与 HAUL 状态感知资源映射 (P0-3)](#4-craft-与-haul-状态感知资源映射-p0-3)
 5. [Quarantine 全局不可伪造所有权与冷启动恢复 (P0-4)](#5-quarantine-全局不可伪造所有权与冷启动恢复-p0-4)
-6. [全量旧账本迁移与局部整表暂存替换 (P0-5)](#6-全量旧账本迁移与局部整表暂存替换-p0-5)
+6. [存档支持边界与写入前拒绝 (P0-5)](#6-存档支持边界与写入前拒绝-p0-5)
 7. [BusinessJobs 全面去特权化与全库调用点重构 (P0-6)](#7-businessjobs-全面去特权化与全库调用点重构-p0-6)
 8. [物理操作、Job CAS 与 Runtime Claims 的三层故障恢复模型](#8-物理操作-job-cas-与-runtime-claims-的三层故障恢复模型)
 9. [单 NPC 单活动运行时与任务恢复仲裁](#9-单-npc-单活动运行时与任务恢复仲裁)
@@ -26,7 +44,7 @@
 
 | 字段名称 | 归属层级 | 唯一核心职责 | 变动规则 |
 |---|---|---|---|
-| **`root.jobContractVersion`** | 全局 ModData 根表 | 标记整模组工单基础设施契约版本 | 仅由数据迁移屏障一次性写入（=2），未达标阻断打开 |
+| **`root.jobContractVersion`** | 全局 ModData 根表 | 标记整模组工单基础设施契约版本 | 由明确的新世界初始化建立目标版本；禁止用版本字段触发旧档迁移。当前接入状态须源码核验 |
 | **`taskJobs.format`** | JobStore 存储容器 | 标记 `root.taskJobs` 字典自身的容器格式 | 固定为 1（由 `JobStore.open` 严格校验） |
 | **`job.revision`** | Job 公共包络 | CAS 乐观并发控制锁版本 | 每次调用 `JobStore:update` 时自增 1 |
 | **`job.businessGeneration`** | Job 公共包络 / 载荷 | 执行代次与回调隔离防护标记 | 角色分配、物理打断或重进恢复时递增，隔离过期回调 |
@@ -300,68 +318,15 @@ flowchart TD
 
 ---
 
-## 6. 全量旧账本迁移与局部整表暂存替换 (P0-5)
+## 6. 存档支持边界与写入前拒绝 (P0-5)
 
-### 6.1 全量旧账本识别与清理矩阵
-完整处理所有会触发 [JobStore.lua:legacy()](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/JobStore.lua#L44) 报错（`LEGACY_TASK_RESET_REQUIRED`）的旧结构：
+2026-11-01 用户明确取消旧账本迁移。本节取代 v1.4 的迁移实现，不再开发 `JobMigration`、Staging、迁移指纹、旧账本替换或清理流程。历史原文可从 Git 查询，不能作为当前执行任务。
 
-| 旧结构路径 | 业务来源 | 迁移转换逻辑 | 清理终态 |
-|---|---|---|---|
-| **`root.craftProbes`** | 旧版手工制作探针 | 提取其中的旧工单，转化为标准 CRAFT Job | 迁移完成后置 `root.craftProbes = nil` |
-| **`root.labor.tasks`** | 旧版现场与搬运任务 | 提取旧搬运任务，转化为标准 HAUL Job | 迁移完成后置 `root.labor = nil` |
-| **`root.job`** | 最早期单工单原语 | 提取单任务事实并转化为规范 Job | 迁移完成后置 `root.job = nil` |
-| **`root.taskRoutes`** | 关联搬运路线数据 | 规范化并迁移至 `root.taskRoutes` 规范格式 | 保留路线几何事实 |
+默认保证当前受支持存档格式的正常保存与恢复。对明确不支持的历史格式，不要求迁移兼容；必须在任何数据写入之前识别并明确拒绝加载，不得自动修改、清理、覆盖原始记录或重造物理原件。
 
-### 6.2 局部整表暂存与一次性提交 (Atomic Staging Replacement)
-彻底杜绝边遍历边向活动账本修改的隐患：
+新世界空账本初始化与已有账本打开必须区分。已有账本须先只读校验根格式、容器格式、Job 包络、Provider 载荷及可序列化事实；拒绝不能偷偷创建空表、写新版本或清除旧表。当前 `JobStore.open` 有旧结构/记录拒绝，但 `ContainerRegistry.data` 仍可能先初始化根字段；完整的最早入口门禁是待核验/补齐项，不在本轮 Evidence F1 中夹带修改。
 
-```lua
--- JobMigration.lua 局部暂存与单次替换
-function JobMigration.upgrade(root)
-    if root.jobContractVersion and root.jobContractVersion >= 2 then return true end
-    
-    local stagedTaskJobs = { format = 1, byId = {} }
-    local fingerprinted = {}
-    
-    -- 1. 在独立 staging 结构中装配所有候选 Job
-    for id, oldCraft in pairs(collectOldCrafts(root)) do
-        local job = assembleStandardCraftJob(oldCraft)
-        stagedTaskJobs.byId[job.id] = job
-        fingerprinted[job.id] = calculateFingerprint(job)
-    end
-    for id, oldHaul in pairs(collectOldHauls(root)) do
-        local job = assembleStandardHaulJob(oldHaul)
-        stagedTaskJobs.byId[job.id] = job
-        fingerprinted[job.id] = calculateFingerprint(job)
-    end
-    
-    -- 2. 全量预检 (验证 Envelope 合法性、ID 唯一性、无序列化陷阱)
-    for id, job in pairs(stagedTaskJobs.byId) do
-        assert(JobStore.validateDetached(job), "MIGRATION_VALIDATION_FAILED: " .. id)
-    end
-    
-    -- 3. 一次性原子表替换 (Single Atomic Replacement)
-    root.taskJobs = stagedTaskJobs
-    root.migrationFingerprints = fingerprinted
-    
-    -- 4. 清理旧结构，防止触发 legacy() 崩溃
-    root.craftProbes = nil
-    root.labor = nil
-    root.job = nil
-    
-    -- 5. 写入契约版本号封板
-    root.jobContractVersion = 2
-    return true
-end
-```
-
-### 6.3 确定性 ID 命名空间与断点续迁证明
-1. **确定性命名空间主键**：
-   - 旧 CRAFT 生成主键：`"craft:" .. oldRecord.id`；
-   - 旧 HAUL 生成主键：`"haul:" .. oldRecord.id`；
-   - 杜绝不同历史账本之间的 ID 碰撞。
-2. **断点崩溃恢复证明**：
-   若在步骤 3 替换后、步骤 5 写版本前掉电，重进时根据 `root.migrationFingerprints` 严格核对全量字段（格式、阶段、资源、generation、交付状态）。指纹 100% 吻合则判定为已完整就绪，安全补写版本号；指纹不吻合直接转入 `quarantineJobs`。
+不兼容旧档不等于立即删除当前业务所用的旧适配接口。Stage C 先切换真实调用、在新建测试世界验收，再退役无调用的旧写入口与格式分支。此前对当前有效搬运记录的单独有界升级授权，不扩大为全面旧档兼容，也不作为未来默认迁移任务。
 
 ---
 
@@ -428,7 +393,7 @@ end
 ### 10.1 冷启动执行顺序锁定
 在 [TaskPersistence.lua:Save.load()](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/TaskPersistence.lua#L43) 中严格遵循以下次序：
 ```
-1. JobMigration.upgrade(Registry.data())   -- [阶段 0: 全量旧账本迁移与整表原子替换]
+1. 支持格式的最早只读校验                   -- [阶段 0: 不支持则在任何写入前拒绝；不迁移]
 2. Probe.prepareMembershipRecovery()        -- [阶段 1: 会员与归属恢复]
 3. Craft.prepareRecovery()                  -- [阶段 2: 规范化恢复 - 必须使用 CAS 提交暂停]
 4. Store.data()                             -- [阶段 3: 恢复 Quarantine 锁并双遍扫描重建全部 Claims]
@@ -436,45 +401,37 @@ end
 6. Runtime 开放准入门禁                    -- [阶段 5: 调度器启动]
 ```
 
-### 10.2 TaskJobs.current() 强制门禁
-在 [TaskJobs.lua:current()](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/TaskJobs.lua) 增加入口强断言：
-```lua
-function TaskJobs.current()
-    local root = Registry.data()
-    if root.jobContractVersion ~= 2 or not root.taskJobs or root.taskJobs.format ~= 1 then
-        error(string.format("TASK_JOBS_UNINITIALIZED_OR_CORRUPT: version=%s format=%s", 
-            tostring(root.jobContractVersion), tostring(root.taskJobs and root.taskJobs.format)))
-    end
-    return JobStore.open(root)
-end
-```
-杜绝在未迁移或数据损坏时静默创建空账本。
+### 10.2 存档最早入口门禁
+
+禁止机械加入“版本不等于 2 就迁移”或“缺表就创建空账本”的路径。已有存档在 Registry 默认值写入、恢复归一化及 Runtime 准入之前先完成支持格式校验；真正的新世界经明确初始化流程创建当前格式。
+
+本项是目标契约，须以启动真实调用链和拒绝前后原表不变的测试证明。当前 B.5 的 Evidence/Claims 重建不构成该最早入口已完成的证据；后续实施不得跳过现有真实业务所需的格式支持。
 
 ---
 
 ## 11. 全生命周期压力测试矩阵 (T01~T03, T17~T33)
 
-实施完毕后必须在脱库测试环境与游戏环境中 100% 通过以下 20 项断言：
+以下是跨阶段验收矩阵，按所属阶段验证并分别记录宿主、实机和未运行项，不把后续目标算作 B.5 已完成。T01/T02/T19/T27/T30 的旧迁移要求已撤销并替换；其余项也不得凭编号或旧报告宣布完成。
 
 | 编号 | 测试用例分类 | 核心断言与破坏性注入场景 |
 |---|---|---|
-| **T01** | 全量旧存档升级 | 加载旧版 CRAFT(1/2/3) 与 HAUL(1/2)，断言 materials, tools, outputs, held, surface 与 manifest 100% 进入 claims，无一脱保。 |
-| **T02** | 迁移幂等与防重 | 连续多次调用升级屏障，版本号锁定为 2，断言不产生新 Job，不产生多余 CAS revision 自增。 |
+| **T01** | 不支持格式拒绝 | 加载不支持的旧根表、容器或载荷；明确拒绝，原表、版本、世界原件不变，不导入或清理。 |
+| **T02** | 拒绝幂等与新世界初始化 | 重复拒绝同一不支持账本无写入；新世界显式初始化只产生一个受支持空账本，不重置已有记录。 |
 | **T03** | 资源互斥排他 | 材料或工作台被 Job A 认领后，Job B 在 DISCOVER 阶段认领该资源直接被拒绝并退避。 |
 | **T17** | Custody 与退役解耦 | CRAFT Job 结清退役注销，NPC 背包中的工具 Custody 完好无损，不随 Job 删除而丢失。 |
 | **T18** | **创建补偿全回滚** | 模拟 `LaborClaims:acquire` 成功但在 `store:create` 时抛错，断言调用 `Claims:release` 100% 释放全部 Claims 与容量。 |
-| **T19** | **迁移断点全边界重试** | 分别在“局部暂存完成但未替换”、“新账本替换完成版本未写”等 4 个断点注入崩溃，二次启动验证无损收敛。 |
-| **T20** | CRAFT 复杂资产保护 | 验证处于 CRAFTING 阶段的工单升级后，未消耗材料、产物与正在使用的工具均在 claims 中受保护，且区分 `assetFree`。 |
+| **T19** | 写入前门禁完整性 | 沿 Registry、恢复和 Runtime 准入检查不支持格式在第一次写入之前拒绝；不进行迁移断点或指纹重试。 |
+| **T20** | CRAFT 复杂资产保护 | 验证受支持 CRAFT 的未消耗材料、产物、工具、held 与设施声明受保护，且正确区分 assetFree；不导入旧记录。 |
 | **T21** | HAUL 增量交付存盘 | 搬运 5 件物品，送仓 2 件，存盘退出重进，读档后 claims 仅恢复剩余 3 件，已入库 2 件绝不重新上锁。 |
 | **T22** | **跨层一致性与故障围栏**| 注入两个故障窗口（物理完成 CAS 未成、CAS 成功 shrink 未成），并在 CRAFT 产物未决时断言触发 Scope Quarantine Fence。 |
 | **T23** | 多 Job 与单 Runtime | 验证同一 NPC 持有 SUSPENDED、PREPARING、DONE 多个 Job 共存，但在 TaskRuntime 中任何时刻仅允许最多一个物理执行。 |
 | **T24** | **全实体隔离双向冻结** | 模拟 Job 与 Job、以及 Job 与 ToolCustody 发生原件冲突，验证双方全部进入 RECONCILE_REQUIRED，涉事资源全局隔离。 |
 | **T25** | CAS 失败锁不丢 | 模拟材料扣减时 CAS update 遭遇版本冲突失败，断言原件责任与内存 Token 绝不静默丢弃，维持锁保护。 |
 | **T26** | **Envelope 容错隔离** | 注入包含循环引用或字段损坏的非法 Job，验证 `Store.open` 成功打开其余健康 Job，并将坏单隔离到 `quarantineJobs`。 |
-| **T27** | **未迁移访问硬门禁** | 在 `root.jobContractVersion ~= 2` 时直接调用 `TaskJobs.current()`，验证其抛出迁移门禁异常并拒绝暴露账本。 |
+| **T27** | 不支持账本硬门禁 | 已有存档的根格式、容器格式、载荷版本不受支持时，所有打开/恢复入口在写入前拒绝；不能静默造空账本。 |
 | **T28** | **Payload 只读副本保护**| 外部代码尝试直接修改 `BusinessJobs.get(id).payload` 的属性，验证 `JobStore` 中的底层持久化数据不受任何影响。 |
 | **T29** | **终态无 claims 约束** | 验证处于 `released` 的 CRAFT 和已交付的 HAUL 工单，其 `payload.claims` 必须强制为空，否则 `JobStore.valid` 拒绝。 |
-| **T30** | **全旧账本迁移完整性** | 验证旧 `root.job`、`root.labor.tasks`、旧 `craftProbes` 全部无损迁入 `taskJobs`，且完全消除 `legacy()` 报错。 |
+| **T30** | 旧入口退役证明 | 真实 Production / Haul 切换后检索调用方，确认对应旧写入口无人调用；新建世界验证后方可删除。 |
 | **T31** | **Quarantine 重进持久性**| 隔离某资源后存盘退出重进，验证 `Store.data()` 重建 Claims 时该资源依然直接处于不可认领状态。 |
 | **T32** | **隔离权限绝对防绕过** | 针对处于隔离状态的原件，验证普通 Job、ToolCustody 以及所有 Provider 的认领入口均直接报 `ITEM_RESERVED` 被阻断。 |
-| **T33** | **多物品容量预约一致性**| 针对 HAUL format=2 的多物品容量预约，验证 CAS 变更、存盘重进、部分交付时容量恢复均保持 100% 一致。 |
+| **T33** | 多物品容量预约一致性 | 对当前受支持 HAUL 记录验证 CAS、正常保存重进与部分交付的容量守恒；不以表复制代替实际磁盘保存。 |
