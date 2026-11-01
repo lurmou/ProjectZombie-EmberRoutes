@@ -183,8 +183,14 @@ function EmberRoutesSettlementDashboard:close()
         elseif page.deactivate then
             page:deactivate()
         end
+        -- Explicitly release this page's entire tooltip subtree.
+        Tooltip.unregisterOwner(page)
     end
-    for _,button in pairs(self.tabButtons) do Tooltip.clear(button) end
+    for _,button in pairs(self.tabButtons) do
+        Tooltip.clear(button)
+    end
+    -- Final safety net for dashboard-owned widgets and dialogs.
+    Tooltip.unregisterOwner(self)
     ISCollapsableWindow.close(self)
     self:removeFromUIManager()
     if self.actor:getJoypadBind()~=-1 then setJoypadFocus(self.actor:getIndex(),nil) end

@@ -178,7 +178,7 @@ function EmberRoutesPersonnelPage:createChildren()
                 Theme.text(btn,label,(btn.width-tw)/2,(btn.height-#lines*h)/2+(line-1)*h,Theme.textColor)
             end
         end
-        Tooltip.attach(button,'prerender') self:addChild(button) self.priorityHeaders[#self.priorityHeaders+1]=button
+        Tooltip.attach(button,'prerender',self) self:addChild(button) self.priorityHeaders[#self.priorityHeaders+1]=button
     end
     local listBounds=matrixParts[2]
     local listStyle={emptyColor=Theme.muted,

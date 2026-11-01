@@ -102,7 +102,7 @@ package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root
     view=function(_,id) if permitted then return entries[id] end return nil,'ACCESS_DENIED' end}
 local cleared=0
 package.loaded['EmberRoutesProbe/WarehouseLocator']={new=function() return {clear=function() cleared=cleared+1 end} end}
-package.loaded['EmberRoutesProbe/UI/TooltipAnchor']={attach=function() end,clear=function() end}
+package.loaded['EmberRoutesProbe/UI/TooltipAnchor']={attach=function() end,clear=function() end,dismissOwner=function() end,unregisterOwner=function() end,clearOwner=function() end}
 package.loaded['EmberRoutesProbe/UI/SettlementSelector']={open=function() end}
 package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle={getFullName=function() return 'Worker' end}} end,valid=function() return true end}
 package.loaded['EmberRoutesProbe/ContainerRegistry']={describe=function() return nil end,data=function() return {} end}

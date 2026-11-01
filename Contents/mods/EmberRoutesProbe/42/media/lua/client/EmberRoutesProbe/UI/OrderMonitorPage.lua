@@ -78,7 +78,7 @@ function EmberRoutesOrderMonitorPage:createChildren()
         b.tooltip=label
         b:initialise()
         Theme.button(b,isPrimary)
-        Tooltip.attach(b,'prerender')
+        Tooltip.attach(b,'prerender',self)
         self:addChild(b)
         self.buttons[key]=b
     end

@@ -48,7 +48,7 @@ function EmberRoutesCraftingOrders:createChildren()
     for _,id in ipairs({"resume","stop","return","refresh"}) do
         local r=actions[(id=="stop" or id=="resume") and 1 or id=="return" and 2 or 3]
         local button=ISButton:new(r.x,r.y,r.width,r.height,text("button_"..id),self,function(_,clicked) self:command(clicked.internal) end)
-        button.internal=id button:initialise() Theme.button(button) Tooltip.attach(button,"prerender") self:addChild(button) self.buttons[id]=button
+        button.internal=id button:initialise() Theme.button(button) Tooltip.attach(button,"prerender",self) self:addChild(button) self.buttons[id]=button
     end
 end
 function EmberRoutesCraftingOrders:activate()

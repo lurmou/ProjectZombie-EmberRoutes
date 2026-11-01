@@ -1,8 +1,8 @@
 # EmberRoutes UI Runtime 现状核验报告 (Current State Audit)
 
 > 日期：2026-11-01  
-> 基线：`version.txt 0.29.14`，Git HEAD `667c7c2` + 本地已提交及工作区治理变更  
-> 状态：Phase 0 现状核验完成，作为架构规范的实地依据
+> 基线：`version.txt 0.29.14`，Git HEAD `c12a14d` (commit c12a14d0f945073716306f0ff7ae5c975a82e0ef)
+> 状态：Phase 0 实施复核与设计纠偏完成，作为 Phase 1 细化实施的实地依据
 
 ---
 
@@ -64,28 +64,35 @@
 
 ## 三、各页面刷新机制与生命周期现状审计
 
-| 页面 | 当前挂载监听 (Mount) | 当前周期刷新 (Update) | 卸载与清理 (Deactivate) | 存在的问题与诊断 |
+| 页面 | 当前挂载监听 (Mount) | 当前周期刷新 (Update) | 卸载与清理 (Deactivate) | 存在的问题与实地诊断 |
 | :--- | :--- | :--- | :--- | :--- |
-| **WarehousePage** | `Index.watch(id, cb)` | 无定时轮询，完全由事件与用户输入触发 | 已简化为 `Tooltip.clearOwner(self)`；释放购物车抽屉与巡查器 | **健康**。完全事件驱动，无无界空转。 |
-| **OrderMonitorPage** | `OrderMonitorService.watch(id, cb)` | 无定时轮询，依赖工单执行事件通知 | 已接入 `Tooltip.clearOwner(self)`，注销 Watch | **健康**。数据按需推送。 |
-| **ActivityPage** | 挂载本地 Store 订阅，监听活动生命周期 | 无盲目轮询，由草稿切换与列表刷新驱动 | 清理规则控件、重置输入框 | **较健康**。尚未接入完整的 `PageLifecycle.mount` 自动注销。 |
-| **PersonnelPage** | `Crafting.watch(actor, id, cb)`（**错位监听**） | `self.nextSyncCheck = now + 5000`（**5 秒全员轮询**） | 已接入 `Tooltip.clearOwner(self)`，释放详情抽屉与选人缓存 | **存在结构矛盾**：监听了无关的工单模块；每次轮询全量扫描全体居民的生理健康。 |
+| **WarehousePage** | `Index.watch(id, cb)` | 无定时轮询，由事件与用户输入触发；`Input.delivery(self)` 捕获输入 | 已简化为 `Tooltip.clearOwner(self)`；释放购物车抽屉与巡查器 | **健康**。完全事件驱动，无无界空转。 |
+| **OrderMonitorPage** | `OrderMonitorService.watch(id, cb)` | 无定时轮询，依赖工单执行事件通知 | 已接入 `Tooltip.clearOwner(self)`，注销 Watch，销毁弹窗 | **健康**。数据按需推送。 |
+| **ActivityPage** | 挂载本地 Store 订阅，监听活动生命周期 | [`ActivityPage.lua:611-617`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityPage.lua#L611-L617)：**每 1000ms 轮询检查 `Service.revision` 与游戏分钟数** | 清理规则控件、重置输入框、清理控件 Tooltip | **需治理**。存在独立的 1 秒 revision 轮询；尚未接入完整生命周期作用域。 |
+| **PersonnelPage** | `Crafting.watch(actor, id, cb)`（**历史借用监听**） | [`PersonnelPage.lua:577-580`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua#L577-L580)：**每 5000ms 全员无差别扫描动态生理** | 已接入 `Tooltip.clearOwner(self)`，释放详情抽屉与选人缓存 | **存在结构矛盾**：借用工单监听捕获世界重置；每次轮询全量扫描全体居民的生理健康与创伤。 |
 | **LogisticsPage** | `LogisticsService.watch(id, cb)` | 无定时轮询 | 注销 Watch，重置选区 | **健康**。 |
 
 ---
 
-## 四、`PersonnelPage` 数据依赖实地审计结论
+## 四、数据依赖与观察源实地审计结论
 
+### 1. `PersonnelPage` 动态生理与静态数据分离
 1. **静态与慢速数据（已有 Service 缓存）**：
    - 性别、职业、立绘（[`PersonnelService.lua:67-108`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L67-L108)）：一次性解析并永久缓存于 `cache[id].static`；
-   - 技能等级与 XP 倍率（[`PersonnelService.lua:151-171`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L151-L171)）：缓存在 `cache[id].static.skills` 中，仅在结算时失效；
-   - 已知配方与特质（[`PersonnelService.lua:172-187`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L172-L187)）：同样缓存在 `static` 表中。
+   - 技能等级与 XP 倍率（[`PersonnelService.lua:151-171`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L151-L171)）：缓存在 `cache[id].static.skills` 中，仅在结算或 LevelPerk 时失效；
+   - 已知配方与特质（[`PersonnelService.lua:172-187`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L172-L187)）：缓存在 `static` 表中。
 2. **动态生理与健康数据（引擎底层绝对无事件通知）**：
-   - 饥饿、疲劳、口渴、压力、情绪（[`PersonnelService.lua:110-127`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L110-L127)）：Java 虚拟机在游戏刻内逐刻更新，Kahlua 侧没有任何 Listener 机制；
+   - 饥饿、疲劳、口渴、压力、情绪（[`PersonnelService.lua:110-127`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L110-L127)）：Java 虚拟机在游戏刻内逐刻更新，Kahlua 侧无 Listener 机制；
    - 身体损伤（生命值、流血部位数、感染、骨折创伤）（[`PersonnelService.lua:129-149`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L129-L149)）：同样无事件通知。
-3. **关键裁决**：
-   - **不能彻底删除定时刷新**：若盲目追求事件驱动而删除轮询，打开页面后 NPC 的流血、饥饿与濒死状态将永久定格；
-   - **优化方向**：剥离无关的 `Crafting.watch`；将全员扫描改为“当前视口选中者聚焦刷新（3~5s） + 列表大状态超低频刷新（10~15s）”，并在切出页面（`deactivate`）时坚决停更。
+3. **全员扫描痛点与性能瓶颈**：
+   - `enrichWorkers`（[`PersonnelService.lua:272-321`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L272-L321)）对名册内所有 NPC 逐一读取 body damage 和 4 项 CharacterStat。当居民增多时，每 5 秒触发密集的 Java JNI 反射穿透与堆内存 table 创建；
+   - **优化架构**：拆分为“名册结构 (事件驱动) + 静态档案 (永久缓存) + 动态健康 (当前选中 NPC 聚焦采样 3~5s)”，非聚焦居民仅展示极轻量标量 summary。
+
+### 2. `SettlementLedger` 与 `CraftingService.watch` 的代码事实澄清
+- **严禁未经证明将 `Crafting.watch` 替换为 `SettlementLedger`**：
+  1. `SettlementLedger.lua:4, 81-84` 仅有裸数组 `listeners`，无标准 watch/subscribe 接口；
+  2. `SettlementLedger.notify` 仅在 `setReturnPoint` 与 `commit`（划区/改名）时触发，**完全不感知居民加入/离开、工种优先级分配，也无法感知 `WORLD_RESET`**；
+  3. `CraftingService.watch`（[`CraftingService.lua:171-184`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/CraftingService.lua#L171-L184)）实质承担了 `WORLD_RESET` 实例比对守卫职责。盲目替换会导致页面失去跨世界重进退出保护。必须通过全局生命周期基准源进行规范解耦。
 
 ---
 
@@ -95,11 +102,10 @@
 - `PageLifecycle` 的 `activation token` 异步门禁机制（杜绝孤儿回调）；
 - `Layout.axis` 相对弹性布局体系（杜绝手写魔数绝对坐标）；
 - `CardPanel.draw` 与 `SemanticBadge.draw` 的 Static Draw 模式（零 GC、无控件树开销）；
-- `TooltipManager` 的屏幕边界夹持与 owner 级联自愈释放；
-- `Presentation` 层的纯函数展示适配。
+- `Presentation` 层的纯函数展示适配；
+- `StepperInput` 标准控件接入（消除手写步进器）。
 
-### 2. 需在 Phase 1 重点治理的技术债务
-- **`PageLifecycle` 孤立使用**：目前主要在 `WarehousePage` 和 `PersonnelPage` 接入，`ActivityPage` 和部分子抽屉仍手写 `activate/deactivate`；
-- **错位数据监听**：`PersonnelPage` 依然挂在 `Crafting.watch` 上；
-- **缺乏统一调度器 (Scheduler)**：各页面自备 `nextSyncCheck` 或 `update` 计数器，缺乏统一的可见性门禁与节拍控制；
-- **Store 能力单薄**：`State.lua` 每次 `setState` 广播全量更新，缺乏分键（Key-specific）订阅与合并能力。
+### 2. 实地复核新暴露的技术债务 (Phase 1 修正治理项)
+- **`TooltipManager` 生命周期闭环缺陷**：`registry` 存在被销毁控件强引用内存泄漏；切出页面后所有权表被清空导致再次激活时 Tooltip 成为不可清理的幽灵；硬编码了业务子控件字段；
+- **`ActivityAtmosphereBoard` 违反零 GC 规范**：[`ActivityAtmosphereBoard.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityAtmosphereBoard.lua) 在绘制循环中存在每帧动态 table 分配、字符串拼接与 JNI `MeasureStringX` 文本测量；
+- **多页面孤立轮询计数器**：`PersonnelPage` (5s) 与 `ActivityPage` (1s) 各自维护私有计数器，缺乏统一调度器 (Scheduler) 的可见性门禁与 Dirty 合并机制。

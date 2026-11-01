@@ -326,14 +326,15 @@ end
 function DossierDrawer:close()
     self:removeFromUIManager()
     self:setVisible(false)
+    -- The same drawer instance can be opened again.
+    Tooltip.dismissOwner(self)
     if self.owner then
         self.owner.dossierDrawerOpen=false
     end
 end
 
 function DossierDrawer:dispose()
-    Tooltip.clear(self.skillsList)
-    Tooltip.clear(self.recipesList)
+    Tooltip.unregisterOwner(self)
     self:close()
 end
 

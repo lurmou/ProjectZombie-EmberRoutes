@@ -44,7 +44,7 @@ local command
 package.loaded["EmberRoutesProbe/LogisticsMenu"]={command=function(_,mode) command=mode return "MODE_CONFIGURED" end}
 package.loaded["EmberRoutesProbe/Driver"]={bindId=function() return {handle={getFullName=function() return "Joni Epps" end}} end}
 package.loaded["EmberRoutesProbe/ContainerRegistry"]={describe=function() return nil end}
-package.loaded["EmberRoutesProbe/UI/TooltipAnchor"]={attach=function() end,clear=function() end}
+package.loaded["EmberRoutesProbe/UI/TooltipAnchor"]={attach=function() end,clear=function() end,dismissOwner=function() end,unregisterOwner=function() end,clearOwner=function() end}
 local actor={getJoypadBind=function() return -1 end,getIndex=function() return 0 end}
 local Page=require "EmberRoutesProbe/UI/LogisticsPage"
 for _,r in ipairs({{1920,1080,20},{1280,720,28},{2560,1440,24}}) do

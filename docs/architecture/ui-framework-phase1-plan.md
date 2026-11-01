@@ -1,101 +1,139 @@
-# EmberRoutes UI Framework Phase 1 实施计划
-# 阶段一：技术债务彻底出清与核心运行时初建
+# EmberRoutes UI Framework Phase 1 实施计划 (修正版)
+# 阶段一：技术债务出清与轻量运行时基石落地
 
-> 状态：待评审实施方案｜编制日期：2026-11-01  
-> 依据：[`ui-framework-architecture-spec.md`](ui-framework-architecture-spec.md) 与 [`ui-framework-current-state.md`](ui-framework-current-state.md)  
-> 铁律：先治理、后建设；小步快跑，单任务验证，严禁一次性大范围重写。
-
----
-
-## 一、阶段一总体目标
-
-1. 彻底解决审计报告揭示的组件孤岛、代码重复与生命周期泄漏隐患；
-2. 纠正 `PersonnelPage` 对 `Crafting.watch` 的错位依赖，建立科学的生理健康低频节拍；
-3. 将现有 `PageLifecycle` 升级为具备自动收割能力的 `LifecycleScope`；
-4. 确保在不破坏任何既有游戏功能的前提下，完成全套单元测试与静态检查闭环。
+> 状态：基于 Post Phase 0 Review 修正方案｜修订日期：2026-11-01
+> 依据：[`ui-framework-architecture-spec.md`](ui-framework-architecture-spec.md)、[`ui-framework-current-state.md`](ui-framework-current-state.md) 与 [`ui-framework-phase1-review.md`](ui-framework-phase1-review.md)
+> 铁律：反谄媚、代码证据前置、三要素闭环；单任务验证，严禁跨任务夹带私货。
 
 ---
 
-## 二、任务清单与实施状态
+## 一、阶段一总体目标与调整后原则
+
+1. **先治理后建设**：彻底解决 TooltipManager 的生命周期闭环缺陷，纠正新组件违反零 GC 规范的问题；
+2. **所有权先于调度**：必须先建立 `LifecycleScope`（区分 ActivationScope 与 PageLifetimeScope），再接入 `RefreshScheduler`，确保所有定时任务具备清晰的销毁责任人；
+3. **实事求是解耦**：严禁未经源码求证将 `Crafting.watch` 替换为 `SettlementLedger`；三级分离居民名册（事件）、静态档案（缓存）与动态生理健康（聚焦快节拍）；
+4. **全套自动化测试闭环**：每个任务必须伴随专门的测试用例，全生命周期断言验证。
+
+---
+
+## 二、调整后的任务看板
 
 ```
-Phase 1 任务看板
+Phase 1 任务看板 (修正版)
 ├── [已完成] Task 1.1: PublicOrderDialog 接入标准 StepperInput (消除55行手写步进)
 ├── [已完成] Task 1.2: ActivityScenarioCard 接入 CardPanel.draw (消除手写背景绘制)
 ├── [已完成] Task 1.3: PersonnelPage 消除双重 project 冗余调用
 ├── [已完成] Task 1.4: ActivityDialog 消除双轨制，重构为透明转发 Shim
-├── [已完成] Task 1.5: 建设自愈型 TooltipManager 并完成 WarehousePage 等页面简化
-├── [待实施] Task 1.6: PersonnelPage 错位监听剥离与聚焦刷新改造 (P0)
-├── [待实施] Task 1.7: 升级 PageLifecycle 为 LifecycleScope 自动资源管理器 (P1)
-└── [待实施] Task 1.8: 阶段一全量回归测试与质量验收 (P0)
+├── [待实施] Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0)
+├── [待实施] Task 1.5B: 新组件 Static Draw 零 GC 规范合规化 (P1)
+├── [待实施] Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0)
+├── [待实施] Task 1.7: RefreshScheduler 统一调度器建设 (P0)
+├── [待实施] Task 1.8: PersonnelPage 刷新重构与数据模型三级解耦 (P0)
+└── [待实施] Task 1.9: 阶段一全量回归测试与质量验收 (P0)
 ```
 
 ---
 
 ## 三、待实施任务具体拆解方案
 
-### Task 1.6: `PersonnelPage` 错位监听剥离与聚焦刷新改造 (P0)
-
-- **当前代码位置**：
-  - 错位监听：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua:298-305`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua#L298-L305)
-  - 轮询计时：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua:577-580`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua#L577-L580)
-- **痛点与风险**：
-  - `PersonnelPage` 为捕获 `WORLD_RESET` 错误地挂在 `Crafting.watch` 上，导致工单变动频繁触发居民全员重新计算；
-  - 周期轮询盲目扫描全体居民的生理健康，违背“可见视口优先”原则。
-- **重构方案（闭环三要素）**：
-  1. **认领/挂载端**：
-     - 在 `activate()` 中，移除对 `Crafting.watch` 的挂接，改用据点核心账本（[`SettlementLedger`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/SettlementLedger.lua)）的观察句柄，仅在据点重置或成员增减时触发结构级更新；
-  2. **正常释放端**：
-     - 在 `deactivate()` 中注销定时器和账本观察，切出页面后后台立即完全静止；
-  3. **分级刷新执行端**：
-     - 在 `update()` 中实施分级节拍：
-       - **全局慢节拍 (10s)**：检查据点成员清单与大工种分配；
-       - **选中项聚焦快节拍 (3~5s)**：若详情抽屉展开，仅对当前 `store.value.selected` 居民更新其动态生理健康（饥饿、受伤、疲劳），绝不全员无差别重算。
-- **验收标准**：
-  - 打开居民页面，当前选中 NPC 受伤/疲劳如实动态更新；
-  - 切换到其他标签（如仓库）后，控制台打桩证明后台 0 轮询；
-  - 生产工单增删不再导致居民页面发生无效重算。
-
----
-
-### Task 1.7: 升级 `PageLifecycle` 为 `LifecycleScope` (P1)
-
-- **当前代码位置**：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua)
+### Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0)
+- **代码位置**：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/TooltipManager.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/TooltipManager.lua)
 - **痛点分析**：
-  - 目前各页面仍需要手动处理子抽屉关闭、本地定时器重置等零散资源；
-  - 需要统一的作用域（Scope）收割机，使开发者只需 `scope:add(...)` 即可在 `unmount` 时全自动对称释放。
-- **重构方案**：
-  1. 保留现有的 `activation token` 异步安全门禁；
-  2. 扩展 `Lifecycle.createScope(owner)` 机制：
-     ```lua
-     local scope = Lifecycle.createScope(self)
-     scope:watch(watchFn, callback)
-     scope:subscribe(store, callback)
-     scope:timer(intervalMs, callback)
-     scope:own(childDrawerOrDialog)
-     ```
-  3. 在 `Lifecycle.unmount(page)` 时，统一遍历 `scope.resources` 自动执行清理，彻底杜绝孤儿定时器与内存黑户。
+  1. `clearOwner` 仅将 `registry[widget].owner` 置空，未移除条目，产生强引用内存泄漏；
+  2. `clearOwner` 抹除 `owners[owner]`，但 ISUI 控件切页不重新走 `createChildren()`，导致再次激活后失去所有权追踪，产生不可清理的“幽灵 Tooltip”；
+  3. L127-158 充斥仓库、居民页面的硬编码业务字段，破坏框架通用性。
+- **重构方案（闭环三要素）**：
+  1. **职责正交拆分**：
+     - `Manager.dismissOwner(owner)`：页面切出（`deactivate`）调用，仅将当前处于 visible 状态的 tooltipUI 设为 false，保留注册表与所有权关系；
+     - `Manager.unregisterOwner(owner)`：页面真正注销（`dispose`）调用，彻底清空 `owners`、从 `registry` 移除、还原原生 hook；
+  2. **消除业务硬编码**：移除 `owner.details`、`owner.skillsList` 等特例属性判断，改由父级 `ISPanel.children` 通用递归或由 Scope 集中登记；
+  3. **Owner 变更支持**：`register` 时若已有旧 owner，先从 `owners[oldOwner]` 干净移除该 widget。
 - **验收标准**：
-  - 编写 `tests/lua/lifecycle-scope-test.lua`，断言多次异常打断与正常关闭时，挂载的 Watch、Timer、Child 均 100% 被注销。
+  - 新建 `tests/lua/tooltip-lifecycle-test.lua`，覆盖“注册 -> 显示 -> 切出 -> 切回 -> 显示 -> 再次切出”循环，断言 Tooltip 正常显示且被正确 dismiss，无幽灵残留；断言 dispose 后 registry 为空。
 
 ---
 
-### Task 1.8: 阶段一全量回归测试与质量验收 (P0)
+### Task 1.5B: 新组件 Static Draw 零 GC 规范合规化 (P1)
+- **代码位置**：
+  - 看板组件：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityAtmosphereBoard.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityAtmosphereBoard.lua)
+  - 页面行绘制：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityPage.lua:579`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/ActivityPage.lua#L579)
+- **痛点分析**：
+  - 绘制循环内每帧分配 table（如 `{ r = 0.25, g = 0.75, b = 0.45, a = 1 }`）、每帧拼接字符串、每帧调用 Java JNI `getTextManager():MeasureStringX`；
+  - 在 Draw 函数内调用 `getGameTime():getWorldAgeHours()` 实时计算进度条百分比，违反 Presentation 职责边界。
+- **重构方案**：
+  1. 颜色常量全部收口到 `Theme.lua` 静态常量令牌（如 `Theme.status.READY`, `Theme.activity.GATHERING` 等）；
+  2. 文本拼接与时间差计算前置到 `ActivityPresentation.lua` ViewModel 派生快照中；
+  3. 文本宽度调用 `UICache` 预先测量并存储在 row 数据模型中；
+  4. `ActivityPage.drawRow` 的状态标签接入标准 `SemanticBadge.draw`，消除手写 `drawRect`。
+- **验收标准**：
+  - 编写 `tests/lua/atmosphere-board-zero-gc-test.lua`，静态断言与运行时 mock 拦截证明 `drawStrip` 与 `drawResidentCard` 执行过程中 0 次 table 分配、0 次 JNI 测量。
 
+---
+
+### Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0)
+- **代码位置**：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua)
+- **架构设计（双层生命周期）**：
+  1. **`ActivationScope`（切页会话生命周期）**：
+     - 随 `page:activate()` 创建，随 `page:deactivate()` 销毁；
+     - 托管：Service Watch 订阅、Scheduler 周期任务、临时 Modal / 抽屉关闭、Tooltip Dismiss；
+     - 异步门禁：持有当前 `activation token`，任何异步结果在 token 过期后直接丢弃；
+  2. **`PageLifetimeScope`（页面实例生命周期）**：
+     - 随 `page:initialise()` 创建，随 `page:dispose()` 销毁；
+     - 托管：子控件所有权、Tooltip 注册引用（Unregister）、本地 Store 实例；
+  3. **契约 API**：
+     ```lua
+     local scope = PageLifecycle.createActivationScope(page)
+     scope:watch(watchFn, callback)
+     scope:schedule(cadence, taskFn)
+     scope:own(childDrawerOrModal)
+     scope:dispose()
+     ```
+- **验收标准**：
+  - 编写 `tests/lua/lifecycle-scope-test.lua`，验证页面切出时 Watch 立即注销、Scheduler 停止；再次切入时可重新注册，销毁时资源彻底清空。
+
+---
+
+### Task 1.7: RefreshScheduler 统一调度器建设 (P0)
+- **新文件**：`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/Scheduler.lua`
+- **核心规约**：
+  1. **三级节拍**：
+     - `FAST = 3000`（3秒：视口内选中实体的高频动态生理健康采样）；
+     - `SLOW = 10000`（10秒：列表慢速同步与版本巡检）；
+  2. **可见性门禁**：
+     - 每次调度前检查 `owner.active` 与 `owner:getIsVisible()`，未激活或隐藏页面**绝对静止**；
+  3. **Dirty 合并**：
+     - `Scheduler.markDirty(key, batchFn)`，将同一帧内多次事件通知合并为下一渲染帧前单次派发；
+  4. **错误隔离**：
+     - 单次任务 `pcall` 执行，抛错自动退避，不影响其他调度任务与主循环。
+- **验收标准**：
+  - 编写 `tests/lua/scheduler-test.lua`，验证合并派发、未激活静止、错误隔离断言通过。
+
+---
+
+### Task 1.8: PersonnelPage 刷新重构与数据模型三级解耦 (P0)
+- **代码位置**：
+  - [`UI/PersonnelPage.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PersonnelPage.lua)
+  - [`PersonnelService.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua)
+- **痛点与事实**：
+  - 严禁假借 `SettlementLedger`（不感知居民变动与 WORLD_RESET）；
+  - `enrichWorkers` 每 5 秒对全体居民进行 Java JNI body damage 与 4 项 CharacterStat 深度扫描。
+- **重构方案**：
+  1. **数据三级解耦**：
+     - **名册结构 (Level 1)**：通过 `MembershipService` 与 `PublicWork` 驱动，事件触发；
+     - **静态技能档案 (Level 2)**：利用 `PersonnelService.cache[id].static` 永久缓存，LevelPerk 时置脏；
+     - **动态健康生理 (Level 3)**：列表项仅读取简明标量状态；仅在详情抽屉展开时，针对当前选中的居民（`selected`），通过 Scheduler FAST 节拍（3~5s）采样；
+  2. **调度接入**：
+     - 移除 `PersonnelPage:update` 中的 `self.nextSyncCheck` 手写轮询；
+     - `ActivityPage` 的 1 秒 `Service.revision` 轮询统一接入 Scheduler SLOW 节拍；
+     - 页面 `deactivate` 时由 `ActivationScope` 自动暂停采样。
+- **验收标准**：
+  - 编写 `tests/lua/personnel-refresh-test.lua`，断言抽屉关闭时不读取单人生理细节；切页后后台 0 采样。
+
+---
+
+### Task 1.9: 阶段一全量回归测试与质量验收 (P0)
 - **执行清单**：
-  1. 静态语法与规则门禁：`node ../.workbuddy/tools/pz.mjs lint Contents/mods/EmberRoutesProbe`，保持 0 错误；
-  2. 既有单元测试全集回归：
-     - `tests/lua/activity-page-test.lua`
-     - `tests/lua/activity-dialog-test.lua`
-     - `tests/lua/activity-presentation-test.lua`
-     - `tests/lua/tooltip-manager-test.lua`
-     - `tests/lua/warehouse-ae2-test.lua`
-  3. 输出 Phase 1 验收总结报告与性能对照说明。
-
----
-
-## 四、排期与执行准则
-
-1. **单项交付原则**：每个 Task 单独修改、单独测试、独立验证，禁止跨任务夹带私货；
-2. **零退化原则**：每次重构必须保证原版 ISUI 交互、鼠标滚轮、键盘 Esc 关闭等原生体验 100% 正常；
-3. **代码证据前置**：在提交变更前必须出具具体代码行号的 diff 与测试运行通过截图/日志。
+  1. 静态语法与代码门禁：`node ../.workbuddy/tools/pz.mjs lint Contents/mods/EmberRoutesProbe`，保持 0 错误；
+  2. 文档断链检查：`node ../.workbuddy/tools/pz.mjs doclink docs/architecture/ui-framework-phase1-review.md` 等相关文档 0 断链；
+  3. 全量单元测试（新旧全部通过）；
+  4. 输出阶段一实施与质量复核报告。

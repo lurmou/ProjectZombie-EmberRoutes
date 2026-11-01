@@ -109,7 +109,7 @@ function Details.new(owner,bounds,presentation)
     self.heroPanel:initialise()
     self.heroPanel.background=false
     self.heroPanel.updateTooltip=ISButton.updateTooltip
-    Tooltip.attach(self.heroPanel,"prerender")
+    Tooltip.attach(self.heroPanel,"prerender",owner)
     owner:addChild(self.heroPanel)
     self.heroPanel.prerender=function(panel)
         ISPanel.prerender(panel)

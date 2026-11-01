@@ -257,7 +257,7 @@ package.loaded['EmberRoutesProbe/WarehouseLocator'] = {
         }
     end
 }
-package.loaded['EmberRoutesProbe/UI/TooltipAnchor'] = { attach = function() end, clear = function() end }
+package.loaded['EmberRoutesProbe/UI/TooltipAnchor'] = { attach = function() end, clear = function() end, dismissOwner = function() end, unregisterOwner = function() end, clearOwner = function() end }
 
 -- Global PublicOrder recording spy
 local publicOrderCalls = {}

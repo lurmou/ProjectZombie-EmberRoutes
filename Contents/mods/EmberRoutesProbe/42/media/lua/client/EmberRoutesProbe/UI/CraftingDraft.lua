@@ -326,7 +326,7 @@ function Draft.new(owner,bounds)
 
     local function button(label,callback)
         local b=ISButton:new(bounds.x,bounds.y,bounds.width,h+p,label,owner,callback)
-        b:initialise() Theme.button(b) Tooltip.attach(b,"prerender") owner:addChild(b) return b
+        b:initialise() Theme.button(b) Tooltip.attach(b,"prerender",owner) owner:addChild(b) return b
     end
     self.run=button(text("button_run"),function() owner:command("run") end)
     self.teach=button(text("button_teach"),function()
@@ -386,7 +386,7 @@ function Draft.new(owner,bounds)
         local n=tonumber(self.quantity:getText())
         owner:change({quantity=n and n==math.floor(n) and n>=1 and n<=9999 and n or false})
     end
-    self.quantity.tooltip=text("quantityHint") Tooltip.attach(self.quantity,"prerender") owner:addChild(self.quantity)
+    self.quantity.tooltip=text("quantityHint") Tooltip.attach(self.quantity,"prerender",owner) owner:addChild(self.quantity)
 
     local function position(control,r)
         control:setX(r.x) control:setY(r.y) control:setWidth(r.width) control:setHeight(r.height)

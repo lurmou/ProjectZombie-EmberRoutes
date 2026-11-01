@@ -27,7 +27,7 @@ end
 function Cached.create(owner,bounds,select,style)
     ---@type EmberRoutesCachedList
     local list=ISScrollingListBox:new(bounds.x,bounds.y,bounds.width,bounds.height)
-    list:initialise() Tooltip.attach(list,"updateTooltip") list.font=UIFont.Small
+    list:initialise() Tooltip.attach(list,"updateTooltip",owner) list.font=UIFont.Small
     list.emberPad,list.emberFontHeight=owner.pad,owner.fontHeight
     list.emberStyle=style
     local function clampScroll(self)

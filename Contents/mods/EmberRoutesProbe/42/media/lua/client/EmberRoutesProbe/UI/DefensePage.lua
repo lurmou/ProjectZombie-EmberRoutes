@@ -79,7 +79,7 @@ function EmberRoutesDefensePage:createChildren()
         btn:setEnable(false)
         Theme.styleButton(btn,false,i==self.store.value.alertLevel)
         btn.tooltip=fullHint
-        Tooltip.attach(btn,'prerender')
+        Tooltip.attach(btn,'prerender',self)
         self:addChild(btn)
         self.alertButtons[i]=btn
     end

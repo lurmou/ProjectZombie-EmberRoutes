@@ -22,7 +22,7 @@ function Controls.new(owner,bounds)
     self.search.tooltip=text("searchPrompt")
     self.search.backgroundColor=Theme.panel
     self.search.borderColor=Theme.border
-    Tooltip.attach(self.search,"prerender")
+    Tooltip.attach(self.search,"prerender",owner)
     owner:addChild(self.search)
 
     self.category=ISComboBox:new(r[2].x,r[2].y,r[2].width,r[2].height,owner,owner.queryChanged)
@@ -41,7 +41,7 @@ function Controls.new(owner,bounds)
     for _,id in ipairs(Controls.sorts) do self.sort:addOption(text("sort_"..id)) end
     self.sort:setToolTipMap({defaultTooltip=text("sortHint")})
     owner:addChild(self.sort)
-    Tooltip.attach(self.sort,"prerender")
+    Tooltip.attach(self.sort,"prerender",owner)
 
     return self
 end

@@ -70,7 +70,7 @@ function Page:list(r,mode,rowHeight,callback)
     list.backgroundColor=Theme.panel list.borderColor=Theme.border
     list.owner=self list.mode=mode list.doDrawItem=Page.drawRow
     if callback then list:setOnMouseDownFunction(self,callback) end
-    Tooltip.attach(list,'updateTooltip')
+    Tooltip.attach(list,'updateTooltip',self)
     self:addChild(list) self.widgets[#self.widgets+1]={control=list,mode=mode}
     return list
 end
@@ -85,7 +85,7 @@ function Page:field(r,key,value,mode,combo)
         or ISTextEntryBox:new(value or '',c.x,c.y,c.width,height)
     control:initialise() self:addChild(control)
     if not combo then control.target=self control.onTextChangeFunction=Page.draftChanged end
-    control.tooltip=t(key) Tooltip.attach(control,'prerender')
+    control.tooltip=t(key) Tooltip.attach(control,'prerender',self)
     self.widgets[#self.widgets+1]={control=control,mode=mode}
     return control
 end
@@ -629,6 +629,7 @@ function Page:deactivate()
         if w.control.unfocus then w.control:unfocus() end
         Tooltip.clear(w.control)
     end
+    Tooltip.dismissOwner(self)
 end
 
 function Page:dispose()

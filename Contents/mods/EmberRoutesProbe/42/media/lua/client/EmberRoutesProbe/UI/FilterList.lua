@@ -12,7 +12,7 @@ local function text(key) return getText("IGUI_EmberRoutesProbe_Filter_"..key) en
 function Rows.create(owner,bounds)
     ---@type EmberRoutesFilterList
     local list=ISScrollingListBox:new(bounds.x,bounds.y,bounds.width,bounds.height)
-    list:initialise() Tooltip.attach(list,"updateTooltip")
+    list:initialise() Tooltip.attach(list,"updateTooltip",owner)
     list.itemheight=owner.rowHeight
     list.font=UIFont.Small
     list:setWantKeyEvents(true)

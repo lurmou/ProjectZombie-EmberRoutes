@@ -1,103 +1,445 @@
--- Unit test for TooltipManager
-local checks=0
-local function check(v,m) assert(v,m) checks=checks+1 end
+-- TooltipManager lifecycle regression tests.
+--
+-- Runs in the installed PZ Kahlua runtime.
+-- UIManager and native ISUI controls are mocked.
+--
+-- This test does NOT claim to replace B42 in-game verification.
 
-local sw,sh=1920,1080
-getCore=function() return {getScreenWidth=function() return sw end,getScreenHeight=function() return sh end} end
-local mouseX,mouseY=100,200
-getMouseX=function() return mouseX end
-getMouseY=function() return mouseY end
+local checks = 0
+local function check(value, message)
+    assert(value, message)
+    checks = checks + 1
+end
 
-local TooltipManager=require 'EmberRoutesProbe/UI/TooltipManager'
+-- Preserve the shared Kahlua test environment.
+local previousGetCore = getCore
+local previousGetMouseX = getMouseX
+local previousGetMouseY = getMouseY
+
+local screenWidth = 1920
+local screenHeight = 1080
+local mouseX = 100
+local mouseY = 200
+
+getCore = function()
+    return {
+        getScreenWidth = function() return screenWidth end,
+        getScreenHeight = function() return screenHeight end
+    }
+end
+
+getMouseX = function() return mouseX end
+getMouseY = function() return mouseY end
+
+local TooltipManager = require 'EmberRoutesProbe/UI/TooltipManager'
+TooltipManager.clearAll()
 
 local function makeTooltip()
     return {
-        x=0,y=0,w=200,h=50,visible=false,added=false,
-        followMouse=true,
-        getIsVisible=function(s) return s.visible end,
-        setVisible=function(s,v) s.visible=v end,
-        getWidth=function(s) return s.w end,
-        getHeight=function(s) return s.h end,
-        setX=function(s,v) s.x=v end,
-        setY=function(s,v) s.y=v end,
-        setName=function(s,v) s.name=v end,
-        removeFromUIManager=function(s) s.added=false s.visible=false end
+        x = 0,
+        y = 0,
+        w = 200,
+        h = 50,
+        visible = false,
+        added = false,
+        followMouse = true,
+        getIsVisible = function(self) return self.visible end,
+        setVisible = function(self, value) self.visible = value end,
+        getWidth = function(self) return self.w end,
+        getHeight = function(self) return self.h end,
+        setX = function(self, value) self.x = value end,
+        setY = function(self, value) self.y = value end,
+        setName = function(self, value) self.name = value end,
+        removeFromUIManager = function(self)
+            self.added = false
+            self.visible = false
+        end
     }
 end
 
-local function makeWidget(owner)
-    local tip=makeTooltip()
+local function makeWidget()
     return {
-        owner=owner,
-        tooltipUI=tip,
-        tooltip='initial',
-        rendered=false,
-        prerender=function(s) s.rendered=true end
+        tooltipUI = makeTooltip(),
+        tooltip = "initial",
+        rendered = false,
+        prerender = function(self)
+            self.rendered = true
+            return "rendered" end
     }
 end
 
--- 1. Test register and attach
-local page={name='PageA'}
-local w1=makeWidget(page)
-TooltipManager.attach(w1,'prerender',page)
+----------------------------------------------------------------
+-- 1. Positioning and screen-edge correction
+----------------------------------------------------------------
+local page = { name = "PageA" }
+local panel = { parent = page }
+local w1 = makeWidget()
+local originalPrerender = w1.prerender
 
-check(type(w1.prerender)=='function','attach hooks prerender')
+TooltipManager.attach(w1, "prerender", panel)
+check(
+    w1.prerender ~= originalPrerender,
+    "register installs native method wrapper"
+)
+
 w1.tooltipUI:setVisible(true)
 w1:prerender()
-check(w1.rendered==true,'original prerender executed')
-check(w1.tooltipUI.x==132 and w1.tooltipUI.y==210,'position offset anchored (100+32, 200+10)')
+check(w1.rendered, "native prerender executes")
+check(
+    w1.tooltipUI.x == 132 and w1.tooltipUI.y == 210,
+    "mouse offset is applied"
+)
 
--- 2. Test screen bounds clamping
-mouseX,mouseY=1850,1050 -- near screen bottom-right
+----------------------------------------------------------------
+-- 2. Screen-edge clamping
+----------------------------------------------------------------
+mouseX = 1850
+mouseY = 1050
 w1:prerender()
-check(w1.tooltipUI.x<=1920-200 and w1.tooltipUI.y<=1080-50,'position clamped within screen bounds')
 
--- 3. Test update
-TooltipManager.update(w1,'Updated text')
-check(w1.tooltip=='Updated text' and w1.tooltipUI.name=='Updated text','tooltip text updated')
+check(
+    w1.tooltipUI.x <= screenWidth - w1.tooltipUI.w,
+    "tooltip is clamped horizontally"
+)
+check(
+    w1.tooltipUI.y <= screenHeight - w1.tooltipUI.h,
+    "tooltip is clamped vertically"
+)
 
--- 4. Test clear single widget
+----------------------------------------------------------------
+-- 3. Update tooltip content
+----------------------------------------------------------------
+TooltipManager.update(w1, "Updated text")
+check(
+    w1.tooltip == "Updated text",
+    "tooltip content updated"
+)
+check(
+    w1.tooltipUI.name == "Updated text",
+    "visible tooltip name updated"
+)
+
+----------------------------------------------------------------
+-- 4. Single-widget clear is temporary
+----------------------------------------------------------------
 TooltipManager.clear(w1)
-check(w1.tooltipUI:getIsVisible()==false,'single clear sets visible false')
+check(
+    not w1.tooltipUI:getIsVisible(),
+    "clear hides tooltip"
+)
+check(
+    w1.prerender ~= originalPrerender,
+    "clear preserves method registration"
+)
 
--- 5. Test clearOwner cascading
-local w2=makeWidget(page)
-w2.tooltipUI:setVisible(true)
-TooltipManager.attach(w2,'prerender',page)
+----------------------------------------------------------------
+-- 5. Dismiss owner preserves registration
+----------------------------------------------------------------
+w1.tooltipUI:setVisible(true)
+local hookedPrerender = w1.prerender
 
-local w3=makeWidget(page)
-w3.tooltipUI:setVisible(true)
-TooltipManager.attach(w3,'prerender',page)
+TooltipManager.dismissOwner(page)
+check(
+    not w1.tooltipUI:getIsVisible(),
+    "dismissOwner hides descendant tooltip"
+)
+check(
+    w1.prerender == hookedPrerender,
+    "dismissOwner preserves Hook"
+)
 
--- Another page
-local otherPage={name='PageB'}
-local wOther=makeWidget(otherPage)
-wOther.tooltipUI:setVisible(true)
-TooltipManager.attach(wOther,'prerender',otherPage)
+-- Simulate page reactivation and hover.
+w1.tooltipUI:setVisible(true)
+w1:prerender()
+check(
+    w1.tooltipUI:getIsVisible(),
+    "widget remains usable after reactivation"
+)
+check(
+    w1.prerender == hookedPrerender,
+    "reactivation does not duplicate Hook"
+)
 
+----------------------------------------------------------------
+-- 6. Legacy clearOwner remains temporary
+----------------------------------------------------------------
+w1.tooltipUI:setVisible(true)
 TooltipManager.clearOwner(page)
-check(w2.tooltipUI:getIsVisible()==false,'cascading clearOwner clears w2')
-check(w3.tooltipUI:getIsVisible()==false,'cascading clearOwner clears w3')
-check(wOther.tooltipUI:getIsVisible()==true,'other page tooltips remain unaffected')
+check(
+    not w1.tooltipUI:getIsVisible(),
+    "legacy clearOwner still dismisses"
+)
+check(
+    w1.prerender == hookedPrerender,
+    "legacy clearOwner does not unregister"
+)
 
-TooltipManager.clearOwner(otherPage)
-check(wOther.tooltipUI:getIsVisible()==false,'clearOwner clears other page')
+TooltipManager.unregister(w1)
+check(
+    w1.prerender == originalPrerender,
+    "unregister w1 restores original method"
+)
 
--- 6. Test sub-panel cascading
-local complexPage={
-    details={locate=makeWidget(),pinButton=makeWidget()},
-    controls={sort=makeWidget()},
-    buttons={b1=makeWidget(),b2=makeWidget()}
-}
-complexPage.details.locate.tooltipUI:setVisible(true)
-complexPage.details.pinButton.tooltipUI:setVisible(true)
-complexPage.controls.sort.tooltipUI:setVisible(true)
-complexPage.buttons.b1.tooltipUI:setVisible(true)
+----------------------------------------------------------------
+-- 7. Nested ownership and permanent unregister
+----------------------------------------------------------------
+local nestedPage = {}
+local nestedPanel = { parent = nestedPage }
+local w2 = makeWidget()
+local originalW2 = w2.prerender
 
-TooltipManager.clearOwner(complexPage)
-check(complexPage.details.locate.tooltipUI:getIsVisible()==false,'clears sub-panel details.locate')
-check(complexPage.details.pinButton.tooltipUI:getIsVisible()==false,'clears sub-panel details.pinButton')
-check(complexPage.controls.sort.tooltipUI:getIsVisible()==false,'clears sub-panel controls.sort')
-check(complexPage.buttons.b1.tooltipUI:getIsVisible()==false,'clears sub-panel buttons')
+TooltipManager.attach(
+    w2,
+    "prerender",
+    nestedPanel
+)
+w2.tooltipUI:setVisible(true)
 
-print('tooltip-manager: '..checks..' PASS')
+local removed = TooltipManager.unregisterOwner(nestedPage)
+check(
+    removed == 1,
+    "unregisterOwner includes nested descendants"
+)
+check(
+    w2.prerender == originalW2,
+    "unregisterOwner restores native method"
+)
+check(
+    not w2.tooltipUI:getIsVisible(),
+    "unregisterOwner dismisses tooltip"
+)
+check(
+    TooltipManager.unregisterOwner(nestedPage) == 0,
+    "repeated unregisterOwner is idempotent"
+)
+
+----------------------------------------------------------------
+-- 8. Owner transfer must detach old owner
+----------------------------------------------------------------
+local ownerA = {}
+local ownerB = {}
+local w3 = makeWidget()
+local originalW3 = w3.prerender
+
+TooltipManager.attach(w3, "prerender", ownerA)
+local w3Hook = w3.prerender
+
+TooltipManager.register(w3, { method = "prerender", owner = ownerB })
+check(
+    w3.prerender == w3Hook,
+    "owner transfer does not duplicate Hook"
+)
+
+w3.tooltipUI:setVisible(true)
+check(
+    TooltipManager.dismissOwner(ownerA) == 0,
+    "old owner no longer owns transferred widget"
+)
+check(
+    w3.tooltipUI:getIsVisible(),
+    "old owner cannot dismiss transferred widget"
+)
+
+TooltipManager.dismissOwner(ownerB)
+check(
+    not w3.tooltipUI:getIsVisible(),
+    "new owner can dismiss transferred widget"
+)
+check(
+    TooltipManager.unregisterOwner(ownerB) == 1,
+    "new owner can permanently unregister widget"
+)
+check(
+    w3.prerender == originalW3,
+    "owner transfer cleanup restores original method"
+)
+
+----------------------------------------------------------------
+-- 9. Preserve all native return values, including nil
+----------------------------------------------------------------
+local w4 = makeWidget()
+local nativeCalls = 0
+w4.prerender = function(self)
+    nativeCalls = nativeCalls + 1
+    return nil, 42, nil, "tail"
+end
+
+TooltipManager.attach(w4, "prerender", page)
+local returnCount = select("#", w4:prerender())
+check(
+    returnCount == 4,
+    "wrapper preserves exact native return count"
+)
+
+local a, b, c, d = w4:prerender()
+check(
+    a == nil and b == 42 and c == nil and d == "tail",
+    "wrapper preserves nil and multiple return values"
+)
+check(
+    nativeCalls == 2,
+    "native method executes exactly once per call"
+)
+
+TooltipManager.unregister(w4)
+
+----------------------------------------------------------------
+-- 10. Changing Hook method restores the previous method
+----------------------------------------------------------------
+local w5 = makeWidget()
+local originalPre = w5.prerender
+w5.updateTooltip = function(self)
+    self.updated = true
+    return "updated"
+end
+local originalUpdate = w5.updateTooltip
+
+TooltipManager.attach(w5, "prerender", page)
+TooltipManager.register(w5, { method = "updateTooltip", owner = page })
+check(
+    w5.prerender == originalPre,
+    "changing Hook restores previous native method"
+)
+check(
+    w5.updateTooltip ~= originalUpdate,
+    "new Hook method is wrapped"
+)
+
+w5:updateTooltip()
+check(
+    w5.updated,
+    "new native method executes"
+)
+
+TooltipManager.unregister(w5)
+check(
+    w5.updateTooltip == originalUpdate,
+    "unregister restores replacement method"
+)
+
+----------------------------------------------------------------
+-- 11. External method replacement must not be overwritten
+----------------------------------------------------------------
+local w6 = makeWidget()
+local externalCalls = 0
+TooltipManager.attach(w6, "prerender", page)
+
+local externalMethod = function(self)
+    externalCalls = externalCalls + 1
+    return "external"
+end
+w6.prerender = externalMethod
+
+check(
+    TooltipManager.unregister(w6),
+    "external replacement widget unregisters"
+)
+check(
+    w6.prerender == externalMethod,
+    "unregister does not overwrite external method"
+)
+check(
+    w6:prerender() == "external" and externalCalls == 1,
+    "external method remains functional"
+)
+
+----------------------------------------------------------------
+-- 12. Register method before it exists, then install it later
+----------------------------------------------------------------
+local w7 = { tooltipUI = makeTooltip() }
+TooltipManager.register(w7, { method = "prerender", owner = page })
+
+local delayedNative = function(self)
+    self.delayedCalled = true
+end
+w7.prerender = delayedNative
+
+TooltipManager.register(w7, { method = "prerender", owner = page })
+check(
+    w7.prerender ~= delayedNative,
+    "re-registration hooks a method added later"
+)
+
+w7:prerender()
+check(
+    w7.delayedCalled,
+    "delayed native method executes"
+)
+
+TooltipManager.unregister(w7)
+check(
+    w7.prerender == delayedNative,
+    "delayed method is restored correctly"
+)
+
+----------------------------------------------------------------
+-- 13. Owner cycles must not cause infinite traversal
+----------------------------------------------------------------
+local cycleA = {}
+local cycleB = {}
+cycleA.parent = cycleB
+cycleB.owner = cycleA
+
+local w8 = makeWidget()
+TooltipManager.attach(w8, "prerender", cycleA)
+w8.tooltipUI:setVisible(true)
+
+check(
+    TooltipManager.dismissOwner(cycleB) == 1,
+    "cyclic owner graph is handled safely"
+)
+check(
+    TooltipManager.unregisterOwner(cycleA) == 1,
+    "cyclic owner graph unregisters safely"
+)
+
+----------------------------------------------------------------
+-- 14. Direct unregister is idempotent
+----------------------------------------------------------------
+local w9 = makeWidget()
+local originalW9 = w9.prerender
+
+TooltipManager.attach(w9, "prerender", page)
+check(
+    TooltipManager.unregister(w9),
+    "first direct unregister succeeds"
+)
+check(
+    not TooltipManager.unregister(w9),
+    "second direct unregister is harmless"
+)
+check(
+    w9.prerender == originalW9,
+    "direct unregister restores original method"
+)
+
+----------------------------------------------------------------
+-- 15. Global cleanup restores all remaining Hooks
+----------------------------------------------------------------
+local w10 = makeWidget()
+local originalW10 = w10.prerender
+
+TooltipManager.attach(w10, "prerender", page)
+local removedAll = TooltipManager.clearAll()
+check(
+    removedAll == 1,
+    "clearAll unregisters remaining widgets"
+)
+check(
+    w10.prerender == originalW10,
+    "clearAll restores native method"
+)
+check(
+    TooltipManager.unregisterOwner(page) == 0,
+    "clearAll leaves no owner registration"
+)
+
+----------------------------------------------------------------
+-- Cleanup shared test globals
+----------------------------------------------------------------
+TooltipManager.clearAll()
+getCore = previousGetCore
+getMouseX = previousGetMouseX
+getMouseY = previousGetMouseY
+
+print("tooltip-manager: " .. checks .. " PASS")

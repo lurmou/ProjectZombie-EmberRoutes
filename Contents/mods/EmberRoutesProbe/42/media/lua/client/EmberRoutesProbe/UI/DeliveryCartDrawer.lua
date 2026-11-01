@@ -101,7 +101,7 @@ function Drawer:createChildren()
             for i,line in ipairs(self.emptyLines) do Theme.text(list,line,p,start+(i-1)*h,Theme.muted) end
         end
     end
-    Tooltip.attach(self.list,'prerender') self:addChild(self.list)
+    Tooltip.attach(self.list,'prerender',self) self:addChild(self.list)
 
     local buttons=assert(Layout.axis(blocks[4],{{grow=1},{grow=2}},{gap=p/2}))
     local a=buttons[1]
@@ -193,13 +193,15 @@ end
 function Drawer:close()
     self:removeFromUIManager()
     self:setVisible(false)
+    -- Drawer may be reopened, so preserve registrations.
+    Tooltip.dismissOwner(self)
     if self.owner then
         self.owner.cartDrawerOpen=false
     end
 end
 
 function Drawer:dispose()
-    Tooltip.clear(self.list)
+    Tooltip.unregisterOwner(self)
     self:close()
 end
 

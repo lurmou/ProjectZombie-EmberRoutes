@@ -205,6 +205,7 @@ package.loaded['EmberRoutesProbe/SettlementLedger'] = {
 local tooltipCleared = {}
 package.loaded['EmberRoutesProbe/UI/TooltipAnchor'] = {
     attach = function(widget, fn) widget.tooltipAttached = fn end,
+    dismissOwner = function() end, unregisterOwner = function() end, clearOwner = function() end,
     clear = function(widget)
         tooltipCleared[widget] = (tooltipCleared[widget] or 0) + 1
         widget.tooltipAttached = nil

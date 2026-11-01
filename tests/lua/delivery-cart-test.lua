@@ -10,7 +10,9 @@ package.loaded['EmberRoutesProbe/WarehouseLocator'] = {
     new = function() return {clear = function() end} end
 }
 package.loaded['EmberRoutesProbe/UI/TooltipAnchor'] = {
-    attach = function() end, clear = function() end
+    attach = function() end, clear = function() end,
+    dismissOwner = function() end, unregisterOwner = function() end,
+    clearOwner = function() end, unregister = function() end
 }
 
 _G.Events = setmetatable({}, {

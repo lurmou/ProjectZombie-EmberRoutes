@@ -192,7 +192,7 @@ function EmberRoutesPublicOrderDialog:createChildren()
     end)
     self.quantity=self.quantityStepper.entry
     self.quantity.tooltip=craftText('quantityHint')
-    Tooltip.attach(self.quantity,'prerender')
+    Tooltip.attach(self.quantity,'prerender',self)
     self:addChild(self.quantityStepper)
 
     -- B. Stock Thresholds (Maintain Stock)
@@ -216,7 +216,7 @@ function EmberRoutesPublicOrderDialog:createChildren()
     end)
     self.batch=self.batchStepper.entry
     self.batch.tooltip=craftText('quantityHint')
-    Tooltip.attach(self.batch,'prerender')
+    Tooltip.attach(self.batch,'prerender',self)
     self:addChild(self.batchStepper)
 
     -- 6. Main Action Button
@@ -887,6 +887,7 @@ function EmberRoutesPublicOrderDialog:close()
     Tooltip.clear(self.surfaceCombo)
     Tooltip.clear(self.quantity)
     Tooltip.clear(self.batch)
+    Tooltip.unregisterOwner(self)
     ISCollapsableWindow.close(self)
     self:removeFromUIManager()
     if self.owner.publicDialog==self then self.owner.publicDialog=nil end
