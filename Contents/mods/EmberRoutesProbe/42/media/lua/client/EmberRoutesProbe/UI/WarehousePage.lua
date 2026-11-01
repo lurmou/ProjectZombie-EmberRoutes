@@ -116,13 +116,14 @@ function EmberRoutesWarehousePage:createChildren()
         local button=ISButton:new(r.x,r.y,r.width,r.height,definition[1],self,definition[2])
         button:initialise() Theme.button(button,i==1) self:addChild(button)
         if i==1 then self.refreshButton=button end
-        if i==3 then button.tooltip=getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneTooltip") end
-        if i==4 then self.helpButton=button button.tooltip=text("coverageHint").."\n\n"..text("shortHint") end
+		if i==3 then button.tooltip=getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneTooltip") Tooltip.attach(button,"prerender",self) end
+		if i==4 then self.helpButton=button button.tooltip=text("coverageHint").."\n\n"..text("shortHint") Tooltip.attach(button,"prerender",self) end
     end
     local cartBtn=ISButton:new(columns[2].x,regions[4].y,columns[2].width,regions[4].height,
         getText('IGUI_EmberRoutesProbe_Warehouse_cartButton','0'),self,EmberRoutesWarehousePage.toggleCartDrawer)
     cartBtn:initialise() Theme.button(cartBtn) self:addChild(cartBtn)
     cartBtn.tooltip=getText('IGUI_EmberRoutesProbe_Warehouse_cartEmptyHint') self.cartButton=cartBtn
+    Tooltip.attach(cartBtn,"prerender",self)
 
     local p2=self.summary.pills[2]
     self.containerPillBtn=ISButton:new(p2.x,p2.y,p2.width,p2.height,"",self,function()
@@ -135,6 +136,7 @@ function EmberRoutesWarehousePage:createChildren()
     self.containerPillBtn.borderColor={r=0,g=0,b=0,a=0}
     self.containerPillBtn.tooltip=getText("IGUI_EmberRoutesProbe_Settlement_summaryMergedClickHint")
     self:addChild(self.containerPillBtn)
+    Tooltip.attach(self.containerPillBtn,"prerender",self)
 end
 function EmberRoutesWarehousePage:activate()
     self.deliveryMiddleDown=type(isMouseButtonDown)=='function' and isMouseButtonDown(2) or false
@@ -150,20 +152,24 @@ function EmberRoutesWarehousePage:deactivate()
     Lifecycle.unmount(self)
     self.deliveryMiddleDown=nil
     if self.details then self.details:setVisible(true) end
-    if self.cartDrawer then self.cartDrawer:close() self.cartDrawer=nil self.cartDrawerOpen=false end
+    if self.cartDrawer then self.cartDrawer:dispose() self.cartDrawer=nil self.cartDrawerOpen=false end
     if self.containerInspectorDialog then self.containerInspectorDialog:close() self.containerInspectorDialog=nil end
     if self.cartButton then self.cartButton:setVisible(true) end
     if self.helpModal then self.helpModal:destroy() self.helpModal=nil end
-    Tooltip.clearOwner(self)
+    Tooltip.dismissOwner(self)
     self.locator:clear()
     for _,combo in ipairs({self.categories,self.controls.sort}) do
         if combo.expanded then combo:hidePopup() combo.expanded=false end
     end
-    self.search:unfocus()
+    if self.search and self.search.unfocus then self.search:unfocus() end
 end
 function EmberRoutesWarehousePage:dispose()
     if self.disposed then return end
-    self.disposed=true self:deactivate() self.presentation:clear()
+    self.disposed=true
+    if self.cartDrawer then self.cartDrawer:dispose() self.cartDrawer=nil self.cartDrawerOpen=false end
+    self:deactivate()
+    Tooltip.unregisterOwner(self)
+    self.presentation:clear()
 end
 function EmberRoutesWarehousePage:close() self.owner:close() end
 function EmberRoutesWarehousePage:togglePin(row)

@@ -78,9 +78,9 @@
 
 ### 1. `PersonnelPage` 动态生理与静态数据分离
 1. **静态与慢速数据（已有 Service 缓存）**：
-   - 性别、职业、立绘（[`PersonnelService.lua:67-108`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L67-L108)）：一次性解析并永久缓存于 `cache[id].static`；
-   - 技能等级与 XP 倍率（[`PersonnelService.lua:151-171`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L151-L171)）：缓存在 `cache[id].static.skills` 中，仅在结算或 LevelPerk 时失效；
-   - 已知配方与特质（[`PersonnelService.lua:172-187`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L172-L187)）：缓存在 `static` 表中。
+   - 性别、职业、立绘（[`PersonnelService.lua:67-108`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L67-L108)）：一次性解析并永久缓存于内部闭包 `cache[id].value`（由 `static()` 生成）；
+   - 技能等级与 XP 倍率（[`PersonnelService.lua:151-171`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L151-L171)）：缓存在 `cache[id].value.skills` 中，仅在结算或 LevelPerk 时失效；
+   - 已知配方与特质（[`PersonnelService.lua:172-187`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L172-L187)）：缓存在 `cache[id].value` 表中。
 2. **动态生理与健康数据（引擎底层绝对无事件通知）**：
    - 饥饿、疲劳、口渴、压力、情绪（[`PersonnelService.lua:110-127`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L110-L127)）：Java 虚拟机在游戏刻内逐刻更新，Kahlua 侧无 Listener 机制；
    - 身体损伤（生命值、流血部位数、感染、骨折创伤）（[`PersonnelService.lua:129-149`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/PersonnelService.lua#L129-L149)）：同样无事件通知。

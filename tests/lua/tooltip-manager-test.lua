@@ -435,6 +435,75 @@ check(
 )
 
 ----------------------------------------------------------------
+-- 16. WarehousePage lifecycle simulation: page switching,
+--     cart drawer opening/closing/disposing, explicit button
+--     tooltips, and unregister
+----------------------------------------------------------------
+local whPage = { Type = "WarehousePage" }
+local zoneBtn = makeWidget()
+local helpBtn = makeWidget()
+local cartBtn = makeWidget()
+local pillBtn = makeWidget()
+local origZonePrerender = zoneBtn.prerender
+local origCartPrerender = cartBtn.prerender
+
+-- Step A: Attach all 4 native Warehouse buttons
+TooltipManager.attach(zoneBtn, "prerender", whPage)
+TooltipManager.attach(helpBtn, "prerender", whPage)
+TooltipManager.attach(cartBtn, "prerender", whPage)
+TooltipManager.attach(pillBtn, "prerender", whPage)
+
+-- Show tooltips
+zoneBtn.tooltipUI:setVisible(true)
+helpBtn.tooltipUI:setVisible(true)
+cartBtn.tooltipUI:setVisible(true)
+pillBtn.tooltipUI:setVisible(true)
+
+-- Step B: Open cart drawer (docked child drawer)
+local drawerInstance1 = { Type = "DeliveryCartDrawer", owner = whPage }
+local drawerBtn1 = makeWidget()
+local origDrawerBtn1Prerender = drawerBtn1.prerender
+TooltipManager.attach(drawerBtn1, "prerender", drawerInstance1)
+drawerBtn1.tooltipUI:setVisible(true)
+
+check(zoneBtn.tooltipUI:getIsVisible() == true, "warehouse button tooltip visible before switch")
+check(drawerBtn1.tooltipUI:getIsVisible() == true, "drawer button tooltip visible before switch")
+
+-- Step C: Switch away (WarehousePage:deactivate)
+-- 1. Drawer is disposed: calls unregisterOwner(drawerInstance1)
+local drawerUnregCount = TooltipManager.unregisterOwner(drawerInstance1)
+check(drawerUnregCount == 1, "drawer:dispose unregisters drawer widget")
+check(drawerBtn1.prerender == origDrawerBtn1Prerender, "drawer widget native method restored")
+
+-- 2. WarehousePage is dismissed: calls dismissOwner(whPage)
+local pageDismissCount = TooltipManager.dismissOwner(whPage)
+check(pageDismissCount == 4, "dismissOwner(whPage) hides 4 warehouse button tooltips")
+check(zoneBtn.tooltipUI:getIsVisible() == false, "zoneBtn tooltip hidden after page switch")
+check(cartBtn.tooltipUI:getIsVisible() == false, "cartBtn tooltip hidden after page switch")
+check(zoneBtn.prerender ~= origZonePrerender, "whPage buttons remain wrapped during dismiss")
+
+-- Step D: Switch back (WarehousePage:activate)
+-- Buttons are still registered and ready; re-opening drawer creates a new instance
+zoneBtn.tooltipUI:setVisible(true)
+local drawerInstance2 = { Type = "DeliveryCartDrawer", owner = whPage }
+local drawerBtn2 = makeWidget()
+local origDrawerBtn2Prerender = drawerBtn2.prerender
+TooltipManager.attach(drawerBtn2, "prerender", drawerInstance2)
+drawerBtn2.tooltipUI:setVisible(true)
+
+-- Step E: Repeated page switch (deactivate again)
+TooltipManager.unregisterOwner(drawerInstance2)
+check(drawerBtn2.prerender == origDrawerBtn2Prerender, "second drawer instance cleanly unregistered")
+TooltipManager.dismissOwner(whPage)
+check(zoneBtn.tooltipUI:getIsVisible() == false, "zoneBtn tooltip hidden on second page dismiss")
+
+-- Step F: WarehousePage:dispose (Dashboard close)
+local whPageUnregCount = TooltipManager.unregisterOwner(whPage)
+check(whPageUnregCount == 4, "unregisterOwner(whPage) cleanly unregisters all 4 warehouse buttons")
+check(zoneBtn.prerender == origZonePrerender, "zoneBtn native method restored on page dispose")
+check(cartBtn.prerender == origCartPrerender, "cartBtn native method restored on page dispose")
+
+----------------------------------------------------------------
 -- Cleanup shared test globals
 ----------------------------------------------------------------
 TooltipManager.clearAll()

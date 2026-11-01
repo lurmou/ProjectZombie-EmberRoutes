@@ -310,14 +310,16 @@ end
 
 function EmberRoutesPersonnelPage:deactivate()
     Lifecycle.unmount(self)
-    Tooltip.clearOwner(self)
+    Tooltip.dismissOwner(self)
     if self.dossierDrawer then self.dossierDrawer:close() end
     if self.detailNpc then require('EmberRoutesProbe/PersonnelService').release(self.detailNpc) self.detailNpc=nil end
 end
 
 function EmberRoutesPersonnelPage:dispose()
     self.disposed=true
+    if self.dossierDrawer then self.dossierDrawer:dispose() self.dossierDrawer=nil end
     self:deactivate()
+    Tooltip.unregisterOwner(self)
 end
 
 function EmberRoutesPersonnelPage:refresh()

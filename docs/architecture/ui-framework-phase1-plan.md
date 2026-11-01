@@ -24,7 +24,7 @@ Phase 1 任务看板 (修正版)
 ├── [已完成] Task 1.2: ActivityScenarioCard 接入 CardPanel.draw (消除手写背景绘制)
 ├── [已完成] Task 1.3: PersonnelPage 消除双重 project 冗余调用
 ├── [已完成] Task 1.4: ActivityDialog 消除双轨制，重构为透明转发 Shim
-├── [待实施] Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0)
+├── [已实施] Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0 - 核心重构与仓储补丁完成)
 ├── [待实施] Task 1.5B: 新组件 Static Draw 零 GC 规范合规化 (P1)
 ├── [待实施] Task 1.6: LifecycleScope 双层作用域基础设施落地 (P0)
 ├── [待实施] Task 1.7: RefreshScheduler 统一调度器建设 (P0)
@@ -36,7 +36,7 @@ Phase 1 任务看板 (修正版)
 
 ## 三、待实施任务具体拆解方案
 
-### Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0)
+### Task 1.5A: TooltipManager 架构修正与双层生命周期对齐 (P0 - 已实施，完成收尾补丁)
 - **代码位置**：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/TooltipManager.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/TooltipManager.lua)
 - **痛点分析**：
   1. `clearOwner` 仅将 `registry[widget].owner` 置空，未移除条目，产生强引用内存泄漏；
@@ -46,10 +46,15 @@ Phase 1 任务看板 (修正版)
   1. **职责正交拆分**：
      - `Manager.dismissOwner(owner)`：页面切出（`deactivate`）调用，仅将当前处于 visible 状态的 tooltipUI 设为 false，保留注册表与所有权关系；
      - `Manager.unregisterOwner(owner)`：页面真正注销（`dispose`）调用，彻底清空 `owners`、从 `registry` 移除、还原原生 hook；
-  2. **消除业务硬编码**：移除 `owner.details`、`owner.skillsList` 等特例属性判断，改由父级 `ISPanel.children` 通用递归或由 Scope 集中登记；
-  3. **Owner 变更支持**：`register` 时若已有旧 owner，先从 `owners[oldOwner]` 干净移除该 widget。
-- **验收标准**：
-  - 新建 `tests/lua/tooltip-lifecycle-test.lua`，覆盖“注册 -> 显示 -> 切出 -> 切回 -> 显示 -> 再次切出”循环，断言 Tooltip 正常显示且被正确 dismiss，无幽灵残留；断言 dispose 后 registry 为空。
+  2. **消除业务硬编码与通用祖先链追踪**：移除 `owner.details` 等特例属性判断，改由通用所有权链递归或显式 owner 登记；
+  3. **PZ Kahlua 运行时兼容**：使用 `pairs` 代替不存在的全局 `next` 进行空表安全检测；
+  4. **收尾补丁落地**：
+     - `WarehousePage:deactivate()` 接入 `cartDrawer:dispose()`，并在 `dispose()` 中完整对称释放；
+     - `WarehousePage` 的 4 个原生物理控件（自动划区、帮助、购物车、容器汇总按钮）显式调用 `Tooltip.attach(..., "prerender", self)`。
+- **验收标准与落地证据**：
+  - `tests/lua/tooltip-manager-test.lua`（47 项生命周期回归断言 + Section 16 仓储抽屉与控件反复切换集成测试，全部通过）；
+  - JVM `tests/java/KahluaUiTextTest.java` 跑通真机 Kahlua 虚拟机验证；
+  - `tests/lua/delivery-cart-test.lua` 断言 `WarehousePage:deactivate()` 触发 `cartDrawer:dispose()` 且清理引用。
 
 ---
 
@@ -120,14 +125,18 @@ Phase 1 任务看板 (修正版)
 - **重构方案**：
   1. **数据三级解耦**：
      - **名册结构 (Level 1)**：通过 `MembershipService` 与 `PublicWork` 驱动，事件触发；
-     - **静态技能档案 (Level 2)**：利用 `PersonnelService.cache[id].static` 永久缓存，LevelPerk 时置脏；
-     - **动态健康生理 (Level 3)**：列表项仅读取简明标量状态；仅在详情抽屉展开时，针对当前选中的居民（`selected`），通过 Scheduler FAST 节拍（3~5s）采样；
+     - **静态技能档案 (Level 2)**：利用 `PersonnelService` 内部闭包 `cache[id].value`（由内部 `static(handle)` 产出）永久缓存，LevelPerk 或角色研习完成时按需置脏；
+     - **动态健康生理 (Level 3)**：
+       - 列表项仅展示极轻量的标量健康标记，不进行全员深度 JNI 扫描；
+       - `PersonnelPage` 主页面右侧具有常驻的生理检查器（Physiological Inspector，`self.info`），因此在页面处于激活状态且有居民选中（`selected`）时，通过 Scheduler FAST 节拍（3~5s）采样当前选中居民的生理指标（生命值、流血、感染、饥饿、口渴、疲劳等）；
+       - 当详情抽屉（DossierDrawer）进一步展开时，通过 `PersonnelService.details` 采样心情（Mood: STRESS/UNHAPPINESS/BOREDOM/PANIC）与日常日程（Study/Leisure）；
+       - 页面切出（`deactivate`）时完全停止一切采样。
   2. **调度接入**：
      - 移除 `PersonnelPage:update` 中的 `self.nextSyncCheck` 手写轮询；
      - `ActivityPage` 的 1 秒 `Service.revision` 轮询统一接入 Scheduler SLOW 节拍；
      - 页面 `deactivate` 时由 `ActivationScope` 自动暂停采样。
 - **验收标准**：
-  - 编写 `tests/lua/personnel-refresh-test.lua`，断言抽屉关闭时不读取单人生理细节；切页后后台 0 采样。
+  - 编写 `tests/lua/personnel-refresh-test.lua`，断言主页面仅对当前聚焦居民进行生理采样；无聚焦或切页后后台 0 采样。
 
 ---
 

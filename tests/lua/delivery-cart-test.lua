@@ -74,6 +74,7 @@ function Base:addItem(label, item, tooltip)
     return entry
 end
 function Base:setTitle(t) self.title = t end
+function Base:unfocus() self.focus = false end
 function Base:setEnable(v) self.enable = v end
 function Base:drawText() end
 function Base:drawRect() end
@@ -362,4 +363,26 @@ for _,h in ipairs({14,18,28}) do
 end
 page:toggleCartDrawer(false)
 check(page.sourceList:isVisible() and not page.cartDrawer:isVisible(),'close hides drawer without losing draft')
+
+-- Test 12: WarehousePage deactivate and dispose lifecycle
+page:toggleCartDrawer(true)
+check(page.cartDrawer ~= nil and page.cartDrawer:isVisible() == true, "cartDrawer instantiated and visible before deactivate")
+local drawerDisposeCalled = false
+local originalDrawerDispose = page.cartDrawer.dispose
+page.cartDrawer.dispose = function(self)
+    drawerDisposeCalled = true
+    if originalDrawerDispose then originalDrawerDispose(self) else self:close() end
+end
+page:deactivate()
+check(drawerDisposeCalled == true, "page:deactivate() invokes cartDrawer:dispose() instead of close()")
+check(page.cartDrawer == nil, "page.cartDrawer reference cleared after deactivate")
+check(page.cartDrawerOpen == false, "cartDrawerOpen reset to false after deactivate")
+
+-- Re-open drawer after reactivation
+page.active = true
+page:toggleCartDrawer(true)
+check(page.cartDrawer ~= nil and page.cartDrawer:isVisible() == true, "cartDrawer re-instantiated on subsequent toggle")
+page:dispose()
+check(page.cartDrawer == nil, "page:dispose() cleanly clears cartDrawer")
+
 print(string.format("PASS: %d delivery cart checks passed cleanly!", checks))
