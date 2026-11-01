@@ -2,6 +2,7 @@ local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Claims=require "EmberRoutesProbe/LaborClaims"
 local CraftRecord=require "EmberRoutesProbe/CraftRecord"
 local Manifest=require 'EmberRoutesProbe/HaulManifest'
+local Evidence=require 'EmberRoutesProbe/QuarantineEvidence'
 local Store={}
 local root,ledger,claims,tokens
 local nativeTokens={}
@@ -62,9 +63,11 @@ function Store.data()
                 -- Revert status to ACTIVE, preserve diagnostic trace, and KEEP QUARANTINE PROTECTED!
                 qRecord.status = "ACTIVE"
                 qRecord.interruptedResolution = qRecord.resolution
-                qRecord.interruptedEvidence = qRecord.resolvingEvidence
+		qRecord.interruptedEvidence,qRecord.interruptedEvidenceReport = Evidence.snapshot(
+		    qRecord.resolvingEvidence,qRecord.resolvingEvidenceReport)
                 qRecord.resolution = nil
                 qRecord.resolvingEvidence = nil
+		qRecord.resolvingEvidenceReport = nil
                 qRecord.resolvingAt = nil
                 rebuilt:restoreQuarantine(qKey, qRecord)
             elseif type(qRecord) == "table" and qRecord.status == "RESOLVED" then
@@ -146,9 +149,14 @@ function Store.data()
             end
 	end
 	local function attachCollision(q,id,conflict)
-	    if type(q.evidence)~='table' then q.evidence={priorEvidence=q.evidence} end
-	    q.evidence.identityCollisions=q.evidence.identityCollisions or {}
-	    q.evidence.identityCollisions[id]=conflict
+	    local facts,priorReport=Evidence.snapshot(q.evidence,q.evidenceReport)
+	    if type(facts)~='table' then facts={priorEvidence=facts} end
+	    if type(facts.identityCollisions)~='table' then
+		facts.priorIdentityCollisions=facts.identityCollisions
+		facts.identityCollisions={}
+	    end
+	    facts.identityCollisions[id]=conflict
+	    q.evidence,q.evidenceReport=Evidence.snapshot(facts,priorReport)
         end
         local replacements={}
         for _,e in ipairs(candidates) do
@@ -280,6 +288,8 @@ function Store.data()
                     evidence = { claimants = claimantIds },
                     at = (os and os.time and os.time() or 0)
                 }
+		local q=current.quarantineResources[key]
+		q.evidence,q.evidenceReport=Evidence.snapshot(q.evidence)
             end
             rebuilt:quarantine(key)
         end
@@ -730,6 +740,25 @@ function Store.getToken(jobId)
 end
 function Store.quarantineResource(key,reason,evidence)
     Store.data()
+    local prior=root.quarantineResources and root.quarantineResources[key]
+    local source=evidence
+    local priorReport
+    if type(prior)=='table' then
+	-- A repeated isolation is a new event, not permission to overwrite an
+	-- incomplete event with clean input. Keep the prior facts/diagnostics
+	-- in the same bounded Evidence tree; no separate history ledger.
+	source={prior={evidence=prior.evidence,report=prior.evidenceReport,
+	    interruptedEvidence=prior.interruptedEvidence,interruptedReport=prior.interruptedEvidenceReport,
+	    pendingEvidence=prior.resolvingEvidence,pendingReport=prior.resolvingEvidenceReport},current=evidence}
+	for _,field in ipairs({'evidenceReport','interruptedEvidenceReport','resolvingEvidenceReport'}) do
+	    local _,checked=Evidence.snapshot(nil,prior[field])
+	    if not checked.complete then
+		priorReport={format=1,complete=false,errors={{path='$.prior',reason='PRIOR_EVIDENCE_INCOMPLETE'}}}
+		break
+	    end
+	end
+    end
+    local evidenceFacts,evidenceReport=Evidence.snapshot(source,priorReport)
     local ok, owner = claims:quarantine(key)
     if not ok then return false, "QUARANTINE_FAILED" end
     if root then
@@ -737,7 +766,8 @@ function Store.quarantineResource(key,reason,evidence)
         root.quarantineResources[key]={
             status="ACTIVE",
             reason=reason or "UNKNOWN",
-            evidence=evidence,
+	    evidence=evidenceFacts,
+	    evidenceReport=evidenceReport,
             at=(os and os.time and os.time() or 0),
             originalTaskId=owner and owner.originalTaskId,
             originalClaimId=owner and owner.originalClaimId,
@@ -748,6 +778,16 @@ function Store.quarantineResource(key,reason,evidence)
         }
     end
     return true
+end
+-- Diagnostic/manual-reconciliation views. These never expose persisted tables,
+-- migrate legacy records or authorize resource release.
+function Store.quarantineRecord(key)
+    Store.data()
+    return Evidence.snapshot(root.quarantineResources and root.quarantineResources[key])
+end
+function Store.quarantineAuditRecord(key)
+    Store.data()
+    return Evidence.snapshot(root.quarantineAudit and root.quarantineAudit[key])
 end
 function Store.unquarantineResource(key,resolution,evidence)
     Store.data()
@@ -766,6 +806,23 @@ function Store.unquarantineResource(key,resolution,evidence)
     if (not qRec) and root and root.quarantineAudit and root.quarantineAudit[key] then
         return true -- idempotent: already unquarantined and settled in audit ledger
     end
+    if qRec and qRec.status=='RESOLVED' then return true end
+    -- Validate BEFORE RESOLVING or any kernel mutation. Inspect legacy evidence
+    -- without rewriting it. Incomplete creation/recovery requires reconciliation;
+    -- clean replacement input is not permission to erase that responsibility.
+    if qRec then
+	local _,creationReport=Evidence.snapshot(qRec.evidence,qRec.evidenceReport)
+	local _,interruptedReport=Evidence.snapshot(qRec.interruptedEvidence,qRec.interruptedEvidenceReport)
+	local _,pendingReport=Evidence.snapshot(qRec.resolvingEvidence,qRec.resolvingEvidenceReport)
+	if not creationReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',creationReport end
+	if not interruptedReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',interruptedReport end
+	if not pendingReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',pendingReport end
+    end
+    local evidenceFacts,evidenceReport=Evidence.snapshot(evidObj)
+    if not evidenceReport.complete then return false,'RESOLUTION_EVIDENCE_INVALID',evidenceReport end
+    -- Intent and completed history own separate snapshots, even if an internal
+    -- observer retains the removed quarantine record after successful release.
+    local auditEvidence,auditEvidenceReport=Evidence.snapshot(evidenceFacts,evidenceReport)
     -- Resolution is a runtime command and may contain a live Token. Persist a
     -- separate scalar intent/result, never the command table or its handles.
     local resolutionFacts={capacityAction=type(resObj.capacityAction)=='string' and resObj.capacityAction or 'RELEASE'}
@@ -782,7 +839,8 @@ function Store.unquarantineResource(key,resolution,evidence)
         end
         qRec.status = "RESOLVING"
 	qRec.resolution = resolutionFacts
-        qRec.resolvingEvidence = evidObj
+	qRec.resolvingEvidence = evidenceFacts
+	qRec.resolvingEvidenceReport = evidenceReport
         qRec.resolvingAt = (os and os.time and os.time() or 0)
     end
 
@@ -793,6 +851,7 @@ function Store.unquarantineResource(key,resolution,evidence)
             qRec.status = "ACTIVE"
             qRec.resolution = nil
             qRec.resolvingEvidence = nil
+	    qRec.resolvingEvidenceReport = nil
             qRec.resolvingAt = nil
         end
         return false, err or "UNQUARANTINE_FAILED"
@@ -805,7 +864,8 @@ function Store.unquarantineResource(key,resolution,evidence)
             action = "UNQUARANTINE",
             status = "RESOLVED",
 	    resolution = resolutionFacts,
-            evidence = evidObj,
+	    evidence = auditEvidence,
+	    evidenceReport = auditEvidenceReport,
             at = now,
 	    capacityAction = resolutionFacts.capacityAction,
 	    recipientTaskId = resolutionFacts.recipientTaskId,

@@ -2312,4 +2312,5 @@ end)()
 
 print("PASS Part 6: Stage B.4 Edge Cases and Abnormal Recovery Scenarios.")
 
+dofile('tests/lua/quarantine-evidence-test.lua')
 print("PASS: All Phase 3A Stage B LaborClaims & LaborStore tests passed successfully!")
