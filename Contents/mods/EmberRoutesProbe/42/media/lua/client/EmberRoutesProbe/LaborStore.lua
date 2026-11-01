@@ -738,27 +738,30 @@ function Store.getToken(jobId)
     if claims.tokensByTaskId and claims.tokensByTaskId[jobId] then return claims.tokensByTaskId[jobId] end
     return tokens[jobId] or nativeTokens[jobId] or personalTokens[jobId] or cookingTokens[jobId] or activityTokens[jobId] or fieldTokens[jobId] or (custodyTokens and custodyTokens[jobId])
 end
-function Store.quarantineResource(key,reason,evidence)
-    Store.data()
-    local prior=root.quarantineResources and root.quarantineResources[key]
-    local source=evidence
-    local priorReport
-    if type(prior)=='table' then
-	-- A repeated isolation is a new event, not permission to overwrite an
-	-- incomplete event with clean input. Keep the prior facts/diagnostics
-	-- in the same bounded Evidence tree; no separate history ledger.
-	source={prior={evidence=prior.evidence,report=prior.evidenceReport,
-	    interruptedEvidence=prior.interruptedEvidence,interruptedReport=prior.interruptedEvidenceReport,
-	    pendingEvidence=prior.resolvingEvidence,pendingReport=prior.resolvingEvidenceReport},current=evidence}
-	for _,field in ipairs({'evidenceReport','interruptedEvidenceReport','resolvingEvidenceReport'}) do
-	    local _,checked=Evidence.snapshot(nil,prior[field])
-	    if not checked.complete then
-		priorReport={format=1,complete=false,errors={{path='$.prior',reason='PRIOR_EVIDENCE_INCOMPLETE'}}}
-		break
+local function sealEvidenceEvents(record)
+    local history
+    if record.evidenceEvents~=nil then history=Evidence.snapshotEvents(record.evidenceEvents)
+    else history=Evidence.appendEvent(nil,record.evidence,record.evidenceReport) end
+    -- Complete the current event with its latest derived collision/recovery
+    -- facts, then freeze that event before a successor is appended/archived.
+    local last=history.events[#history.events]
+    if last then
+	last.evidence,last.report=Evidence.snapshot(record.evidence,record.evidenceReport)
+	for _,pair in ipairs({{'interruptedEvidence','interruptedReport'},{'resolvingEvidence','pendingReport'}}) do
+	    local field,meta=pair[1],pair[2]
+	    if record[field]~=nil or record[field..'Report']~=nil then
+		local destination=field=='resolvingEvidence' and 'pendingEvidence' or field
+		last[destination],last[meta]=Evidence.snapshot(record[field],record[field..'Report'])
 	    end
 	end
     end
-    local evidenceFacts,evidenceReport=Evidence.snapshot(source,priorReport)
+    return Evidence.snapshotEvents(history)
+end
+function Store.quarantineResource(key,reason,evidence)
+    Store.data()
+    local prior=root.quarantineResources and root.quarantineResources[key]
+    local history=type(prior)=='table' and sealEvidenceEvents(prior) or nil
+    local evidenceEvents,evidenceReport,evidenceFacts=Evidence.appendEvent(history,evidence)
     local ok, owner = claims:quarantine(key)
     if not ok then return false, "QUARANTINE_FAILED" end
     if root then
@@ -768,6 +771,7 @@ function Store.quarantineResource(key,reason,evidence)
             reason=reason or "UNKNOWN",
 	    evidence=evidenceFacts,
 	    evidenceReport=evidenceReport,
+	    evidenceEvents=evidenceEvents,
             at=(os and os.time and os.time() or 0),
             originalTaskId=owner and owner.originalTaskId,
             originalClaimId=owner and owner.originalClaimId,
@@ -783,11 +787,11 @@ end
 -- migrate legacy records or authorize resource release.
 function Store.quarantineRecord(key)
     Store.data()
-    return Evidence.snapshot(root.quarantineResources and root.quarantineResources[key])
+    return Evidence.snapshotRecord(root.quarantineResources and root.quarantineResources[key])
 end
 function Store.quarantineAuditRecord(key)
     Store.data()
-    return Evidence.snapshot(root.quarantineAudit and root.quarantineAudit[key])
+    return Evidence.snapshotRecord(root.quarantineAudit and root.quarantineAudit[key])
 end
 function Store.unquarantineResource(key,resolution,evidence)
     Store.data()
@@ -817,12 +821,15 @@ function Store.unquarantineResource(key,resolution,evidence)
 	if not creationReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',creationReport end
 	if not interruptedReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',interruptedReport end
 	if not pendingReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',pendingReport end
+	local _,historyReport=Evidence.snapshotEvents(qRec.evidenceEvents)
+	if not historyReport.complete then return false,'QUARANTINE_EVIDENCE_INCOMPLETE',historyReport end
     end
     local evidenceFacts,evidenceReport=Evidence.snapshot(evidObj)
     if not evidenceReport.complete then return false,'RESOLUTION_EVIDENCE_INVALID',evidenceReport end
     -- Intent and completed history own separate snapshots, even if an internal
     -- observer retains the removed quarantine record after successful release.
     local auditEvidence,auditEvidenceReport=Evidence.snapshot(evidenceFacts,evidenceReport)
+    local auditEvents=qRec and sealEvidenceEvents(qRec) or nil
     -- Resolution is a runtime command and may contain a live Token. Persist a
     -- separate scalar intent/result, never the command table or its handles.
     local resolutionFacts={capacityAction=type(resObj.capacityAction)=='string' and resObj.capacityAction or 'RELEASE'}
@@ -866,6 +873,7 @@ function Store.unquarantineResource(key,resolution,evidence)
 	    resolution = resolutionFacts,
 	    evidence = auditEvidence,
 	    evidenceReport = auditEvidenceReport,
+	    evidenceEvents = auditEvents,
             at = now,
 	    capacityAction = resolutionFacts.capacityAction,
 	    recipientTaskId = resolutionFacts.recipientTaskId,
@@ -938,6 +946,13 @@ function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
 
     local addKeys = mutation and mutation.addKeys
     local removeKeys = mutation and mutation.removeKeys
+    if addKeys then
+	local seen={}
+	for _,key in ipairs(addKeys) do
+	    if seen[key] then return false,'RESOURCE_DUPLICATED' end
+	    seen[key]=true
+	end
+    end
 
     -- 1. Mutually exclusive validation: addKeys ∩ removeKeys must be empty
     if addKeys and removeKeys and #addKeys > 0 and #removeKeys > 0 then

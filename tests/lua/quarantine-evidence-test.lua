@@ -178,8 +178,8 @@ check(s.quarantineResource('item:27402','REPEATED',{clean='new facts'}),'Repeate
 check(not s.unquarantineResource('item:27402',{evidence={verified=true}}),
     'Repeated quarantine with clean input cannot erase prior incomplete evidence')
 local repeated=detached.quarantineResources['item:27402']
-eq(repeated.evidence.prior.evidence.safe,'kept','Repeated quarantine preserves prior safe facts')
-eq(repeated.evidence.current.clean,'new facts','Repeated quarantine preserves new safe facts')
+eq(repeated.evidenceEvents.events[1].evidence.safe,'kept','Repeated quarantine preserves prior safe facts')
+eq(repeated.evidence.clean,'new facts','Repeated quarantine preserves new safe facts')
 world,s,c,t=worldWithItem(27403)
 check(s.quarantineResource('item:27403','PENDING',{proof=true}),'Create pending-resolution fixture')
 local pending=world.quarantineResources['item:27403']
@@ -188,4 +188,80 @@ pending.resolvingEvidence={bad=function() end}
 check(not s.unquarantineResource('item:27403',{evidence={clean=true}}),'New input cannot overwrite incomplete pending evidence')
 eq(pending.status,'RESOLVING','Failed gate leaves existing pending status unchanged')
 eq(c.capacity['evidence-bin'].total,3,'Pending evidence rejection retains capacity')
+
+-- F1: internal event wrappers must not consume the caller's payload depth budget.
+world,s,c,t=worldWithItem(28000)
+local deepest={proof=true};local branch=deepest
+for i=1,E.MAX_DEPTH do branch.child={} branch=branch.child end
+check(select(2,E.snapshot(deepest)).complete,'Fixture reaches the legal payload depth')
+for i=1,20 do
+    check(s.quarantineResource('item:28000','REPEAT',deepest),'Protect repeated quarantine '..i)
+    check(world.quarantineResources['item:28000'].evidenceReport.complete,'Legal repeat stays complete '..i)
+end
+local view,viewReport=s.quarantineRecord('item:28000')
+check(viewReport.complete,'Reading event history does not consume payload depth')
+eq(#view.evidenceEvents.events,20,'Fixed-level history keeps all twenty events')
+view.evidenceEvents.events[1].evidence.proof=false
+check(world.quarantineResources['item:28000'].evidenceEvents.events[1].evidence.proof,'Event read is detached')
+local retained=s.quarantineRecord('item:28000')
+world={containers={},taskJobs={format=1,byId={}},quarantineResources={['item:28000']=retained}}
+s=boot(world)
+eq(s.claimsInstance().capacity['evidence-bin'].total,3,'Twenty-event reload preserves capacity')
+check(s.unquarantineResource('item:28000','VERIFIED'),'Twenty healthy events still allow normal release')
+local archive,archiveReport=s.quarantineAuditRecord('item:28000')
+check(archiveReport.complete,'Completed history can be read at full payload depth')
+eq(#archive.evidenceEvents.events,20,'Completion preserves detached event history')
+retained.evidenceEvents.events[1].evidence.proof=false
+check(archive.evidenceEvents.events[1].evidence.proof,'Removed internal record cannot alter completed history')
+
+world,s,c,t=worldWithItem(28001)
+for i=1,E.MAX_EVENTS do check(s.quarantineResource('item:28001','LIMIT',{event=i}),'Append bounded event') end
+check(world.quarantineResources['item:28001'].evidenceReport.complete,'History is complete at its exact limit')
+check(s.quarantineResource('item:28001','LIMIT',{event=E.MAX_EVENTS+1}),'History overflow still protects original')
+local limited=world.quarantineResources['item:28001']
+check(not limited.evidenceReport.complete,'Overflow is explicitly incomplete')
+eq(#limited.evidenceEvents.events,E.MAX_EVENTS,'Stored event count remains bounded')
+eq(limited.evidenceEvents.omittedEvents,1,'Overflow count is explicit')
+check(not s.unquarantineResource('item:28001','ATTEMPT'),'Overflow cannot silently discard unresolved history')
+
+world={containers={},taskJobs={format=1,byId={}}};s=boot(world);c=s.claimsInstance()
+check(s.createClaimedJob({id='duplicate-add',npcId='npc',providerType='CRAFT',scopeId='local-world',
+    revision=1,state='PREPARING',effects='KNOWN',obligations={},payload={format=4,sequence=0,
+	recipeId='Base.MakeAxe',target=1,produced=0,materials={{id=28200}},tools={},outputs={},claims={'item:28200'}}}),
+    'Create duplicate-add fixture through authority')
+local jobs=require('EmberRoutesProbe/TaskJobs').current()
+local proposal=jobs:get('duplicate-add').payload
+proposal.materials[#proposal.materials+1]={id=28201};proposal.claims[#proposal.claims+1]='item:28201'
+local duplicateKeys={} for i=1,9 do duplicateKeys[i]='item:28201' end
+local update=jobs.update;local reachedCAS=false
+jobs.update=function() reachedCAS=true return false,'FORCED_CAS_FAILURE' end
+local accepted,why=s.mutateJob('duplicate-add',1,proposal,{addKeys=duplicateKeys})
+jobs.update=update
+check(not accepted and why=='RESOURCE_DUPLICATED','Duplicate addKeys rejected explicitly')
+check(not reachedCAS,'Duplicate input rejected before CAS')
+eq(c.owners['item:28201'],nil,'Duplicate input acquires no new resource')
+eq(world.quarantineResources['item:28201'],nil,'Duplicate input creates no repeated quarantine')
+eq(jobs:get('duplicate-add').revision,1,'Duplicate input preserves Job revision')
+
+local ordinary,ordinaryReport=E.snapshot({kind='SYSTEM_QUARANTINE',note='historical diagnostic fact'})
+check(ordinaryReport.complete and ordinary.kind=='SYSTEM_QUARANTINE','Kind string alone is not a runtime token')
+local _,systemOwner=c:quarantine('item:28200')
+check(not select(2,E.snapshot(systemOwner)).complete,'Actual SYSTEM_QUARANTINE owner remains rejected')
+
+-- Identity collision annotation must preserve incompleteness in old evidence.
+world={nextClaimSeq=100,containers={},taskJobs={format=1,byId={}},quarantineResources={
+    ['item:28400']={status='ACTIVE',originalTaskId='other-task',originalClaimId='collision-task:c1',
+	evidence={safe='kept',bad=function() end}}}}
+world.taskJobs.byId['collision-task']={id='collision-task',npcId='npc-collision',providerType='CRAFT',
+    scopeId='local-world',revision=1,state='RUNNING',effects='KNOWN',obligations={},claimId='collision-task:c1',
+    payload={format=4,sequence=0,recipeId='Base.MakeAxe',target=1,produced=0,materials={{id=28401}},
+	tools={},outputs={},claims={'item:28401'}}}
+s=boot(world)
+local conflicted=world.quarantineResources['item:28400']
+eq(conflicted.evidence.safe,'kept','Collision annotation retains old safe evidence')
+check(not conflicted.evidenceReport.complete,'Collision annotation preserves incomplete status')
+check(conflicted.evidence.identityCollisions['collision-task']~=nil,'Collision participants still recorded')
+eq(s.getToken('collision-task'),nil,'Colliding task does not obtain a token')
+check(not s.unquarantineResource('item:28400','ATTEMPT'),'Collision cannot erase old evidence failure')
+eq(s.resourceOwner('item:28400').kind,'SYSTEM_QUARANTINE','Combined failure keeps system ownership')
 print('PASS '..count..' Evidence snapshot/creation/release/recovery/read-only checks; PZ disk save NOT RUN')
