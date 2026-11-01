@@ -120,13 +120,13 @@ function Store.data()
             end
         end
         table.sort(candidates,function(a,b)
-            if a.id==b.id then return (a.record.claimId or '') < (b.record.claimId or '') end
+	    if a.id==b.id then return tostring(a.record.claimId or '') < tostring(b.record.claimId or '') end
             return a.id<b.id
         end)
         for _,e in ipairs(candidates) do
             -- Preserve even a mismatched legacy/custody identity long enough to
             -- detect its collision. Repairing it first would erase the evidence.
-            e.claimId=e.record.claimId or ensureEntityClaimId(current,e.record,e.id)
+	    e.claimId=type(e.record.claimId)=='string' and e.record.claimId or ensureEntityClaimId(current,e.record,e.id)
             identity(e.claimId,e.id)
             for _,key in ipairs(e.keys) do identity(e.claimId,e.id,key) end
         end
@@ -144,6 +144,11 @@ function Store.data()
                 for id in pairs(g.taskIds) do conflict.taskIds[id]=true end
                 for key in pairs(g.resourceKeys) do conflict.resourceKeys[key]=true end
             end
+	end
+	local function attachCollision(q,id,conflict)
+	    if type(q.evidence)~='table' then q.evidence={priorEvidence=q.evidence} end
+	    q.evidence.identityCollisions=q.evidence.identityCollisions or {}
+	    q.evidence.identityCollisions[id]=conflict
         end
         local replacements={}
         for _,e in ipairs(candidates) do
@@ -188,11 +193,16 @@ function Store.data()
                         current.quarantineResources[key]=q
                         rebuilt:restoreQuarantine(key,q)
                     end
-		    if type(q.evidence)~='table' then q.evidence={priorEvidence=q.evidence} end
-                    -- Preserve evidence from every task if resource sets also overlap.
-                    q.evidence.identityCollisions=q.evidence.identityCollisions or {}
-                    q.evidence.identityCollisions[e.id]=conflict
+		    attachCollision(q,e.id,conflict)
                 end
+	    end
+	end
+	-- Also annotate the original quarantine records, including conflicts
+	-- involving a task with no remaining resource keys of its own.
+	for id,conflict in pairs(collisions) do
+	    for key in pairs(conflict.resourceKeys) do
+		local q=current.quarantineResources[key]
+		if type(q)=='table' then attachCollision(q,id,conflict) end
             end
         end
 

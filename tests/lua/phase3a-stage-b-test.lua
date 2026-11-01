@@ -2149,6 +2149,30 @@ end
     assertEq(failedStore.claimsInstance().capacity['haul-bin'].total,4,'Failed resolution reload preserves capacity once')
     assertEq(failedStore.resourceOwner('item:22501').kind,'SYSTEM_QUARANTINE','Failed resolution reload preserves protection')
 
+    -- Non-item cooking batch promises must be isolated once, while ordinary
+    -- workstation keys must not accidentally inherit the same capacity amount.
+    local cook=require('EmberRoutesProbe/CookingRecord').new('cook-collision','npc-cook','scope','profile','AUTO','source',1,1)
+    assertTrue(cook~=nil,'Production CookingRecord creates the fixture')
+    cook.claimId='cook-collision:c1'
+    cook.obligations.storage=true
+    cook.obligations.station=true
+    cook.payload.capacity={endpointId='cold-bin',amount=6}
+    cook.payload.station={id='stove',leaseId='lease-stove',siteKey='craft-surface:stove',
+	ownerId=cook.npcId,state='RESERVED',position={x=1,y=1,z=0}}
+    cook.payload.claims={'cooking:capacity:cook-collision','craft-surface:stove'}
+    local cookingRoot={nextClaimSeq=100,containers={},taskJobs={format=1,byId={[cook.id]=cook}},
+	quarantineResources={['item:22600']={status='ACTIVE',originalTaskId='other-cook',originalClaimId=cook.claimId}}}
+    local cooking1,cookStore1=boot(cookingRoot,false)
+    assertFalse(cookStore1.getToken(cook.id)~=nil,'Cooking collision does not acquire a token')
+    assertEq(cookStore1.claimsInstance().capacity['cold-bin'].total,6,'Cooking capacity isolated exactly once')
+    assertEq(cooking1.quarantineResources['craft-surface:stove'].capacityAmount,nil,'Workstation does not duplicate batch capacity')
+    local cooking2,cookStore2=boot(cooking1,true)
+    assertEq(cookStore2.claimsInstance().capacity['cold-bin'].total,6,'Cooking reload preserves capacity exactly once')
+    assertTrue(cookStore2.unquarantineResource('cooking:capacity:cook-collision',{capacityAction='RELEASE'}),
+	'Explicit resolution releases the isolated batch reservation')
+    assertEq(cookStore2.claimsInstance().capacity['cold-bin'],nil,'Resolved non-item reservation leaves no capacity leak')
+    print('PASS legacy HAUL reload capacity=4; COOKING reload capacity=6, explicit RELEASE=0')
+
     -- Two custody entries share the same original claim identity. Neither may
     -- escape collision detection through prefix normalization or recover first.
     local custody={nextClaimSeq=100,containers={},taskJobs={format=1,byId={}},quarantineResources={},

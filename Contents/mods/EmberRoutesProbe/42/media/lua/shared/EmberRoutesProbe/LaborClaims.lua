@@ -235,9 +235,9 @@ function methods:unquarantine(key, resolution)
             claim.amount = claim.amount + foundQEntry.amount
             claim.token = targetToken
         else
-            if string.sub(key, 1, 5) == "item:" then
-                self:releaseQuarantineCapacity(key)
-            end
+	    -- Identity isolation can retain a cooking batch capacity key as
+	    -- well as an item key. Settle the reservation attached to THIS key.
+	    self:releaseQuarantineCapacity(key)
         end
 
         self.owners[key] = nil
