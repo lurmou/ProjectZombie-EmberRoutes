@@ -4,7 +4,7 @@ local M={}
 local states={UNCOLLECTED=true,CARRIED=true,RECONCILE=true,DELIVERED=true,WITHDRAWN=true}
 function M.pending(line) return line.custodyState~='DELIVERED' and line.custodyState~='WITHDRAWN' end
 function M.valid(r)
-    if r.format~=2 or (r.producer~='LOGISTICS' and r.producer~='DELIVERY') or type(r.source)~='string' or type(r.destination)~='string'
+    if (r.format~=2 and r.format~=3) or (r.producer~='LOGISTICS' and r.producer~='DELIVERY') or type(r.source)~='string' or type(r.destination)~='string'
         or type(r.settlementId)~='string' or type(r.items)~='table' or #r.items<1 or #r.items>30
         or type(r.manifest)~='table' or #r.manifest~=#r.items or r.plannedCount~=#r.items
         or not Validate.integer(r.routeRevision, 0, Validate.MAX_SAFE_INT - 1)
@@ -39,7 +39,7 @@ function M.create(r,locations)
     return lines
 end
 function M.claimItemIds(r)
-    if r.format~=2 then return r.items end
+    if r.format~=2 and r.format~=3 then return r.items end
     local ids={} for _,l in ipairs(r.manifest) do if M.pending(l) then ids[#ids+1]=l.itemId end end return ids
 end
 function M.line(r,id) for _,l in ipairs(r.manifest) do if l.itemId==id then return l end end end

@@ -135,7 +135,7 @@ end
 function Work.discardAutomatic(actor,id)
     local record=Store.record(id)
     if not record or record.producer~="LOGISTICS" or Work.busy(id) or Work.hasCargo(actor,id) then return false end
-    Store.clear(id) return true
+    return Store.clear(id)
 end
 function Work.pauseAll(reason)
     for id,worker in pairs(agents) do worker.pause(reason) schedule:remove(id) end

@@ -14,6 +14,7 @@ local Signals=require "EmberRoutesProbe/LaborSignals"
 local Log=require "EmberRoutesProbe/Log"
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Production={}
+local JobExecution=require "EmberRoutesProbe/ProductionJobs"
 local Yield=require 'EmberRoutesProbe/ProductionYield'
 local contexts,candidates,pending={},{},{}
 local requests={}
@@ -23,7 +24,7 @@ local function inventoryChanged() inventoryDirty=true inventoryRevision=inventor
 if Registry.inventoryListeners then Registry.inventoryListeners[#Registry.inventoryListeners+1]=inventoryChanged end
 if Events.OnContainerUpdate then Events.OnContainerUpdate.Add(inventoryChanged) end
 local function record(id)
-    return require('EmberRoutesProbe/BusinessJobs').crafts()[id]
+    return JobExecution.record(id)
 end
 function Production.handles(id)
     local request=requests[id]
@@ -32,7 +33,7 @@ function Production.handles(id)
         if state and (state.state=='PENDING' or state.state=='QUEUED' or state.state=='ACTIVE' or state.state=='STOPPING') then return true end
         requests[id]=nil
     end
-    local r=record(id) return contexts[id]~=nil or (r and r.format==3)
+    local r=record(id) return contexts[id]~=nil or (r and r.format==4)
 end
 function Production.busy(id) return contexts[id]~=nil end
 local function rejectUncollected(c,fact)
@@ -66,7 +67,8 @@ local function rejectUncollected(c,fact)
     end
     -- No original left its verified warehouse and no product was made. Release
     -- only this Job's claims AFTER confirmed stop, never erase unknown cargo.
-    Store.finishNative(r) r.released=true r.state='CANCELLED' r.phase='CANCELLED'
+    r.released=true r.state='CANCELLED' r.phase='CANCELLED'
+    if not JobExecution.commit(r) then return end
     c.completed=true c.closedGeneration=r.generation
     Log.write('PRODUCTION','npc='..r.npcId..' order='..r.id..' REJECTED_UNCOLLECTED CAPACITY_UNAVAILABLE')
 end
@@ -97,6 +99,8 @@ local function releaseBench(c)
     if c.ownsBench and c.object and c.object:getUsingPlayer()==c.npc then c.object:setUsingPlayer(nil) end c.ownsBench=false
 end
 local function changed(c,message)
+    local ok,why=JobExecution.commit(c.record)
+    if not ok then c.cancelled=true c.commitFailure=why end
     Signals.changed(c.record.npcId)
     if message then Log.write("PRODUCTION","npc="..c.record.npcId.." order="..c.record.id.." "..message) end
 end
@@ -120,7 +124,7 @@ function Production.pause(reason,id,owned)
     if reason~="SAVE" then candidates[id]=nil pending[id]=nil end
     local r=record(id)
     if not c then
-        if r and not r.released and reason=="USER" then r.generation=r.generation+1 r.state="PAUSED" r.reason=reason Signals.changed(id) end
+	if r and not r.released and reason=="USER" then r.generation=r.generation+1 r.state="PAUSED" r.reason=reason JobExecution.commit(r) Signals.changed(id) end
         return
     end
     r=c.record
@@ -153,7 +157,7 @@ function Production.pauseAll(reason)
     for id in pairs(requests) do ids[id]=true end
     for id in pairs(ids) do Production.pause(reason,id) end
 end
-function Production.reset() Production.pauseAll("WORLD_RESET") contexts,candidates,pending,requests={},{},{},{} waiting={} inventoryDirty=false end
+function Production.reset() Production.pauseAll("WORLD_RESET") JobExecution.reset() contexts,candidates,pending,requests={},{},{},{} waiting={} inventoryDirty=false end
 local function context(actor,binding,r,entry,object,body)
     local c={actor=actor,npc=binding.handle,binding=binding,record=r,entry=entry,object=object,root=Registry.data(),generation=r.generation,body=body}
     c.valid=function()
@@ -161,9 +165,9 @@ local function context(actor,binding,r,entry,object,body)
             and r.generation==c.generation and r.state=="RUNNING" and not actor:isDead()
             and actor:getUsername()==r.requester and Driver.valid(binding)
             and c.npc:getBodyDamage():getOverallBodyHealth()>=95
-            and Supply.entry(actor,c.npc,c.object,r.settlementId,true)~=nil and Store.validNative(r,c.token)
+	    and Supply.entry(actor,c.npc,c.object,r.settlementId,true)~=nil and JobExecution.valid(r,c.token)
     end
-    c.changed=function(message) changed(c,message) end
+    c.changed=function(message) changed(c,message) return not c.commitFailure,c.commitFailure end
     return c
 end
 local function makePlan(c,select)
@@ -202,7 +206,7 @@ local function activateNode(c,index)
     proposed.recipeId=node.recipeId proposed.signature=node.signature proposed.product=spec.product proposed.recipeName=spec.name
     proposed.requested=node.requested proposed.target=node.requested proposed.unitYield=spec.yield proposed.produced=0 proposed.delivered=0
     proposed.benchId=node.benchId proposed.surface=node.location proposed.phase="PLANNING" proposed.unitMade=false
-    local ok,failed=Store.replaceNative(r,c.token,proposed) if not ok then return nil,failed end
+    local ok,failed=JobExecution.replace(r,c.token,proposed) if not ok then return nil,failed end
     for _,key in ipairs({"recipeId","signature","product","recipeName","requested","target","unitYield","produced","delivered","phase","unitMade"}) do r[key]=proposed[key] end
     r.benchId=proposed.benchId r.surface=proposed.surface r.chain.index=index
     c.entry=entry c.object=object c.returned=nil c.route=nil c.inputs=nil
@@ -257,7 +261,6 @@ local function finish(c)
     end
     if r.uncertain then r.state="RECONCILE_REQUIRED" r.phase=r.state r.reason="RECONCILE_REQUIRED"
     else
-        Store.finishNative(r)
         if manual and not manual.complete then Yield.applyManual(r,manual)
         else
             r.state=manual and manual.complete and 'DONE' or c.returnOnly and "CANCELLED" or "DONE" r.phase=r.state
@@ -268,7 +271,7 @@ local function finish(c)
         inventoryChanged()
     end
     r.generation=r.generation+1 c.completed=true c.closedGeneration=r.generation contexts[r.npcId]=nil
-    require('EmberRoutesProbe/BusinessJobs').refresh(r.id) changed(c,r.state)
+    changed(c,r.state)
 end
 local function prepare(c)
     if c.chainRequest then
@@ -280,7 +283,7 @@ local function prepare(c)
         c.chainRequest=nil
         local r=c.record local proposed={} for k,v in pairs(r) do proposed[k]=v end
         proposed.held=result.assets
-        local ok,why=Store.replaceNative(r,c.token,proposed) if not ok then return nil,why end
+	local ok,why=JobExecution.replace(r,c.token,proposed) if not ok then return nil,why end
         r.chain.nodes=result.nodes
         r.chain.blocker=nil
         return activateNode(c,1)
@@ -308,7 +311,7 @@ local function prepare(c)
             end
         end
         if not fits(c,weight,consumed,c.spec.outputWeight) then return nil,"CAPACITY_UNAVAILABLE" end
-        local ok,why=Store.replaceNative(r,c.token,proposed) if not ok then return nil,why end
+	local ok,why=JobExecution.replace(r,c.token,proposed) if not ok then return nil,why end
         r.phase="COLLECTING" changed(c,"COLLECTING")
     end
     if not c.returnOnly and not r.unitMade then
@@ -398,7 +401,7 @@ local function advance(c)
             proposed.held={} for _,asset in ipairs(r.held) do proposed.held[#proposed.held+1]=asset end
             for _,asset in ipairs(r.outputs) do proposed.held[#proposed.held+1]=asset end
         end
-        local ok,why=Store.replaceNative(r,c.token,proposed) if not ok then return nil,why end
+	local ok,why=JobExecution.replace(r,c.token,proposed) if not ok then return nil,why end
         r.unitMade=false r.phase="PLANNING" changed(c,"NEXT_UNIT")
         local ready,reason=makePlan(c,true) if not ready then return nil,reason end return nil
     end
@@ -420,7 +423,7 @@ local function advance(c)
             end
         end
         proposed.materials,proposed.tools,proposed.outputs={},{},{}
-        local ok,reason=Store.replaceNative(r,c.token,proposed) if not ok then return nil,reason end
+	local ok,reason=JobExecution.replace(r,c.token,proposed) if not ok then return nil,reason end
         local ready,why=activateNode(c,r.chain.index+1) if not ready then return nil,why end
         changed(c,"CHAIN_NEXT") return nil
     end
@@ -502,16 +505,14 @@ local function execute(actor,command,object,id,options,body,validateOnly)
             r.chain={format=1,index=0,nodes={},goal=goal} r.held={}
             if options.preferences then r.preferences=options.preferences end
         end
-        local token,reason=Store.claimNative(r) if not token then return reason end
-        local published,why=require('EmberRoutesProbe/BusinessJobs').publishCraft(r)
-        if not published then Store.finishNative(r) return why end
+	local token,reason=JobExecution.create(r) if not token then return reason end
         local c=context(actor,binding,r,entry,object,body) c.token=token contexts[id]=c
         local ready,why=makePlan(c,true)
         if not ready then Production.pause(why,id) return why end
         if not body then Work.wake(id) end
         changed(c,"STARTED "..r.recipeId.." target="..r.target) return "STARTED"
     end
-    if not r or r.format~=3 or r.released then return "NO_CARGO" end
+    if not r or r.format~=4 or r.released then return "NO_CARGO" end
     local explicitCancel=r.activityYield and command=='return' and options.nonPreemptive~=true
     -- Once return-to-yield starts, save/reload or a resume cannot restart work
     -- before all of this attempt's originals have been reconciled.
@@ -531,13 +532,13 @@ local function execute(actor,command,object,id,options,body,validateOnly)
     r.generation=r.generation+1 r.state="RUNNING" r.reason=nil
     local marker=r.activityYield
     if freed and command=='resume' then r.activityYield=nil end
-    local token,why=Store.claimNative(r)
+    local token,why=JobExecution.claim(r,command=='return')
     if not token then
         if freed then r.activityYield=marker marker.blockedReason=why end
         r.state="PAUSED" r.reason=freed and 'ACTIVITY_YIELD' or why return why
     end
     if explicitCancel then r.activityYield.cancelled=true end
-    require('EmberRoutesProbe/BusinessJobs').refresh(r.id)
+    if not JobExecution.commit(r) then return 'PRODUCTION_COMMIT_FAILED' end
     local c=context(actor,binding,r,entry,object,body) c.token=token c.returnOnly=command=="return" contexts[id]=c
     local ready,failed=makePlan(c,r.phase=="PLANNING" and not c.returnOnly)
     if not ready then Production.pause(failed,id) return failed end
@@ -595,7 +596,7 @@ function Production.execute(actor,command,object,id,options)
             if Registry.data()~=root then return false end
             if fact.effects=='UNKNOWN' then
                 if not r or r.id~=jobId then return false end
-                r.uncertain=true r.phase='RECONCILE_REQUIRED' r.reason=reason Signals.changed(id)
+		r.uncertain=true r.phase='RECONCILE_REQUIRED' r.reason=reason JobExecution.commit(r) Signals.changed(id)
             end
             return true
         end})
@@ -607,7 +608,7 @@ function Production.execute(actor,command,object,id,options)
 end
 function Production.afterSave(results)
     if not results then
-        for _,candidate in pairs(pending) do if candidate.record.reason=="SAVE" then candidate.record.reason="SAVE_FAILED" Signals.changed(candidate.record.npcId) end end
+	for _,candidate in pairs(pending) do if candidate.record.reason=="SAVE" then candidate.record.reason="SAVE_FAILED" JobExecution.commit(candidate.record) Signals.changed(candidate.record.npcId) end end
         pending={}
     end
     for id,candidate in pairs(candidates) do
@@ -691,7 +692,7 @@ function Production.findRootOrders(settlementId,fullType)
     local orders={}
     local hasManual=false
     for npcId,r in pairs(probes) do
-        if r.format==3 and not r.released and not r.uncertain and (not settlementId or r.settlementId==settlementId) then
+	if r.format==4 and not r.released and not r.uncertain and (not settlementId or r.settlementId==settlementId) then
             local product=r.chain and r.chain.goal and r.chain.goal.product or r.product
             if product==fullType then
                 orders[#orders+1]=r

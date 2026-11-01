@@ -34,16 +34,16 @@ local function check(context)
     local record=context.job local ctx=contexts[record.settlementId]
     if not ctx or not ctx.running then return false,"LOGISTICS_STOPPED" end
     local entry=Ledger.get(record.settlementId)
-    if not entry or entry.factionId~=Ledger.data().factionId or record.format~=2 and not members(entry,record) then return false,"SETTLEMENT_CHANGED" end
+    if not entry or entry.factionId~=Ledger.data().factionId or (record.format~=2 and record.format~=3) and not members(entry,record) then return false,"SETTLEMENT_CHANGED" end
     if not ctx.public and not Store.get(entry.id).workers[record.npcId] then return false,"WORKER_REMOVED" end
-    if record.format~=2 and Registry.logistics(context.destination)~="STORAGE" then return false,"PRODUCER_RULE_CHANGED" end
+    if (record.format~=2 and record.format~=3) and Registry.logistics(context.destination)~="STORAGE" then return false,"PRODUCER_RULE_CHANGED" end
     return true
 end
 Producers.register("LOGISTICS",{
     check=check,
     transfer=function(context,item,from)
         if not check(context) then return false end
-        if context.job.format==2 and from==context.npc:getInventory() then return true end
+	if (context.job.format==2 or context.job.format==3) and from==context.npc:getInventory() then return true end
         if not context.source then return false end
         if from~=context.source.container then return true end -- Held originals may finish delivery after a mode change.
         if Producers.freeCarry(context.npc)<item:getUnequippedWeight() then return false end
@@ -233,7 +233,7 @@ function Service.recover()
         if r and r.producer=='LOGISTICS' and r.state=='PAUSED' and not r.controlUncertain and not r.manualPaused
             and not Work.busy(id) and (not rt or not rt:owns(id)) then
             local reason=r.reason or ''
-            local system=r.format==2 and (reason=='ROUTING_WAIT' or reason=='SAVE' or reason=='LOAD_RECOVERY')
+	    local system=(r.format==2 or r.format==3) and (reason=='ROUTING_WAIT' or reason=='SAVE' or reason=='LOAD_RECOVERY')
                 or r.format==1 and (reason=='SAVE' or reason=='LOAD_RECOVERY' or reason=='NATIVE_TRANSFER_STOPPED'
                     or string.find(reason,'^FILTER_REJECTED') or replanReasons[reason])
             local entry=Ledger.get(r.settlementId) local b=system and entry and Driver.bindId(actor,id)

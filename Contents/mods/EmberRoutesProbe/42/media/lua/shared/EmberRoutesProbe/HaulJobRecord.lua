@@ -47,6 +47,10 @@ function R.valid(job)
         return false
     end
     local p = job.payload
+    if p.executor~=nil then
+	if p.executor~='ENTITY' or p.id~=job.id or p.npcId~=job.npcId
+	    or not require('EmberRoutesProbe/HaulManifest').valid(p) or p.sequence~=p.generation then return false end
+    end
 
     -- 2. Format & scalar types
     if p.format ~= 3 or not Validate.integer(p.sequence, 0) then return false end
@@ -108,4 +112,13 @@ function R.valid(job)
     return true
 end
 
+function R.transition(old,new)
+    if old.payload.executor=='ENTITY' then
+	if new.payload.executor~='ENTITY' then return false end
+	local a,b=old.payload.activeAttempt,new.payload.activeAttempt
+	if a and b and a.attemptId~=b.attemptId then return false end
+	if old.payload.controlUncertain and not new.payload.controlUncertain then return false end
+    end
+    return true
+end
 return R

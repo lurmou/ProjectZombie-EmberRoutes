@@ -102,6 +102,25 @@ function Store.open(root)
     root.taskJobs=data
     local api={}
     local listeners={}
+    -- Derived admission index, rebuilt from the sole persistent Job authority.
+    -- An incomplete native result may contain unknown ItemIDs, so per-item
+    -- quarantine alone cannot authorize another executor in this scope.
+    local unresolvedScopes={}
+    local function indexAttempt(job,remove)
+	local a=job.providerType=='CRAFT' and job.payload.executor=='PRODUCTION' and job.payload.nativeAttempt
+	if not a or a.state=='APPLIED' then return end
+	local set=unresolvedScopes[job.scopeId]
+	if remove then
+	    if set then set[job.id]=nil if empty(set) then unresolvedScopes[job.scopeId]=nil end end
+	else
+	    set=set or {} set[job.id]=true unresolvedScopes[job.scopeId]=set
+	end
+    end
+    for _,job in pairs(data.byId) do indexAttempt(job) end
+    function api:scopeBlocked(scopeId,exceptId)
+	for key in pairs(unresolvedScopes[scopeId] or {}) do if key~=exceptId then return true end end
+	return false
+    end
     -- Scalar post-commit notifications. Observers only invalidate read models;
     -- their failure cannot roll back a Job or the physical effect it records.
     local function notify(job)
@@ -142,6 +161,7 @@ function Store.open(root)
     function api:create(job)
         if not valid(job) or job.revision~=1 or job.state~='PREPARING' or job.effects~='KNOWN' then return false,'JOB_RECORD_INVALID' end
         if data.byId[job.id] then return false,'JOB_EXISTS' end
+	if self:scopeBlocked(job.scopeId) then return false,'CRAFT_SCOPE_RECONCILE_REQUIRED' end
         if job.providerType=='SELF_CARE' then
             if personalByNpc[job.npcId] then return false,'PERSONAL_JOB_EXISTS' end
             if personal>=Store.PERSONAL_LIMIT then return false,'PERSONAL_JOB_LIMIT' end
@@ -155,6 +175,7 @@ function Store.open(root)
             value.claimId = job.claimId
         end
         data.byId[value.id]=value
+	indexAttempt(value)
         if value.providerType=='SELF_CARE' then
             personal=personal+1 personalByNpc[value.npcId]=value.id
         else count=count+1 end
@@ -174,12 +195,16 @@ function Store.open(root)
         for field,value in pairs(patch) do candidate[field]=value end
         candidate.revision=revision+1
         if not valid(candidate) then return false,'JOB_RECORD_INVALID' end
+	if old.providerType=='CRAFT' and old.payload.format==4 and not require('EmberRoutesProbe/CraftJobRecord').transition(old,candidate) then return false,'CRAFT_TRANSITION_INVALID' end
+	if old.providerType=='HAUL' and old.payload.format==3 and not require('EmberRoutesProbe/HaulJobRecord').transition(old,candidate) then return false,'HAUL_TRANSITION_INVALID' end
         if old.providerType=='COOKING' and not require('EmberRoutesProbe/CookingRecord').transition(old,candidate) then
             return false,'COOKING_TRANSITION_INVALID'
         end
         if candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
+	indexAttempt(old,true)
         data.byId[key]=value
+	indexAttempt(value)
         notify(value)
         return true,value.revision
     end
@@ -208,6 +233,7 @@ function Store.open(root)
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
         if old.providerType=='SELF_CARE' or not terminal[old.state]
             or old.effects~='KNOWN' or not empty(old.obligations) then return false,'JOB_NOT_SETTLED' end
+	indexAttempt(old,true)
         data.byId[key]=nil
         byNpc[old.npcId][key]=nil
         if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end

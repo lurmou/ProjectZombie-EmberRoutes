@@ -242,8 +242,8 @@ for _=1,2000 do
 end
 r=f.Craft.record(f.npc.id)
 check(r and r.orderId==orderId and r.state=='DONE' and f.nativeCalls()==1,'public claim completes one actual controlled saw Job')
-check(f.registry.data().taskJobs.byId[r.id].payload==r and not f.registry.data().craftProbes and not f.registry.data().labor,
-    'new Job payload is the single persistent business record; old roots are absent')
+check(f.registry.data().taskJobs.byId[r.id].payload~=r and f.registry.data().taskJobs.byId[r.id].payload.produced==r.produced and not f.registry.data().craftProbes and not f.registry.data().labor,
+    'execution draft is detached from the single persistent Job payload; old roots are absent')
 local firstJob=r.id
 local retiredCallback=lastCraft
 for _=1,30 do tick(true) if not Runtime.current():owns(f.npc.id) then break end end
@@ -273,4 +273,108 @@ require('EmberRoutesProbe/TaskRetirement').install()
 f.Probe.tickRetirement()
 check(#Public.orders(f.entry.id)==0 and not f.registry.data().taskJobs.byId[current.id],
     'normal background retirement hook clears successor after settlement')
+-- Two independent cold reconstructions from detached plain facts, with the
+-- same physical originals still present. This is not PZ disk-save evidence.
+log,saw=fresh()
+check(run()=='QUEUED','typed save fixture queued')
+for _=1,800 do tick(true) if log.container==f.npc.root then break end end
+f.Work.pause('SAVE',f.npc.id)
+for _=1,40 do tick(false) if not Runtime.current():owns(f.npc.id) then break end end
+local savedId=f.Craft.record(f.npc.id).id
+local function facts(value)
+    if type(value)~='table' then assert(type(value)~='function' and type(value)~='userdata') return value end
+    local out={} for k,v in pairs(value) do out[k]=facts(v) end return out
+end
+local rootReader=f.registry.data
+for cold=1,2 do
+    local loaded=facts(f.registry.data())
+    Runtime.reset() Production.reset()
+    f.registry.data=function() return loaded end
+    require('EmberRoutesProbe/ProductionJobs').prepareRecovery()
+    f.Store.data()
+    local restored=f.Craft.record(f.npc.id)
+    check(restored.id==savedId and restored.format==4 and restored.state=='PAUSED' and not restored.released
+	and f.Store.owner(log.id).taskId==savedId,'cold '..cold..' reopens typed Job and protects the same carried original')
+    check(assert(require('EmberRoutesProbe/JobStore').open(loaded)):get(savedId).payload.executor=='PRODUCTION',
+	'cold '..cold..' persistent envelope remains valid after recovery')
+end
+f.registry.data=rootReader
+-- Irreversible native results: exercise actual action/observer, not only a
+-- synthesized payload. Claim conflict and stale revision retain produced IDs.
+local Execution=require 'EmberRoutesProbe/ProductionJobs'
+local JobStore=require 'EmberRoutesProbe/TaskJobs'
+log,saw=fresh()
+local mutate=f.Store.mutateJob local rejectedIntent=false
+f.Store.mutateJob=function(id,rev,payload,mutation)
+    if payload.nativeAttempt and payload.nativeAttempt.state=='COMMITTING' then rejectedIntent=true return false,'INJECTED_PRE_EFFECT_CAS' end
+    return mutate(id,rev,payload,mutation)
+end
+check(run()=='QUEUED','pre-effect CAS fixture accepted')
+for _=1,1000 do tick(true) if rejectedIntent then break end end
+f.Store.mutateJob=mutate
+check(rejectedIntent and f.nativeCalls()==0,'rejected durable intent never invokes native recipe')
+log,saw=fresh()
+check(run()=='QUEUED','incomplete observation fixture accepted')
+local observationAction
+for _=1,1000 do
+    tick(false)
+    local action=f.queued()
+    if action and action.craftRecipe then observationAction=action break end
+    if action then action:perform() end
+end
+check(observationAction~=nil,'actual native craft is queued before observer failure')
+local observeOutputs=observationAction.logic.getCreatedOutputItems
+observationAction.logic.getCreatedOutputItems=function() error('injected observation failure') end
+observationAction:perform()
+observationAction.logic.getCreatedOutputItems=observeOutputs
+local interrupted=f.Craft.record(f.npc.id)
+local intent=JobStore.current():get(interrupted.id)
+check(f.nativeCalls()==1 and intent.payload.nativeAttempt.state=='COMMITTING' and intent.effects=='UNKNOWN'
+    and JobStore.current():scopeBlocked(intent.scopeId,'other'),
+    'observer exception after native effect retains durable intent and fences unknown output IDs')
+observationAction:perform()
+check(f.nativeCalls()==1,'observer exception does not authorize a second native invocation')
+for _,fault in ipairs({'CLAIM','CAS'}) do
+    log,saw=fresh()
+    local observe=Execution.observe local fired,attemptId,failedDraft
+    Execution.observe=function(draft,id,complete,reason)
+	if not fired then
+	    fired=true attemptId=id failedDraft=draft
+	    if fault=='CLAIM' then
+		local keys={} for _,asset in ipairs(draft.outputs) do keys[#keys+1]='item:'..asset.id end
+		assert(f.Store.claimsInstance():acquire('result-rival',1,keys))
+	    else
+		local saved=JobStore.current():get(draft.id)
+		assert(JobStore.current():update(saved.id,saved.revision,{state='STOPPING'}))
+	    end
+	end
+	return observe(draft,id,complete,reason)
+    end
+    check(run()=='QUEUED',fault..' native result fixture accepted')
+    for _=1,1600 do tick(true) if fired then break end end
+    Execution.observe=observe
+    local saved=JobStore.current():get(failedDraft.id)
+    check(fired and f.nativeCalls()==1 and saved.effects=='UNKNOWN' and saved.state=='RECONCILE_REQUIRED'
+	and saved.payload.nativeAttempt.id==attemptId and saved.payload.nativeAttempt.state=='UNKNOWN',
+	fault..' native outcome retains matching durable attempt and unknown responsibility')
+    local quarantineCount=0
+    for _,asset in ipairs(failedDraft.outputs) do
+	check(f.Store.owner(asset.id).kind=='SYSTEM_QUARANTINE',fault..' every observed output is protected')
+	quarantineCount=quarantineCount+1
+    end
+    check(quarantineCount>0 and not require('EmberRoutesProbe/BusinessJobs').canRetire(saved.id),fault..' unknown output cannot retire')
+    check(JobStore.current():scopeBlocked(saved.scopeId,'another-job'),fault..' unresolved result fences other execution in same scope')
+    local admitted,admitWhy=JobStore.current():create({id='scope-probe-'..fault,npcId='scope-worker',providerType='PROBE',
+	scopeId=saved.scopeId,revision=1,state='PREPARING',effects='KNOWN',obligations={},payload={}})
+    check(not admitted and admitWhy=='CRAFT_SCOPE_RECONCILE_REQUIRED',fault..' scope fence rejects new authoritative Job')
+    local reopened=assert(require('EmberRoutesProbe/JobStore').open(facts(f.registry.data())))
+    check(reopened:scopeBlocked(saved.scopeId,'another-job') and not reopened:scopeBlocked('unrelated-scope'),
+	fault..' cold scope index preserves protection without blocking unrelated scopes')
+    local rev=saved.revision local claimsRev=f.Store.claimsVersion()
+    observe(failedDraft,attemptId,true,nil)
+    check(JobStore.current():get(saved.id).revision==rev and f.Store.claimsVersion()==claimsRev,
+	fault..' repeated observation neither duplicates quarantine nor overwrites newer Job')
+    local oldNative=lastCraft oldNative:perform()
+    check(f.nativeCalls()==1,fault..' late callback never repeats native effect')
+end
 print('PASS '..checks..' controlled production checks; native effects mocked')

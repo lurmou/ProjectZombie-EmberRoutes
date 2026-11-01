@@ -326,8 +326,7 @@ function Work.prepareRemoval(actor)
     if Work.hasCargo(actor) then return false end
     Work.pause("REMOVE")
     log("TASK_CANCELLED npc removal explicitly requested; no task cargo on NPC")
-    Store.clear(npcId)
-    return true
+    return Store.clear(npcId)
 end
 
 local function create(actor)
@@ -549,7 +548,7 @@ Work.resume=function(actor,nonPreemptive)
     local r=job() if r and (r.producer=='LOGISTICS' or r.producer=='DELIVERY') then return routed.resume(actor,nonPreemptive) end return legacy.resume(actor,nonPreemptive)
 end
 Work.hasCargo=function(actor)
-    local r=job() if r and r.format==2 then return routed.hasCargo(actor) end return legacy.hasCargo(actor)
+    local r=job() if r and (r.format==2 or r.format==3) then return routed.hasCargo(actor) end return legacy.hasCargo(actor)
 end
 Work.tick=function() if routed.busy() then routed.tick() else legacy.tick() end end
 Work.reset=function() routed.reset() legacy.reset() end

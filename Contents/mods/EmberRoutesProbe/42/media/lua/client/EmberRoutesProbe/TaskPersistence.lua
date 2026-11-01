@@ -46,6 +46,7 @@ function Save.load()
     if Probe.resetStock then Probe.resetStock() end
     -- Normalize legacy records and rebuild every original-ID/capacity claim
     -- BEFORE the runtime may admit any observation or recovery candidate.
+    require('EmberRoutesProbe/HaulJobs').prepareRecovery()
     Craft.prepareRecovery()
     Store.data()
     require('EmberRoutesProbe/FieldWork').prepareRecovery()

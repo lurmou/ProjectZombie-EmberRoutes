@@ -1,7 +1,7 @@
 # Phase 3A v1.5 Final Errata：无旧档迁移与业务接入执行基准
 # (Phase 3A v1.5 Final Errata & Execution Baseline)
 
-> 修订：2026-11-01｜原始设计基线：`d43404dc`｜本轮审查基线：`dc8e17c`｜状态：B.5 待独立验收；Stage C 冻结｜分支：`phase-3a-consolidation`
+> 修订：2026-11-01｜原始设计基线：`d43404dc`｜本轮审查基线：`dc8e17c`｜状态：B.5 待独立验收；用户已授权先完成真实业务后集中实机｜分支：`phase-3a-consolidation`
 
 ---
 

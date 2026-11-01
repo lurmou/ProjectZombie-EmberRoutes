@@ -1,0 +1,38 @@
+# Production / Haul 真实业务切换证据
+
+> 日期：2026-11-01｜修改前 HEAD：`b1146d6`｜分支：`phase-3a-consolidation`｜状态：集中开发检查中，PZ 实机未运行。
+
+用户后续指令“生产未切换实机验证什么？先做完吧”覆盖此前 Stage C 实施冻结。先完成真实制作、搬运与必要结清，再集中实机；不宣布 B.5 已关闭，不恢复旧档迁移，不加入通用事务层。实机操作仍由用户执行，外部 AI 独立审查。
+
+## 最终实现与契约变化
+
+- `Production.lua` / `ProductionActions.lua` 使用 `ProductionJobs` 的脱离式执行草稿；创建经 `createClaimedJob`，后续资源、阶段和终态经 `mutateJob`。真实手动、公共制作、BOM 连续制作、取消归还及活动让位仍由原业务链提供证据。
+- `CraftRecord.validProduction` 复用完整业务字段校验；真实 CRAFT format=4 必须带 `executor=PRODUCTION`、匹配 envelope 的 id/npcId、sequence/generation。此前最小原型仍不能作为真实原生执行参数。此项属于接受范围收紧，不是等价改名。
+- native 调用前先提交 `nativeAttempt=COMMITTING`、UNKNOWN 与责任；拒绝提交则不调用 native。产物/消费观察成功后提交 APPLIED 回执；Claim/CAS 失败将所有已知产物交给既有 SYSTEM_QUARANTINE，并仅在最新记录仍是同一未决尝试时保留观察事实。不重放旧提案，不自动重做物理效果。
+- 同一回执重报在执行边界幂等；不同回执明确拒绝。提交通知后 revision 再变化即停止使用原草稿，不借新 revision 覆盖后续事实。
+- JobStore 维护由未决制作尝试派生的作用域索引。新 Job 创建及 Cooking/Field/Personal/Activity/Craft/Haul/旧探针执行守卫拒绝同作用域其他 Job；冷启动重建。自身返还仍受原业务证据守卫，绝不因例外而重放制作。此保护只覆盖本模组声明的作用域与接入路径，不约束玩家/其他模组直接操作，也不承诺强杀零损失。
+- 自主物流和配送经 `HaulJobs` 创建完整 HAUL format=3，转移前持久化 attempt，确认物理原件位置后结清 manifest、Claims 与容量；终态成功后才报告身体任务完成。物流策略、任务监视与保存入口同步识别新格式。
+- Haul 容量变更在同一现有 mutateJob 边界协调；先核对命令与 proposed reservation，拒绝后无扩展副作用，CAS 拒绝恢复原容量。未携货不能单独证明责任结清，clear 拒绝仍有原件或未决动作的任务。
+- 读档恢复递增执行代次，正常已知任务暂停后续作；未决原生尝试保留核对责任，不重放 native。JobStore 与 Claims 仍是唯一持久状态、资源权威，两个新增模块只持有可失效的执行草稿。
+
+## 仍保留的旧接口
+
+Production 不再使用 claimNative / replaceNative / extendNative / finishNative / publishCraft / refresh 写持久状态。自主 Haul 的旧形状 Store 入口按 format=3 进入统一 API，format=1/2 探针适配仍保留。`BusinessJobs.legacyCrafts/legacyHauls` 只服务这些现役旧调用，新格式查询是脱离式投影，flush 不写新格式。
+
+CraftProbe 的格式 1/2 原生探针及显式搬运仍实际调用旧接口，因此本轮不删除。旧写入口物理退役须在真实业务实机验收后核查调用，不以“不兼容旧存档”代替该证明。
+
+## 实际检查
+
+集中标准 Lua 回归：原有 11 个核心套件，加 task-production-runtime、delivery-service、activity-craft-yield、settled-task-retirement、hauling-provider、task-save-runtime、work-format-admission，共 18 套件通过。原始输出位于本地 `build/logs/cutover-*.txt` 与 `cutover-regression.json`，套件有嵌套复用，断言数不相加冒充独立数量。
+
+Production 专项增加：native 前 CAS 拒绝零次效果；native 后 Claim 冲突、revision 变化保留产物隔离与 UNKNOWN；回执重报幂等；旧回调不重做；观察抛错保留 COMMITTING 并阻断未知产物作用域；冷启动恢复作用域索引；两次独立内存重建后仍可打开同一完整 Job 并保留同一原件认领。标准 Lua 当前 99 项 controlled 检查，原生身体、物品效果和磁盘均为替身。
+
+测试适配包括：真实格式号/脱离式草稿预期、完整的旧业务夹具字段、重载 Store 时一并重载对应执行适配器、Stage B 腐坏注入改为对应 legacyHauls 边界、保存协调替身补齐 Haul 恢复调用。没有为测试放宽生产 Validator 或删除失败场景。
+
+安装版 Kahlua、静态检查及候选包结果在完成后回填；进行中不记作通过。固定游戏 JAR SHA256：`E1A69EB743EDE60B213A0FE7F8B83D4FCAB773036D256CC4543A336F3B058A33`。Java 运行时源码本轮未修改，不重复构建；候选包须核对既有 build report 和 JAR 哈希。
+
+## 集中实机范围
+
+使用可丢弃的新世界，按真实产品入口验证：手动制作一单、公共制作一单、BOM 连续制作；取料/制作/交付期间暂停与取消，原工具归还；自主搬运混合货物分仓、部分交付与暂停续作、配送取消退回。至少保留一份携带真实原件的暂停任务，正常保存、完整退出、重新载入两次，核对同一 Job 身份、物品 ID、容量与任务进度，确认不重复制作或配送。
+
+不把宿主深拷贝等同于 PZ ModData 磁盘验证；不宣称任意配方/模组、跨作用域人工移动、强杀恢复、规模性能或联机已通过。不存在本轮新增的历史存档清洗/迁移。完整源码 Diff 由 Git 提供；并行人员/UI/生命周期改动保留且不混入本轮提交。

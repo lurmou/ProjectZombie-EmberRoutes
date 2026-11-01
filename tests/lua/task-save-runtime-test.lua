@@ -16,6 +16,7 @@ package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
 local Store={data=function() rebuilt=true return root.labor end,
     record=function(id) return root.labor and root.labor[id] end}
 package.loaded['EmberRoutesProbe/LaborStore']=Store
+package.loaded['EmberRoutesProbe/HaulJobs']={prepareRecovery=function() Store.data() end}
 local Craft={prepareRecovery=function() Store.data() end,record=function(id) return root.craft and root.craft[id] end}
 package.loaded['EmberRoutesProbe/CraftProbe']=Craft
 local Companion={exportState=function() return {id='a',jobId='follow-job',mode='FOLLOW',hasHome=true,homeX=2,homeY=3,homeZ=0} end}

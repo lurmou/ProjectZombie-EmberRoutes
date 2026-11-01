@@ -1277,7 +1277,7 @@ do
         containers = {},
         quarantineResources = {}
     }
-    local oldHauls = require('EmberRoutesProbe/BusinessJobs').hauls
+    local oldHauls = require('EmberRoutesProbe/BusinessJobs').legacyHauls
     local mockHaulData = {
         format = 2,
         tasks = {
@@ -1292,12 +1292,12 @@ do
         },
         routes = {}
     }
-    require('EmberRoutesProbe/BusinessJobs').hauls = function() return mockHaulData end
+    require('EmberRoutesProbe/BusinessJobs').legacyHauls = function() return mockHaulData end
     ContainerRegistry.data = function() return bootRootNonTable end
 
     -- Must not throw any unhandled error when scanning non-table tasks in Pass 1 or Pass 2!
     local okNonTableLoad, errNonTableLoad = pcall(Store.data)
-    require('EmberRoutesProbe/BusinessJobs').hauls = oldHauls
+    require('EmberRoutesProbe/BusinessJobs').legacyHauls = oldHauls
     assertTrue(okNonTableLoad, "Store.data() MUST survive non-table corrupted task records: " .. tostring(errNonTableLoad))
 
     -- Verify non-table corrupted records are isolated into corruptedTasks and removed from tasks ledger

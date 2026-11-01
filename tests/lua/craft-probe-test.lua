@@ -365,11 +365,11 @@ check(not Work.busy("other-npc"),"one production order does not monopolize other
 -- Loading native and logistics ownership conflicts is atomic and fail-closed.
 Work.pauseAll("SAVE")
 local rootWithConflict=saved
-local conflicting={format=1,id="conflict",npcId="other-npc",kind="EXPLICIT_TRANSFER",executor="ENTITY",scopeId="local-world",items={t.id},state="PAUSED"}
+local conflicting={format=1,id="conflict",npcId="other-npc",kind="EXPLICIT_TRANSFER",executor="ENTITY",scopeId="local-world",source="fixture-source",destination="fixture-destination",items={t.id},state="PAUSED"}
 assert(require('EmberRoutesProbe/BusinessJobs').publishHaul(conflicting))
 local freshRoot={} for key,value in pairs(rootWithConflict) do freshRoot[key]=value end saved=freshRoot
 local ok=pcall(Store.data)
-check(not ok,"load cannot publish double ownership across native production and logistics")
+check(ok and Store.resourceOwner("item:"..t.id).kind=="SYSTEM_QUARANTINE","load isolates conflicting originals instead of publishing double ownership")
 -- Restore the old root only to allow the fixture reset; this is not a runtime repair path.
 saved=rootWithConflict rootWithConflict.taskJobs.byId.conflict=nil
 
@@ -559,7 +559,7 @@ m,t=fresh()
 for i=1,2 do materials.container:AddItem(item('Base.SmallHandle')) end
 check(runBatch(3)=='STARTED','generic parent order starts') pumpBatch()
 local batch=Craft.record(npc.id)
-check(batch.format==3 and batch.state=='DONE' and batch.target==3 and batch.produced==3 and batch.delivered==3,'generic counters follow committed output and verified delivery')
+check(batch.format==4 and batch.executor=='PRODUCTION' and batch.state=='DONE' and batch.target==3 and batch.produced==3 and batch.delivered==3,'generic counters follow committed output and verified delivery')
 check(nativeCalls==3 and t.container==tools.container and t.condition==7,'three units reuse the same tool and return it once')
 check(not Store.owner(t.id) and products.container:getItems():size()==3,'parent completion releases original tool and product claims')
 check(runBatch(0)=='INVALID_QUANTITY' and runBatch(1.5)=='INVALID_QUANTITY','invalid quantities never create a new order')

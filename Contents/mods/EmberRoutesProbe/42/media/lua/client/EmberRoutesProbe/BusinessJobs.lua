@@ -26,7 +26,7 @@ local function load()
     local c,h={},{format=2,tasks={},byNpc={},routes=root.taskRoutes or {}}
     for id,j in pairs(root.taskJobs.byId) do
         local r=j.payload
-        if j.providerType=='CRAFT' and r.format==3 then
+	if j.providerType=='CRAFT' and (r.format==1 or r.format==2 or r.format==3) then
             if r.id~=id or r.npcId~=j.npcId then error('JOB_PAYLOAD_INVALID') end
             local previous=c[r.npcId]
             if previous and not previous.released and not r.released then error('NPC_TASK_CONFLICT') end
@@ -41,7 +41,18 @@ local function load()
     end
     root.taskRoutes=h.routes world,store,craft,haul=root,opened,c,h
 end
-function M.crafts() load() return craft end
+function M.legacyCrafts() load() return craft end
+function M.crafts()
+    load() local result={}
+    for npcId,r in pairs(craft) do result[npcId]=r end
+    for id,j in pairs(world.taskJobs.byId) do
+	if j.providerType=='CRAFT' and j.payload.executor=='PRODUCTION' then
+	    local old=result[j.npcId]
+	    if not old or old.released then result[j.npcId]=store:get(id).payload end
+	end
+    end
+    return result
+end
 -- Trusted internal read-only lookup; avoids rebuilding the whole kind map.
 function M.record(id,kind)
     load() local job=world.taskJobs.byId[id]
@@ -52,11 +63,24 @@ function M.records(kind)
     for id,j in pairs(world.taskJobs.byId) do if j.providerType==kind then result[id]=j.payload end end
     return result
 end
-function M.hauls() load() return haul end
+function M.legacyHauls() load() return haul end
+function M.hauls()
+    load() local result={format=3,tasks={},byNpc={},routes=haul.routes}
+    for id,r in pairs(haul.tasks) do result.tasks[id]=r end
+    for npcId,id in pairs(haul.byNpc) do result.byNpc[npcId]=id end
+    for id,j in pairs(world.taskJobs.byId) do
+	if j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY' then
+	    local r=store:get(id).payload result.tasks[id]=r
+	    local old=result.tasks[result.byNpc[j.npcId]]
+	    if not old or old.state=='DONE' then result.byNpc[j.npcId]=id end
+	end
+    end
+    return result
+end
 function M.refresh(id)
     load() local j=world.taskJobs.byId[id]
     if not j or not j.payload then return false end
-    if not ((j.providerType=='CRAFT' and j.payload.format==3) or (j.providerType=='HAUL' and (j.payload.format==1 or j.payload.format==2))) then return false end
+    if not ((j.providerType=='CRAFT' and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3)) or (j.providerType=='HAUL' and (j.payload.format==1 or j.payload.format==2))) then return false end
     local r=j.payload local state,effects,cleared=derived(r)
     if not obligationsMatch(j.obligations,cleared) then j.obligations=cleared and {} or {business=true} end
     if j.state~=state or j.effects~=effects or j.businessGeneration~=r.generation then j.revision=j.revision+1 end
@@ -66,7 +90,7 @@ function M.flush()
     load()
     if store:ordinaryCount()==0 then return end
     for _,j in pairs(world.taskJobs.byId) do
-        if (j.providerType=='CRAFT' and j.payload and j.payload.format==3) or (j.providerType=='HAUL' and j.payload and (j.payload.format==1 or j.payload.format==2)) then
+	if (j.providerType=='CRAFT' and j.payload and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3)) or (j.providerType=='HAUL' and j.payload and (j.payload.format==1 or j.payload.format==2)) then
         local r=j.payload
         if r.id~=j.id or r.npcId~=j.npcId then error('JOB_ID_CHANGED') end
         local state,effects,cleared=derived(r)
@@ -112,10 +136,10 @@ function M.canRetire(id,orderId)
     if r.uncertain or r.controlUncertain or r.phase=='COMMITTING' or r.reservation then return false end
     if j.providerType=='CRAFT' then
         if not r.released or (r.state~='DONE' and r.state~='CANCELLED') then return false end
-        if r.state=='DONE' and r.format==3 and (r.delivered~=r.produced
+	if r.state=='DONE' and (r.format==3 or r.format==4) and (r.delivered~=r.produced
             or r.produced<r.target and r.reason~='TARGET_REACHED') then return false end
     elseif r.state~='DONE' then return false
-    elseif r.format==2 and (not require('EmberRoutesProbe/HaulManifest').valid(r)
+    elseif (r.format==2 or r.format==3) and (not require('EmberRoutesProbe/HaulManifest').valid(r)
         or #require('EmberRoutesProbe/HaulManifest').claimItemIds(r)>0 or r.activeAttempt) then return false end
     local runtime=require('EmberRoutesProbe/TaskRuntime').current()
     if not runtime or not runtime:accepting() or runtime:status(j.npcId,id) then return false end

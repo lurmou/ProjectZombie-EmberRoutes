@@ -1,4 +1,5 @@
 local Store=require "EmberRoutesProbe/LaborStore"
+local JobExecution=require "EmberRoutesProbe/ProductionJobs"
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Supply=require "EmberRoutesProbe/CraftSupply"
 local Carry=require "EmberRoutesProbe/ProductionCarry"
@@ -27,7 +28,7 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
         local intent=to==npcRoot and "take" or "put"
         local current=Supply.endpoint(c.entry,endpoint.id,intent)
         return c.valid() and EmberRoutesProbeJava.carrierActive(c.npc) and current and current.container==endpoint.container
-            and Actions.inRoot(item,from,id) and Store.validNative(c.record,c.token,"item:"..id)
+	    and Actions.inRoot(item,from,id) and JobExecution.valid(c.record,c.token,"item:"..id)
             and (c.returnOnly or Registry.accepts(current,item)) and Registry.logistics(current)=="STORAGE"
             and to:hasRoomFor(c.npc,item) and not item:getIsCraftingConsumed()
             and (to~=npcRoot or Carry.fits(c.npc,item:getUnequippedWeight()))
@@ -51,6 +52,7 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
         if self.performed then
             c.plan.locations[id]={item=item,endpoint=to~=npcRoot and endpoint or nil}
             if delivered then delivered() end
+	    c.changed("TRANSFER_APPLIED")
             Registry.inventoryChanged(from) Registry.inventoryChanged(to)
         else self.failure=ok and "TRANSFER_POSTCONDITION" or tostring(reason) end
     end
@@ -80,7 +82,7 @@ function Actions.craft(c)
             return "SURFACE_OCCUPANCY_CHANGED"
         end
         for _,entry in ipairs(entries) do
-            if not Actions.inRoot(entry.item,inventory,entry.id) or not Store.validNative(r,c.token,"item:"..entry.id)
+	    if not Actions.inRoot(entry.item,inventory,entry.id) or not JobExecution.valid(r,c.token,"item:"..entry.id)
                 or not entry.io:canUseItem(entry.item,npc) then return "INPUT_CHANGED" end
         end
         local consumed=0
@@ -128,7 +130,9 @@ function Actions.craft(c)
     action.performRecipe=function(self)
         if self.attempted then return end
         if not self:isValid() or not Inputs.applied(self.logic,binding) then self:stop() return end
-        self.attempted=true r.phase="COMMITTING" c.changed("COMMITTING")
+	local attemptId,why=JobExecution.beginEffect(r,c.token)
+	if not attemptId then self.failure=why return end
+	self.attempted=true
         if not c.valid() then self.failure="CRAFT_CONTEXT_CHANGED" return end
         local ok,reason=pcall(nativeRecipe,self)
         local outputs=ArrayList.new() self.logic:getCreatedOutputItems(outputs)
@@ -147,12 +151,17 @@ function Actions.craft(c)
         for _,entry in ipairs(entries) do
             if entry.keep then
                 if not Actions.inRoot(entry.item,inventory,entry.id) or consumed:contains(entry.item) then verified=false end
-            elseif not consumed:contains(entry.item) or entry.item:getContainer()~=nil or inventory:getItems():contains(entry.item) then verified=false end
+	    else
+		local applied=consumed:contains(entry.item) and entry.item:getContainer()==nil and not inventory:getItems():contains(entry.item)
+		if applied then entry.asset.consumed=true else verified=false end
+	    end
         end
-        local claimed,claimReason=Store.extendNative(r,c.token)
-        if verified and claimed and c.valid() then
-            r.unitMade=true r.produced=r.produced+r.unitYield r.phase="CONFIRMED" self.performed=true
-            c.changed("CONFIRMED") Registry.inventoryChanged(inventory)
+	local complete=verified and c.valid()
+	if complete then r.unitMade=true r.produced=r.produced+r.unitYield r.phase="CONFIRMED"
+	else r.uncertain=true r.phase="RECONCILE_REQUIRED" end
+	local claimed,claimReason=JobExecution.observe(r,attemptId,complete,reason)
+	if complete and claimed then
+	    self.performed=true c.changed("CONFIRMED") Registry.inventoryChanged(inventory)
         else
             r.uncertain=true r.phase="RECONCILE_REQUIRED" self.failure=tostring(reason or claimReason or "ASSET_POSTCONDITION")
             c.changed("RECONCILE_REQUIRED "..self.failure)

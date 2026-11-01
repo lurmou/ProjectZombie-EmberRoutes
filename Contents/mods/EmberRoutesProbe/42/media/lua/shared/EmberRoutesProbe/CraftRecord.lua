@@ -68,8 +68,9 @@ local function production(id,r)
     end
     return true
 end
+Record.validProduction=production
 function Record.valid(id,r)
-    if type(r)=="table" and r.format==3 then return production(id,r) end
+    if type(r)=="table" and (r.format==3 or r.format==4 and r.executor=='PRODUCTION') then return production(id,r) end
     if type(r)~="table" or r.npcId~=id or type(id)~="string" or (r.format~=1 and r.format~=2)
         or type(r.id)~="string" or type(r.requester)~="string" or type(r.benchId)~="string"
         or not integer(r.generation) or r.generation<0 or not integer(r.materialId) or not integer(r.toolId)

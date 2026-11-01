@@ -122,6 +122,7 @@ check(capacityB:getContainer()==source.container and Work.busy(b.id),"paused hel
 local oldGeneration=held.generation
 Work.reset()
 package.loaded["EmberRoutesProbe/LaborStore"]=nil
+package.loaded["EmberRoutesProbe/HaulJobs"]=nil
 package.loaded['EmberRoutesProbe/HaulAgent']=nil
 package.loaded['EmberRoutesProbe/HaulRouting']=nil
 package.loaded["EmberRoutesProbe/WorkAgent"]=nil

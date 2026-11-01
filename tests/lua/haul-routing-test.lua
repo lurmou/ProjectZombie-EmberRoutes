@@ -34,12 +34,15 @@ check(Work.assign(actor,npc.id,{producer='LOGISTICS',settlementId=entry.id,sourc
     source=Registry.metadata(source,source.container).id,destination=Registry.metadata(fridge,fridge.container).id,
     items={a:getID(),b:getID(),c:getID()}})=='STARTED','start autonomous original batch')
 local r=Work.record(npc.id) local id=r.id
+local beforeClear=require('EmberRoutesProbe/TaskJobs').current():get(r.id)
+check(not Store.clear(npc.id) and Store.owner(a:getID()) and require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision==beforeClear.revision,
+    'clear retains uncollected responsibility and persistent revision')
 local first
 for _=1,300 do
     f.tick(1,true)
     if r.delivered==1 then first=true break end
 end
-check(first and r.format==2 and #r.items==3,'first delivery keeps full original plan')
+check(first and r.format==3 and #r.items==3,'first delivery keeps full original plan')
 actor.x=10.5 Registry.configure(actor,fridge,Filter.new(),fridge.container,'STORAGE')
 for _=1,500 do Service.tick() f.tick(1,true) if r.state=='DONE' then break end end
 check(r.state=='DONE' and r.id==id and r.delivered==3,'rejecting fridge reroutes remaining held originals on same Job')

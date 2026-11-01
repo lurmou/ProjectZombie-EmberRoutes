@@ -1,6 +1,6 @@
 # Production 统一 Job 切换准备与实施计划
 
-> 日期：2026-11-01｜源码基线：`7eb736c`｜状态：准备完成，尚未实施；B.5 外部复审未收到，Stage C 仍冻结。
+> 日期：2026-11-01｜源码基线：`7eb736c`｜状态：已按用户后续授权实施 Production/Haul 切换；集中开发验收进行中，B.5 与实机未宣布通过。
 
 **Goal:** 将真实 Production 手动制作和公共制作统一接入 JobStore/LaborClaims，保留原生效果、取消、活动让位、BOM 连续制作与正常保存恢复。
 **Architecture:** JobStore 是唯一持久 Job 权威，LaborClaims 是唯一资源权威，Production/ProductionActions 执行物理动作并提供事实。沿现有业务模块切换，不创建通用 Provider 基类、第二调度器、通用事务协调层或新历史账本。
@@ -8,7 +8,7 @@
 
 ## 实施门禁与边界
 
-- B.5 的外部复审和既定验收条件未完成；本文件只准备真实调用迁移，不授权宣布 B.5 关闭或提前修改生产路径。
+- 用户后续明确“生产未切换实机验证什么？先做完吧”：先完成 Production、Haul 及必要结清，再集中实机验收。此决定覆盖原 Stage C 实施冻结；不等于 B.5 已通过。
 - 不迁移旧档；但不能删除仍由当前业务调用的 format=3 恢复、claimNative、finishNative、BusinessJobs。
 - 切片只做必要定向检查；正式实机前集中跑一次完整回归。Codex 主导准备和进度；按此前明确选择，本地用户负责实际操作游戏，外部 AI 负责独立审查、验收设计和结果判定。外部聊天当前没有本机游戏控制能力；实际操作者变更须明确记录。单测/内存复制不替代磁盘保存重进。
 - 生产切换验证后才停用对应旧写调用；物理删除旧入口还须全库无调用证明及实机验收。CraftProbe 的独立探针路径不能被顺手删除。
@@ -94,18 +94,18 @@ CAS 成功后的观察者可能触发停止；上下文应重新读取当前权�
 - 完整、已确认的回执：重建责任并继续交付；不调用同一次 native。
 - COMMITTING/UNKNOWN、仅有隔离回执或回执冲突：保持核对状态，恢复系统隔离，禁止自动重放；正常解除仍须完整证据与实物核对。
 - 缺记录、动作已停止、输入不见了或超时均不能证明制作成功或责任结清。
-- 本轮源码检索没有找到已落地的 Scope Quarantine Fence 模块/统一作用域准入链；不能引用旧规格第 8 节就宣称未知 ItemID 已全部保护。如果观察失败到无法确定产物集合，现有按 key 隔离不能证明作用域内所有未知产物安全。此边界必须在 Production 实施前完成真实入口核查与明确方案，不能用日志或新一轮无限框架建设掩盖。
+- 本轮源码检索没有找到已落地的 Scope Quarantine Fence 模块/统一作用域准入链；不能引用旧规格第 8 节就宣称未知 ItemID 已全部保护。如果观察失败到无法确定产物集合，现有按 key 隔离不能证明作用域内所有未知产物安全。本轮在 JobStore 中建立由未决 nativeAttempt 派生的 scope 索引，创建及执行 Token 守卫拒绝同作用域其他 Job；自身返还仍须业务证据，禁止重放。索引随提交更新、冷启动重建，不另建持久账本。门禁只约束本模组接入路径，不约束玩家或其他模组直接操作。
 
-前置契约复审必须核对：调用前 CAS 拒绝不执行、同尝试回执幂等、Claim 冲突保存产物事实、CAS 拒绝不覆写新事实、取消与回执竞争、读档不重放，以及观察不完整的明确阻断路径。该草案是待审方案，不是 B.5 新功能，也不授权提前解冻 Stage C。
+前置契约复审必须核对：调用前 CAS 拒绝不执行、同尝试回执幂等、Claim 冲突保存产物事实、CAS 拒绝不覆写新事实、取消与回执竞争、读档不重放，以及观察不完整的明确阻断路径。上述契约已随本轮业务切换实施，接受独立审查；不追加 B.5 通用框架。
 
-## 实施任务（待解冻后按顺序进行）
+## 实施任务（用户已授权真实业务切换）
 
-- [ ] **1. 固定真实 CRAFT 业务契约。** 在 CraftJobRecord/CraftRecord 与 ProductionYield 的现有纯契约中明确 format=4 完整字段、sequence、phase/Job state、活动让位和终态责任。把上述接受范围与释放时点变化单独列入 Diff 说明。
-- [ ] **2. 切换创建和查询。** Production 经 createClaimedJob 创建，使用 TaskJobs 取得权威 Job 副本；同步 CraftingProvider、CraftProbe 转发/状态与 BusinessJobs 的 CRAFT 查询。保留未切换探针与 Haul 路径，不删除 BusinessJobs 整文件。
-- [ ] **3. 切换普通资源变更和恢复。** 替换 Production 的 replaceNative 调用与直接持久写；每次提交刷新上下文。LaborStore 明确同 Job 的恢复认领与新创建的区别；旧回调不能沿用新代次 Token。
-- [ ] **4. 切换原生效果与交付。** ProductionActions 在调用真实 native 前持久化 COMMITTING；真实消费、产物及交付结果进入同一权威 Job；按上一节四条结果验证，失败不重放、不丢失新原件责任。
-- [ ] **5. 接通停止、结清、活动续做、保存恢复。** 修改 Production 的 stopAdapter/pause/finish/afterSave/tickPending；同步公共订单观察者及 TaskRetirement 对新 Job 的消费，不引入第二业务完成判断。
-- [ ] **6. 定向验收与旧写调用核验。** 优先现有 task-production-runtime-test、production-chain-test、production-three-batch-test、activity-craft-yield-test、crafting-provider-test；按实际改动选相关用例，不逐步跑全套。测试必须经过真实 Service/Provider 创建，不把直接构造 Job 当作真实接入证明。
+- [x] **1. 固定真实 CRAFT 业务契约。** 在 CraftJobRecord/CraftRecord 与 ProductionYield 的现有纯契约中明确 format=4 完整字段、sequence、phase/Job state、活动让位和终态责任。把上述接受范围与释放时点变化单独列入 Diff 说明。
+- [x] **2. 切换创建和查询。** Production 经 createClaimedJob 创建，使用 TaskJobs 取得权威 Job 副本；同步 CraftingProvider、CraftProbe 转发/状态与 BusinessJobs 的 CRAFT 查询。保留未切换探针与 Haul 路径，不删除 BusinessJobs 整文件。
+- [x] **3. 切换普通资源变更和恢复。** 替换 Production 的 replaceNative 调用与直接持久写；每次提交刷新上下文。LaborStore 明确同 Job 的恢复认领与新创建的区别；旧回调不能沿用新代次 Token。
+- [x] **4. 切换原生效果与交付。** ProductionActions 在调用真实 native 前持久化 COMMITTING；真实消费、产物及交付结果进入同一权威 Job；按上一节四条结果验证，失败不重放、不丢失新原件责任。
+- [x] **5. 接通停止、结清、活动续做、保存恢复。** 修改 Production 的 stopAdapter/pause/finish/afterSave/tickPending；同步公共订单观察者及 TaskRetirement 对新 Job 的消费，不引入第二业务完成判断。
+- [x] **6. 定向验收与旧写调用核验。** 优先现有 task-production-runtime-test、production-chain-test、production-three-batch-test、activity-craft-yield-test、crafting-provider-test；按实际改动选相关用例，不逐步跑全套。测试必须经过真实 Service/Provider 创建，不把直接构造 Job 当作真实接入证明。
 
 ## 可审查的交付条件
 
@@ -115,6 +115,6 @@ CAS 成功后的观察者可能触发停止；上下文应重新读取当前权�
 4. 全库检查 Production 不再调用 claimNative/replaceNative/extendNative/finishNative/publishCraft/refresh 作为持久写入口；其他仍在用的旧入口不提前删除。
 5. Stage C/3B 的必要结清和退役规则由真实两链逐步核对；不把通用资源框架、自动迁移或任意崩溃零损失加入本轮门槛。
 
-## 本轮准备结果
+## 本轮实施结果
 
-完成源码调用链核查与计划自审；未改生产源码、未执行测试套件，未解冻 Stage C。尚无 B.5 外部复审结论和 PZ 实机证据。本文的接口接缝是后续实施必须处理的现有差异，不是新增 B.5 安全框架任务。
+ProductionJobs/HaulJobs 保存脱离式执行草稿，经 createClaimedJob/mutateJob 写入唯一 JobStore。真实 Production 与自主物流/配送已切换，公共订单和必要结清/退役仍由原业务证据驱动。旧探针入口仍有调用，保留至实机后再按无调用证据退役。测试与边界见[本轮证据](../../reviews/2026-11-01/production-haul-cutover.md)。

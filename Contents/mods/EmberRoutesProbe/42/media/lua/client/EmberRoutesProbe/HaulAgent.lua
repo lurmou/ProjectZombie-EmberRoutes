@@ -13,10 +13,19 @@ local Probe=require 'EmberRoutesProbe/Boot'
 local Log=require 'EmberRoutesProbe/Log'
 local Delivery=require 'EmberRoutesProbe/DeliveryTarget'
 local A={}
+local JobExecution=require 'EmberRoutesProbe/HaulJobs'
 function A.new(npcId)
     local api={} local current,pending
     local function record() return Store.record(npcId) end
-    local function changed(r) Signals.changed(npcId) end
+    local function changed(r)
+	if r.format==3 then
+	    local ok=JobExecution.commit(r)
+	    if not ok and current and current.job==r then current.stopping=true current.commitFailure=true end
+	    if not ok then return false end
+	end
+	Signals.changed(npcId)
+	return true
+    end
     local function binding(actor) return Driver.bindId(actor,npcId) end
     local function awaitingGrant()
         if pending then
@@ -54,12 +63,12 @@ function A.new(npcId)
         if inFrom and (not toAllowed or not s.to:getItems():contains(s.item)) then
             local line=Manifest.line(r,a.itemId)
             line.custodyState=a.kind=='PUT' and 'CARRIED' or 'UNCOLLECTED'
-            r.activeAttempt=nil c.attempt=nil return true
+	    r.activeAttempt=nil c.attempt=nil changed(r) return true
         end
         return false
     end
     local function effects(c)
-        if c.job.controlUncertain then return 'UNKNOWN' end
+	if c.job.controlUncertain or c.commitFailure then return 'UNKNOWN' end
         if c.attempt and not knownTransfer(c,c.attempt) then return 'UNKNOWN' end
         return c.job.activeAttempt and 'UNKNOWN' or 'KNOWN'
     end
@@ -85,7 +94,9 @@ function A.new(npcId)
             if not known then c.job.controlUncertain=true end
             if known and #Manifest.claimItemIds(c.job)==0 and not c.job.returnForNextBatch then
                 c.job.state='DONE' c.job.settlementOutcome=(c.job.withdrawn or 0)>0 and 'PARTIAL_WITHDRAWN' or 'DELIVERED'
-                Store.finish(c.job) c.completed=true c.closedGeneration=c.job.generation
+		local settled=Store.finish(c.job)
+		if not settled then c.commitFailure=true c.job.controlUncertain=true return false end
+		c.completed=true c.closedGeneration=c.job.generation
                 if current==c then current=nil end changed(c.job) return true
             end
             c.pauseToken=Store.pause(c.job)
@@ -103,8 +114,12 @@ function A.new(npcId)
         local r,world,generation=c.job,Registry.data(),c.job.generation
         return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=c.npc,npcId=npcId,jobId=r.id,
             same=function(paused)
-                if world~=Registry.data() or record()~=r then return false end
-                if c.completed then return r.generation==c.closedGeneration end
+		if world~=Registry.data() then return false end
+		if c.completed then
+		    local saved=require('EmberRoutesProbe/TaskJobs').current():peek(r.id)
+		    return saved and saved.state=='DONE' and r.generation==c.closedGeneration
+		end
+		if record()~=r then return false end
                 if c.stopped then return r.generation==c.stoppedGeneration and r.state=='PAUSED' end
                 return not paused and current==c and r.generation==generation
             end,
@@ -119,7 +134,7 @@ function A.new(npcId)
             end})
     end
     local function upgrade(r,npc)
-        if r.format==2 then return Manifest.valid(r),'TASK_RECORD_INVALID' end
+	if (r.format==2 or r.format==3) then return Manifest.valid(r),'TASK_RECORD_INVALID' end
         if r.format~=1 or r.producer~='LOGISTICS' or r.controlUncertain or r.state~='PAUSED'
             or not npc:getCharacterActions():isEmpty() then return false,'CURRENT_HAUL_UPGRADE_REQUIRED' end
         local rt=Runtime.current() if rt and rt:owns(npcId) then return false,'WAIT_BODY_STOP' end
@@ -192,7 +207,7 @@ function A.new(npcId)
     function api.assign(actor,intent)
         if api.busy() or awaitingGrant() then return 'BUSY' end
         local old=record() if old and old.state~='DONE' then return 'TASK_EXISTS_RESUME_OR_CLEAR' end
-        local r={id=intent.jobId or Registry.id(),npcId=npcId,format=2,kind='EXPLICIT_TRANSFER',scopeId='local-world',executor='ENTITY',
+	local r={id=intent.jobId or Registry.id(),npcId=npcId,format=3,kind='EXPLICIT_TRANSFER',scopeId='local-world',executor='ENTITY',
             producer=intent.producer,settlementId=intent.settlementId,source=intent.source,destination=intent.destination,
             sourceMode=intent.sourceMode,items={},state='PAUSED',reason='CREATED',phase='COLLECT',generation=0,
             routeRevision=0,attemptSequence=0,delivered=0}
@@ -224,7 +239,7 @@ function A.new(npcId)
     function api.hasCargo(actor)
         local r=record() if not r then return false end
         if r.controlUncertain or r.activeAttempt then return true end
-        if r.format~=2 then return true end
+	if r.format~=2 and r.format~=3 then return true end
         for _,l in ipairs(r.manifest) do if l.custodyState=='CARRIED' or l.custodyState=='RECONCILE' then return true end end
         local b=binding(actor) if not b then return #Manifest.claimItemIds(r)>0 end
         local index=View.index({b.handle:getInventory()}) if not index then return true end
@@ -260,6 +275,10 @@ function A.new(npcId)
         frozen.transferred=function() knownTransfer(c,s) end
         r.itemTypes=r.itemTypes or {} r.itemTypes[tostring(line.itemId)]=item:getFullType()
         r.activeAttempt=a c.attempt=s
+	if r.format==3 then
+	    local committed,why=JobExecution.commit(r)
+	    if not committed then c.commitFailure=true return nil,why end
+	end
         return Transfer.item(frozen,item,from,to,endpoint)
     end
     local function nextStep(c)
@@ -349,7 +368,9 @@ function A.new(npcId)
             if not step then
                 if why=='DONE' then
                     c.job.state='DONE' c.job.settlementOutcome=(c.job.withdrawn or 0)>0 and 'PARTIAL_WITHDRAWN' or 'DELIVERED'
-                    Store.finish(c.job) c.completed=true c.closedGeneration=c.job.generation current=nil changed(c.job)
+		    local settled=Store.finish(c.job)
+		    if not settled then c.commitFailure=true api.pause('RECONCILE_REQUIRED') return end
+		    c.completed=true c.closedGeneration=c.job.generation current=nil changed(c.job)
                 elseif why~='SCAN_PENDING' then
                     if why=='RECONCILE_REQUIRED' then c.job.controlUncertain=true end
                     api.pause(why)

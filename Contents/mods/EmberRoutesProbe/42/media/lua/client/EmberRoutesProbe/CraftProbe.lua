@@ -45,7 +45,7 @@ local function data()
     local current=Registry.data()
     if current~=root then
         drafts={}
-        local crafts=BusinessJobs.crafts()
+	local crafts=BusinessJobs.legacyCrafts()
         for id,r in pairs(crafts) do
             if not Record.valid(id,r) then error('CRAFT_RECORD_INVALID') end
         end
@@ -61,14 +61,14 @@ local function data()
     end
     return records
 end
-function Craft.record(id) return data()[id] end
-function Craft.prepareRecovery() data() Store.data() end
+function Craft.record(id) return require('EmberRoutesProbe/ProductionJobs').record(id) or data()[id] end
+function Craft.prepareRecovery() require('EmberRoutesProbe/ProductionJobs').prepareRecovery() data() Store.data() end
 function Craft.restoreCandidate(actor,id,jobId)
     local r=Craft.record(id)
     if not r or r.id~=jobId or r.released or r.uncertain or r.phase=='COMMITTING' then return false end
     -- Existing executors revalidate exact originals and claims on admission.
     local result
-    if r.format==3 then result=Production.execute(actor,'resume',nil,id,{nonPreemptive=true})
+    if (r.format==3 or r.format==4) then result=Production.execute(actor,'resume',nil,id,{nonPreemptive=true})
     else
         -- Legacy resumes are routed through execute below; no new Job identity.
         result=Craft.execute(actor,'resume',nil,id,true,nil,true)
@@ -815,7 +815,7 @@ function Craft.status(id)
     local saved=Craft.record(id)
     local record=(contexts[id] and contexts[id].record) or drafts[id] or saved
     if not record then return nil end
-    if record.format==3 then return Production.status(record) end
+    if (record.format==3 or record.format==4) then return Production.status(record) end
     local draft=drafts[id]==record
     return {id=record.id,npcId=id,settlementId=record.settlementId,state=record.state,phase=record.phase,
         reason=record.reason,released=record.released or draft,uncertain=record.uncertain==true,made=record.made==true,

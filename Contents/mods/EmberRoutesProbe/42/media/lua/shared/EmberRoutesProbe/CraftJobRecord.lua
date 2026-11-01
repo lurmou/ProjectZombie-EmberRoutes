@@ -67,6 +67,18 @@ function R.valid(job)
         return false
     end
     local p = job.payload
+    if p.executor~=nil then
+	if p.executor~='PRODUCTION' or p.id~=job.id or p.npcId~=job.npcId
+	    or not require('EmberRoutesProbe/CraftRecord').validProduction(job.npcId,p)
+	    or p.sequence~=p.generation then return false end
+	local a=p.nativeAttempt
+	if a~=nil then
+	    if type(a)~='table' or a.format~=1 or not Validate.stringId(a.id)
+		or not Validate.integer(a.sequence,0) or (a.state~='COMMITTING' and a.state~='APPLIED' and a.state~='UNKNOWN') then return false end
+	    if (a.state=='COMMITTING' or a.state=='UNKNOWN') and (p.released or job.state=='DONE' or job.state=='CANCELLED' or job.effects~='UNKNOWN' or job.obligations.business~=true) then return false end
+	    if a.state=='APPLIED' and (type(a.observation)~='table' or a.observation.complete~=true or a.observation.attemptId~=a.id) then return false end
+	end
+    end
 
     -- 2. Format & scalar types
     if p.format ~= 4 or not Validate.integer(p.sequence, 0) then return false end
@@ -77,7 +89,7 @@ function R.valid(job)
     if p.benchId ~= nil and not Validate.stringId(p.benchId) then return false end
     if p.released ~= nil and type(p.released) ~= 'boolean' then return false end
 
-    -- 3. Strict array structural validation (preventing ipairs崩溃 on non-array tables)
+    -- 3. Strict array structural validation (preventing ipairs宕╂簝 on non-array tables)
     if not isDenseArray(p.claims, 256) then return false end
     for _, k in ipairs(p.claims) do
         if type(k) ~= 'string' or #k == 0 or #k > 256 then return false end
@@ -130,4 +142,14 @@ function R.valid(job)
     return true
 end
 
+function R.transition(old,new)
+    if old.payload.executor=='PRODUCTION' then
+	if new.payload.executor~='PRODUCTION' then return false end
+	local a,b=old.payload.nativeAttempt,new.payload.nativeAttempt
+	if a and (a.state=='COMMITTING' or a.state=='UNKNOWN') then
+	    if not b or a.id~=b.id then return false end
+	end
+    end
+    return true
+end
 return R

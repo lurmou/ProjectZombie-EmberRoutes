@@ -89,7 +89,7 @@ function Service.status(actor,id)
             local summary={}
             for _,itemId in ipairs(r.items or {}) do
                 local kind=types[tostring(itemId)]
-                local line=r.format==2 and require('EmberRoutesProbe/HaulManifest').line(r,itemId)
+		local line=(r.format==2 or r.format==3) and require('EmberRoutesProbe/HaulManifest').line(r,itemId)
                 row.assets[#row.assets+1]={id=itemId,kind='cargo',fullType=kind,
                     custodyState=line and line.custodyState,delivered=line and line.custodyState=='DELIVERED' or false,
                     destinationId=line and line.deliveryReceipt and line.deliveryReceipt.destinationId}
@@ -98,7 +98,7 @@ function Service.status(actor,id)
             local names={} for kind,count in pairs(summary) do names[#names+1]=getItemNameFromFullType(kind)..' × '..count end
             table.sort(names)
             if #names>0 then row.title=getText('IGUI_EmberRoutesProbe_Monitor_hauling')..' · '..table.concat(names,', ') end
-            if r.format==2 then
+	    if (r.format==2 or r.format==3) then
                 row.delivered,row.withdrawn,row.cargoHeld=require('EmberRoutesProbe/HaulManifest').count(r)
                 row.cargoSummary=getText('IGUI_EmberRoutesProbe_Monitor_cargoSummary',tostring(row.cargoHeld),tostring(row.withdrawn))
                 if r.reason=='ROUTING_WAIT' then row.reason=getText('IGUI_EmberRoutesProbe_WorkCode_'..(r.routingWait and r.routingWait.reason or 'ROUTING_WAIT')) end

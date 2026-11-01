@@ -9,7 +9,9 @@ local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Business=require 'EmberRoutesProbe/BusinessJobs'
 local function craft(id)
  local r={id=id,npcId='npc',format=3,state='RUNNING',generation=1,settlementId='s',
-  produced=0,delivered=0,target=3,materials={},tools={},outputs={},held={}}
+  produced=0,delivered=0,target=3,materials={},tools={},outputs={},
+  requester='fixture',recipeId='fixture',signature='fixture',product='Base.Plank',recipeName='fixture',
+  phase='COLLECTING',released=false,requested=3,unitYield=3}
  assert(Business.publishCraft(r)) return r
 end
 local function finish(r) r.state='DONE' r.released=true r.produced=3 r.delivered=3 Business.flush() end
@@ -47,7 +49,7 @@ care=Jobs.current():get('care') care.payload.resume.state='RESTORE_QUEUED'
 assert(Jobs.current():update(care.id,care.revision,{payload=care.payload}))
 check(Business.retire(r.id) and Jobs.current():get('care').payload.resume.state=='RESTORED',
  'completed restored work discharges late observation without deleting personal custody')
-local h={id='haul',npcId='other',kind='EXPLICIT_TRANSFER',format=1,state='DONE',items={},generation=1}
+local h={id='haul',npcId='other',kind='EXPLICIT_TRANSFER',format=1,state='DONE',items={},generation=1,source='fixture-source',destination='fixture-target'}
 check(Business.publishHaul(h) and Business.retire(h.id) and not Business.hauls().tasks[h.id],'settled hauling retires too')
 for i=1,600 do local row=craft('cycle-'..i) finish(row) assert(Business.retire(row.id)) end
 check(#Jobs.current():forNpc('npc')==1 and Jobs.current():get('care')~=nil,'600 completed jobs do not exhaust capacity or erase personal routine')
