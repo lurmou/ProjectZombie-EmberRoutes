@@ -82,137 +82,141 @@ function Store.data()
         current.nextClaimSeq = current.nextClaimSeq or 1
         rebuilt.nextClaimSeq = current.nextClaimSeq
 
-        -- Collect the complete identity graph before acquiring ANY token. A
-        -- single-value map would let pairs/provider order choose a winner.
-        local identities, candidates = {}, {}
-        local function identity(cid, taskId, key)
-            if not cid then return end
-            local g = identities[cid]
-            if not g then
-                g = {taskIds={}, resourceKeys={}, count=0}
-                identities[cid] = g
+	local function restoreClaimIdentities()
+	    -- Collect the complete identity graph before acquiring ANY token. A
+	    -- single-value map would let pairs/provider order choose a winner.
+	    local identities, candidates = {}, {}
+	    local function identity(cid, taskId, key)
+		if not cid then return end
+		local g = identities[cid]
+		if not g then
+		    g = {taskIds={}, resourceKeys={}, count=0}
+		    identities[cid] = g
+		end
+		taskId = taskId or 'SYSTEM_QUARANTINE'
+		if not g.taskIds[taskId] then g.taskIds[taskId]=true g.count=g.count+1 end
+		if key then g.resourceKeys[key]=true end
             end
-            taskId = taskId or 'SYSTEM_QUARANTINE'
-            if not g.taskIds[taskId] then g.taskIds[taskId]=true g.count=g.count+1 end
-            if key then g.resourceKeys[key]=true end
-        end
-        for key,q in pairs(current.quarantineResources) do
-            if type(q)=='table' then identity(q.originalClaimId,q.originalTaskId,key) end
-        end
-        local function candidate(record,id,keys,job)
-            candidates[#candidates+1]={record=record,id=id,keys=keys or {},job=job}
-        end
-        for id,job in pairs(current.taskJobs and current.taskJobs.byId or {}) do
-            if type(job)=='table' and job.state~='DONE' and job.state~='CANCELLED' then
-                candidate(job,id,job.payload.claims,job)
-            end
-        end
-        for id,entry in pairs(current.toolCustody and current.toolCustody.byId or {}) do
-            if type(entry)=='table' then candidate(entry,id,entry.claims) end
-        end
-        -- Legacy adapters acquire with payload identities. Count their task ID
-        -- once even when its envelope references the same claim identity.
-        for id,r in pairs(data.tasks) do
-            if type(r)=='table' and r.state~='DONE' and type(r.items)=='table' then
-                candidate(r,id,resources(r),current.taskJobs and current.taskJobs.byId[id])
-            end
-        end
-        for _,r in pairs(nativeRecords()) do
-	    if (r.format==1 or r.format==2 or r.format==3) and not r.released then
-                candidate(r,r.id,CraftRecord.resources(r),current.taskJobs and current.taskJobs.byId[r.id])
-            end
-        end
-        table.sort(candidates,function(a,b)
-	    if a.id==b.id then return tostring(a.record.claimId or '') < tostring(b.record.claimId or '') end
-            return a.id<b.id
-        end)
-        for _,e in ipairs(candidates) do
-            -- Preserve even a mismatched legacy/custody identity long enough to
-            -- detect its collision. Repairing it first would erase the evidence.
-	    e.claimId=type(e.record.claimId)=='string' and e.record.claimId or ensureEntityClaimId(current,e.record,e.id)
-            identity(e.claimId,e.id)
-            for _,key in ipairs(e.keys) do identity(e.claimId,e.id,key) end
-        end
-        local collisions={}
-        for _,e in ipairs(candidates) do
-            local g=identities[e.claimId]
-            if g.count>1 then
-                local conflict=collisions[e.id]
-                if not conflict then
-                    conflict={originalTaskId=e.id,originalClaimId=e.claimId,claimIds={},taskIds={},resourceKeys={}}
-                    collisions[e.id]=conflict
-                end
-                if e.claimId<conflict.originalClaimId then conflict.originalClaimId=e.claimId end
-                conflict.claimIds[e.claimId]=true
-                for id in pairs(g.taskIds) do conflict.taskIds[id]=true end
-                for key in pairs(g.resourceKeys) do conflict.resourceKeys[key]=true end
-            end
-	end
-	local function attachCollision(q,id,conflict)
-	    local facts,priorReport=Evidence.snapshot(q.evidence,q.evidenceReport)
-	    if type(facts)~='table' then facts={priorEvidence=facts} end
-	    if type(facts.identityCollisions)~='table' then
-		facts.priorIdentityCollisions=facts.identityCollisions
-		facts.identityCollisions={}
+	    for key,q in pairs(current.quarantineResources) do
+		if type(q)=='table' then identity(q.originalClaimId,q.originalTaskId,key) end
 	    end
-	    facts.identityCollisions[id]=conflict
-	    q.evidence,q.evidenceReport=Evidence.snapshot(facts,priorReport)
-        end
-        local replacements={}
-        for _,e in ipairs(candidates) do
-            local conflict=collisions[e.id]
-            if conflict then
-                local cid=replacements[e.id]
-                if not cid then
-                    repeat cid=nextAuthoritativeClaimId(current,e.id) until not identities[cid]
-                    replacements[e.id]=cid
-                end
-                e.record.claimId=cid
-                if e.job then
-                    e.job.claimId=cid
-                    e.job.state,e.job.effects='RECONCILE_REQUIRED','UNKNOWN'
-                    if e.job.providerType=='CRAFT' or e.job.providerType=='HAUL' then
-                        local p=e.job.payload
-                        p.state,p.reason,p.uncertain='PAUSED','CLAIM_IDENTITY_COLLISION',true
-                    end
-                else
-                    e.record.reason,e.record.uncertain='CLAIM_IDENTITY_COLLISION',true
-                end
-                -- New identity is legal; the OLD identity and all participants
-                -- remain on persistent system-owned resources. A restart cannot
-                -- turn the rekey into permission to reacquire those originals.
-                for _,key in ipairs(e.keys) do
-                    local q=current.quarantineResources[key]
-                    if not q then
-                        q={status='ACTIVE',reason='CLAIM_IDENTITY_COLLISION',originalTaskId=e.id,
-                            originalClaimId=conflict.originalClaimId,originalGeneration=e.record.generation,evidence={}}
-                        local p=e.job and e.job.payload or e.record
-                        local r=p.reservation
-                        local itemId=tonumber(string.match(key,'^item:(%d+)$'))
-                        if itemId and r then
-                            local amount=r.items and r.items[itemId] or r.itemId==itemId and r.amount
-                            if amount then q.capacityKey,q.capacityItemId,q.capacityAmount=r.key,itemId,amount end
-                        end
-                        local cap=p.capacity
-			if cap and (itemId and cap.itemId==itemId or key=='cooking:capacity:'..e.id) then
-                            q.capacityKey,q.capacityItemId,q.capacityAmount=cap.key or cap.endpointId,
-                                cap.itemId or key,cap.amount
-                        end
-                        current.quarantineResources[key]=q
-                        rebuilt:restoreQuarantine(key,q)
-                    end
-		    attachCollision(q,e.id,conflict)
-                end
+	    local function candidate(record,id,keys,job)
+		candidates[#candidates+1]={record=record,id=id,keys=keys or {},job=job}
 	    end
-	end
-	-- Also annotate the original quarantine records, including conflicts
-	-- involving a task with no remaining resource keys of its own.
-	for id,conflict in pairs(collisions) do
-	    for key in pairs(conflict.resourceKeys) do
-		local q=current.quarantineResources[key]
-		if type(q)=='table' then attachCollision(q,id,conflict) end
-            end
+	    for id,job in pairs(current.taskJobs and current.taskJobs.byId or {}) do
+		if type(job)=='table' and job.state~='DONE' and job.state~='CANCELLED' then
+		    candidate(job,id,job.payload.claims,job)
+		end
+	    end
+	    for id,entry in pairs(current.toolCustody and current.toolCustody.byId or {}) do
+		if type(entry)=='table' then candidate(entry,id,entry.claims) end
+	    end
+	    -- Legacy adapters acquire with payload identities. Count their task ID
+	    -- once even when its envelope references the same claim identity.
+	    for id,r in pairs(data.tasks) do
+		if type(r)=='table' and r.state~='DONE' and type(r.items)=='table' then
+		    candidate(r,id,resources(r),current.taskJobs and current.taskJobs.byId[id])
+		end
+	    end
+	    for _,r in pairs(nativeRecords()) do
+		if (r.format==1 or r.format==2 or r.format==3) and not r.released then
+		    candidate(r,r.id,CraftRecord.resources(r),current.taskJobs and current.taskJobs.byId[r.id])
+		end
+	    end
+	    table.sort(candidates,function(a,b)
+		if a.id==b.id then return tostring(a.record.claimId or '') < tostring(b.record.claimId or '') end
+		return a.id<b.id
+	    end)
+	    for _,e in ipairs(candidates) do
+		-- Preserve even a mismatched legacy/custody identity long enough to
+		-- detect its collision. Repairing it first would erase the evidence.
+		e.claimId=type(e.record.claimId)=='string' and e.record.claimId or ensureEntityClaimId(current,e.record,e.id)
+		identity(e.claimId,e.id)
+		for _,key in ipairs(e.keys) do identity(e.claimId,e.id,key) end
+	    end
+	    local collisions={}
+	    for _,e in ipairs(candidates) do
+		local g=identities[e.claimId]
+		if g.count>1 then
+		    local conflict=collisions[e.id]
+		    if not conflict then
+			conflict={originalTaskId=e.id,originalClaimId=e.claimId,claimIds={},taskIds={},resourceKeys={}}
+			collisions[e.id]=conflict
+		    end
+		    if e.claimId<conflict.originalClaimId then conflict.originalClaimId=e.claimId end
+		    conflict.claimIds[e.claimId]=true
+		    for id in pairs(g.taskIds) do conflict.taskIds[id]=true end
+		    for key in pairs(g.resourceKeys) do conflict.resourceKeys[key]=true end
+		end
+	    end
+	    local function attachCollision(q,id,conflict)
+		local facts,priorReport=Evidence.snapshot(q.evidence,q.evidenceReport)
+		if type(facts)~='table' then facts={priorEvidence=facts} end
+		if type(facts.identityCollisions)~='table' then
+		    facts.priorIdentityCollisions=facts.identityCollisions
+		    facts.identityCollisions={}
+		end
+		facts.identityCollisions[id]=conflict
+		q.evidence,q.evidenceReport=Evidence.snapshot(facts,priorReport)
+	    end
+	    local replacements={}
+	    for _,e in ipairs(candidates) do
+		local conflict=collisions[e.id]
+		if conflict then
+		    local cid=replacements[e.id]
+		    if not cid then
+			repeat cid=nextAuthoritativeClaimId(current,e.id) until not identities[cid]
+			replacements[e.id]=cid
+		    end
+		    e.record.claimId=cid
+		    if e.job then
+			e.job.claimId=cid
+			e.job.state,e.job.effects='RECONCILE_REQUIRED','UNKNOWN'
+			if e.job.providerType=='CRAFT' or e.job.providerType=='HAUL' then
+			    local p=e.job.payload
+			    p.state,p.reason,p.uncertain='PAUSED','CLAIM_IDENTITY_COLLISION',true
+			end
+		    else
+			e.record.reason,e.record.uncertain='CLAIM_IDENTITY_COLLISION',true
+		    end
+		    -- New identity is legal; the OLD identity and all participants
+		    -- remain on persistent system-owned resources. A restart cannot
+		    -- turn the rekey into permission to reacquire those originals.
+		    for _,key in ipairs(e.keys) do
+			local q=current.quarantineResources[key]
+			if not q then
+			    q={status='ACTIVE',reason='CLAIM_IDENTITY_COLLISION',originalTaskId=e.id,
+				originalClaimId=conflict.originalClaimId,originalGeneration=e.record.generation,evidence={}}
+			    local p=e.job and e.job.payload or e.record
+			    local r=p.reservation
+			    local itemId=tonumber(string.match(key,'^item:(%d+)$'))
+			    if itemId and r then
+				local amount=r.items and r.items[itemId] or r.itemId==itemId and r.amount
+				if amount then q.capacityKey,q.capacityItemId,q.capacityAmount=r.key,itemId,amount end
+			    end
+			    local cap=p.capacity
+			    if cap and (itemId and cap.itemId==itemId or key=='cooking:capacity:'..e.id) then
+				q.capacityKey,q.capacityItemId,q.capacityAmount=cap.key or cap.endpointId,
+				    cap.itemId or key,cap.amount
+			    end
+			    current.quarantineResources[key]=q
+			    rebuilt:restoreQuarantine(key,q)
+			end
+			attachCollision(q,e.id,conflict)
+		    end
+		end
+	    end
+	    -- Also annotate the original quarantine records, including conflicts
+	    -- involving a task with no remaining resource keys of its own.
+	    for id,conflict in pairs(collisions) do
+		for key in pairs(conflict.resourceKeys) do
+		    local q=current.quarantineResources[key]
+		    if type(q)=='table' then attachCollision(q,id,conflict) end
+		end
+	    end
+
         end
+	restoreClaimIdentities()
 
         local resourceClaimants = {}
         local conflictKeys = {}
@@ -463,180 +467,185 @@ function Store.data()
         local rebuiltCraft = {}
         local rebuiltHaul = {}
 
-        if current.taskJobs and current.taskJobs.byId then
-            for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'SELF_CARE' then
-                    if not require('EmberRoutesProbe/SelfCareRecord').valid(job) then error('PERSONAL_RECORD_INVALID') end
-                    if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                        if hasConflict(job.payload.claims) then
-                            job.state = 'RECONCILE_REQUIRED'
-                            job.effects = 'UNKNOWN'
-                        else
-                            local claimId = ensureEntityClaimId(current, job, id)
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
-                            if not token then
+	-- Keep each recovery phase in its own Lua function. PZ Debug records
+	-- every declared local (including expired scopes) in a 200-slot table.
+	-- This synchronous phase preserves scan order and shared claim authority.
+	local function restoreTypedJobs()
+	    if current.taskJobs and current.taskJobs.byId then
+		for id, job in pairs(current.taskJobs.byId) do
+		    if job.providerType == 'SELF_CARE' then
+			if not require('EmberRoutesProbe/SelfCareRecord').valid(job) then error('PERSONAL_RECORD_INVALID') end
+			if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+			    if hasConflict(job.payload.claims) then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
                             else
-                                rebuiltPersonal[id] = token
-                            end
-                        end
-                    end
-                end
-            end
-
-            for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'COOKING' then
-                    if not require('EmberRoutesProbe/CookingRecord').valid(job) then error('COOKING_RECORD_INVALID') end
-                    if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                        if hasConflict(job.payload.claims) then
-                            job.state = 'RECONCILE_REQUIRED'
-                            job.effects = 'UNKNOWN'
-                        else
-                            local claimId = ensureEntityClaimId(current, job, id)
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
-                            if not token then
-                                job.state = 'RECONCILE_REQUIRED'
-                                job.effects = 'UNKNOWN'
-                            else
-                                local cap = job.payload.capacity
-                                if cap and not rebuilt:restoreWork(token, cap.endpointId, cap.amount) then
+				local claimId = ensureEntityClaimId(current, job, id)
+				local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
+				if not token then
                                     job.state = 'RECONCILE_REQUIRED'
                                     job.effects = 'UNKNOWN'
-                                    rebuilt:release(token)
                                 else
-                                    rebuiltCooking[id] = token
+				    rebuiltPersonal[id] = token
                                 end
                             end
                         end
                     end
                 end
-            end
 
-            for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'ACTIVITY' then
-                    if not require('EmberRoutesProbe/ActivityRecord').valid(job) then error('ACTIVITY_RECORD_INVALID') end
-                    if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                        if hasConflict(job.payload.claims) then
-                            job.state = 'RECONCILE_REQUIRED'
-                            job.effects = 'UNKNOWN'
-                        else
-                            local claimId = ensureEntityClaimId(current, job, id)
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
-                            if not token then
+		for id, job in pairs(current.taskJobs.byId) do
+		    if job.providerType == 'COOKING' then
+			if not require('EmberRoutesProbe/CookingRecord').valid(job) then error('COOKING_RECORD_INVALID') end
+			if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+			    if hasConflict(job.payload.claims) then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
                             else
-                                rebuiltActivity[id] = token
-                            end
-                        end
-                    end
-                end
-            end
-
-            for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'FIELD_WORK' then
-                    if not require('EmberRoutesProbe/FieldRecord').valid(job) then error('FIELD_RECORD_INVALID') end
-                    if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                        if hasConflict(job.payload.claims) then
-                            job.state = 'RECONCILE_REQUIRED'
-                            job.effects = 'UNKNOWN'
-                        else
-                            local claimId = ensureEntityClaimId(current, job, id)
-                            local token, why = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
-                            if not token then
-                                job.state = 'RECONCILE_REQUIRED'
-                                job.effects = 'UNKNOWN'
-                            else
-                                local cap = job.payload.capacity
-                                if cap and not rebuilt:restore(token, cap.key, cap.itemId, cap.amount) then
+				local claimId = ensureEntityClaimId(current, job, id)
+				local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
+				if not token then
                                     job.state = 'RECONCILE_REQUIRED'
                                     job.effects = 'UNKNOWN'
-                                    rebuilt:release(token)
                                 else
-                                    rebuiltField[id] = token
+				    local cap = job.payload.capacity
+				    if cap and not rebuilt:restoreWork(token, cap.endpointId, cap.amount) then
+					job.state = 'RECONCILE_REQUIRED'
+					job.effects = 'UNKNOWN'
+					rebuilt:release(token)
+				    else
+					rebuiltCooking[id] = token
+				    end
                                 end
                             end
                         end
                     end
                 end
-            end
 
-            for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'CRAFT' and job.payload and job.payload.format == 4 then
-                    if not require('EmberRoutesProbe/CraftJobRecord').valid(job) then error('CRAFT_JOB_RECORD_INVALID') end
-                    if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                        if hasConflict(job.payload.claims) then
-                            job.state = 'RECONCILE_REQUIRED'
-                            job.effects = 'UNKNOWN'
-                        else
-                            local claimId = ensureEntityClaimId(current, job, id)
-                            local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, job.payload.claims, { claimId = claimId })
-                            if not token then
+		for id, job in pairs(current.taskJobs.byId) do
+		    if job.providerType == 'ACTIVITY' then
+			if not require('EmberRoutesProbe/ActivityRecord').valid(job) then error('ACTIVITY_RECORD_INVALID') end
+			if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+			    if hasConflict(job.payload.claims) then
                                 job.state = 'RECONCILE_REQUIRED'
                                 job.effects = 'UNKNOWN'
                             else
-                                rebuiltCraft[id] = token
-                                newTokens[id] = token
+				local claimId = ensureEntityClaimId(current, job, id)
+				local token, reason = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
+				if not token then
+				    job.state = 'RECONCILE_REQUIRED'
+				    job.effects = 'UNKNOWN'
+				else
+				    rebuiltActivity[id] = token
+				end
                             end
                         end
                     end
                 end
-            end
 
-            for id, job in pairs(current.taskJobs.byId) do
-                if job.providerType == 'HAUL' and job.payload and (job.payload.format == 3 or job.payload.format == 1) then
-                    if newTokens[id] then
-                        rebuiltHaul[id] = newTokens[id]
-                    else
-                        local isValid = false
-                        if job.payload.format == 3 then
-                            isValid = require('EmberRoutesProbe/HaulJobRecord').valid(job)
-                        elseif job.payload.format == 1 then
-                            local p = job.payload
-                            isValid = type(p) == 'table' and type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'
-                        end
-                        if not isValid then
-                            job.state = 'RECONCILE_REQUIRED'
-                            job.effects = 'UNKNOWN'
-                        else
-                            local claimKeys = job.payload.claims
-                            if not claimKeys and job.payload.items then
-                                claimKeys = {}
-                                for _, itId in ipairs(job.payload.items) do
-                                    claimKeys[#claimKeys + 1] = "item:" .. itId
-                                end
-                            end
-                            claimKeys = claimKeys or {}
-                            if #claimKeys > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
-                                if hasConflict(claimKeys) then
+		for id, job in pairs(current.taskJobs.byId) do
+		    if job.providerType == 'FIELD_WORK' then
+			if not require('EmberRoutesProbe/FieldRecord').valid(job) then error('FIELD_RECORD_INVALID') end
+			if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+			    if hasConflict(job.payload.claims) then
+				job.state = 'RECONCILE_REQUIRED'
+				job.effects = 'UNKNOWN'
+			    else
+				local claimId = ensureEntityClaimId(current, job, id)
+				local token, why = rebuilt:acquire(id, job.payload.sequence, job.payload.claims, { claimId = claimId })
+				if not token then
                                     job.state = 'RECONCILE_REQUIRED'
                                     job.effects = 'UNKNOWN'
                                 else
-                                    local claimId = ensureEntityClaimId(current, job, id)
-                                    local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, claimKeys, { claimId = claimId })
-                                    if not token then
+				    local cap = job.payload.capacity
+				    if cap and not rebuilt:restore(token, cap.key, cap.itemId, cap.amount) then
+					job.state = 'RECONCILE_REQUIRED'
+					job.effects = 'UNKNOWN'
+					rebuilt:release(token)
+				    else
+					rebuiltField[id] = token
+				    end
+				end
+			    end
+			end
+		    end
+		end
+
+		for id, job in pairs(current.taskJobs.byId) do
+		    if job.providerType == 'CRAFT' and job.payload and job.payload.format == 4 then
+			if not require('EmberRoutesProbe/CraftJobRecord').valid(job) then error('CRAFT_JOB_RECORD_INVALID') end
+			if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+			    if hasConflict(job.payload.claims) then
+				job.state = 'RECONCILE_REQUIRED'
+				job.effects = 'UNKNOWN'
+			    else
+				local claimId = ensureEntityClaimId(current, job, id)
+				local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, job.payload.claims, { claimId = claimId })
+				if not token then
+				    job.state = 'RECONCILE_REQUIRED'
+				    job.effects = 'UNKNOWN'
+				else
+				    rebuiltCraft[id] = token
+				    newTokens[id] = token
+				end
+			    end
+			end
+		    end
+		end
+
+		for id, job in pairs(current.taskJobs.byId) do
+		    if job.providerType == 'HAUL' and job.payload and (job.payload.format == 3 or job.payload.format == 1) then
+			if newTokens[id] then
+			    rebuiltHaul[id] = newTokens[id]
+			else
+			    local isValid = false
+			    if job.payload.format == 3 then
+				isValid = require('EmberRoutesProbe/HaulJobRecord').valid(job)
+			    elseif job.payload.format == 1 then
+				local p = job.payload
+				isValid = type(p) == 'table' and type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'
+			    end
+			    if not isValid then
+				job.state = 'RECONCILE_REQUIRED'
+				job.effects = 'UNKNOWN'
+			    else
+				local claimKeys = job.payload.claims
+				if not claimKeys and job.payload.items then
+				    claimKeys = {}
+				    for _, itId in ipairs(job.payload.items) do
+					claimKeys[#claimKeys + 1] = "item:" .. itId
+				    end
+				end
+				claimKeys = claimKeys or {}
+				if #claimKeys > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+				    if hasConflict(claimKeys) then
                                         job.state = 'RECONCILE_REQUIRED'
                                         job.effects = 'UNKNOWN'
                                     else
-                                        local r = job.payload.reservation
-                                        local okCap = true
-                                        if r and type(r) == 'table' then
-                                            if type(r.items) == 'table' then
-                                                for itemId, amount in pairs(r.items) do
-                                                    if not rebuilt:restore(token, r.key, itemId, amount) then okCap = false break end
-                                                end
-                                            elseif r.itemId and r.amount then
-                                                if not rebuilt:restore(token, r.key, r.itemId, r.amount) then okCap = false end
-                                            end
-                                        end
-                                        if not okCap then
+					local claimId = ensureEntityClaimId(current, job, id)
+					local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, claimKeys, { claimId = claimId })
+					if not token then
                                             job.state = 'RECONCILE_REQUIRED'
                                             job.effects = 'UNKNOWN'
-                                            rebuilt:release(token)
                                         else
-                                            rebuiltHaul[id] = token
-                                            newTokens[id] = token
+					    local r = job.payload.reservation
+					    local okCap = true
+					    if r and type(r) == 'table' then
+						if type(r.items) == 'table' then
+						    for itemId, amount in pairs(r.items) do
+							if not rebuilt:restore(token, r.key, itemId, amount) then okCap = false break end
+						    end
+						elseif r.itemId and r.amount then
+						    if not rebuilt:restore(token, r.key, r.itemId, r.amount) then okCap = false end
+						end
+					    end
+					    if not okCap then
+						job.state = 'RECONCILE_REQUIRED'
+						job.effects = 'UNKNOWN'
+						rebuilt:release(token)
+					    else
+						rebuiltHaul[id] = token
+						newTokens[id] = token
+					    end
                                         end
                                     end
                                 end
@@ -645,7 +654,9 @@ function Store.data()
                     end
                 end
             end
+
         end
+	restoreTypedJobs()
 
         local rebuiltCustody = {}
         if current.toolCustody and current.toolCustody.byId then

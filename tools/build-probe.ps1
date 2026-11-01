@@ -20,6 +20,8 @@ $dependencies = foreach ($dependencyJar in @($gameJar, $buddyJar)) {
     [ordered]@{ path=$dependencyJar; sha256=$hash.Hash }
 }
 $javaCommand = (Get-Command java -ErrorAction Stop).Source
+& $javaCommand '--class-path' "$GameRoot/*" (Join-Path $projectRoot 'tests/java/KahluaCompileTest.java') (Join-Path $projectRoot 'Contents/mods/EmberRoutesProbe/42/media/lua')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Production Lua failed normal/Debug compilation" }
 $javacCommand = (Get-Command javac -ErrorAction Stop).Source
 $jarCommand = (Get-Command jar -ErrorAction Stop).Source
 $buildRoot = Join-Path $projectRoot 'build'

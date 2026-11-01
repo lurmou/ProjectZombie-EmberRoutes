@@ -46,3 +46,15 @@ Production 专项增加：native 前 CAS 拒绝零次效果；native 后 Claim �
 使用可丢弃的新世界，按真实产品入口验证：手动制作一单、公共制作一单、BOM 连续制作；取料/制作/交付期间暂停与取消，原工具归还；自主搬运混合货物分仓、部分交付与暂停续作、配送取消退回。至少保留一份携带真实原件的暂停任务，正常保存、完整退出、重新载入两次，核对同一 Job 身份、物品 ID、容量与任务进度，确认不重复制作或配送。
 
 不把宿主深拷贝等同于 PZ ModData 磁盘验证；不宣称任意配方/模组、跨作用域人工移动、强杀恢复、规模性能或联机已通过。不存在本轮新增的历史存档清洗/迁移。完整源码 Diff 由 Git 提供；并行人员/UI/生命周期改动保留且不混入本轮提交。
+
+## 首次实机加载阻断：Debug 编译局部变量表
+
+用户随后报告游戏错误计数 59。`console.txt` 从 20:25:54 开始反复记录同一 `LaborStore.lua` 编译异常：`ArrayIndexOutOfBoundsException: Index 200 out of bounds for length 200`，发生在 `LexState.new_localvar:730`。包含退出重载在内，采集时日志中有 114 次相同异常，不能把屏幕计数理解为 59 种独立缺陷。加载路径是 Workshop 工作区，不是隔离候选目录。
+
+固定安装 JAR 的 javap 证明：Debug 分支用函数内累计局部变量编号索引固定 200 项 `actvarline`，已离开作用域的局部声明仍占编号；普通模式不执行此分支。同一生产文件 `Core.debug=false` 编译通过，`true` 完整复现越界。修改前 `b1146d6` 同样可复现，因此不是某个实际制作效果产生的资源异常；但此前宿主未开启该编译分支，是本轮验收遗漏，旧候选包撤回。
+
+修复是等价的阶段隔离：将身份冲突图恢复与类型化 Job 认领恢复分别置于同步局部函数，保留原执行位置、扫描顺序、共享 Claims 和最终缓存发布时点。`git diff -w` 仅新增 11 行，没有删除恢复链、放宽 Validator 或改变持久格式。
+
+新增 `tests/java/KahluaCompileTest.java`，用当前安装编译器只编译全部生产 Lua（不执行世界逻辑），逐一切换普通/Debug 两种模式，构建入口 `build-probe.ps1` 已接入此门禁。实际结果：两种模式各 326 文件、0 失败，所有函数最大局部名称表为 134；LaborStore 定向 lint 0 error / 0 warning；标准 Lua Stage B 包含 482 Evidence 检查通过；安装版 Kahlua 制作/搬运/配送通过。额外尝试的完整 Stage B Kahlua 在 Part 6 已通过后，于 Evidence 夹具 `quarantine-evidence-test.lua:23` 因宿主未提供 `io.stdout` 失败，未把这一宿主夹具缺口计为通过，也未修改生产代码规避它。
+
+复现新门禁：`java --class-path "D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/*" tests/java/KahluaCompileTest.java`。这证明 Debug 编译阻断已消除，不证明游戏重启后业务与磁盘验收已通过；需完整退出再启动，不能用热重载替代重新初始化。
