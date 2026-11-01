@@ -12,12 +12,16 @@
 -- 9. Synchronous watch disposal defense (late release called immediately)
 -- 10. Store subscription gate & unsubscribe
 -- 11. PageLifetimeScope core lifecycle & cascade disposal
--- 12. Real business integration: Personnel DossierDrawer (persistent across tabs)
--- 13. Real business integration: Warehouse CartDrawer (transient)
--- 14. Real business integration: CraftingPage cached sub-views
--- 15. Real business integration: DefensePage instance Store subscription
--- 16. Stress test: 100 consecutive tab switches (0 leaks)
+-- 12. Contract verification: Personnel DossierDrawer pattern (persistent across tabs)
+-- 13. Contract verification: Warehouse CartDrawer pattern (transient)
+-- 14. Contract verification: CraftingPage cached sub-views pattern
+-- 15. Contract verification: DefensePage instance Store subscription pattern
+-- 16. Stress test: 100 consecutive simulated tab switches (0 leaks)
 -- 17. Backward compatibility: Lifecycle.mount and Lifecycle.unmount
+-- 18. Task 1.6A P1-1: unmount handle cleanup and re-entrancy defense
+-- 19. Task 1.6A P1-2: unified releaseEntry reference severing (normal and error paths)
+-- 20. Task 1.6A P1-3: LifetimeScope anti-duplicate and disposed state protection
+-- 21. Task 1.6A P1-4: Lifecycle.dispose independent of page.disposed early exit
 
 local checks = 0
 local function check(value, message)
@@ -637,6 +641,230 @@ do
     check(reMounted == true, "Lifecycle.mount can be called again on next activation")
     Lifecycle.unmount(page)
     check(page.active == false, "Lifecycle.unmount succeeds again")
+end
+
+-- ================================================================
+-- Task 1.6A P1 Defect Hardening Regression Tests
+-- ================================================================
+
+-- Section 18: Task 1.6A P1-1 Regression - Unmount Clears Old Handles & Re-entrancy
+do
+    local page = { active = false, store = { subscribe = function(self, fn) return function() end end }, project = function() end }
+    local watchReleaseCalls = 0
+    local unsubCalls = 0
+    local function testWatch(cb)
+        return function() watchReleaseCalls = watchReleaseCalls + 1 end
+    end
+    page.store.subscribe = function(self, fn)
+        return function() unsubCalls = unsubCalls + 1 end
+    end
+
+    local ok = Lifecycle.mount(page, testWatch, function() end)
+    check(ok == true, "P1-1: Mount successful")
+    check(page.release ~= nil, "P1-1: page.release is non-nil after mount")
+    check(page.unsubscribe ~= nil, "P1-1: page.unsubscribe is non-nil after mount")
+
+    Lifecycle.unmount(page)
+    check(page.release == nil, "P1-1: page.release is nil after unmount")
+    check(page.unsubscribe == nil, "P1-1: page.unsubscribe is nil after unmount")
+    check(watchReleaseCalls == 1, "P1-1: Watch release called exactly once")
+    check(unsubCalls == 1, "P1-1: Unsubscribe called exactly once")
+
+    -- Second mount establishes new session cleanly
+    local ok2 = Lifecycle.mount(page, testWatch, function() end)
+    check(ok2 == true, "P1-1: Second mount successful")
+    check(page.release ~= nil, "P1-1: New release handle assigned")
+    check(page.unsubscribe ~= nil, "P1-1: New unsubscribe handle assigned")
+
+    Lifecycle.unmount(page)
+    check(page.release == nil, "P1-1: release cleared after second unmount")
+    check(page.unsubscribe == nil, "P1-1: unsubscribe cleared after second unmount")
+    check(watchReleaseCalls == 2, "P1-1: Second watch release called exactly once")
+    check(unsubCalls == 2, "P1-1: Second unsubscribe called exactly once")
+
+    -- Re-entrancy defense: cleanup callback triggers re-activation
+    local reentrantPage = { active = false }
+    local cleanupRan = false
+    local act = Lifecycle.createActivationScope(reentrantPage)
+    act:defer(function()
+        cleanupRan = true
+        -- Synchronous re-activation attempt during unmount/dispose
+        local newAct = Lifecycle.createActivationScope(reentrantPage)
+        if newAct then
+            reentrantPage.release = function() end
+        end
+    end)
+    Lifecycle.unmount(reentrantPage)
+    check(cleanupRan == true, "P1-1: Cleanup ran during unmount")
+end
+
+-- Section 19: Task 1.6A P1-2 Regression - releaseEntry Severing of fn and resource
+do
+    local page = {}
+    local lifetime = Lifecycle.createLifetimeScope(page)
+
+    -- Case 1: own resource released via handle
+    local res1 = { id = "res1" }
+    local disposer1Called = false
+    local handle1 = lifetime:own(res1, function(r)
+        disposer1Called = true
+    end)
+    -- Inspect internal entry
+    local entry1 = lifetime.entries[#lifetime.entries]
+    check(entry1.resource == res1, "P1-2: entry1 holds resource initially")
+    check(type(entry1.fn) == "function", "P1-2: entry1 holds fn initially")
+    handle1:release()
+    check(disposer1Called == true, "P1-2: Disposer called via handle")
+    check(entry1.released == true, "P1-2: entry1 marked released")
+    check(entry1.resource == nil, "P1-2: entry1.resource cleared to nil after release")
+    check(entry1.fn == nil, "P1-2: entry1.fn cleared to nil after release")
+    -- Calling handle again is a no-op
+    handle1:release()
+    check(entry1.resource == nil and entry1.fn == nil, "P1-2: Redundant handle release remains clean")
+
+    -- Case 2: own resource released via Scope:dispose()
+    local res2 = { id = "res2" }
+    local disposer2Called = false
+    lifetime:own(res2, function(r)
+        disposer2Called = true
+    end)
+    local entry2 = lifetime.entries[#lifetime.entries]
+    check(entry2.resource == res2, "P1-2: entry2 holds resource initially")
+
+    -- Case 3: defer released via handle
+    local defer1Called = false
+    local deferHandle = lifetime:defer(function()
+        defer1Called = true
+    end)
+    local entry3 = lifetime.entries[#lifetime.entries]
+    check(type(entry3.fn) == "function", "P1-2: entry3 holds fn initially")
+    deferHandle:release()
+    check(defer1Called == true, "P1-2: Defer callback called via handle")
+    check(entry3.fn == nil, "P1-2: entry3.fn cleared to nil after handle release")
+
+    -- Case 4: Exception during release: references STILL cleared and subsequent cleanups continue
+    local crashRes = { id = "crash-res" }
+    lifetime:own(crashRes, function(r)
+        error("Simulated disposer error")
+    end)
+    local crashEntry = lifetime.entries[#lifetime.entries]
+
+    local postCrashCalled = false
+    lifetime:defer(function()
+        postCrashCalled = true
+    end)
+    local postCrashEntry = lifetime.entries[#lifetime.entries]
+
+    -- Dispose lifetime scope: LIFO order processes postCrashEntry, crashEntry, then entry2
+    lifetime:dispose()
+    check(postCrashCalled == true, "P1-2: Cleanup before crash executed")
+    check(disposer2Called == true, "P1-2: Disposer after crash executed (error isolation)")
+    check(crashEntry.resource == nil, "P1-2: crashEntry.resource cleared even on exception")
+    check(crashEntry.fn == nil, "P1-2: crashEntry.fn cleared even on exception")
+    check(entry2.resource == nil, "P1-2: entry2.resource cleared via Scope:dispose")
+    check(entry2.fn == nil, "P1-2: entry2.fn cleared via Scope:dispose")
+    check(postCrashEntry.fn == nil, "P1-2: postCrashEntry.fn cleared via Scope:dispose")
+
+    -- Same check for ActivationScope
+    local actPage = {}
+    local actScope = Lifecycle.createActivationScope(actPage)
+    local actRes = { id = "act-res" }
+    actScope:own(actRes, function() end)
+    local actEntry = actScope.entries[#actScope.entries]
+    actScope:dispose()
+    check(actEntry.resource == nil, "P1-2: ActivationScope own entry resource cleared on dispose")
+    check(actEntry.fn == nil, "P1-2: ActivationScope own entry fn cleared on dispose")
+end
+
+-- Section 20: Task 1.6A P1-3 Regression - LifetimeScope Anti-Duplicate & State Guard
+do
+    local page = {}
+    local scope1 = Lifecycle.createLifetimeScope(page)
+    check(scope1 ~= nil, "P1-3: First LifetimeScope created")
+    check(page.lifetimeScope == scope1, "P1-3: page.lifetimeScope set to scope1")
+
+    -- Repeat createLifetimeScope on same page returns existing scope
+    local scope2 = Lifecycle.createLifetimeScope(page)
+    check(scope2 == scope1, "P1-3: Second call returns existing scope1")
+
+    -- Resources registered in scope1 are not lost
+    local cleanupCalled = false
+    scope1:defer(function() cleanupCalled = true end)
+
+    local scope3 = Lifecycle.createLifetimeScope(page)
+    check(scope3 == scope1, "P1-3: Third call still returns scope1")
+    check(#scope1.entries >= 1, "P1-3: scope1 entries retained")
+
+    -- Disposing scope1
+    scope1:dispose()
+    check(cleanupCalled == true, "P1-3: Cleanup called upon dispose")
+    check(scope1.disposed == true, "P1-3: scope1 marked disposed")
+
+    -- Cannot create new LifetimeScope on disposed page
+    local scope4 = Lifecycle.createLifetimeScope(page)
+    check(scope4 == nil, "P1-3: createLifetimeScope returns nil on disposed page")
+
+    -- Cannot create on nil page
+    check(Lifecycle.createLifetimeScope(nil) == nil, "P1-3: createLifetimeScope returns nil for nil page")
+
+    -- State mismatch test: scope is disposed while page.disposed is artificially false
+    local mismatchPage = {}
+    local mismatchScope = Lifecycle.createLifetimeScope(mismatchPage)
+    mismatchScope:dispose()
+    mismatchPage.disposed = false -- artificially altered
+    local rejectedScope = Lifecycle.createLifetimeScope(mismatchPage)
+    check(rejectedScope == nil, "P1-3: Rejects creation when existing scope is disposed")
+end
+
+-- Section 21: Task 1.6A P1-4 Regression - Lifecycle.dispose Unconditional Scope Checking
+do
+    -- Case 1: User specified contract: page.disposed is true, but LifetimeScope was NOT disposed yet
+    local page1 = {}
+    local lifetime1 = Lifecycle.createLifetimeScope(page1)
+    local cleanup1Count = 0
+    lifetime1:defer(function()
+        cleanup1Count = cleanup1Count + 1
+    end)
+    -- External code set page.disposed = true prematurely
+    page1.disposed = true
+
+    Lifecycle.dispose(page1)
+    check(lifetime1.disposed == true, "P1-4: lifetime1 disposed despite page1.disposed being true initially")
+    check(cleanup1Count == 1, "P1-4: Deferred cleanup executed exactly once")
+
+    -- Repeated Lifecycle.dispose call is idempotent
+    Lifecycle.dispose(page1)
+    check(cleanup1Count == 1, "P1-4: Repeated dispose does not duplicate cleanup")
+
+    -- Case 2: No LifetimeScope, but has active ActivationScope
+    local page2 = { active = false }
+    local actScope = Lifecycle.createActivationScope(page2)
+    local actCleanupCount = 0
+    actScope:defer(function()
+        actCleanupCount = actCleanupCount + 1
+    end)
+    check(page2.active == true, "P1-4: page2 active before dispose")
+
+    Lifecycle.dispose(page2)
+    check(page2.disposed == true, "P1-4: page2 marked disposed")
+    check(page2.active == false, "P1-4: page2 deactivated by dispose")
+    check(actCleanupCount == 1, "P1-4: ActivationScope cleanup executed")
+
+    -- Case 3: No scopes, legacy mount page
+    local page3 = { active = false }
+    local watchReleased = false
+    Lifecycle.mount(page3, function(cb)
+        return function() watchReleased = true end
+    end, function() end)
+    check(page3.active == true, "P1-4: Legacy page3 active")
+
+    Lifecycle.dispose(page3)
+    check(page3.disposed == true, "P1-4: page3 marked disposed")
+    check(page3.active == false, "P1-4: page3 deactivated")
+    check(watchReleased == true, "P1-4: Legacy watch released by dispose")
+
+    -- Case 4: dispose(nil) is safe
+    Lifecycle.dispose(nil)
 end
 
 print("lifecycle-scope: " .. checks .. " PASS")

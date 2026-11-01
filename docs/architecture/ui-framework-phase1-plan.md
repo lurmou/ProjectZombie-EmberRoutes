@@ -104,9 +104,25 @@ Phase 1 任务看板 (修正版)
      scope:dispose()
      ```
 - **验收标准与落地证据**：
-  - `tests/lua/lifecycle-scope-test.lua`：包含 17 组模块与集成测试、502 项断言全部 PASS（覆盖 100 次切页零泄漏、Token 拦截、同步关闭防御、LIFO 逆序释放、错误隔离与 Personnel/Warehouse/Crafting/Defense 真实场景集成）；
+  - `tests/lua/lifecycle-scope-test.lua`：包含 21 组单体与规约测试、558 项断言全部 PASS（覆盖 100 次切页零泄漏、Token 拦截、同步关闭防御、LIFO 逆序释放、错误隔离与 Personnel/Warehouse/Crafting/Defense 规约模拟）；
+  - `tests/lua/page-lifecycle-integration-test.lua`：加载真实 `WarehousePage`、`PersonnelPage`、`DeliveryCartDrawer`、`PersonnelDossierDrawer`、`TooltipManager` 与 `PageLifecycle` 生产代码，通过真实 activate/deactivate/dispose 与 10 次跨页面连续切页验证（194 项断言全部 PASS）；
   - 已接入 JVM `tests/java/KahluaUiTextTest.java` 跑通真实 PZ Kahlua 虚拟机断言；
-  - 静态检查 `pz.mjs lint` 323 个文件 0 错误。
+  - 静态检查 `pz.mjs lint` 324 个文件 0 错误。
+
+---
+
+### Task 1.6A: LifecycleScope Hardening 缺陷硬化与生产页面集成验收 (P1 - 已实施)
+- **代码位置**：[`Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/PageLifecycle.lua)
+- **四项 P1 缺陷硬化**：
+  1. **P1-1 (`Lifecycle.unmount`)**：在清理前预先将 `page.release = nil` 与 `page.unsubscribe = nil` 置空，阻断重入激活清空新句柄，彻底消除缓存页面的旧 Watch/Store 闭包持有；
+  2. **P1-2 (`releaseEntry`)**：建立统一的内部释放入口，主动 release 与整体 dispose 均在执行回调前清空 `entry.fn = nil` 与 `entry.resource = nil`，并在抛错时依然切断引用，彻底解决外部长期持有 handle 的 GC 泄漏；
+  3. **P1-3 (`createLifetimeScope`)**：防止重复创建，对已有未释放 Scope 直接返回现有对象，对已 `disposed` 页面或状态不一致严格拒绝并记录诊断日志；
+  4. **P1-4 (`Lifecycle.dispose`)**：不再仅凭外部设置的 `page.disposed` 提前退出，而是严格检查 `lifetimeScope.disposed` 自身状态，保障级联清理与 Tooltip 注销。
+- **真实生产模块集成验证**：
+  - 新增 [`tests/lua/page-lifecycle-integration-test.lua`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/tests/lua/page-lifecycle-integration-test.lua) 并接入 [`tests/java/KahluaUiTextTest.java`](file:///c:/Users/MuMu/Zomboid/Workshop/EmberRoutes/tests/java/KahluaUiTextTest.java)；
+  - 真实实例化 `WarehousePage`：验证切出彻底 `dispose()` 临时 CartDrawer，清空旧句柄，二次激活与最终销毁无泄漏；
+  - 真实实例化 `PersonnelPage`：严格证明 **Deactivate != Dispose**，切出仅 `close()` 隐藏 DossierDrawer 并保留长期实例，二次激活复用原有实例不重建，最终页面 `dispose()` 时才真正释放 Drawer；
+  - 10 次连续跨页面切页压力循环：零内存泄漏、零重复 Drawer、零悬挂句柄。
 
 ---
 

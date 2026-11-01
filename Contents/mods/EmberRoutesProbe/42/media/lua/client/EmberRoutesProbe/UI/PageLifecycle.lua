@@ -24,19 +24,39 @@ local function safeCall(fn, ...)
     return ok, err
 end
 
+---Unified internal release entry processor.
+---Strict order:
+---1. Mark entry.released = true (anti-reentrancy)
+---2. Save local references to fn and resource
+---3. Clear entry.fn and entry.resource to sever memory links
+---4. safeCall fn (resource severed even if callback throws)
+---@param entry table
+local function releaseEntry(entry)
+    if not entry or entry.released then return end
+    entry.released = true
+
+    local entryType = entry.type
+    local fn = entry.fn
+    local resource = entry.resource
+
+    -- Clear references immediately before execution so handle retention does not leak memory
+    entry.fn = nil
+    entry.resource = nil
+
+    if entryType == "resource" then
+        safeCall(fn, resource)
+    else
+        safeCall(fn)
+    end
+end
+
 local function makeHandle(entry)
     local handle = {}
     setmetatable(handle, {
         __call = function(t) t:release() end
     })
     function handle:release()
-        if entry.released then return end
-        entry.released = true
-        if entry.type == "resource" then
-            safeCall(entry.fn, entry.resource)
-        else
-            safeCall(entry.fn)
-        end
+        releaseEntry(entry)
     end
     return handle
 end
@@ -120,23 +140,12 @@ function LifetimeScope:dispose()
     -- Reverse execution (LIFO)
     local entries = self.entries
     for i = #entries, 1, -1 do
-        local entry = entries[i]
-        if not entry.released then
-            entry.released = true
-            if entry.type == "resource" then
-                safeCall(entry.fn, entry.resource)
-            else
-                safeCall(entry.fn)
-            end
-        end
+        releaseEntry(entries[i])
     end
     self.entries = {}
 
     if page then
         TooltipManager.unregisterOwner(page)
-        if page.lifetimeScope == self then
-            page.lifetimeScope = nil
-        end
     end
 end
 
@@ -305,15 +314,7 @@ function ActivationScope:dispose()
 
     local entries = self.entries
     for i = #entries, 1, -1 do
-        local entry = entries[i]
-        if not entry.released then
-            entry.released = true
-            if entry.type == "resource" then
-                safeCall(entry.fn, entry.resource)
-            else
-                safeCall(entry.fn)
-            end
-        end
+        releaseEntry(entries[i])
     end
     self.entries = {}
 
@@ -327,10 +328,27 @@ end
 ----------------------------------------------------------------
 
 ---Create a long-term PageLifetimeScope for a page instance.
+---Guards:
+---1. Returns nil if page is nil.
+---2. Returns nil if page.disposed is true (cannot resurrect disposed page).
+---3. Returns existing scope if page.lifetimeScope exists and is active.
+---4. Logs error and returns nil if existing scope is disposed (state mismatch).
 ---@param page table
----@return EmberRoutesLifetimeScope
+---@return EmberRoutesLifetimeScope?
 function Lifecycle.createLifetimeScope(page)
     if not page then return nil end
+    if page.disposed then return nil end
+
+    local existing = page.lifetimeScope
+    if existing then
+        if not existing.disposed then
+            return existing
+        else
+            print("[PageLifecycle] Error: attempted to create LifetimeScope for page with disposed scope")
+            return nil
+        end
+    end
+
     local scope = LifetimeScope.new(page)
     page.lifetimeScope = scope
     return scope
@@ -347,20 +365,29 @@ function Lifecycle.createActivationScope(page)
 end
 
 ---Convenience disposal for a page instance.
+---Does NOT rely solely on page.disposed; inspects scope's own disposed state.
 ---@param page table?
 function Lifecycle.dispose(page)
-    if not page or page.disposed then return end
-    if page.lifetimeScope then
-        page.lifetimeScope:dispose()
-    else
-        if page.activationScope then
-            page.activationScope:dispose()
-        elseif page.active then
-            Lifecycle.unmount(page)
+    if not page then return end
+
+    local lifetime = page.lifetimeScope
+    if lifetime then
+        if not lifetime.disposed then
+            lifetime:dispose()
         end
-        page.disposed = true
-        TooltipManager.unregisterOwner(page)
+        return
     end
+
+    if page.activationScope then
+        if not page.activationScope.disposed then
+            page.activationScope:dispose()
+        end
+    elseif page.active then
+        Lifecycle.unmount(page)
+    end
+
+    page.disposed = true
+    TooltipManager.unregisterOwner(page)
 end
 
 ----------------------------------------------------------------
@@ -392,28 +419,33 @@ end
 
 function Lifecycle.unmount(page)
     if not page then return end
-    if page.activationScope then
-        page.activationScope:dispose()
+
+    local scope = page.activationScope
+    local oldRelease = page.release
+    local oldUnsubscribe = page.unsubscribe
+
+    -- Clear page handles first to prevent re-entrant activations from having their new handles wiped
+    page.release = nil
+    page.unsubscribe = nil
+
+    if scope then
+        scope:dispose()
     else
         -- Fallback if activationScope was not used
         page.active = false
         page.activation = nil
-        local release = page.release
-        local unsubscribe = page.unsubscribe
-        page.release = nil
-        page.unsubscribe = nil
-        if unsubscribe then
-            if type(unsubscribe) == "table" and type(unsubscribe.release) == "function" then
-                unsubscribe:release()
-            elseif type(unsubscribe) == "function" then
-                unsubscribe()
+        if oldUnsubscribe then
+            if type(oldUnsubscribe) == "table" and type(oldUnsubscribe.release) == "function" then
+                oldUnsubscribe:release()
+            elseif type(oldUnsubscribe) == "function" then
+                safeCall(oldUnsubscribe)
             end
         end
-        if release then
-            if type(release) == "table" and type(release.release) == "function" then
-                release:release()
-            elseif type(release) == "function" then
-                release()
+        if oldRelease then
+            if type(oldRelease) == "table" and type(oldRelease.release) == "function" then
+                oldRelease:release()
+            elseif type(oldRelease) == "function" then
+                safeCall(oldRelease)
             end
         end
         TooltipManager.dismissOwner(page)

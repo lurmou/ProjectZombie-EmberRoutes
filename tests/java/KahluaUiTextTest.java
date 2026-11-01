@@ -95,6 +95,7 @@ class KahluaUiTextTest {
             run(thread,env,Files.readString(Path.of("tests/lua/ui-foundation-test.lua"),StandardCharsets.UTF_8),"ui-foundation");
             run(thread,env,Files.readString(Path.of("tests/lua/tooltip-manager-test.lua"),StandardCharsets.UTF_8),"tooltip-manager");
             run(thread,env,Files.readString(Path.of("tests/lua/lifecycle-scope-test.lua"),StandardCharsets.UTF_8),"lifecycle-scope");
+            run(thread,env,Files.readString(Path.of("tests/lua/page-lifecycle-integration-test.lua"),StandardCharsets.UTF_8),"page-lifecycle-integration");
             run(thread,env,Files.readString(Path.of("tests/lua/settlement-storage-test.lua"),StandardCharsets.UTF_8),"settlement-storage");
             run(thread,env,Files.readString(Path.of("tests/lua/warehouse-query-test.lua"),StandardCharsets.UTF_8),"warehouse-query");
             run(thread,env,Files.readString(Path.of("tests/lua/warehouse-metrics-test.lua"),StandardCharsets.UTF_8),"warehouse-metrics");
