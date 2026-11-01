@@ -313,6 +313,9 @@ check(run()=='QUEUED','pre-effect CAS fixture accepted')
 for _=1,1000 do tick(true) if rejectedIntent then break end end
 f.Store.mutateJob=mutate
 check(rejectedIntent and f.nativeCalls()==0,'rejected durable intent never invokes native recipe')
+local rejected=f.Craft.record(f.npc.id)
+check(not rejected.nativeAttempt and not JobStore.current():scopeBlocked(rejected.settlementId,'other'),
+    'no-write intent rejection does not fabricate an unresolved native effect or scope fence')
 log,saw=fresh()
 check(run()=='QUEUED','incomplete observation fixture accepted')
 local observationAction

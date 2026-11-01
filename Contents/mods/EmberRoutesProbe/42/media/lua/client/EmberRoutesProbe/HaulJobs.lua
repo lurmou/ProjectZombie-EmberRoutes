@@ -59,7 +59,11 @@ function M.commit(r,capacity)
 	for _,key in ipairs(token.resources) do if not want[key] then remove[#remove+1]=key end end
 	local ok,why=Store.mutateJob(r.id,e.job.revision,r,{addKeys=add,removeKeys=remove,capacity=capacity,
 	    state=state,effects=effects,obligations=cleared and {} or {business=true}})
-	if not ok then e.failed=true return false,why end
+	if not ok then
+	    local current=Jobs.current():peek(r.id)
+	    e.failed=not current or current.revision~=e.job.revision
+	    return false,why
+	end
 	capacity=nil e.job=Jobs.current():get(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'HAUL_POST_COMMIT_CHANGED' end
 	if e.job.state==target then return true end

@@ -37,6 +37,20 @@ local r=Work.record(npc.id) local id=r.id
 local beforeClear=require('EmberRoutesProbe/TaskJobs').current():get(r.id)
 check(not Store.clear(npc.id) and Store.owner(a:getID()) and require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision==beforeClear.revision,
     'clear retains uncollected responsibility and persistent revision')
+-- Capacity rejection is a no-write result, not loss of the execution draft.
+local capItem=f.fixture.item('tool',source.container)
+local capClaims=Store.claimsInstance()
+local rival=assert(capClaims:acquire('capacity-rival',1,{'item:'..capItem:getID()}))
+local capKey=Registry.metadata(fridge,fridge.container).id
+assert(capClaims:reserve(rival,capKey,capItem:getID(),1,1))
+local capToken=assert(Store.getToken(r.id))
+local oldRevision=require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision
+check(not Store.capacity(capToken,a:getID(),capKey,1,1)
+    and require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision==oldRevision
+    and Store.valid(r,r.generation,capToken),'capacity contention preserves authoritative revision and retryable execution')
+capClaims:release(rival)
+check(Store.capacity(capToken,a:getID(),capKey,1,1),'capacity may be retried after competing reservation clears')
+assert(Store.releaseCapacity(capToken))
 local first
 for _=1,300 do
     f.tick(1,true)

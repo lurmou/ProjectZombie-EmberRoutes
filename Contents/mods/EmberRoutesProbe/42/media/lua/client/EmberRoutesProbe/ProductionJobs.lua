@@ -69,7 +69,11 @@ function M.commit(r)
 	for _,key in ipairs(token.resources) do if not want[key] then remove[#remove+1]=key end end
 	local ok,why=Store.mutateJob(r.id,e.job.revision,r,
 	    {addKeys=add,removeKeys=remove,state=state,effects=effects,obligations=obligations})
-	if not ok then e.failed=true return false,why end
+	if not ok then
+	    local current=Jobs.current():peek(r.id)
+	    e.failed=not current or current.revision~=e.job.revision
+	    return false,why
+	end
 	e.job=Jobs.current():get(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'PRODUCTION_POST_COMMIT_CHANGED' end
 	if e.job.state==target then return true end
@@ -117,9 +121,11 @@ function M.replace(r,token,proposed)
 end
 function M.beginEffect(r,token)
     if not M.valid(r,token) or r.nativeAttempt and r.nativeAttempt.state~='APPLIED' then return nil,'PRODUCTION_ATTEMPT_RETAINED' end
+    local e=entry(r) local previousAttempt,previousPhase=r.nativeAttempt,r.phase
     r.nativeAttempt={format=1,id=Registry.id(),sequence=r.generation,state='COMMITTING',recipeId=r.recipeId,signature=r.signature}
     r.phase='COMMITTING'
     local ok,why=M.commit(r)
+    if not ok and not e.failed then r.nativeAttempt,r.phase=previousAttempt,previousPhase end
     return ok and r.nativeAttempt.id or nil,why
 end
 local function sameReceipt(a,b)
