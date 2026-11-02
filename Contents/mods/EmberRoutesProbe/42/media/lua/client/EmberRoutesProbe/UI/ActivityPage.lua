@@ -15,7 +15,6 @@ local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
 local Definitions=require 'EmberRoutesProbe/ActivityRegistry'
 local Catalog=require 'EmberRoutesProbe/ActivityScenarioCatalog'
 local Presentation=require 'EmberRoutesProbe/UI/ActivityPresentation'
-local ScenarioCard=require 'EmberRoutesProbe/UI/ActivityScenarioCard'
 local AtmosphereBoard=require 'EmberRoutesProbe/UI/ActivityAtmosphereBoard'
 
 ---@class EmberRoutesActivityPage:ISPanel

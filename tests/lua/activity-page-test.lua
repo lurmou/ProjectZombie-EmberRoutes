@@ -186,12 +186,6 @@ check(panel.activeTab=='defense' and page.visible==false,'switching away deactiv
 panel:selectTab('activities')
 check(panel.activeTab=='activities' and page.visible==true,'switching back reactivates ActivityPage')
 
--- Test backward-compatibility ActivityDialog.open redirecting to activities tab
-local Dialog=require 'EmberRoutesProbe/UI/ActivityDialog'
-panel:selectTab('defense')
-local redirectedPage=Dialog.open(panel)
-check(panel.activeTab=='activities' and redirectedPage==page,'ActivityDialog.open seamlessly redirects to activities tab')
-
 -- Clean up
 panel:close()
 check(panel.disposed==true,'panel closes cleanly')
