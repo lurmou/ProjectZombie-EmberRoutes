@@ -9,7 +9,10 @@ function M.restore(context)
 		for id, job in pairs(current.taskJobs.byId) do
 		    if job.providerType == 'SELF_CARE' then
 			if not require('EmberRoutesProbe/SelfCareRecord').valid(job) then error('PERSONAL_RECORD_INVALID') end
-			if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+			local member=require('EmberRoutesProbe/MembershipService').view(job.npcId)
+			if not member or member.retired then
+			    require('EmberRoutesProbe/SelfCareRecord').death(job)
+			elseif #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
 			    if hasConflict(job.payload.claims) then
 				job.state = 'RECONCILE_REQUIRED'
 				job.effects = 'UNKNOWN'

@@ -7,6 +7,47 @@ local Tree=require 'EmberRoutesProbe/BehaviorTree'
 local Actions=require 'EmberRoutesProbe/SelfCareActions'
 local Custody=require 'EmberRoutesProbe/SelfCareCustody'
 local Execution={}
+-- Cold classification operates on a detached Job. No body capability, native
+-- action construction or persist callback is available to replay an effect.
+function Execution.reconcile(job,npc,items)
+    local p=job.payload
+    local c={job=job,npc=npc,payload=p,items=items,effects='KNOWN'}
+    c.sameAttempt=function() return true end -- caller guards the detached revision
+    c.persist=function() return true end -- Custody.observe classifies only here
+    for id in pairs(items) do if not Custody.located(c,id) then return false,'RETURN_ORIGINAL_MISSING' end end
+    if p.leisure and (p.leisure.applying or p.leisure.activity=='SMOKE') then
+        return false,'LEISURE_EFFECT_UNCONFIRMED'
+    end
+    if p.activityRef and p.activityRef.dutyId then return false,'ACTIVITY_DUTY_UNCONFIRMED' end
+    if not Custody.observe(c) or c.effects~='KNOWN' then return false,'TRANSFER_UNCONFIRMED' end
+    if p.consumption then
+        if Actions.reconcile(c,items[p.consumption.itemId],p.consumption)~='KNOWN' then return false,'CONSUMPTION_UNCONFIRMED' end
+        p.consumption.effects='KNOWN' p.consumption.stopped=true
+    end
+    if p.reading then
+        if require('EmberRoutesProbe/StudyActions').reconcile(c,items[p.reading.itemId],p.reading)~='KNOWN' then
+            return false,'READING_UNCONFIRMED'
+        end
+        p.reading.effects='KNOWN' p.reading.stopped=true
+    end
+    if p.repose and require('EmberRoutesProbe/SelfCareRepose').observe(c,p.repose)~='KNOWN' then return false,'REPOSE_UNCONFIRMED' end
+    -- Relief uses a distinct attempt identity; share the same observers rather
+    -- than treating a stopped book session as proof of its survival effects.
+    if p.relief then
+        local r=p.relief
+        local rc={npc=npc,items=items,payload={kind=r.kind,itemId=r.itemId,
+            attemptId=p.attemptId..':relief:'..r.sequence},sameAttempt=c.sameAttempt}
+        if r.fact then
+            if Actions.reconcile(rc,items[r.fact.itemId],r.fact)~='KNOWN' then return false,'RELIEF_CONSUMPTION_UNCONFIRMED' end
+            r.fact.effects='KNOWN' r.fact.stopped=true
+        end
+        if r.repose and require('EmberRoutesProbe/SelfCareRepose').observe(rc,r.repose)~='KNOWN' then
+            return false,'RELIEF_REPOSE_UNCONFIRMED'
+        end
+        r.finished=true
+    end
+    return true
+end
 function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,reliefOnly,interruptCompanion)
     local world=Registry.data()
     local c={actor=actor,npc=binding.handle,job=job,payload=job.payload,effects=job.effects,
@@ -126,6 +167,8 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
             require('EmberRoutesProbe/ActivityOwners').result(job.npcId,job.id,c.payload.attemptId,
                 c.payload.activityRef,fact,status,settle==true)
         end
+        local member=require('EmberRoutesProbe/MembershipService').view(job.npcId)
+        if not member or member.retired then Store.settleDeadPersonal(Jobs.current():get(job.id),fact.bodyStopped==true) end
         return true
     end
     local spec={npcId=job.npcId,jobId=job.id,kind='SELF_CARE',binding=binding,replaceReason='SELF_CARE',

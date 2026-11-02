@@ -194,6 +194,39 @@ function Store.validPersonal(job,token,key)
 	and token and state.personalTokens[job.id]==token and token.generation==saved.payload.sequence
 	and (not key or state.claims:valid(token,key)) or false
 end
+-- Called from membership retirement / personal stop, never from a timer.
+function Store.settleDeadPersonal(job,bodyStopped)
+    Store.data()
+    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local saved=jobs:get(job.id)
+    local Record=require 'EmberRoutesProbe/SelfCareRecord'
+    if not Record.valid(saved) or saved.npcId~=job.npcId then return false end
+    local member=require('EmberRoutesProbe/MembershipService').view(saved.npcId)
+    if member and not member.retired then return false end
+    local runtime=require('EmberRoutesProbe/TaskRuntime').current()
+    local retained=Record.deathRetained(saved)
+    -- A live callback can still publish facts: never clear behind its back.
+    if not retained and bodyStopped~=true and runtime and runtime:status(saved.npcId,saved.id) then
+        local p=saved.payload p.reason='NPC_DIED'
+        if p.kind then p.step='RECONCILE_REQUIRED' end
+        assert(Record.valid(saved),'PERSONAL_RECORD_INVALID')
+        return jobs:update(saved.id,saved.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'})
+    end
+    local proposed=jobs:get(saved.id)
+    Record.death(proposed)
+    -- Normal JobStore transitions remain in force, including RUNNING's fence.
+    if proposed.state=='SUSPENDED' and saved.state~='SUSPENDED'
+        and saved.state~='PREPARING' and saved.state~='STOPPING' and saved.state~='SETTLING'
+        and saved.state~='RECONCILE_REQUIRED' then return false end
+    local ok=jobs:update(saved.id,saved.revision,{payload=proposed.payload,
+        effects=proposed.effects,state=proposed.state})
+    if not ok then return false end
+    if not retained then
+        local token=state.personalTokens[saved.id]
+        if token then state.claims:release(token) cleanToken(saved.id) end
+    end
+    return true
+end
 function Store.finishPersonal(job,token)
     if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
     local saved=state.root.taskJobs.byId[job.id]

@@ -5,6 +5,15 @@ local function value(c)
     return c.npc:getStats():get(c.payload.kind=='REST' and CharacterStat.ENDURANCE or CharacterStat.FATIGUE)
 end
 local function number(v) return type(v)=='number' and v==v and v>=0 and v<=1 end
+-- Classification only: no native wake/entry and no inferred completion.
+function Repose.observe(c,fact)
+    if not fact or fact.attemptId~=c.payload.attemptId or fact.kind~=c.payload.kind
+        or c.npc:isAsleep() or c.npc:isResting() then return 'UNKNOWN' end
+    local after=value(c)
+    if not number(after) then return 'UNKNOWN' end
+    fact.after=after fact.finished=true fact.effects='KNOWN'
+    return 'KNOWN'
+end
 function Repose.new(c)
     local fact=c.payload.repose
     local posture,closing

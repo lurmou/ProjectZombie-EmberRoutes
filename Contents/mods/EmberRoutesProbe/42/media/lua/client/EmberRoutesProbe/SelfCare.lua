@@ -232,7 +232,11 @@ local function advance(actor,binding,row,now)
     end
     if now<(row.retryAt or 0) then return end
     local job=personal(id,false)
-    if job and job.effects~='KNOWN' then return end
+    if job and job.effects~='KNOWN' then
+        local ok,reason,observing=use('SelfCareReconciliation').run(binding,job,row,budget,runtime)
+        row.reason=reason row.retryAt=now+(observing and 1000 or 5000)
+        return
+    end
     if job and job.payload.step~='IDLE' then
         local ref=job.payload.resume
         if job.payload.reliefOnly and ref and (ref.state=='STOP_CONFIRMED' or ref.state=='RESTORE_QUEUED') then
@@ -485,7 +489,10 @@ function Service.prepareRecovery(receipt)
     for _,saved in pairs(world.taskJobs and world.taskJobs.byId or {}) do
         if saved.providerType=='SELF_CARE' then
             if not Record.valid(saved) then error('PERSONAL_RECORD_INVALID') end
-            if saved.payload.kind=='LEISURE' and saved.effects=='KNOWN' and saved.payload.step~='IDLE'
+            local member=use('MembershipService').view(saved.npcId)
+            if not member or member.retired then
+                Store.settleDeadPersonal(Jobs.current():get(saved.id))
+            elseif saved.payload.kind=='LEISURE' and saved.effects=='KNOWN' and saved.payload.step~='IDLE'
                 and not saved.payload.leisure.applying then
                 local live=Jobs.current():get(saved.id) local p=live.payload
                 p.step='STOP_CONFIRMED' p.leisure.stopped=true
@@ -505,6 +512,16 @@ function Service.reset() world,rows,cursor,nextTick,Service.offerLogged=nil,{},0
 function Service.install()
     if Probe.selfCareInstalled then return end
     Resume.install()
+    -- MembershipLifecycle already observes native death and publishes retire.
+    -- Reuse that notification; no roster/death polling is added here.
+    use('LaborSignals').watch(function(id)
+        if type(id)~='string' then return end
+        local member=use('MembershipService').view(id)
+        if not member or member.retired then
+            local job=personal(id,false)
+            if job then Store.settleDeadPersonal(job) end
+        end
+    end)
     local previous=Probe.prepareCareRecovery
     Probe.prepareCareRecovery=function(receipt)
         if previous and previous(receipt)~=true then return false end

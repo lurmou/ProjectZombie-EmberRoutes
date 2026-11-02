@@ -167,18 +167,47 @@ function Custody.returns(c)
 end
 -- Stop only classifies actual custody; it never replays a transfer or destroys
 -- originals. The saved return obligation survives unavailable destinations.
+-- Shared location classification for hot stop and cold reconciliation.
+function Custody.located(c,id)
+    local item=c.items[id]
+    if not item or item:getID()~=id then return false end
+    local source=c.payload.sourceId and Registry.resolve(c.payload.sourceId,'take','local-world')
+    local destination=c.payload.destinations and c.payload.destinations[tostring(id)]
+    local target=destination and Registry.resolve(destination,'put','local-world')
+    local container=item:getContainer()
+    return container~=nil and (container==c.npc:getInventory()
+        or container==(source and source.container) or container==(target and target.container)
+        or container==c.origin)
+end
+-- Cold context has no captured native item handles/origin. Search only the
+-- same permitted locations, charging each item visit to the service budget.
+function Custody.findOriginal(c,id,budget,cursor)
+    cursor=cursor or {index=1,offset=0}
+    local source=c.payload.sourceId and Registry.resolve(c.payload.sourceId,'take','local-world')
+    local destination=c.payload.destinations and c.payload.destinations[tostring(id)]
+    local target=destination and Registry.resolve(destination,'put','local-world')
+    local containers={c.npc:getInventory(),source and source.container or false,
+        target and target.container or false,c.origin or false}
+    while cursor.index<=4 do
+        local container=containers[cursor.index]
+        if container~=cursor.container then cursor.container=container cursor.offset=0 end
+        local list=container and container:getItems()
+        if not list or cursor.offset>=list:size() then cursor.index=cursor.index+1 cursor.offset=0
+        else
+            if budget.scan<1 then return nil,false,cursor end
+            budget.scan=budget.scan-1
+            local item=list:get(cursor.offset) cursor.offset=cursor.offset+1
+            if item:getID()==id and item:getContainer()==container then return item,true end
+        end
+    end
+    return nil,true
+end
 function Custody.observe(c)
     local fact=c.payload.transfer
     if not fact then return c.effects~='UNKNOWN' end
-    local item=c.items[fact.itemId]
-    local source=c.payload.sourceId and Registry.resolve(c.payload.sourceId,'take','local-world')
-    local destination=c.payload.destinations and c.payload.destinations[tostring(fact.itemId)]
-    local target=destination and Registry.resolve(destination,'put','local-world')
-    local container=item and item:getContainer()
-    if not item or not container or container~=c.npc:getInventory()
-        and container~=(source and source.container) and container~=(target and target.container)
-        and container~=c.origin then c.effects='UNKNOWN' end
+    if not Custody.located(c,fact.itemId) then c.effects='UNKNOWN' end
     c.payload.transfer=nil
     return c.persist()
 end
+
 return Custody

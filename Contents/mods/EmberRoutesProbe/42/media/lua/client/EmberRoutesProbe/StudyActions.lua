@@ -5,10 +5,10 @@ require 'TimedActions/ISReadABook'
 -- run outside every service bucket.
 local Perf=require 'EmberRoutesProbe/RuntimeMetrics'
 local Actions={}
-function Actions.observe(c,item,fact)
+local function observe(c,item,fact,located)
     if not fact or fact.attemptId~=c.payload.attemptId or fact.itemId~=c.payload.itemId
         or fact.completing or not item or item:getID()~=fact.itemId
-        or item:getFullType()~=fact.fullType or item:getContainer()~=c.npc:getInventory() then return 'UNKNOWN' end
+        or item:getFullType()~=fact.fullType or not located and item:getContainer()~=c.npc:getInventory() then return 'UNKNOWN' end
     local pages=c.npc:getAlreadyReadPages(fact.fullType)
     if type(pages)~='number' or pages<fact.before or fact.total>0 and pages>fact.total then return 'UNKNOWN' end
     fact.pages=fact.total>0 and pages or nil
@@ -17,6 +17,11 @@ function Actions.observe(c,item,fact)
         if c.payload.study.knowledge and not c.npc:getKnownRecipes():contains(c.payload.study.knowledge) then return 'UNKNOWN' end
     end
     return 'KNOWN'
+end
+function Actions.observe(c,item,fact) return observe(c,item,fact,false) end
+function Actions.reconcile(c,item,fact)
+    if not item or not require('EmberRoutesProbe/SelfCareCustody').located(c,fact.itemId) then return 'UNKNOWN' end
+    return observe(c,item,fact,true)
 end
 function Actions.read(c,item)
     local action,performed,completed,stopped,nextSample,readingUntil

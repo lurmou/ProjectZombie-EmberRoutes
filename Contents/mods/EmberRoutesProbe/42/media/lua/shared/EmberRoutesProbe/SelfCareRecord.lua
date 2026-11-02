@@ -125,6 +125,28 @@ function Record.valid(job)
         or transfer.phase~='TAKE' and transfer.phase~='RETURN') then return false end
     return true
 end
+-- Death is not evidence of an original's return. Only an attempt with no
+-- retained facts/original identities/obligations can discard residual claims.
+function Record.deathRetained(job)
+    local p=job.payload
+    for _ in pairs(job.obligations) do return true end
+    return p.itemId~=nil or p.sourceId~=nil or p.transfer~=nil or p.consumption~=nil
+        or p.reading~=nil or p.repose~=nil or p.relief~=nil or p.leisure~=nil or p.readingSite~=nil
+end
+function Record.death(job)
+    local retained=Record.deathRetained(job)
+    local p=job.payload
+    p.reason='NPC_DIED'
+    if retained then
+        p.step='RECONCILE_REQUIRED' job.state='RECONCILE_REQUIRED' job.effects='UNKNOWN'
+    else
+        p.step='IDLE' p.claims={} job.state='SUSPENDED'
+        -- No original or effect exists to classify in this branch.
+        job.effects='KNOWN'
+    end
+    assert(Record.valid(job),'PERSONAL_RECORD_INVALID')
+    return retained
+end
 function Record.begin(job,kind,resume)
     if not Record.valid(job) then return nil,'PERSONAL_RECORD_INVALID' end
     if not kinds[kind] then return nil,'PERSONAL_KIND_INVALID' end

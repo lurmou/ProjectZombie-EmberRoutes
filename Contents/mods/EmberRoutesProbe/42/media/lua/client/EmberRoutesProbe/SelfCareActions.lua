@@ -23,7 +23,7 @@ local function inventory(npc)
     end
     return seen
 end
-function Actions.observe(c,item,fact)
+local function observe(c,item,fact,located)
     if type(fact)~='table' or (fact.kind~='EAT' and fact.kind~='DRINK')
         or type(fact.before)~='number' or fact.before~=fact.before or fact.before<=0 or fact.before==math.huge
         or fact.attemptId~=c.payload.attemptId then return 'UNKNOWN' end
@@ -32,10 +32,17 @@ function Actions.observe(c,item,fact)
     if not after or after~=after or after<0 or after>fact.before+0.0001 then return 'UNKNOWN' end
     fact.after=after fact.consumed=fact.before-after
     -- Disappearance without attributable native depletion is not consumption.
-    if item:getContainer()~=c.npc:getInventory() and after>0.0001 then return 'UNKNOWN' end
+    if not located and item:getContainer()~=c.npc:getInventory() and after>0.0001 then return 'UNKNOWN' end
     if fact.completed and fact.consumed<=0.0001 then return 'UNKNOWN' end
     if not fact.started and fact.consumed>0.0001 then return 'UNKNOWN' end
     return 'KNOWN'
+end
+function Actions.observe(c,item,fact) return observe(c,item,fact,false) end
+-- A cold original may already be back in storage. Amount/identity rules are
+-- identical; only location evidence comes from the custody classifier.
+function Actions.reconcile(c,item,fact)
+    if not item or not require('EmberRoutesProbe/SelfCareCustody').located(c,fact.itemId) then return 'UNKNOWN' end
+    return observe(c,item,fact,true)
 end
 -- Perf measures the engine-driven per-frame isValid/update callbacks; they
 -- run outside every service bucket.
