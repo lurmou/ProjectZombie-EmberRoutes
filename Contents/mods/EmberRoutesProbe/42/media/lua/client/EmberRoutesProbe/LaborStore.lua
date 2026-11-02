@@ -779,16 +779,18 @@ function Store.completeCustodyReturn(custodyId,returnJobId,destinationId,item)
     Registry.inventoryChanged(container)
     return true
 end
-function Store.markNpcCustodiesDead(npcId)
+-- Death is a custody settlement, not a state: a dead carrier's custodies can
+-- never transition again (no recovery path consumes them), so keeping their
+-- item claims would brick those tools for every future worker. Release them;
+-- the physical items are unaffected and become claimable again if they ever
+-- re-enter a container or inventory scan.
+function Store.settleNpcDeath(npcId)
     Store.data()
     npcId=tostring(npcId)
     local list=Store.custodyForNpc(npcId)
-    for _,c in ipairs(list) do
-        c.state='DEAD_CARRIER'
-        c.activeJobId=nil
-        c.returnJobId=nil
-    end
-    return #list
+    local released=0
+    for _,c in ipairs(list) do if Store.releaseCustody(c.id) then released=released+1 end end
+    return released
 end
 require('EmberRoutesProbe/LaborJobCommit').install(Store,domainState,nextAuthoritativeClaimId,cleanToken)
 require('EmberRoutesProbe/LaborDomainAdapters').install(Store,domainState,ensureEntityClaimId,cleanToken,scopeAllowed)

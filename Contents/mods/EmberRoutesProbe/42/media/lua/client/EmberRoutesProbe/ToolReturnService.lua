@@ -243,7 +243,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
             if task.recoveryOnly then task.finished=true return end -- Observation only; never repeat the transfer.
             if npc:isDead() or (actor and actor:isDead()) then
                 task.failed=true
-                if npc:isDead() then Store.markNpcCustodiesDead(npcId) end
+                if npc:isDead() then Store.settleNpcDeath(npcId) end
                 return
             end
 

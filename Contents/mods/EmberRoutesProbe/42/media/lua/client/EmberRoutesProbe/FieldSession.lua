@@ -1,5 +1,6 @@
 -- FIELD adapter for the sole TaskRuntime. Business progression remains FIELD-local.
 local Signals=require 'EmberRoutesProbe/LaborSignals'
+local Store=require 'EmberRoutesProbe/LaborStore'
 local Workflow=require 'EmberRoutesProbe/FieldWorkflow'
 local S={}
 function S.spec(c,def,cooldowns)
@@ -21,9 +22,30 @@ function S.spec(c,def,cooldowns)
             c.completed=true c.done=true
             c.change(function(j) j.state='SETTLING' end)
         elseif result=='Failure' then
+            -- A claimed target that repeatedly cannot be approached must not pin
+            -- the worker: count consecutive approach failures per job, and after
+            -- the third, deliver whatever is already carried instead of retrying.
+            local approach=c.job.payload.phase=='WORK' and (c.reason=='FIELD_NO_APPROACH'
+                or type(c.reason)=='string' and string.find(c.reason,'^FIELD_PATH_')~=nil)
+            if approach then
+                local fails=(c.job.payload.approachFails or 0)+1
+                c.change(function(j) j.payload.approachFails=fails end)
+                if fails>=3 and c.job.effects=='KNOWN' and not c.job.payload.holding then
+                    local cargo
+                    for _,a in ipairs(c.job.payload.assets) do
+                        if a.custody=='GROUND' then cargo='COLLECT' break end
+                        if a.custody=='HELD' then cargo=cargo or 'DELIVER' end
+                    end
+                    if cargo and c.change(function(j) j.payload.phase=cargo j.payload.approachFails=0 end) then
+                        c.node=nil c.path=nil c.reason=nil return
+                    end
+                end
+            end
             c.done=true
             local assets=false for _,a in ipairs(c.job.payload.assets) do if a.custody~='DELIVERED' then assets=true end end
             c.abandon=c.job.effects=='KNOWN' and not assets and not c.job.payload.holding
+        else
+            if (c.job.payload.approachFails or 0)>0 then c.change(function(j) j.payload.approachFails=0 end) end
         end
     end
     function spec.finished() return c.done==true end
@@ -65,11 +87,22 @@ function S.spec(c,def,cooldowns)
                     else j.state=j.effects=='KNOWN' and 'SUSPENDED' or 'RECONCILE_REQUIRED' end
                 end)
                 if ok and (c.completed or c.abandon) and c.job.effects=='KNOWN' then
+                    -- FieldRecord's terminal gate requires toolSupply to be gone,
+                    -- and FieldSupplies (its only clearing path) no longer runs
+                    -- once the session is stopping: roll the warehouse tool
+                    -- reservations back here, or a PREPARE-phase job can never
+                    -- reach a terminal state and wedges in the resubmit loop.
+                    local supply=c.job.payload.toolSupply
                     ok=c.change(function(j)
                         j.state=c.abandon and 'CANCELLED' or 'DONE'
                         j.payload.phase='SETTLED' j.payload.claims={} j.obligations={}
+                        j.payload.toolSupply=nil
                     end)
-                    if c.abandon then cooldowns[c.job.payload.offerKey]=getTimestampMs()+10000 end
+                    if ok and supply then
+                        for _,req in ipairs(supply.requirements) do Store.releaseCustody(req.custodyId) end
+                    end
+                    if c.abandon then cooldowns[c.job.payload.offerKey]=getTimestampMs()
+                        +((c.job.payload.approachFails or 0)>=3 and 600000 or 10000) end
                 end
                 if ok then Signals.changed(job.npcId) end
                 return ok
