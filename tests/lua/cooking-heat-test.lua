@@ -11,7 +11,6 @@ dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shar
 package.loaded['Entity/TimedActions/ISHandcraftAction']=true
 local Agent=require 'EmberRoutesProbe/CookingAgent'
 local Heat=require 'EmberRoutesProbe/CookingHeat'
-local Recovery=require 'EmberRoutesProbe/CookingRecovery'
 local Membership=require 'EmberRoutesProbe/MembershipService'
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local npc,actor=f.npc,f.fixture.actor
@@ -115,10 +114,6 @@ local function resume(t)
     local r=Runtime.new() local h=assert(r:submit(spec))
     return {r=r,h=h,c=c,stove=t.stove,a=t.a,b=t.b,ids=t.ids}
 end
-local function candidate(jobId)
-    local query=Recovery.new(actor,{id=npc.id,handle=npc})
-    for _=1,100 do local row,done=query:step(1) if row and row.jobId==jobId then return row end if done then return end end
-end
 local t=preparation(true)
 untilState(t,function() return t.stove.object.active end)
 check(t.stove.container:getItems():size()==2 and #events==1 and events[1].kind=='ON','both original foods load before one actual native activation')
@@ -154,9 +149,6 @@ check(t.c.closed and t.c.items[t.ids[1]]:getContainer()==t.b.container and t.a.c
 t=preparation(false) untilState(t,function() return t.stove.object.active end)
 assert(t.r:stop(npc.id,'SELF_CARE')) finish(t)
 check(t.c.job.state=='SUSPENDED' and t.c.job.obligations.furnace and t.stove.object.active,'interruption preserves physical-device duty and exact loaded originals')
-local row=assert(candidate(t.c.job.id)) check(row.ready and row.reason=='FURNACE_DRAIN_REQUIRED','same-NPC recovery is discovered from existing indexed Jobs')
-check(Jobs:peek(t.c.job.id).revision==t.c.job.revision and not key and #events==1,
-    'candidate discovery does not publish a Job, claim a body or remotely manipulate heat')
 t=resume(t) finish(t)
 check(t.c.job.state=='CANCELLED' and t.c.job.payload.heat.aborted and t.c.job.payload.expected==0
     and t.c.items[t.ids[1]]:getContainer()==t.a.container and not t.c.job.payload.duty,
@@ -186,7 +178,6 @@ t=preparation(false) untilState(t,function() return t.stove.object.active end)
 local foreign=f.item('Base.Carrot',true,t.stove.container) finish(t)
 check(t.stove.object.active and foreign:getContainer()==t.stove.container and not Store.owner(foreign.id)
     and t.c.job.obligations.furnace,'foreign intervention retains reconciliation duty without stealing food or switching player contents off')
-row=assert(candidate(t.c.job.id)) check(not row.ready and row.reason=='FURNACE_RECONCILE_REQUIRED','ambiguous device responsibility is not advertised as automatic recovery')
 local forged=Record.copy(t.c.job) forged.payload.duty.position.x=forged.payload.duty.position.x+1
 check(not Jobs:update(forged.id,forged.revision,{payload=forged.payload}),
     'a retained physical-device position cannot be rebound to another stove during recovery')

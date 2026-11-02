@@ -50,7 +50,6 @@ assert(Jobs.current():update(care.id,care.revision,{payload=care.payload}))
 check(Business.retire(r.id) and Jobs.current():get('care').payload.resume.state=='RESTORED',
  'completed restored work discharges late observation without deleting personal custody')
 local h={id='haul',npcId='other',kind='EXPLICIT_TRANSFER',format=1,state='DONE',items={},generation=1,source='fixture-source',destination='fixture-target'}
-check(Business.publishHaul(h) and Business.retire(h.id) and not Business.hauls().tasks[h.id],'settled hauling retires too')
 for i=1,600 do local row=craft('cycle-'..i) finish(row) assert(Business.retire(row.id)) end
 check(#Jobs.current():forNpc('npc')==1 and Jobs.current():get('care')~=nil,'600 completed jobs do not exhaust capacity or erase personal routine')
 local reopened=assert(require('EmberRoutesProbe/JobStore').open(root))

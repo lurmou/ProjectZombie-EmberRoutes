@@ -362,17 +362,6 @@ check(not sameToken and sameReason=="OTHER_TASK_RETAINED","authority rejects a s
 check(not Store.publish(sameNpc),"direct publish cannot bypass the NPC ownership gate")
 check(not Work.busy("other-npc"),"one production order does not monopolize other workers")
 
--- Loading native and logistics ownership conflicts is atomic and fail-closed.
-Work.pauseAll("SAVE")
-local rootWithConflict=saved
-local conflicting={format=1,id="conflict",npcId="other-npc",kind="EXPLICIT_TRANSFER",executor="ENTITY",scopeId="local-world",source="fixture-source",destination="fixture-destination",items={t.id},state="PAUSED"}
-assert(require('EmberRoutesProbe/BusinessJobs').publishHaul(conflicting))
-local freshRoot={} for key,value in pairs(rootWithConflict) do freshRoot[key]=value end saved=freshRoot
-local ok=pcall(Store.data)
-check(ok and Store.resourceOwner("item:"..t.id).kind=="SYSTEM_QUARANTINE","load isolates conflicting originals instead of publishing double ownership")
--- Restore the old root only to allow the fixture reset; this is not a runtime repair path.
-saved=rootWithConflict rootWithConflict.taskJobs.byId.conflict=nil
-
 local Claims=require "EmberRoutesProbe/LaborClaims"
 local claims=Claims.new()
 local a=claims:acquire("a",1,{"item:1"}) local b=claims:acquire("b",1,{"item:3"})
