@@ -9,7 +9,6 @@ local Transfer=require 'EmberRoutesProbe/WorkTransfer'
 local Actions=require 'EmberRoutesProbe/CookingActions'
 local Tree=require 'EmberRoutesProbe/BehaviorTree'
 local Facilities=require 'EmberRoutesProbe/CookingFacilities'
-local Store=require 'EmberRoutesProbe/LaborStore'
 local Capacity=require 'EmberRoutesProbe/CookingCapacity'
 local M={}
 local function failure(c,why) c.reason=why return 'Failure' end

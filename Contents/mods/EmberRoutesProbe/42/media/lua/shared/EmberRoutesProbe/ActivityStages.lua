@@ -232,5 +232,4 @@ function M.participantExit(event,npc,jobId,participantEpoch)
     local m=copy(r.scope) m.npcId=npc m.jobId=jobId m.participantEpoch=participantEpoch m.bodyStopped=true m.effectsKnown=true
     return M.exit(r,m)
 end
-M.freeExit=M.participantExit -- legacy internal caller name; proof semantics unchanged
 return M

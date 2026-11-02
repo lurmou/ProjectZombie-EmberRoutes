@@ -534,9 +534,6 @@ function Store.unquarantineResource(key,resolution,evidence)
     end
     return true
 end
-function Store.updateJobPayload(jobId,expectedRevision,proposedPayload,mutation)
-    return Store.mutateJob(jobId,expectedRevision,proposedPayload,mutation)
-end
 function Store.hasTaskClaims(taskId)
     Store.data()
     if nativeTokens[taskId] or tokens[taskId] or personalTokens[taskId] or cookingTokens[taskId] then return true end
@@ -586,16 +583,6 @@ end
 function Store.finishNative(record)
     Store.data() claims:release(nativeTokens[record.id]) cleanToken(record.id)
 end
-function Store.replaceNative(record,token,proposed)
-    Store.data()
-    if not Store.validNative(record,token) or proposed.id~=record.id or proposed.generation~=record.generation
-        or proposed.npcId~=record.npcId or not CraftRecord.valid(record.npcId,proposed) then return false,"STALE_CLAIM" end
-    local ok,reason=claims:replace(token,CraftRecord.resources(proposed))
-    if not ok then return false,reason end
-    record.materials,record.tools,record.outputs=proposed.materials,proposed.tools,proposed.outputs
-    record.held=proposed.held
-    return true
-end
 function Store.claim(record)
     if record.format==3 then return require('EmberRoutesProbe/HaulJobs').claim(record) end
     return nil,'TASK_FORMAT_UNSUPPORTED'
@@ -637,15 +624,6 @@ function Store.releaseCapacity(token,itemId)
 end
 function Store.availableCapacity(key,free) Store.data() return claims:available(key,free) end
 function Store.availableFor(token,key,itemId,free) Store.data() return claims:availableFor(token,key,itemId,free) end
-function Store.capacityBatch(token,key,weights,free)
-    Store.data()
-    local j=token and root.taskJobs.byId[token.taskId]
-    if j and j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY' then
-	local r=require('EmberRoutesProbe/HaulJobs').record(j.npcId)
-	return require('EmberRoutesProbe/HaulJobs').capacity(r,key,weights,free)
-    end
-    return claims:reserveMany(token,key,weights,free)
-end
 function Store.finish(record)
     if record.format==3 then
 	local ok,why=require('EmberRoutesProbe/HaulJobs').finish(record)

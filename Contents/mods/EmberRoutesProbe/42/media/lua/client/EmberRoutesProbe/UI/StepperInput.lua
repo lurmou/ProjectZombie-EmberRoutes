@@ -151,10 +151,6 @@ function StepperInput:setValue(n)
     end
 end
 
-function StepperInput:getValue()
-    return self.value
-end
-
 function StepperInput:onMouseWheel(del)
     -- Scrolling up (del < 0) increments, scrolling down (del > 0) decrements
     local delta = (del < 0) and 1 or -1

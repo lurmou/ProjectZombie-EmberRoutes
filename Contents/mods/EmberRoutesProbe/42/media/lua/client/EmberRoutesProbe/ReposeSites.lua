@@ -225,9 +225,6 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
     local member=M.view(npcId) local revision=member and member.revision
     local index,best=1,nil
     local self={}
-    -- Optional consumers with a discovery deadline may use an already observed
-    -- valid candidate without asserting that the remaining area has no seats.
-    function self:knownBest() return best and live(best.object) and best or nil end
     function self:step(budget)
         if not entry or not M.check(npcId,'SELF_CARE',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=entry.id},revision).sharedResources then
             return nil,true,'SETTLEMENT_REQUIRED'

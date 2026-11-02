@@ -11,7 +11,6 @@ local Controls=require "EmberRoutesProbe/UI/WarehouseControls"
 local Input=require "EmberRoutesProbe/UI/WarehouseInput"
 local Locator=require "EmberRoutesProbe/WarehouseLocator"
 local Selector=require "EmberRoutesProbe/UI/SettlementSelector"
-local Cached=require "EmberRoutesProbe/UI/CachedList"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
 local Details=require "EmberRoutesProbe/UI/WarehouseDetails"
@@ -392,12 +391,6 @@ local function getItemWeight(fullType)
     return 1.0
 end
 
-local function getItemStep(fullType)
-    local w=getItemWeight(fullType)
-    if w>=1.5 then return 1
-    elseif w>=0.3 then return 5
-    else return 20 end
-end
 
 function EmberRoutesWarehousePage:onMiddleClickItem(row,shiftDown)
     if not row or not row.fullType then return end

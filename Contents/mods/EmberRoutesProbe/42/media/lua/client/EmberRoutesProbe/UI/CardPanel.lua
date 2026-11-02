@@ -122,17 +122,6 @@ function CardPanel:initialise()
     ISPanel.initialise(self)
 end
 
-function CardPanel:getContentBounds()
-    return self.contentBounds
-end
-
-function CardPanel:setHeader(title, badge, icon, statusColor)
-    self.title = title
-    if badge ~= nil then self.badge = badge end
-    if icon ~= nil then self.icon = icon end
-    if statusColor ~= nil then self.statusColor = statusColor end
-end
-
 function CardPanel:setSelected(selected)
     self.selected = selected or false
 end

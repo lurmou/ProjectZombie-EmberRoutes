@@ -1,8 +1,6 @@
 local Field=require 'EmberRoutesProbe/FieldWork'
 local Discovery=require 'EmberRoutesProbe/FieldDiscovery'
 local Operations=require 'EmberRoutesProbe/FieldOperations'
-local Spatial=require 'EmberRoutesProbe/FieldSpatial'
-local Record=require 'EmberRoutesProbe/FieldRecord'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local ToolDiscovery=require 'EmberRoutesProbe/ToolDiscovery'

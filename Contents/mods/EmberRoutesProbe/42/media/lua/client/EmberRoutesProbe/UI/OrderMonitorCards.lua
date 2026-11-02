@@ -1,4 +1,3 @@
-local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
 local Visual=require 'EmberRoutesProbe/UI/StatusVisual'
@@ -265,11 +264,6 @@ function Cards.phaseTrackText(row)
     return fullText
 end
 
-local function bomCapsule(status)
-    local badge = SemanticBadge.resolve(status)
-    local label = "[" .. (badge.displayText or status) .. "]"
-    return label, badge.color or BOM_COLORS[status] or Theme.muted
-end
 
 function Cards.assetStatus(row,asset)
     if asset.custodyState=='UNCOLLECTED' then return 'WAITING' end

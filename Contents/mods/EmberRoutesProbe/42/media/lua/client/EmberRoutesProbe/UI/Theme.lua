@@ -63,7 +63,6 @@ end
 function Theme.applyPreset(id)
     local preset=PRESETS[id] or PRESETS.ae2
     currentPreset=preset.id
-    Theme.activePreset=preset.id
     Theme.presetName=preset.name
     Theme.presetLabel=text(preset.labelKey)
     for k,v in pairs(preset) do
@@ -84,8 +83,6 @@ end
 -- Initialize default to AE2 Modern
 Theme.applyPreset("classic")
 
-function Theme.getPreset() return currentPreset end
-function Theme.getPresets() return PRESETS end
 function Theme.getLabel() return Theme.presetLabel or text("Theme_classic") end
 
 function Theme.toggle()
@@ -94,9 +91,6 @@ function Theme.toggle()
     return nextId
 end
 
-function Theme.onThemeChanged(callback)
-    listeners[#listeners+1]=callback
-end
 
 function Theme.rect(owner,x,y,width,height,color,border)
     if not owner or not color then return end

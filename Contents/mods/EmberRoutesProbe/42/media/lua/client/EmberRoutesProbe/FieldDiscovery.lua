@@ -3,7 +3,6 @@ local Spatial=require 'EmberRoutesProbe/FieldSpatial'
 local Policy=require 'EmberRoutesProbe/JobPolicyService'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Geometry=require 'EmberRoutesProbe/SettlementGeometry'
 local D={}
 local world,caches,watches=nil,{},{}
 local function reset()

@@ -19,11 +19,6 @@ local function fresh(item)
     local remaining=math.max(0,off-age)
     return remaining,remaining/off<.3 and 0 or 1
 end
-local function better(a,b)
-    if a.tier~=b.tier then return a.tier<b.tier end
-    if a.fresh~=b.fresh then return a.fresh<b.fresh end
-    return a.id<b.id
-end
 -- Refit to the NOW-current gap after public claim competition. Prediction is in
 -- final effective fullness, not raw hunger and not the size of the vessel.
 function M.fit(selection,target)

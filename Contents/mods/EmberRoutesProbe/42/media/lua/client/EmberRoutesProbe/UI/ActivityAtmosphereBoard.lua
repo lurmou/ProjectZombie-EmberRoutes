@@ -9,10 +9,6 @@ local Presentation = require 'EmberRoutesProbe/UI/ActivityPresentation'
 
 local Board = {}
 
-local function getTextOr(key, fallback)
-    local s = _G.getTextOrNull and _G.getTextOrNull(key)
-    return s or fallback or key
-end
 
 local function t(key, ...)
     if _G.getText then

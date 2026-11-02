@@ -170,10 +170,6 @@ function P.benefitText(scenarioId, phase, memberRelief)
     return ''
 end
 
-function P.formatMinutes(hours)
-    return tostring(math.floor((hours or 0) * 60 + 0.5))
-end
-
 -- Generates a clean, factual debrief view-model after an activity closes
 function P.debrief(detail)
     if not detail then return nil end

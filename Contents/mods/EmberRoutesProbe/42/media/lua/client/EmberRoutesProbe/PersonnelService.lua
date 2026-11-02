@@ -226,7 +226,6 @@ function Service.details(actor,scope,id,force)
     end
     local Probe=require 'EmberRoutesProbe/Boot'
     result.leisure=personal and personal.payload.step~='IDLE' and personal.payload.leisure and personal.payload.leisure.activity
-    result.leisureStatus=require('EmberRoutesProbe/LeisureService').status(id)
     result.studyReason=Probe.studyStatus and Probe.studyStatus(id)
     return result
 end

@@ -22,20 +22,6 @@ local measureCache = {}
 local countWidthCache = {}
 
 ---@param font any
----@param text string
----@return number
-function UICache.measureText(font, text)
-    if not text or text == "" then return 0 end
-    local perFont = measureCache[font]
-    if not perFont then perFont = {} measureCache[font] = perFont end
-    local val = perFont[text]
-    if not val then
-        val = getTextManager():MeasureStringX(font, text)
-        perFont[text] = val
-    end
-    return val
-end
-
 ---@param countText string
 ---@return number
 function UICache.measureCount(countText)

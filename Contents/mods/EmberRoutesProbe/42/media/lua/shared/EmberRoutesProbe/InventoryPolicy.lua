@@ -18,20 +18,3 @@ for _, id in ipairs({ "inbox", "food", "weapons", "tools", "medical", "scrap", "
     Policy.registerTag(id, { read=true, write=true })
 end
 Policy.registerTag("private", { read=false, write=false })
-function Policy.planExplicit(container, eligible)
-    local items, seen = {}, {}
-    local contents = container:getItems()
-    if contents:size() > 2000 then return nil, "SOURCE_SCAN_LIMIT" end
-    for i = 0, contents:size()-1 do
-        local item = contents:get(i)
-        if eligible(item) then
-            if seen[item:getID()] then return nil, "ITEM_ID_DUPLICATED" end
-            seen[item:getID()] = true
-            items[#items+1] = item:getID()
-            if #items > 30 then return nil, "TASK_LIMIT_30" end
-        end
-    end
-    if #items == 0 then return nil, "NO_ELIGIBLE_ITEMS" end
-    return items
-end
-return Policy

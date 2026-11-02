@@ -7,7 +7,6 @@
 
 require "ISUI/ISPanel"
 local Theme = require "EmberRoutesProbe/UI/Theme"
-local Tooltip = require "EmberRoutesProbe/UI/TooltipAnchor"
 
 ---@class EmberRoutesFilterChips:ISPanel
 ---@field fontHeight number
@@ -119,10 +118,6 @@ end
 ---@param id string
 function FilterChips:setSelected(id)
     self.selectedId = id
-end
-
-function FilterChips:getSelected()
-    return self.selectedId
 end
 
 function FilterChips:chipAt(x, y)

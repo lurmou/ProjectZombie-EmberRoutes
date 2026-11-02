@@ -64,14 +64,6 @@ end
 -- Internal live lookup for per-tick runtime paths: returns the persisted entries
 -- themselves (no copy, no sort, no actor authorization). Callers must treat the
 -- result as read-only; detached DTOs remain the only published form.
-function Ledger.scopeAt(x,y)
-    local data=Ledger.data() local factionId=data.factionId
-    local result={}
-    for id,entry in pairs(data.entries) do
-        if entry.factionId==factionId and Geometry.inside(entry,x,y) then result[#result+1]=entry end
-    end
-    return result
-end
 local function nameValue(name)
     if type(name)~="string" then return nil end
     name=name:match("^%s*(.-)%s*$")

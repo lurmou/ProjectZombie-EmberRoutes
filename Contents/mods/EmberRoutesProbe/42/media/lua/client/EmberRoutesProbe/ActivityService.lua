@@ -341,7 +341,6 @@ function S.tick()
     local actor=getSpecificPlayer(0) if not actor or actor:isDead() then return end
     pump.tick(actor,saved,now,clock())
 end
-function S.pumpBudget() return pump.stats() end
 local Probe=require 'EmberRoutesProbe/Boot'
 Probe.activityContext=S.context Probe.tickActivities=S.tick
 return S

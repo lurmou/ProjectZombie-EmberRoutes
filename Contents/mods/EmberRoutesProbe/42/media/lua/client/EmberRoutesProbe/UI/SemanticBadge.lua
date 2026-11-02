@@ -145,20 +145,6 @@ for key,tone in pairs({STATION='PROCESSING',RETURNED='STORED',CONSUMED='DISABLED
 end
 
 ---Clean raw strings containing [DEBUG_KEY/文案] into pure clean badges
----@param raw string
----@return string
-function SemanticBadge.cleanRawString(raw)
-    if not raw or raw == "" then return "" end
-    -- Check if it matches [KEY/TEXT] pattern
-    local key, rawText = raw:match("^%[([%w_]+)/(.+)%]$")
-    if key and rawText then
-        local def = DEFINITIONS[key]
-        local glyph = def and def.glyph and (def.glyph .. " ") or ""
-        return "[" .. glyph .. rawText .. "]"
-    end
-    return raw
-end
-
 ---Resolve a semantic status key into a fully measured presentation descriptor.
 ---@param key string
 ---@param customLabel string?

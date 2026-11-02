@@ -8,7 +8,6 @@ local Logistics=require "EmberRoutesProbe/LogisticsMenu"
 local LifeZones=require "EmberRoutesProbe/LifeZoneMenu"
 local MembershipText=require "EmberRoutesProbe/MembershipText"
 local MembershipService=require "EmberRoutesProbe/MembershipService"
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 function Menu.create(actor)
     Selector.open(actor,nil,function(entry)

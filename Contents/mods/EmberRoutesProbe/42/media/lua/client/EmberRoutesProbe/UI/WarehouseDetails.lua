@@ -9,19 +9,6 @@ local methods={}
 methods.__index=methods
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 
-local function isChinese()
-    local q=getText("IGUI_EmberRoutesProbe_Settlement_quantity")
-    return q=="数量"
-end
-
-local function getCaliberTitles()
-    local resolve=getTextOrNull
-    local function pick(key) return (type(resolve)=="function" and resolve(key)) or key end
-    local s=pick("IGUI_EmberRoutesProbe_Settlement_inStock")
-    local r=pick("IGUI_EmberRoutesProbe_Settlement_reserved")
-    local t=pick("IGUI_EmberRoutesProbe_Settlement_inTransit")
-    return s,r,t
-end
 
 local function extractCalibers(row)
     if not row then return 0,0,0 end

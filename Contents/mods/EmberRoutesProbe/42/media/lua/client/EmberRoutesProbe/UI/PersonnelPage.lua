@@ -621,28 +621,6 @@ function EmberRoutesPersonnelPage:toggleDossierDrawer(forceState)
     end
 end
 
-function EmberRoutesPersonnelPage:detailsMenu()
-    local menu=ISContextMenu.get(self.actor:getIndex(),self:getAbsoluteX()+self.detailsBounds.x,self:getAbsoluteY()+self.infoBounds.y)
-    local selected=self.store.value.selected
-    if selected then require('EmberRoutesProbe/MembershipMenu').fill(self.actor,menu,nil,selected.id) end
-    require('EmberRoutesProbe/MembershipMenu').batch(self.actor,menu,self.entry.id,self.store.value.workers or {})
-    for _,mode in ipairs({'overview','skills','knowledge'}) do
-        menu:addOption(text('details_'..mode),self,function()
-            if not self.active or self.disposed then return end
-            self.detailMode=mode self.knowledgePage=1 self:project(self.store.value)
-        end)
-    end
-    for _,delta in ipairs({-1,1}) do
-        menu:addOption(text(delta<0 and 'previousKnowledge' or 'nextKnowledge'),self,function()
-            if not self.active or self.disposed then return end
-            local sel=self.store.value.selected if not sel then return end
-            local value=require('EmberRoutesProbe/PersonnelService').details(self.actor,self.entry.id,sel.id)
-            local max=value and math.max(1,math.ceil(#value.knowledge/32)) or 1
-            self.detailMode='knowledge' self.knowledgePage=math.max(1,math.min(max,(self.knowledgePage or 1)+delta))
-            self:project(self.store.value)
-        end)
-    end
-end
 function EmberRoutesPersonnelPage:onListKey(key)
     if key==Keyboard.KEY_RETURN then self:onListActivate()
     elseif key==Keyboard.KEY_LEFT or key==Keyboard.KEY_RIGHT then self:onListFocus(nil,key==Keyboard.KEY_LEFT and -1 or 1) end

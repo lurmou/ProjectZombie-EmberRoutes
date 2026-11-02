@@ -1,6 +1,5 @@
 -- Reuses the warehouse membership, access/filter and logistics target ranking.
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
 local Geometry=require "EmberRoutesProbe/SettlementGeometry"
 local Membership=require "EmberRoutesProbe/SettlementMembership"
 local Filter=require "EmberRoutesProbe/StorageFilter"
