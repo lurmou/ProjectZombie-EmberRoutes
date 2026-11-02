@@ -4,7 +4,7 @@ local CraftRecord=require "EmberRoutesProbe/CraftRecord"
 local Manifest=require 'EmberRoutesProbe/HaulManifest'
 local Evidence=require 'EmberRoutesProbe/QuarantineEvidence'
 local Store={}
-local root,ledger,claims,tokens
+local root,claims,tokens
 local domainState={}
 local nativeTokens={}
 local personalTokens={}
@@ -14,9 +14,6 @@ local fieldTokens={}
 local custodyTokens={}
 local recoveredGenerations={}
 local recent={}
-local function resources(record)
-    local result={} for _,id in ipairs(Manifest.claimItemIds(record)) do result[#result+1]="item:"..id end return result
-end
 local function nativeRecords()
     local okJobs,BusinessJobs=pcall(require,'EmberRoutesProbe/BusinessJobs')
     local crafts=okJobs and BusinessJobs and BusinessJobs.legacyCrafts and BusinessJobs.legacyCrafts() or {}
@@ -51,7 +48,6 @@ end
 function Store.data()
     local current=Registry.data()
     if current~=root then
-	local data=require('EmberRoutesProbe/BusinessJobs').legacyHauls()
         local rebuilt,newTokens=Claims.new(),{}
         current.quarantineResources = current.quarantineResources or {}
 
@@ -111,13 +107,6 @@ function Store.data()
 	    end
 	    for id,entry in pairs(current.toolCustody and current.toolCustody.byId or {}) do
 		if type(entry)=='table' then candidate(entry,id,entry.claims) end
-	    end
-	    -- Legacy adapters acquire with payload identities. Count their task ID
-	    -- once even when its envelope references the same claim identity.
-	    for id,r in pairs(data.tasks) do
-		if type(r)=='table' and r.state~='DONE' and type(r.items)=='table' then
-		    candidate(r,id,resources(r),current.taskJobs and current.taskJobs.byId[id])
-		end
 	    end
 	    for _,r in pairs(nativeRecords()) do
 		if (r.format==1 or r.format==2 or r.format==3) and not r.released then
@@ -238,16 +227,6 @@ function Store.data()
             end
         end
 
-        for id, record in pairs(data.tasks) do
-            if type(record) == "table" and record.state ~= "DONE" and type(record.items) == "table" then
-                for _, itemId in ipairs(record.items) do
-                    if type(itemId) == "number" and itemId == itemId and itemId ~= math.huge and itemId ~= -math.huge then
-                        recordClaimant("item:" .. tostring(itemId), { kind = "HAUL_TASK", id = id, record = record })
-                    end
-                end
-            end
-        end
-
         for npcId, record in pairs(nativeRecords()) do
 	    if type(record) == "table" and (record.format == 1 or record.format == 2 or record.format == 3) and not record.released then
                 for _, key in ipairs(CraftRecord.resources(record)) do
@@ -305,8 +284,7 @@ function Store.data()
             return false
         end
 
-	local legacyContext={current=current,data=data,rebuilt=rebuilt,newTokens=newTokens,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,resources=resources,nativeRecords=nativeRecords,CraftRecord=CraftRecord}
-	require('EmberRoutesProbe/HaulLegacyRecovery').restore(legacyContext)
+	local legacyContext={current=current,rebuilt=rebuilt,newTokens=newTokens,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,nativeRecords=nativeRecords,CraftRecord=CraftRecord}
 	local rebuiltNative={}
 	legacyContext.rebuiltNative=rebuiltNative
 	require('EmberRoutesProbe/CraftLegacyRecovery').restore(legacyContext)
@@ -347,15 +325,9 @@ function Store.data()
             current.toolCustody = { byId = {}, byNpc = {}, byItem = {} }
         end
         -- Publish the cache only after the entire ledger passed validation.
-        local generations={}
-        for id,record in pairs(data.tasks) do
-            generations[id]={before=record.generation or 0,after=(record.generation or 0)+1}
-            record.generation=(record.generation or 0)+1
-            if record.state=="RUNNING" then record.state="PAUSED" record.reason="LOAD_RECOVERY" end
-        end
         require('EmberRoutesProbe/BusinessJobs').flush()
         current.nextClaimSeq = math.max(current.nextClaimSeq or 1, rebuilt.nextClaimSeq or 1)
-        root,ledger,claims,tokens=current,data,rebuilt,newTokens
+        root,claims,tokens=current,rebuilt,newTokens
         nativeTokens=rebuiltNative
         personalTokens=rebuiltPersonal
         cookingTokens=rebuiltCooking
@@ -365,17 +337,14 @@ function Store.data()
 	domainState.root,domainState.claims,domainState.tokens=root,claims,tokens
 	domainState.nativeTokens,domainState.personalTokens=nativeTokens,personalTokens
 	domainState.cookingTokens,domainState.activityTokens,domainState.fieldTokens=cookingTokens,activityTokens,fieldTokens
-        recoveredGenerations=generations
+        recoveredGenerations={}
         recent={}
     end
-    return ledger
+    return root
 end
 function Store.record(npcId)
-    local data=Store.data()
-    local canonical=require('EmberRoutesProbe/HaulJobs').record(npcId)
-    local legacy=data.tasks[data.byNpc[npcId]]
-    if legacy and legacy.state~='DONE' and (not canonical or canonical.state=='DONE') then return legacy end
-    return canonical or legacy
+    Store.data()
+    return require('EmberRoutesProbe/HaulJobs').record(npcId)
 end
 -- One UI summary per current NPC, scoped to this world session; no item handles.
 function Store.recent(npcId)
@@ -591,7 +560,6 @@ function Store.claimNative(record)
     if other and other.state~="DONE" then return nil,"NPC_TASK_CONFLICT" end
     local saved=nativeRecords()[record.npcId]
     if saved and saved~=record and not saved.released then return nil,"OTHER_TASK_RETAINED" end
-    if ledger.tasks[record.id] then return nil,"TASK_ID_DUPLICATED" end
     for _,otherRecord in pairs(nativeRecords()) do
         if otherRecord~=record and otherRecord.id==record.id then return nil,"TASK_ID_DUPLICATED" end
     end
@@ -630,75 +598,20 @@ function Store.replaceNative(record,token,proposed)
 end
 function Store.claim(record)
     if record.format==3 then return require('EmberRoutesProbe/HaulJobs').claim(record) end
-    Store.data()
-    if record.format==2 and #Manifest.claimItemIds(record)==0
-        and not (record.producer=='DELIVERY' and record.returnForNextBatch) then return nil,'HAUL_ALREADY_SETTLED' end
-    local native=nativeRecords()[record.npcId]
-    if native and not native.released then return nil,"OTHER_TASK_RETAINED" end
-    local generation=(record.generation or 0)+1
-    local claimId = ensureEntityClaimId(root, record, record.id)
-    local token,reason=claims:acquire(record.id,generation,resources(record), { claimId = claimId })
-    if token then record.generation=generation tokens[record.id]=token end
-    return token,reason
-end
--- Current shared-Job payload only; never imports pre-Job/unknown legacy data.
-function Store.upgradeHaul(record,lines)
-    Store.data()
-    if Store.record(record.npcId)~=record or record.format~=1 or record.producer~='LOGISTICS'
-        or record.controlUncertain or record.state~='PAUSED' then return false,'TASK_CHANGED' end
-    local draft={} for k,v in pairs(record) do draft[k]=v end
-    draft.format,draft.manifest,draft.plannedCount,draft.routeRevision,draft.attemptSequence=2,lines,#record.items,0,0
-    if not Manifest.valid(draft) then return false,'TASK_RECORD_INVALID' end
-    local token=tokens[record.id] local drop={}
-    for _,l in ipairs(lines) do if not Manifest.pending(l) then drop[#drop+1]='item:'..l.itemId end end
-    if not token or not claims:shrink(token,drop) then return false,'STALE_CLAIM' end
-    record.format,record.manifest,record.plannedCount,record.routeRevision,record.attemptSequence=2,lines,#record.items,0,0
-    record.delivered=Manifest.count(record)
-    Store.releaseCapacity(token)
-    return true
+    return nil,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.settleHaulLines(record,token,generation,settlements)
     if record.format==3 then return require('EmberRoutesProbe/HaulJobs').settle(record,token,generation,settlements) end
-    Store.data()
-    if record.format~=2 or Store.record(record.npcId)~=record or tokens[record.id]~=token
-        or record.generation~=generation then return false,'STALE_CLAIM' end
-    local changes,keys,seen={},{},{}
-    for _,s in ipairs(settlements) do
-        local l=Manifest.line(record,s.itemId)
-        if not l or seen[s.itemId] or (s.state~='DELIVERED' and s.state~='WITHDRAWN') then return false,'SETTLEMENT_INVALID' end
-        seen[s.itemId]=true
-        if Manifest.pending(l) then
-            if s.state=='WITHDRAWN' and (l.custodyState~='UNCOLLECTED' or record.activeAttempt and record.activeAttempt.itemId==s.itemId)
-                or s.state=='DELIVERED' and (not s.receipt or not s.receipt.attemptId or not s.receipt.destinationId) then return false,'SETTLEMENT_INVALID' end
-            changes[#changes+1]={line=l,change=s} keys[#keys+1]='item:'..s.itemId
-        elseif l.custodyState~=s.state then return false,'SETTLEMENT_CHANGED' end
-    end
-    local ok,why=claims:shrink(token,keys) if not ok then return false,why end
-    for _,row in ipairs(changes) do
-        local l,s=row.line,row.change l.custodyState=s.state l.deliveryReceipt=s.receipt
-        local reservation=record.reservation
-        if reservation and reservation.format==2 then reservation.items[s.itemId]=nil end
-    end
-    if not token.capacityKey then record.reservation=nil end
-    record.delivered,record.withdrawn=Manifest.count(record)
-    return true
+    return false,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.publish(record)
     if record.format==3 then return require('EmberRoutesProbe/HaulJobs').commit(record) end
-    local data=Store.data() local previous=Store.record(record.npcId)
-    local native=nativeRecords()[record.npcId]
-    if native and not native.released then return false,"OTHER_TASK_RETAINED" end
-    if previous and previous~=record then
-        if previous.state~="DONE" then return false,"TASK_EXISTS_RESUME_OR_CLEAR" end
-        claims:release(tokens[previous.id]) tokens[previous.id]=nil
-    end
-    return require('EmberRoutesProbe/BusinessJobs').publishHaul(record)
+    return false,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.valid(record,generation,token)
     if not scopeAllowed(record.id,record.settlementId) then return false end
     if record.format==3 then return require('EmberRoutesProbe/HaulJobs').valid(record,generation,token) end
-    return Store.record(record.npcId)==record and record.state=="RUNNING" and record.generation==generation
-        and tokens[record.id]==token
+    return false
 end
 function Store.pause(record)
     local token=Store.claim(record) return token
@@ -710,14 +623,7 @@ function Store.capacity(token,itemId,key,amount,free)
 	local r=require('EmberRoutesProbe/HaulJobs').record(j.npcId)
 	return require('EmberRoutesProbe/HaulJobs').capacity(r,key,{[itemId]=amount},free)
     end
-    Store.data() local ok,reason=claims:reserve(token,key,itemId,amount,free)
-    if ok then
-        local record=ledger.tasks[token.taskId] local previous=record.reservation
-        local reservation=previous and previous.format==2 and previous or {format=2,key=key,items={}}
-        if previous and previous.itemId then reservation.items[previous.itemId]=previous.amount end
-        reservation.items[itemId]=amount record.reservation=reservation
-    end
-    return ok,reason
+    return claims:reserve(token,key,itemId,amount,free)
 end
 function Store.releaseCapacity(token,itemId)
     Store.data()
@@ -726,18 +632,8 @@ function Store.releaseCapacity(token,itemId)
 	local r=require('EmberRoutesProbe/HaulJobs').record(j.npcId)
 	return require('EmberRoutesProbe/HaulJobs').releaseCapacity(r,itemId)
     end
-    Store.data() if not token then return end
+    if not token then return end
     claims:releaseCapacity(token,itemId)
-    local record=ledger.tasks[token.taskId]
-    if record and tokens[token.taskId]==token then
-        local reservation=record.reservation
-        if not itemId then record.reservation=nil
-        elseif reservation and reservation.format==2 then
-            reservation.items[itemId]=nil
-            local empty=true for _ in pairs(reservation.items) do empty=false break end
-            if empty then record.reservation=nil end
-        elseif reservation and reservation.itemId==itemId then record.reservation=nil end
-    end
 end
 function Store.availableCapacity(key,free) Store.data() return claims:available(key,free) end
 function Store.availableFor(token,key,itemId,free) Store.data() return claims:availableFor(token,key,itemId,free) end
@@ -748,12 +644,7 @@ function Store.capacityBatch(token,key,weights,free)
 	local r=require('EmberRoutesProbe/HaulJobs').record(j.npcId)
 	return require('EmberRoutesProbe/HaulJobs').capacity(r,key,weights,free)
     end
-    Store.data() local ok,reason=claims:reserveMany(token,key,weights,free)
-    if ok then
-        local copy={} for id,amount in pairs(weights) do copy[id]=amount end
-        ledger.tasks[token.taskId].reservation={format=2,key=key,items=copy}
-    end
-    return ok,reason
+    return claims:reserveMany(token,key,weights,free)
 end
 function Store.finish(record)
     if record.format==3 then
@@ -761,41 +652,17 @@ function Store.finish(record)
 	if ok and record.producer=='LOGISTICS' and record.delivered==#record.items then recent[record.npcId]={id=record.id,settlementId=record.settlementId,sourceMode=record.sourceMode,delivered=record.delivered,total=#record.items} end
 	return ok,why
     end
-    Store.data()
-    if record.state=="DONE" and record.producer=="LOGISTICS" and record.delivered==#record.items then
-        recent[record.npcId]={id=record.id,settlementId=record.settlementId,sourceMode=record.sourceMode,
-            delivered=record.delivered,total=#record.items}
-    end
-    claims:release(tokens[record.id]) cleanToken(record.id) record.reservation=nil record.generation=(record.generation or 0)+1
-    return true
+    return false,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.clear(npcId)
     local record=Store.record(npcId) if not record then return true end
-    if record.format==3 then
-	-- Absence from the carrier is not source/receipt proof. A paused draft
-	-- with outstanding originals cannot be discarded by this legacy command.
-	if record.activeAttempt or record.controlUncertain or #Manifest.claimItemIds(record)>0 then return false,'HAUL_OBLIGATION_RETAINED' end
-	local ok,why=Store.finish(record)
-	if not ok then return false,why end
-	recent[npcId]=nil return true
-    end
-    Store.finish(record) record.state='DONE' record.reason='CLEARED'
-    require('EmberRoutesProbe/BusinessJobs').removeHaul(record)
-    require('EmberRoutesProbe/BusinessJobs').flush()
-    recent[npcId]=nil
-    return true
-end
-function Store.route(npcId)
-    local data=Store.data() local route=data.routes[npcId]
-    if not route then
-        route={}
-        if npcId~="" then
-            route=data.unassignedRoute or data.routes[""] or route
-            data.unassignedRoute=nil data.routes[""]=nil
-        end
-        data.routes[npcId]=route
-    end
-    return route
+    if record.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
+    -- Absence from the carrier is not source/receipt proof. A paused draft
+    -- with outstanding originals cannot be discarded by this command.
+    if record.activeAttempt or record.controlUncertain or #Manifest.claimItemIds(record)>0 then return false,'HAUL_OBLIGATION_RETAINED' end
+    local ok,why=Store.finish(record)
+    if not ok then return false,why end
+    recent[npcId]=nil return true
 end
 function Store.canClaimTool(npcId,itemId)
     Store.data()

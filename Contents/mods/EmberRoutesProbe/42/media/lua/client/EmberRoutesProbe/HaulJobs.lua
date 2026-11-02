@@ -89,10 +89,6 @@ function M.claim(r)
 	local ok,why=Store.createClaimedJob({id=r.id,npcId=r.npcId,providerType='HAUL',scopeId=r.settlementId or r.scopeId,
 	    orderId=r.orderId,revision=1,state='PREPARING',effects='KNOWN',obligations={business=true},payload=r})
 	if not ok then return nil,why end
-	local business=require('EmberRoutesProbe/BusinessJobs')
-	local old=business.legacyHauls()
-	old=old.tasks[old.byNpc[r.npcId]]
-	if old and old.state=='DONE' then business.removeHaul(old) end
 	adopt(Jobs.current():get(r.id),r)
     else
 	if e.failed or e.job.effects=='UNKNOWN' then return nil,'HAUL_RECONCILE_REQUIRED' end

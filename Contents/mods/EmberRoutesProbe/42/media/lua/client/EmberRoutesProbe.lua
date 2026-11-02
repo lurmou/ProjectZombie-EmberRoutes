@@ -1,6 +1,5 @@
 local Probe=require "EmberRoutesProbe/Boot"
 local Companion=require "EmberRoutesProbe/Companion"
-local Work=require "EmberRoutesProbe/Work"
 -- Background lifecycle must exist before OnGameStart, even with every UI closed.
 require "EmberRoutesProbe/Persistence"
 require "EmberRoutesProbe/StockService"
@@ -81,11 +80,6 @@ local function fillMenu(playerIndex, context, worldobjects, test)
         local containerMenu = ISContextMenu:getNew(menu)
         menu:addSubMenu(containerOption, containerMenu)
         ContainerMenu.fill(actor, containerMenu, c.object, c.container)
-        if isDebugEnabled() then
-            for _, role in ipairs({ "source", "destination" }) do
-                containerMenu:addOption(getText("IGUI_EmberRoutesProbe_Work_" .. role), actor, Work.execute, role, c.object, c.container)
-            end
-        end
     elseif #containers > 1 then
         local settingsOption = menu:addOption(getText("IGUI_EmberRoutesProbe_ContainerSettings"), nil, nil)
         local settingsMenu = ISContextMenu:getNew(menu)
@@ -98,11 +92,6 @@ local function fillMenu(playerIndex, context, worldobjects, test)
             local containerMenu = ISContextMenu:getNew(settingsMenu)
             settingsMenu:addSubMenu(containerOption, containerMenu)
             ContainerMenu.fill(actor, containerMenu, c.object, c.container)
-            if isDebugEnabled() then
-                for _, role in ipairs({ "source", "destination" }) do
-                    containerMenu:addOption(getText("IGUI_EmberRoutesProbe_Work_" .. role), actor, Work.execute, role, c.object, c.container)
-                end
-            end
         end
     end
 
@@ -141,18 +130,6 @@ local function fillMenu(playerIndex, context, worldobjects, test)
     -- 4. 地面集结点设置 (若点击地面处于据点领地内)
     SettlementMenu.returnPoint(actor, menu, square)
 
-    -- 5. 高级/调试指令 (仅 Debug 模式呈现)
-    if isDebugEnabled() then
-        local debugOpt = menu:addOption(getText("IGUI_EmberRoutesProbe_Debug_probeCommands"), nil, nil)
-        local debugMenu = ISContextMenu:getNew(menu)
-        menu:addSubMenu(debugOpt, debugMenu)
-        local workOption = debugMenu:addOption(getText("IGUI_EmberRoutesProbe_Work"), nil, nil)
-        local workMenu = ISContextMenu:getNew(debugMenu)
-        debugMenu:addSubMenu(workOption, workMenu)
-        for _, command in ipairs({ "run", "pause", "resume", "report", "clear" }) do
-            workMenu:addOption(getText("IGUI_EmberRoutesProbe_Work_" .. command), actor, Work.execute, command)
-        end
-    end
 end
 
 Events.OnFillWorldObjectContextMenu.Add(fillMenu)

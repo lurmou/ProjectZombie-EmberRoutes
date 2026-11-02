@@ -134,23 +134,8 @@ function A.new(npcId)
             end})
     end
     local function upgrade(r,npc)
-	if (r.format==2 or r.format==3) then return Manifest.valid(r),'TASK_RECORD_INVALID' end
-        if r.format~=1 or r.producer~='LOGISTICS' or r.controlUncertain or r.state~='PAUSED'
-            or not npc:getCharacterActions():isEmpty() then return false,'CURRENT_HAUL_UPGRADE_REQUIRED' end
-        local rt=Runtime.current() if rt and rt:owns(npcId) then return false,'WAIT_BODY_STOP' end
-        local source=Registry.resolve(r.source,'take',r.scopeId)
-        local target=Registry.resolve(r.destination,'put',r.scopeId)
-        if not source or not target then return false,'CURRENT_HAUL_UPGRADE_REQUIRED' end
-        local index,why=View.index({source.container,npc:getInventory(),target.container})
-        if not index then return false,why end
-        local locations={}
-        for _,id in ipairs(r.items) do
-            local item,where,reason=View.find(index,id)
-            if not item then return false,reason end locations[id]=where
-        end
-        local ok,reason=Store.upgradeHaul(r,Manifest.create(r,locations))
-        if ok and (r.phase=='DELIVER' or string.find(r.reason or '','^FILTER_REJECTED') or r.reason=='NATIVE_TRANSFER_STOPPED') then r.deliveryOnly=true end
-        return ok,reason
+	if r.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
+	return Manifest.valid(r),'TASK_RECORD_INVALID'
     end
     local launch
     launch=function(actor,r,body,nonPreemptive)

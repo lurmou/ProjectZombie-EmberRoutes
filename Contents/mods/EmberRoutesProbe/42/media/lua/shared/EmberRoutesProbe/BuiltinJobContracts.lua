@@ -33,9 +33,8 @@ function M.install()
     add('HAUL',{
 	validate=function(j)
 	    local p=j.payload
-	    if p.format==3 then return record('HaulJobRecord').valid(j) end
-	    if p.format==1 then return type(p.items)=='table' and type(p.source)=='string' and type(p.destination)=='string' end
-	    return record('HaulManifest').valid(p)
+	    if p.format~=3 then return false end
+	    return record('HaulJobRecord').valid(j)
 	end,
 	transition=function(a,b)
 	    return a.payload.format~=3 or record('HaulJobRecord').transition(a,b),'HAUL_TRANSITION_INVALID'

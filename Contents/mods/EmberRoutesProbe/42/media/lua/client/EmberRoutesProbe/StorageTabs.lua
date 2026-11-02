@@ -3,7 +3,6 @@ local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Filter=require "EmberRoutesProbe/StorageFilter"
 local ContainerMenu=require "EmberRoutesProbe/ContainerMenu"
 local Configuration=require "EmberRoutesProbe/ContainerConfiguration"
-local Work=require "EmberRoutesProbe/Work"
 local Log=require "EmberRoutesProbe/Log"
 local Flow=require "EmberRoutesProbe/UIFlow"
 ---@class EmberRoutesInventoryPage: ISInventoryPage
@@ -101,11 +100,6 @@ local function rightClick(button,x,y)
         local option=context:addOption(getText("IGUI_EmberRoutesProbe_ContainerSettings"),nil,nil)
         local menu=ISContextMenu:getNew(context) context:addSubMenu(option,menu)
         ContainerMenu.fill(actor,menu,object,button.inventory)
-        for _,role in ipairs({"source","destination"}) do
-            context:addOption(getText("IGUI_EmberRoutesProbe_Work_"..role),actor,function(a,o,c)
-                Work.execute(a,role,o,c)
-            end,object,button.inventory)
-        end
     end
     return result
 end

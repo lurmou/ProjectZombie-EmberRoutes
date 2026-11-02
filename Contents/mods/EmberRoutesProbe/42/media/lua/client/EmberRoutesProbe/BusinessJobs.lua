@@ -4,7 +4,7 @@ local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local Signals=require 'EmberRoutesProbe/LaborSignals'
 local M={}
-local world,store,craft,haul
+local world,store,craft
 local function derived(r)
     local unknown=r.uncertain==true or r.controlUncertain==true or r.phase=='COMMITTING'
     local done=r.released==true or r.kind=='EXPLICIT_TRANSFER' and r.state=='DONE'
@@ -23,7 +23,7 @@ local function load()
     local root=Registry.data()
     if root==world then return end
     local opened=Jobs.current()
-    local c,h={},{format=2,tasks={},byNpc={},routes=root.taskRoutes or {}}
+    local c={}
     for id,j in pairs(root.taskJobs.byId) do
         local r=j.payload
 	if j.providerType=='CRAFT' and (r.format==1 or r.format==2 or r.format==3) then
@@ -31,15 +31,9 @@ local function load()
             local previous=c[r.npcId]
             if previous and not previous.released and not r.released then error('NPC_TASK_CONFLICT') end
             if not previous or previous.released then c[r.npcId]=r end
-        elseif j.providerType=='HAUL' and (r.format==1 or r.format==2) then
-            if r.id~=id or r.npcId~=j.npcId then error('JOB_PAYLOAD_INVALID') end
-            local previous=h.tasks[h.byNpc[r.npcId]]
-            if previous and previous.state~='DONE' and r.state~='DONE' then error('NPC_TASK_CONFLICT') end
-            h.tasks[id]=r
-            if not previous or previous.state=='DONE' then h.byNpc[r.npcId]=id end
         end
     end
-    root.taskRoutes=h.routes world,store,craft,haul=root,opened,c,h
+    world,store,craft=root,opened,c
 end
 function M.legacyCrafts() load() return craft end
 function M.crafts()
@@ -63,11 +57,8 @@ function M.records(kind)
     for id,j in pairs(world.taskJobs.byId) do if j.providerType==kind then result[id]=j.payload end end
     return result
 end
-function M.legacyHauls() load() return haul end
 function M.hauls()
-    load() local result={format=3,tasks={},byNpc={},routes=haul.routes}
-    for id,r in pairs(haul.tasks) do result.tasks[id]=r end
-    for npcId,id in pairs(haul.byNpc) do result.byNpc[npcId]=id end
+    load() local result={format=3,tasks={},byNpc={},routes={}}
     for id,j in pairs(world.taskJobs.byId) do
 	if j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY' then
 	    local r=store:get(id).payload result.tasks[id]=r
@@ -80,7 +71,7 @@ end
 function M.refresh(id)
     load() local j=world.taskJobs.byId[id]
     if not j or not j.payload then return false end
-    if not ((j.providerType=='CRAFT' and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3)) or (j.providerType=='HAUL' and (j.payload.format==1 or j.payload.format==2))) then return false end
+    if not (j.providerType=='CRAFT' and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3)) then return false end
     local r=j.payload local state,effects,cleared=derived(r)
     if not obligationsMatch(j.obligations,cleared) then j.obligations=cleared and {} or {business=true} end
     if j.state~=state or j.effects~=effects or j.businessGeneration~=r.generation then j.revision=j.revision+1 end
@@ -90,7 +81,7 @@ function M.flush()
     load()
     if store:ordinaryCount()==0 then return end
     for _,j in pairs(world.taskJobs.byId) do
-	if (j.providerType=='CRAFT' and j.payload and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3)) or (j.providerType=='HAUL' and j.payload and (j.payload.format==1 or j.payload.format==2)) then
+	if j.providerType=='CRAFT' and j.payload and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3) then
         local r=j.payload
         if r.id~=j.id or r.npcId~=j.npcId then error('JOB_ID_CHANGED') end
         local state,effects,cleared=derived(r)
@@ -112,19 +103,10 @@ local function publish(r,kind)
     -- Only backend owners obtain this mutable reference. Store.create already
     -- checked serializability; retain executor identity for late-callback fences.
     world.taskJobs.byId[r.id].payload=r
-    if kind=='CRAFT' then craft[r.npcId]=r else haul.tasks[r.id]=r haul.byNpc[r.npcId]=r.id end
+    craft[r.npcId]=r
     M.flush() return true
 end
 function M.publishCraft(r) return publish(r,'CRAFT') end
-function M.publishHaul(r) return publish(r,'HAUL') end
-function M.removeHaul(r)
-    load()
-    if r.state~='DONE' then return false,'JOB_NOT_SETTLED' end
-    -- Clear the executor selection now; normal-tick retirement removes the
-    -- settled persistent Job only after body/claim/public checks also pass.
-    if haul.byNpc[r.npcId]==r.id then haul.byNpc[r.npcId]=nil end
-    haul.tasks[r.id]=nil return true
-end
 -- Called only on a later normal tick, never from a native completion callback.
 function M.canRetire(id,orderId)
     load()
@@ -139,7 +121,7 @@ function M.canRetire(id,orderId)
 	if r.state=='DONE' and (r.format==3 or r.format==4) and (r.delivered~=r.produced
             or r.produced<r.target and r.reason~='TARGET_REACHED') then return false end
     elseif r.state~='DONE' then return false
-    elseif (r.format==2 or r.format==3) and (not require('EmberRoutesProbe/HaulManifest').valid(r)
+    elseif r.format==3 and (not require('EmberRoutesProbe/HaulManifest').valid(r)
         or #require('EmberRoutesProbe/HaulManifest').claimItemIds(r)>0 or r.activeAttempt) then return false end
     local runtime=require('EmberRoutesProbe/TaskRuntime').current()
     if not runtime or not runtime:accepting() or runtime:status(j.npcId,id) then return false end
@@ -174,8 +156,6 @@ function M.retire(id,orderId)
     end
     if not store:removeSettled(id,j.revision) then return false end
     if craft[j.npcId]==r then craft[j.npcId]=nil end
-    haul.tasks[id]=nil
-    if haul.byNpc[j.npcId]==id then haul.byNpc[j.npcId]=nil end
     local receipt=world.executionSave
     if receipt and receipt.byNpc and receipt.byNpc[j.npcId] and receipt.byNpc[j.npcId].jobId==id then
         receipt.byNpc[j.npcId]=nil

@@ -2,7 +2,6 @@
 local M={}
 function M.restore(c)
     local current=c.current
-    local data=c.data
     local rebuilt=c.rebuilt
     local newTokens=c.newTokens
     local rebuiltNative=c.rebuiltNative
@@ -13,8 +12,11 @@ function M.restore(c)
 
 	for npcId, record in pairs(nativeRecords()) do
 	    if (record.format == 1 or record.format == 2 or record.format == 3) and not record.released then
-		local other = data.tasks[data.byNpc[npcId]]
-		if other and other.state ~= "DONE" then
+		local other
+		for _,j in pairs(current.taskJobs and current.taskJobs.byId or {}) do
+		    if j.providerType=='HAUL' and j.npcId==npcId and j.state~='DONE' and j.state~='CANCELLED' then other=j break end
+		end
+		if other then
 		    record.released = true
 		else
 		    local resKeys = CraftRecord.resources(record)
