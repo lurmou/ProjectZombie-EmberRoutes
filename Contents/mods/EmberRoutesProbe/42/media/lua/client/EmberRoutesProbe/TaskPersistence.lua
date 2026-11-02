@@ -139,7 +139,6 @@ function Save.capture()
             return Save.failed('WORKER_CAPTURE_FAILED '..id..' '..tostring(result))
         end
     end
-    require('EmberRoutesProbe/BusinessJobs').flush()
     receipt.state='CAPTURED'
     if not EmberRoutesProbeJava.armSaveReceipt() then return Save.failed('SAVE_RECEIPT_UNAVAILABLE') end
     s.results=results

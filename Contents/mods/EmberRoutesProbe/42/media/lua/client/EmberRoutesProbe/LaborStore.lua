@@ -1,12 +1,11 @@
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Claims=require "EmberRoutesProbe/LaborClaims"
-local CraftRecord=require "EmberRoutesProbe/CraftRecord"
+local CraftRetirement=require "EmberRoutesProbe/CraftLegacyRecovery"
 local Manifest=require 'EmberRoutesProbe/HaulManifest'
 local Evidence=require 'EmberRoutesProbe/QuarantineEvidence'
 local Store={}
 local root,claims,tokens
 local domainState={}
-local nativeTokens={}
 local personalTokens={}
 local cookingTokens={}
 local activityTokens={}
@@ -14,13 +13,8 @@ local fieldTokens={}
 local custodyTokens={}
 local recoveredGenerations={}
 local recent={}
-local function nativeRecords()
-    local okJobs,BusinessJobs=pcall(require,'EmberRoutesProbe/BusinessJobs')
-    local crafts=okJobs and BusinessJobs and BusinessJobs.legacyCrafts and BusinessJobs.legacyCrafts() or {}
-    for id,r in pairs(crafts) do
-	if (r.format == 1 or r.format == 2 or r.format == 3) and CraftRecord.valid and not CraftRecord.valid(id,r) then error('CRAFT_RECORD_INVALID') end
-    end
-    return crafts
+local function legacyRecords()
+    return CraftRetirement.records(Registry.data())
 end
 local function validClaimIdFormat(claimId, entityId)
     if type(claimId) ~= "string" then return false end
@@ -108,9 +102,9 @@ function Store.data()
 	    for id,entry in pairs(current.toolCustody and current.toolCustody.byId or {}) do
 		if type(entry)=='table' then candidate(entry,id,entry.claims) end
 	    end
-	    for _,r in pairs(nativeRecords()) do
-		if (r.format==1 or r.format==2 or r.format==3) and not r.released then
-		    candidate(r,r.id,CraftRecord.resources(r),current.taskJobs and current.taskJobs.byId[r.id])
+	    for id,r in pairs(legacyRecords()) do
+		if CraftRetirement.retained(r,current.taskJobs.byId[id]) then
+		    candidate(r,id,CraftRetirement.resources(r),current.taskJobs and current.taskJobs.byId[id])
 		end
 	    end
 	    table.sort(candidates,function(a,b)
@@ -227,11 +221,11 @@ function Store.data()
             end
         end
 
-        for npcId, record in pairs(nativeRecords()) do
-	    if type(record) == "table" and (record.format == 1 or record.format == 2 or record.format == 3) and not record.released then
-                for _, key in ipairs(CraftRecord.resources(record)) do
+        for id, record in pairs(legacyRecords()) do
+	    if CraftRetirement.retained(record,current.taskJobs.byId[id]) then
+                for _, key in ipairs(CraftRetirement.resources(record)) do
                     if type(key) == "string" then
-                        recordClaimant(key, { kind = "NATIVE_CRAFT", id = record.id, record = record })
+                        recordClaimant(key, { kind = "NATIVE_CRAFT", id = id, record = record })
                     end
                 end
             end
@@ -284,10 +278,8 @@ function Store.data()
             return false
         end
 
-	local legacyContext={current=current,rebuilt=rebuilt,newTokens=newTokens,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,nativeRecords=nativeRecords,CraftRecord=CraftRecord}
-	local rebuiltNative={}
-	legacyContext.rebuiltNative=rebuiltNative
-	require('EmberRoutesProbe/CraftLegacyRecovery').restore(legacyContext)
+        CraftRetirement.restore({current=current,rebuilt=rebuilt,newTokens=newTokens,
+            hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId})
 
         local rebuiltPersonal = {}
         local rebuiltCooking = {}
@@ -325,17 +317,15 @@ function Store.data()
             current.toolCustody = { byId = {}, byNpc = {}, byItem = {} }
         end
         -- Publish the cache only after the entire ledger passed validation.
-        require('EmberRoutesProbe/BusinessJobs').flush()
         current.nextClaimSeq = math.max(current.nextClaimSeq or 1, rebuilt.nextClaimSeq or 1)
         root,claims,tokens=current,rebuilt,newTokens
-        nativeTokens=rebuiltNative
         personalTokens=rebuiltPersonal
         cookingTokens=rebuiltCooking
         activityTokens=rebuiltActivity
         fieldTokens=rebuiltField
         custodyTokens=rebuiltCustody
 	domainState.root,domainState.claims,domainState.tokens=root,claims,tokens
-	domainState.nativeTokens,domainState.personalTokens=nativeTokens,personalTokens
+	domainState.personalTokens=personalTokens
 	domainState.cookingTokens,domainState.activityTokens,domainState.fieldTokens=cookingTokens,activityTokens,fieldTokens
         recoveredGenerations={}
         recent={}
@@ -376,7 +366,6 @@ function Store.claimsInstance() Store.data() return claims end
 local function cleanToken(jobId)
     if not jobId then return end
     if tokens then tokens[jobId] = nil end
-    if nativeTokens then nativeTokens[jobId] = nil end
     if personalTokens then personalTokens[jobId] = nil end
     if cookingTokens then cookingTokens[jobId] = nil end
     if activityTokens then activityTokens[jobId] = nil end
@@ -387,7 +376,7 @@ end
 function Store.getToken(jobId)
     Store.data()
     if claims.tokensByTaskId and claims.tokensByTaskId[jobId] then return claims.tokensByTaskId[jobId] end
-    return tokens[jobId] or nativeTokens[jobId] or personalTokens[jobId] or cookingTokens[jobId] or activityTokens[jobId] or fieldTokens[jobId] or (custodyTokens and custodyTokens[jobId])
+    return tokens[jobId] or personalTokens[jobId] or cookingTokens[jobId] or activityTokens[jobId] or fieldTokens[jobId] or (custodyTokens and custodyTokens[jobId])
 end
 local function sealEvidenceEvents(record)
     local history
@@ -536,7 +525,7 @@ function Store.unquarantineResource(key,resolution,evidence)
 end
 function Store.hasTaskClaims(taskId)
     Store.data()
-    if nativeTokens[taskId] or tokens[taskId] or personalTokens[taskId] or cookingTokens[taskId] then return true end
+    if tokens[taskId] or personalTokens[taskId] or cookingTokens[taskId] then return true end
     for _,token in pairs(claims.owners) do if token.taskId==taskId then return true end end
     for _,bucket in pairs(claims.capacity) do if bucket.entries[taskId] then return true end end
     return false
@@ -549,39 +538,6 @@ local function scopeAllowed(jobId,scopeId)
     local store=require('EmberRoutesProbe/TaskJobs').current()
     local job=store:peek(jobId)
     return not store:scopeBlocked(job and job.scopeId or scopeId or 'local-world',jobId)
-end
-function Store.claimNative(record)
-    Store.data()
-    if not CraftRecord.valid(record.npcId,record) or record.released then return nil,"CRAFT_RECORD_INVALID" end
-    local other=Store.record(record.npcId)
-    if other and other.state~="DONE" then return nil,"NPC_TASK_CONFLICT" end
-    local saved=nativeRecords()[record.npcId]
-    if saved and saved~=record and not saved.released then return nil,"OTHER_TASK_RETAINED" end
-    for _,otherRecord in pairs(nativeRecords()) do
-        if otherRecord~=record and otherRecord.id==record.id then return nil,"TASK_ID_DUPLICATED" end
-    end
-    local claimId = ensureEntityClaimId(root, record, record.id)
-    local token,reason=claims:acquire(record.id,record.generation,CraftRecord.resources(record), { claimId = claimId })
-    if token then nativeTokens[record.id]=token end
-    return token,reason
-end
-function Store.validNative(record,token,key)
-    if not scopeAllowed(record.id,record.settlementId) then return false end
-    Store.data()
-    return nativeTokens[record.id]==token and token and token.generation==record.generation
-        and nativeRecords()[record.npcId]==record and not record.released
-        and (not key or claims:valid(token,key))
-end
-function Store.extendNative(record,token)
-    Store.data()
-    -- An already committed native result still belongs to its paused owner.
-    -- This only records originals; it never authorizes a stale physical action.
-    if nativeTokens[record.id]~=token or nativeRecords()[record.npcId]~=record
-        or record.released then return false,"STALE_CLAIM" end
-    return claims:extend(token,CraftRecord.resources(record))
-end
-function Store.finishNative(record)
-    Store.data() claims:release(nativeTokens[record.id]) cleanToken(record.id)
 end
 function Store.claim(record)
     if record.format==3 then return require('EmberRoutesProbe/HaulJobs').claim(record) end

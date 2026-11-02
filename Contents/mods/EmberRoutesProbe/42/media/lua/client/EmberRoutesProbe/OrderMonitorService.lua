@@ -78,12 +78,6 @@ function Service.status(actor,id)
                 row.assets[#row.assets+1]={id=asset.id,kind=name,fullType=asset.fullType,delivered=asset.delivered==true}
             end
         end
-        if kind=='CRAFT' and r.format~=3 then
-            for _,name in ipairs({'materialId','toolId'}) do
-                if r[name] then row.assets[#row.assets+1]={id=r[name],kind=name=='toolId' and 'tools' or 'materials'} end
-            end
-            for _,itemId in ipairs(r.outputIds or {}) do row.assets[#row.assets+1]={id=itemId,kind='outputs'} end
-        end
         if kind=='HAUL' then
             local types=require('EmberRoutesProbe/ItemDisplay').types(r,binding and binding.handle,displayBudget)
             local summary={}
@@ -128,7 +122,7 @@ function Service.status(actor,id)
         result.rows[#result.rows+1]=row
     end
     for _,r in pairs(require('EmberRoutesProbe/BusinessJobs').records('CRAFT')) do
-        if r.settlementId==id then add(r,'CRAFT',r.format==3 and require('EmberRoutesProbe/Production').status(r) or Craft.status(r.npcId)) end
+        if r.settlementId==id then add(r,'CRAFT',Craft.status(r.npcId)) end
     end
     for _,r in pairs(require('EmberRoutesProbe/BusinessJobs').records('HAUL')) do
         if endpoints(entry,r) then add(r,'HAUL') end

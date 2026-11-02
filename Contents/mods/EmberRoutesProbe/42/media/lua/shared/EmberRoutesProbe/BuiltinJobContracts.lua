@@ -20,7 +20,8 @@ function M.install()
     add('CRAFT',{
 	validate=function(j)
 	    if j.payload.format==4 then return record('CraftJobRecord').valid(j) end
-	    return record('CraftRecord').valid(j.npcId,j.payload)
+	    -- Admission only for return-only retirement; no legacy execution contract.
+	    return j.payload.format==1 or j.payload.format==2 or j.payload.format==3
 	end,
 	transition=function(a,b)
 	    return a.payload.format~=4 or record('CraftJobRecord').transition(a,b),'CRAFT_TRANSITION_INVALID'

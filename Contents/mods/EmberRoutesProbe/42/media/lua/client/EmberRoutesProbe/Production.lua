@@ -134,12 +134,9 @@ function Production.pause(reason,id,owned)
         if c.chainRequest then c.chainRequest:cancel() end
         if r.phase=="COMMITTING" then r.uncertain=true r.phase="RECONCILE_REQUIRED" end
     end
-    if c.body then
-        if not c.body.clear() then return false end
-    elseif c.action and ISTimedActionQueue.hasAction(c.action) then ISTimedActionQueue.clear(c.npc) end
+    if not c.body.clear() then return false end
     releaseBench(c)
-    if c.body and not Driver.stop(c.binding,c.body) then return false end
-    if not c.body then Driver.stop(c.binding) end
+    if not Driver.stop(c.binding,c.body) then return false end
     if contexts[id]==c then contexts[id]=nil end
     if reason=="SAVE" and not r.uncertain then
         candidates[id]={actor=c.actor,record=r,root=c.root,generation=r.generation,command=c.returnOnly and "return" or "resume"}
@@ -161,7 +158,7 @@ function Production.reset() Production.pauseAll("WORLD_RESET") JobExecution.rese
 local function context(actor,binding,r,entry,object,body)
     local c={actor=actor,npc=binding.handle,binding=binding,record=r,entry=entry,object=object,root=Registry.data(),generation=r.generation,body=body}
     c.valid=function()
-        return (not body or body.current()) and contexts[r.npcId]==c and not c.cancelled and c.root==Registry.data() and record(r.npcId)==r
+        return body.current() and contexts[r.npcId]==c and not c.cancelled and c.root==Registry.data() and record(r.npcId)==r
             and r.generation==c.generation and r.state=="RUNNING" and not actor:isDead()
             and actor:getUsername()==r.requester and Driver.valid(binding)
             and c.npc:getBodyDamage():getOverallBodyHealth()>=95
@@ -451,9 +448,7 @@ local function tick(c)
         local state,why=c.moving.start() if state=="FAILED" then return why or "MOVE_FAILED" end
     elseif action then
         c.action=action c.started=now
-        if c.body then
-            if not c.body.add(action) then return 'CONTROL_REQUIRED' end
-        else ISTimedActionQueue.add(action) end
+        if not c.body.add(action) then return 'CONTROL_REQUIRED' end
     end
 end
 function Production.tick(id)
@@ -471,25 +466,19 @@ local function execute(actor,command,object,id,options,body,validateOnly)
     local binding=Driver.bindId(actor,id) if not binding then return "CARRIER_UNAVAILABLE" end
     local npc=binding.handle local r=record(id) local spec
     if npc:getBodyDamage():getOverallBodyHealth()<95 then return "INJURED" end
-    if command=="run" or command=="teach" then
+    if command=="run" then
         if r and not r.released then return "RETURN_OR_RECONCILE_FIRST" end
         if Work.hasCargo(actor,id) then return "CARGO_RETAINED_RESUME_FIRST" end
         local why
         spec,why=Recipe.inspect(actor,npc,object,options.recipeId,command=="run",false)
         if not spec then return why end
-        if command=="teach" then npc:learnRecipe(spec.recipe:getName(),true) return npc:isRecipeKnown(spec.recipe,true) and "RECIPE_TAUGHT" or "TEACH_FAILED" end
         local n=options.quantity
         if type(n)~="number" or n~=math.floor(n) or n<1 or n>9999 then return "INVALID_QUANTITY" end
         if not spec.surface then object=nil end
         local entry,reason=Supply.entry(actor,npc,object,options.settlementId) if not entry then return reason end
         if options.settlementId and entry.id~=options.settlementId then return "SETTLEMENT_MISMATCH" end
         if validateOnly then return true end
-        if options.nonPreemptive then
-            if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
-        else
-            if not body then Probe.cancelAll("ACTION_ORDER",id) end
-            if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
-        end
+        if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
         local benchId
         if object then local data=object:getModData() data.EmberRoutesCraftProbeBenchId=data.EmberRoutesCraftProbeBenchId or Registry.id() benchId=data.EmberRoutesCraftProbeBenchId end
         local taskId=options.taskId or Registry.id()
@@ -509,7 +498,6 @@ local function execute(actor,command,object,id,options,body,validateOnly)
         local c=context(actor,binding,r,entry,object,body) c.token=token contexts[id]=c
         local ready,why=makePlan(c,true)
         if not ready then Production.pause(why,id) return why end
-        if not body then Work.wake(id) end
         changed(c,"STARTED "..r.recipeId.." target="..r.target) return "STARTED"
     end
     if not r or r.format~=4 or r.released then return "NO_CARGO" end
@@ -526,7 +514,6 @@ local function execute(actor,command,object,id,options,body,validateOnly)
     else object=nil end
     local entry,reason=Supply.entry(actor,npc,object,r.settlementId,true) if not entry then return reason end
     if validateOnly then return true end
-    if not body then Probe.cancelAll("ACTION_ORDER",id) end
     if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
     if freed then Store.data() end -- Rebuild against the still-valid asset-free snapshot first.
     r.generation=r.generation+1 r.state="RUNNING" r.reason=nil
@@ -542,13 +529,12 @@ local function execute(actor,command,object,id,options,body,validateOnly)
     local c=context(actor,binding,r,entry,object,body) c.token=token c.returnOnly=command=="return" contexts[id]=c
     local ready,failed=makePlan(c,r.phase=="PLANNING" and not c.returnOnly)
     if not ready then Production.pause(failed,id) return failed end
-    if not body then Work.wake(id) end
     changed(c,"RESUME "..command) return command=="return" and "RETURN_STARTED" or "RESUME_STARTED"
 end
 function Production.execute(actor,command,object,id,options)
-    if Probe.controlledExecution~=true or (command~='run' and command~='resume' and command~='return') then
-        return execute(actor,command,object,id,options)
-    end
+    if command=='teach' then return 'READ_BOOK_REQUIRED' end
+    if command=='stop' then Work.pause('USER',id) return 'PAUSED' end
+    if command~='run' and command~='resume' and command~='return' then return 'INVALID_COMMAND' end
     local runtime=Runtime.current()
     if not runtime then return 'ADMISSION_CLOSED' end
     local root=Registry.data()
@@ -658,7 +644,7 @@ function Production.tickPending()
                 yieldRetry[id]=now+2000
                 local result=Production.execute(actor,'resume',nil,id,{nonPreemptive=true,settlementId=r.settlementId,
                     activityResumeEpoch=c.resumeEpoch,activityMembershipRevision=c.membershipRevision})
-                return result=='QUEUED' or result=='RESUME_STARTED'
+                return result=='QUEUED'
             end
         end
     end

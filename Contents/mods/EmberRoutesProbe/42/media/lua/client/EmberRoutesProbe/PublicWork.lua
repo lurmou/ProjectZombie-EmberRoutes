@@ -413,7 +413,6 @@ function Service.retireSettled(limit)
     reconcile()
     if not any then return 0 end -- Hauling offer release still runs without public craft orders.
     local Jobs=require 'EmberRoutesProbe/BusinessJobs'
-    Jobs.flush()
     local ids={} for id in pairs(data.orders) do ids[#ids+1]=id end table.sort(ids)
     local count=0
     for _,id in ipairs(ids) do

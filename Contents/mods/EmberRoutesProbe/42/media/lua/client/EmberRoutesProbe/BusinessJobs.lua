@@ -2,45 +2,18 @@
 -- payload, never a second by-NPC persistent ledger. UI reads detached projections.
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Signals=require 'EmberRoutesProbe/LaborSignals'
 local M={}
-local world,store,craft
-local function derived(r)
-    local unknown=r.uncertain==true or r.controlUncertain==true or r.phase=='COMMITTING'
-    local done=r.released==true or r.kind=='EXPLICIT_TRANSFER' and r.state=='DONE'
-    local free=r.format==3 and require('EmberRoutesProbe/ProductionYield').assetFree(r)
-    local state=unknown and 'RECONCILE_REQUIRED' or done and (r.state=='CANCELLED' and 'CANCELLED' or 'DONE')
-        or r.state=='RUNNING' and 'RUNNING' or 'SUSPENDED'
-    return state,unknown and 'UNKNOWN' or 'KNOWN',(done or free) and not unknown
-end
-local function obligationsMatch(value,cleared)
-    if type(value)~='table' then return false end
-    if not cleared and value.business~=true then return false end
-    for key in pairs(value) do if cleared or key~='business' then return false end end
-    return true
-end
+local world,store
 local function load()
     local root=Registry.data()
     if root==world then return end
     local opened=Jobs.current()
-    local c={}
-    for id,j in pairs(root.taskJobs.byId) do
-        local r=j.payload
-	if j.providerType=='CRAFT' and (r.format==1 or r.format==2 or r.format==3) then
-            if r.id~=id or r.npcId~=j.npcId then error('JOB_PAYLOAD_INVALID') end
-            local previous=c[r.npcId]
-            if previous and not previous.released and not r.released then error('NPC_TASK_CONFLICT') end
-            if not previous or previous.released then c[r.npcId]=r end
-        end
-    end
-    world,store,craft=root,opened,c
+    world,store=root,opened
 end
-function M.legacyCrafts() load() return craft end
 function M.crafts()
     load() local result={}
-    for npcId,r in pairs(craft) do result[npcId]=r end
     for id,j in pairs(world.taskJobs.byId) do
-	if j.providerType=='CRAFT' and j.payload.executor=='PRODUCTION' then
+	if j.providerType=='CRAFT' and j.payload.format==4 and j.payload.executor=='PRODUCTION' then
 	    local old=result[j.npcId]
 	    if not old or old.released then result[j.npcId]=store:get(id).payload end
 	end
@@ -68,45 +41,6 @@ function M.hauls()
     end
     return result
 end
-function M.refresh(id)
-    load() local j=world.taskJobs.byId[id]
-    if not j or not j.payload then return false end
-    if not (j.providerType=='CRAFT' and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3)) then return false end
-    local r=j.payload local state,effects,cleared=derived(r)
-    if not obligationsMatch(j.obligations,cleared) then j.obligations=cleared and {} or {business=true} end
-    if j.state~=state or j.effects~=effects or j.businessGeneration~=r.generation then j.revision=j.revision+1 end
-    j.state,j.effects,j.businessGeneration=state,effects,r.generation return true
-end
-function M.flush()
-    load()
-    if store:ordinaryCount()==0 then return end
-    for _,j in pairs(world.taskJobs.byId) do
-	if j.providerType=='CRAFT' and j.payload and (j.payload.format==1 or j.payload.format==2 or j.payload.format==3) then
-        local r=j.payload
-        if r.id~=j.id or r.npcId~=j.npcId then error('JOB_ID_CHANGED') end
-        local state,effects,cleared=derived(r)
-        local obligations=j.obligations
-        if not obligationsMatch(obligations,cleared) then obligations=cleared and {} or {business=true} end
-        if j.state~=state or j.effects~=effects or j.businessGeneration~=r.generation then j.revision=j.revision+1 end
-        j.state,j.effects,j.obligations,j.businessGeneration=state,effects,obligations,r.generation
-        end
-    end
-end
-local function publish(r,kind)
-    load()
-    if world.taskJobs.byId[r.id] then
-        return world.taskJobs.byId[r.id].payload==r,'JOB_EXISTS'
-    end
-    local ok,reason=store:create({id=r.id,npcId=r.npcId,providerType=kind,scopeId=r.settlementId or 'local-world',
-        orderId=r.orderId,revision=1,state='PREPARING',effects='KNOWN',obligations={},payload=r})
-    if not ok then return false,reason end
-    -- Only backend owners obtain this mutable reference. Store.create already
-    -- checked serializability; retain executor identity for late-callback fences.
-    world.taskJobs.byId[r.id].payload=r
-    craft[r.npcId]=r
-    M.flush() return true
-end
-function M.publishCraft(r) return publish(r,'CRAFT') end
 -- Called only on a later normal tick, never from a native completion callback.
 function M.canRetire(id,orderId)
     load()
@@ -118,7 +52,7 @@ function M.canRetire(id,orderId)
     if r.uncertain or r.controlUncertain or r.phase=='COMMITTING' or r.reservation then return false end
     if j.providerType=='CRAFT' then
         if not r.released or (r.state~='DONE' and r.state~='CANCELLED') then return false end
-	if r.state=='DONE' and (r.format==3 or r.format==4) and (r.delivered~=r.produced
+	if r.state=='DONE' and r.format==4 and (r.delivered~=r.produced
             or r.produced<r.target and r.reason~='TARGET_REACHED') then return false end
     elseif r.state~='DONE' then return false
     elseif r.format==3 and (not require('EmberRoutesProbe/HaulManifest').valid(r)
@@ -144,7 +78,7 @@ function M.canRetire(id,orderId)
 end
 function M.retire(id,orderId)
     if not M.canRetire(id,orderId) then return false end
-    local j=world.taskJobs.byId[id] local r=j.payload
+    local j=world.taskJobs.byId[id]
     -- A restored job may finish before the personal routine observes ACTIVE.
     -- Its settled result discharges that queued restoration, not its custody.
     for _,other in ipairs(store:forNpc(j.npcId,'SELF_CARE')) do
@@ -155,7 +89,6 @@ function M.retire(id,orderId)
         end
     end
     if not store:removeSettled(id,j.revision) then return false end
-    if craft[j.npcId]==r then craft[j.npcId]=nil end
     local receipt=world.executionSave
     if receipt and receipt.byNpc and receipt.byNpc[j.npcId] and receipt.byNpc[j.npcId].jobId==id then
         receipt.byNpc[j.npcId]=nil
@@ -165,7 +98,6 @@ end
 function M.retireSettled(limit)
     load()
     if store:ordinaryCount()==0 then return 0 end
-    M.flush()
     local ids={}
     for id,j in pairs(world.taskJobs.byId) do
         if j.providerType~='SELF_CARE' and (j.state=='DONE' or j.state=='CANCELLED') then ids[#ids+1]=id end
@@ -175,6 +107,4 @@ function M.retireSettled(limit)
     for _,id in ipairs(ids) do if M.retire(id) then n=n+1 if n>=limit then break end end end
     return n
 end
--- Observer only updates metadata; physical claims stay in LaborStore.
-Signals.watch(function() if world==Registry.data() then M.flush() end end)
 return M

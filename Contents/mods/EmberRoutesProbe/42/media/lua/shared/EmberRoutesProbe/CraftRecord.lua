@@ -6,7 +6,7 @@ local phases={COLLECTING=true,CRAFTING=true,COMMITTING=true,CONFIRMED=true,RETUR
     RECONCILE_REQUIRED=true,DONE=true,CANCELLED=true}
 local integer=Validate.integer
 local function production(id,r)
-    if not require('EmberRoutesProbe/ProductionYield').valid(r) then return false end
+    if type(r)~='table' or r.format~=4 or not require('EmberRoutesProbe/ProductionYield').valid(r) then return false end
     if r.npcId~=id or type(id)~="string" or type(r.id)~="string" or type(r.requester)~="string"
         or type(r.recipeId)~="string" or type(r.signature)~="string" or type(r.settlementId)~="string"
         or type(r.product)~="string" or type(r.recipeName)~="string"
@@ -69,48 +69,4 @@ local function production(id,r)
     return true
 end
 Record.validProduction=production
-function Record.valid(id,r)
-    if type(r)=="table" and (r.format==3 or r.format==4 and r.executor=='PRODUCTION') then return production(id,r) end
-    if type(r)~="table" or r.npcId~=id or type(id)~="string" or (r.format~=1 and r.format~=2)
-        or type(r.id)~="string" or type(r.requester)~="string" or type(r.benchId)~="string"
-        or not integer(r.generation) or r.generation<0 or not integer(r.materialId) or not integer(r.toolId)
-        or r.materialId==r.toolId or not states[r.state] or not phases[r.phase]
-        or type(r.released)~="boolean" or type(r.outputIds)~="table" or #r.outputIds>8
-        or (r.released and (r.uncertain or (r.state~="DONE" and r.state~="CANCELLED"))) then return false end
-    if r.format==2 and (type(r.source)~="string" or type(r.settlementId)~="string" or type(r.toolFromNpc)~="boolean"
-        or (not r.toolFromNpc and type(r.toolSource)~="string")
-        or (r.destination~=nil and type(r.destination)~="string")
-        or (r.toolDestination~=nil and type(r.toolDestination)~="string")) then return false end
-    if r.surface~=nil then
-        if type(r.surface)~="table" then return false end
-        for _,key in ipairs({"x","y","z"}) do
-            if not integer(r.surface[key]) or math.abs(r.surface[key])>10000000 then return false end
-        end
-    end
-    local seen,count={[r.materialId]=true,[r.toolId]=true},0
-    for key,value in pairs(r.outputIds) do
-        if not integer(key) or key<1 or key>#r.outputIds or not integer(value) or seen[value] then return false end
-        seen[value]=true count=count+1
-    end
-    return count==#r.outputIds and (not r.made or count==1)
-end
-function Record.resources(r)
-    if r.format==3 then
-        if require('EmberRoutesProbe/ProductionYield').assetFree(r) then return {} end
-        local result={}
-        if r.benchId then result[#result+1]="craft-surface:"..r.benchId end
-        for _,name in ipairs({"materials","tools","outputs","held"}) do
-            for _,entry in ipairs(r[name] or {}) do result[#result+1]="item:"..entry.id end
-        end
-        return result
-    end
-    local result={"item:"..r.materialId,"item:"..r.toolId,"craft-surface:"..r.benchId}
-    for _,id in ipairs(r.outputIds) do result[#result+1]="item:"..id end
-    return result
-end
-function Record.validateAll(records)
-    if type(records)~="table" then return false end
-    for id,r in pairs(records) do if not Record.valid(id,r) then return false end end
-    return true
-end
 return Record
