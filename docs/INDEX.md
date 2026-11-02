@@ -17,6 +17,18 @@
 
 ## 按任务选择
 
+公共调度Java计算：[实施计划](superpowers/plans/2026-11-02-java-dispatch-kernel.md)、[0.29.25证据](reviews/2026-11-02/java-dispatch-kernel.md)。候选仲裁/失效索引/名册窗口已接Java；目录迁移因补测反向而撤回，领域策略与物理协议不变，实机性能未验证。
+资源与记录提交Java计算：[实施计划](superpowers/plans/2026-11-02-java-labor-commit-kernel.md)、[0.29.26证据](reviews/2026-11-02/java-labor-commit-kernel.md)。大批量容量提交粗粒度下沉；小型提交、通用Job CAS和恢复保留Lua，Runtime尚未迁移。
+
+
+Java优先搬运/配送：[实施计划](superpowers/plans/2026-11-02-java-haul-read-paths.md)、[0.29.24参考核对与证据](reviews/2026-11-02/java-haul-read-paths.md)。库存索引、选货匹配与计数已接Java；复用原Job/Claims/Session，真实NPC Java选货未实机。
+
+配送跨源集货：[0.29.23证据](reviews/2026-11-02/delivery-multisource.md)；同一Job按清单跨箱收集、逐原件来源归还及计数；配送单批最多256件，实机未验收。
+
+搬运连续动作与闲暇让位：[0.29.22实施证据](reviews/2026-11-02/haul-continuity-and-leisure-yield.md)。同一原版动作逐件确认后续接，复用现有单件意图；闲暇busy门禁修复。必要回归通过，实机待用户验收。
+
+公共内核与领域边界收敛：用户已批准并授权实施；[实施计划](superpowers/plans/2026-11-02-public-kernel-domain-cutover.md)、[0.29.21证据](reviews/2026-11-02/public-kernel-domain-cutover.md)。领域契约与恢复委托、资源提交拆分及Java任务记录复制已接；保留现役兼容入口，实机未验收。
+
 显式据点归属B已按用户决定接入0.27.0，不兼容旧档；[成员设计§2.1](superpowers/specs/2026-10-25-npc-settlement-membership-design.md)固定与闲暇共享接口，唯一架构v1.2登记。[实施计划](superpowers/plans/2026-10-25-npc-settlement-membership.md)、[实际开发证据与闲暇交接](reviews/2026-10-25/npc-settlement-membership.md)、[集中实机验收（未运行）](testing/membership-runtime-acceptance.md)分别维护步骤、事实与验收；不重构闲暇策略，不因宿主通过宣称实机完成。
 
 2026-10-24用户确认的跨阶段执行顺序与验收标准见[BACKLOG可靠性与扩展任务](BACKLOG.md#可靠性与扩展任务优先级2026-10-24用户确认)：搬运恢复/状态机边界优先，其次性能尖峰与P2/P3收口，再进行长任务准备；流水线和宏微观交接保留为独立设计/原型。该表调整任务优先级，不以评审风险替代实现证据。

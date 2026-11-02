@@ -1,5 +1,10 @@
 -- Independent persistent Job identity. No Session, asset authority or scheduler.
 local Store={LIMIT=512,PERSONAL_LIMIT=256}
+local Contracts=require 'EmberRoutesProbe/JobContracts'
+require('EmberRoutesProbe/BuiltinJobContracts').install()
+local emptyContract={}
+local function contract(kind) return Contracts.get(kind) or emptyContract end
+local function personalJob(job) return contract(job.providerType).persistentPersonal==true end
 local states={PREPARING=true,RUNNING=true,STOPPING=true,SUSPENDED=true,SETTLING=true,
     DONE=true,CANCELLED=true,RECONCILE_REQUIRED=true}
 local terminal={DONE=true,CANCELLED=true}
@@ -30,7 +35,12 @@ local function copy(value,seen,budget,depth)
     end
     seen[value]=nil return result
 end
-local function detached(value) return copy(value,{},{n=0},0) end
+local function detached(value)
+    -- Capability fallback supports boot admission and the standalone Lua host.
+    -- Both paths have the same data limits; no failure is swallowed or retried.
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.jobDataCopy then return EmberRoutesProbeJava.jobDataCopy(value) end
+    return copy(value,{},{n=0},0)
+end
 local function validClaimId(claimId, entityId)
     if type(claimId) ~= 'string' then return false end
     local prefix, seq = string.match(claimId, '^(.+):c(%d+)$')
@@ -44,22 +54,8 @@ local function valid(job)
         and (not terminal[job.state] or (job.effects=='KNOWN' and empty(job.obligations) and #(job.payload.claims or {}) == 0))
         and (job.claimId == nil or validClaimId(job.claimId, job.id))
     if not basic then return false end
-    if job.providerType=='COOKING' then return require('EmberRoutesProbe/CookingRecord').valid(job)
-    elseif job.providerType=='FIELD_WORK' then return require('EmberRoutesProbe/FieldRecord').valid(job)
-    elseif job.providerType=='ACTIVITY' then return require('EmberRoutesProbe/ActivityRecord').valid(job)
-    elseif job.providerType=='CRAFT' then
-        local p = job.payload
-        if p and p.format == 4 then return require('EmberRoutesProbe/CraftJobRecord').valid(job) end
-        return require('EmberRoutesProbe/CraftRecord').valid(job.npcId, job.payload)
-    elseif job.providerType=='HAUL' then
-        local p = job.payload
-        if p and p.format == 3 then return require('EmberRoutesProbe/HaulJobRecord').valid(job) end
-        if p and p.format == 1 then
-            return type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'
-        end
-        return require('EmberRoutesProbe/HaulManifest').valid(job.payload)
-    end
-    return true
+    local rule=contract(job.providerType)
+    return not rule.validate or rule.validate(job)
 end
 local function legacy(root)
     local craft,labor=root.craftProbes,root.labor
@@ -76,7 +72,7 @@ local function prepare(root)
     for key,job in pairs(data.byId) do
         if not valid(job) or job.id~=key then return nil,'JOB_RECORD_INVALID' end
         local ok=pcall(detached,job) if not ok then return nil,'JOB_DATA_UNSERIALIZABLE' end
-        if job.providerType=='SELF_CARE' then
+	if personalJob(job) then
             if personalByNpc[job.npcId] then return nil,'PERSONAL_JOB_DUPLICATED' end
             personalByNpc[job.npcId]=key personal=personal+1
             if personal>Store.PERSONAL_LIMIT then return nil,'PERSONAL_JOB_LIMIT' end
@@ -107,8 +103,8 @@ function Store.open(root)
     -- quarantine alone cannot authorize another executor in this scope.
     local unresolvedScopes={}
     local function indexAttempt(job,remove)
-	local a=job.providerType=='CRAFT' and job.payload.executor=='PRODUCTION' and job.payload.nativeAttempt
-	if not a or a.state=='APPLIED' then return end
+	local rule=contract(job.providerType)
+	if not rule.blocksScope or not rule.blocksScope(job) then return end
 	local set=unresolvedScopes[job.scopeId]
 	if remove then
 	    if set then set[job.id]=nil if empty(set) then unresolvedScopes[job.scopeId]=nil end end
@@ -146,7 +142,7 @@ function Store.open(root)
     end
     function api:get(key) return data.byId[key] and detached(data.byId[key]) end
     function api:forNpc(npcId,providerType)
-        if providerType=='SELF_CARE' then
+	if contract(providerType).persistentPersonal==true then
             local key=personalByNpc[npcId]
             return key and {detached(data.byId[key])} or {}
         end
@@ -161,8 +157,8 @@ function Store.open(root)
     function api:create(job)
         if not valid(job) or job.revision~=1 or job.state~='PREPARING' or job.effects~='KNOWN' then return false,'JOB_RECORD_INVALID' end
         if data.byId[job.id] then return false,'JOB_EXISTS' end
-	if self:scopeBlocked(job.scopeId) then return false,'CRAFT_SCOPE_RECONCILE_REQUIRED' end
-        if job.providerType=='SELF_CARE' then
+	if self:scopeBlocked(job.scopeId) then return false,require('EmberRoutesProbe/BuiltinJobContracts').scopeBlockedReason end
+	if personalJob(job) then
             if personalByNpc[job.npcId] then return false,'PERSONAL_JOB_EXISTS' end
             if personal>=Store.PERSONAL_LIMIT then return false,'PERSONAL_JOB_LIMIT' end
         elseif count>=Store.LIMIT then return false,'JOB_LIMIT' end
@@ -176,7 +172,7 @@ function Store.open(root)
         end
         data.byId[value.id]=value
 	indexAttempt(value)
-        if value.providerType=='SELF_CARE' then
+	if personalJob(value) then
             personal=personal+1 personalByNpc[value.npcId]=value.id
         else count=count+1 end
         byNpc[value.npcId]=byNpc[value.npcId] or {} byNpc[value.npcId][value.id]=true
@@ -191,14 +187,14 @@ function Store.open(root)
         for field in pairs(patch) do
             if field~='state' and field~='effects' and field~='obligations' and field~='payload' then return false,'JOB_PATCH_INVALID' end
         end
-        local candidate=detached(old)
+	local candidate={} for field,value in pairs(old) do candidate[field]=value end
         for field,value in pairs(patch) do candidate[field]=value end
         candidate.revision=revision+1
         if not valid(candidate) then return false,'JOB_RECORD_INVALID' end
-	if old.providerType=='CRAFT' and old.payload.format==4 and not require('EmberRoutesProbe/CraftJobRecord').transition(old,candidate) then return false,'CRAFT_TRANSITION_INVALID' end
-	if old.providerType=='HAUL' and old.payload.format==3 and not require('EmberRoutesProbe/HaulJobRecord').transition(old,candidate) then return false,'HAUL_TRANSITION_INVALID' end
-        if old.providerType=='COOKING' and not require('EmberRoutesProbe/CookingRecord').transition(old,candidate) then
-            return false,'COOKING_TRANSITION_INVALID'
+	local rule=contract(old.providerType)
+	if rule.transition then
+	    local allowed,why=rule.transition(old,candidate)
+	    if not allowed then return false,why end
         end
         if candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
@@ -210,14 +206,15 @@ function Store.open(root)
     end
     -- Only LaborStore's verified physical handoff uses this narrow operation.
     -- Ordinary update cannot rewrite stable ownership or the indexed NPC.
-    function api:transferCooking(key,revision,candidate)
+    function api:transferOwner(key,revision,candidate)
         local old=data.byId[key]
+	local rule=old and contract(old.providerType) or {}
         if not old or old.revision~=revision or not valid(candidate)
-            or not require('EmberRoutesProbe/CookingRecord').transferValid(old,candidate) then return false,'COOKING_HANDOFF_CHANGED' end
+	    or not rule.transferValid or not rule.transferValid(old,candidate) then return false,rule.transferReason or 'COOKING_HANDOFF_CHANGED' end
         for otherId in pairs(byNpc[candidate.npcId] or {}) do
             local other=data.byId[otherId]
             if not terminal[other.state] then
-                if other.providerType~='SELF_CARE' or other.effects~='KNOWN' or not empty(other.obligations)
+		if not personalJob(other) or other.effects~='KNOWN' or not empty(other.obligations)
                     or #(other.payload.claims or {})>0 then return false,'OTHER_TASK_RETAINED' end
             end
         end
@@ -228,10 +225,11 @@ function Store.open(root)
         notify(value)
         return true
     end
+    api.transferCooking=api.transferOwner -- Compatibility for the existing domain call.
     function api:removeSettled(key,revision)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
-        if old.providerType=='SELF_CARE' or not terminal[old.state]
+	if personalJob(old) or not terminal[old.state]
             or old.effects~='KNOWN' or not empty(old.obligations) then return false,'JOB_NOT_SETTLED' end
 	indexAttempt(old,true)
         data.byId[key]=nil

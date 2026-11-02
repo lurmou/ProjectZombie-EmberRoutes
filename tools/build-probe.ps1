@@ -108,6 +108,16 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix WarehouseFastIndex test compilation fa
 & $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.WarehouseFastIndexTest' 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'warehouse-fast-index-tests.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix WarehouseFastIndex tests failed" }
+& $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/JobDataTest.java')
+if ($LASTEXITCODE -ne 0) { throw "$prefix JobData test compilation failed" }
+& $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.JobDataTest'
+if ($LASTEXITCODE -ne 0) { throw "$prefix JobData contract tests failed" }
+& $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/DispatchKernelTest.java')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Dispatch kernel test compilation failed" }
+& $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.DispatchKernelTest'
+if ($LASTEXITCODE -ne 0) { throw "$prefix Dispatch kernel contract tests failed" }
+& $javaCommand '-cp' "$classes;$GameRoot/*" (Join-Path $projectRoot 'tests/java/KahluaLaborTest.java') '--java-labor' 'labor-capacity-commit-test.lua'
+if ($LASTEXITCODE -ne 0) { throw "$prefix Labor capacity commit contract tests failed" }
 $manifestPath = Join-Path $staging 'MANIFEST.MF'
 [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 $builtJar = Join-Path $staging 'EmberRoutesProbe.jar'

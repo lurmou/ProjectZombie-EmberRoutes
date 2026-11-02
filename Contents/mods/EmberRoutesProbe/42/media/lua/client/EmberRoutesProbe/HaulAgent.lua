@@ -57,13 +57,13 @@ function A.new(npcId)
                     receipt={destinationId=a.toId,attemptId=a.attemptId}}})
                 if not ok then return false end
             end
-            r.activeAttempt=nil c.attempt=nil changed(r) return true
+	    r.activeAttempt=nil c.attempt=nil return changed(r)
         end
         -- Exact original still at its pre-effect location. Never read revoked private inventory.
         if inFrom and (not toAllowed or not s.to:getItems():contains(s.item)) then
             local line=Manifest.line(r,a.itemId)
             line.custodyState=a.kind=='PUT' and 'CARRIED' or 'UNCOLLECTED'
-	    r.activeAttempt=nil c.attempt=nil changed(r) return true
+	    r.activeAttempt=nil c.attempt=nil return changed(r)
         end
         return false
     end
@@ -216,7 +216,7 @@ function A.new(npcId)
             r.returnForNextBatch=true
         end
         for _,id in ipairs(intent.items) do r.items[#r.items+1]=id end
-        r.plannedCount=#r.items r.manifest=Manifest.create(r)
+	r.plannedCount=#r.items r.manifest=Manifest.create(r,nil,intent.itemSources)
         if r.producer=='DELIVERY' then
             -- Queued admission must already own a durable Job and its originals.
             -- Saving before the body grant can then safely recover the same segment.
@@ -254,7 +254,7 @@ function A.new(npcId)
         if #changes>0 then assert(Store.settleHaulLines(c.job,c.token,c.generation,changes)) end
         c.job.deliveryOnly=true c.job.phase='DELIVER'
     end
-    local function snapshotStep(c,line,item,endpoint,kind)
+    local function prepareTransfer(c,line,item,endpoint,kind)
         local r=c.job local own=c.npc:getInventory()
         local from,to=kind=='TAKE' and endpoint.container or own,kind=='TAKE' and own or endpoint.container
         r.attemptSequence=r.attemptSequence+1
@@ -272,14 +272,62 @@ function A.new(npcId)
             return Producers.eligible(value) and (r.producer=='DELIVERY' or kind=='PUT' and Routing.accept(c,endpoint,value)
                 or kind=='TAKE' and Routing.accept(c,c.destination,value))
         end
-        frozen.transferred=function() knownTransfer(c,s) end
+	frozen.transferred=function() return knownTransfer(c,s) end
         r.itemTypes=r.itemTypes or {} r.itemTypes[tostring(line.itemId)]=item:getFullType()
         r.activeAttempt=a c.attempt=s
 	if r.format==3 then
 	    local committed,why=JobExecution.commit(r)
 	    if not committed then c.commitFailure=true return nil,why end
 	end
-        return Transfer.item(frozen,item,from,to,endpoint)
+	return {context=frozen,item=item,from=from,to=to,endpoint=endpoint}
+    end
+    local function snapshotStep(c,line,item,endpoint,kind,index)
+	local first,why=prepareTransfer(c,line,item,endpoint,kind)
+	if not first then return nil,why end
+	-- Reuse the completed bounded scan, not a fresh container scan per item.
+	-- These handles are hints; every original/endpoint is revalidated before use.
+	local candidates={} local cursor=0
+	if index then
+	    for _,entry in ipairs(c.job.manifest) do
+		local value=View.find(index,entry.itemId)
+		if value and value~=item and value:getContainer()==first.from then
+		    candidates[#candidates+1]={line=entry,item=value}
+		end
+	    end
+	end
+	local function continuation()
+	    if not valid(c) or c.job.activeAttempt then return end
+	    cursor=cursor+1 local nextItem=candidates[cursor]
+	    if not nextItem then return end
+	    local r=c.job local value=nextItem.item
+	    if not Manifest.pending(nextItem.line) or value:getContainer()~=first.from
+		or not first.from:getItems():contains(value) or not Producers.eligible(value)
+		or not Transfer.reachable(c.npc,endpoint) then return end
+	    if endpoint.playerId then
+		local order=Delivery.order(r)
+		if kind~='PUT' or r.returning or not order or order.cancelled
+		    or not Delivery.endpointValid(c,endpoint) or not Delivery.still(c) or not Delivery.room(c,value) then return end
+	    elseif not Registry.revalidate(endpoint,kind=='TAKE' and 'take' or 'put',r.scopeId) then return end
+	    if kind=='TAKE' then
+		if r.deliveryOnly or r.returning or Producers.freeCarry(c.npc)<value:getUnequippedWeight()
+		    or not first.to:hasRoomFor(c.npc,value) or not Producers.transfer(c,value,first.from,first.to) then return end
+		if r.producer~='DELIVERY' then
+		    if not Routing.accept(c,c.destination,value)
+			or not Store.capacity(c.token,value:getID(),c.destination.id,value:getUnequippedWeight(),
+			    c.destination.container:getFreeCapacity(c.npc)) then return end
+		end
+	    elseif not endpoint.playerId then
+		if not Routing.accept(c,endpoint,value) or not first.to:hasRoomFor(c.npc,value)
+		    or not Producers.transfer(c,value,first.from,first.to)
+		    or not Store.capacity(c.token,value:getID(),endpoint.id,value:getUnequippedWeight(),
+			endpoint.container:getFreeCapacity(c.npc)) then return end
+	    end
+	    local nextTransfer=prepareTransfer(c,nextItem.line,value,endpoint,kind)
+	    if nextTransfer then nextTransfer.context.nextTransfer=continuation end
+	    return nextTransfer
+	end
+	first.context.nextTransfer=continuation
+	return Transfer.item(first.context,first.item,first.from,first.to,endpoint)
     end
     local function nextStep(c)
         if c.job.producer=='DELIVERY' then return require('EmberRoutesProbe/DeliveryFlow').next(c,snapshotStep,withdraw) end
@@ -317,7 +365,7 @@ function A.new(npcId)
                     c.moveEndpoint=source c.moveRule={target=target,item=uncollected.item}
                     return Transfer.move(c,source)
                 end
-                return snapshotStep(c,uncollected.line,uncollected.item,source,'TAKE')
+		return snapshotStep(c,uncollected.line,uncollected.item,source,'TAKE',index)
             end
             withdraw(c)
         elseif not r.deliveryOnly then
@@ -351,7 +399,7 @@ function A.new(npcId)
         local ok=Store.capacity(c.token,selected:getID(),target.id,selected:getUnequippedWeight(),target.container:getFreeCapacity(c.npc))
         if not ok then c.destination=nil return nil,'SCAN_PENDING' end
         if not Transfer.reachable(c.npc,target) then c.moveEndpoint=target c.moveRule={target=target,item=selected} return Transfer.move(c,target) end
-        return snapshotStep(c,Manifest.line(r,selected:getID()),selected,target,'PUT')
+	return snapshotStep(c,Manifest.line(r,selected:getID()),selected,target,'PUT',index)
     end
     local function tick()
         local c=current if not c then return end
@@ -382,7 +430,7 @@ function A.new(npcId)
         end
         local state,why=c.step.poll()
         if state=='PASSED' then c.step=nil c.moveEndpoint=nil c.moveRule=nil
-        elseif state=='FAILED' or now-c.started>=(c.step.timeout or 60000) then
+	elseif state=='FAILED' or now-(c.step.progressAt and c.step.progressAt() or c.started)>=(c.step.timeout or 60000) then
             if c.moveEndpoint then
                 local count,oldest,earliest=0,nil,math.huge
                 for id,deadline in pairs(c.backoff) do

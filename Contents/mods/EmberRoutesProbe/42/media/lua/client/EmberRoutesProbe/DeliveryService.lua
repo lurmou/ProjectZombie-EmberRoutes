@@ -115,55 +115,103 @@ local function outstanding(o)
     for _,l in ipairs(o.items) do if l.delivered<l.quantity then return true end end
     return false
 end
--- One source and <=30 originals per segment, within remaining carry. No asset writes.
+-- A single bounded manifest spans source containers; observation slices do not
+-- become delivery trips. Only the Job/Claims layer owns selected originals.
 local function batch(o,env)
     local ids=require('EmberRoutesProbe/SettlementMembership').query(env.entry)
     if not ids then return end
     local Producers=require 'EmberRoutesProbe/LaborProducers'
     local free=Producers.freeCarry(env.npc)
     local key=env.npcId..':'..o.id
-    local state=scans[key] or {source=1,offset=0}
-    scans[key]=state
+    local state=scans[key]
+    local same=state and state.revision==o.revision and state.free==free and #state.ids==#ids
+    if same then for i,id in ipairs(ids) do if state.ids[i]~=id then same=false break end end end
+    if not same then
+	local sources={} for i,id in ipairs(ids) do sources[i]=id end
+	state={ids=sources,revision=o.revision,free=free,source=1,offset=0,
+	    picks={},types={},origins={},used=0,counts={},seen={}}
+	scans[key]=state
+    end
     local scanned=0
-    while state.source<=#ids do
+    while state.source<=#ids and #state.picks<256 do
         local id=ids[state.source]
         local e=Registry.resolve(id,'take','local-world')
         if e and Registry.logistics(e)=='STORAGE' then
-            local picks,types,used,counts={},{},0,{}
-            local list=e.container:getItems()
-            local i=state.offset
-            while i<list:size() and scanned<256 do
+	    local list=e.container:getItems() local i=state.offset
+	    if EmberRoutesProbeJava and EmberRoutesProbeJava.deliverySelectSlice then
+		while scanned<256 and #state.picks<256 do
+		    local result=EmberRoutesProbeJava.deliverySelectSlice(e.container,env.npc,id,o.items,
+			Store.claimsInstance().owners,state,256-scanned)
+		    scanned=scanned+result.scanned i=state.offset
+		    if not result.virtualItem then break end
+		    -- Only mod-defined virtual ModData reads need a Lua decision.
+		    state.virtualEligibility[result.virtualItem:getID()]=not not Producers.eligible(result.virtualItem)
+		end
+	    else
+	    while i<list:size() and scanned<256 and #state.picks<256 do
                 local item=list:get(i) i=i+1 scanned=scanned+1
-                for _,l in ipairs(o.items) do
-                    local reqKey=l.sourceId and (l.fullType..':'..l.sourceId) or l.fullType
-                    if (not l.sourceId or l.sourceId==id)
-                        and item:getFullType()==l.fullType and (counts[reqKey] or 0)<l.quantity-l.delivered
-                        and not Store.owner(item:getID()) and Producers.eligible(item) then
-                        local weight=item:getUnequippedWeight()
-                        if weight>env.npc:getMaxWeight() then state.overweight=true
-                        elseif weight<=free-used and env.npc:getInventory():hasRoomFor(env.npc,item) then
-                            picks[#picks+1]=item:getID() types[tostring(item:getID())]=l.fullType
-                            counts[reqKey]=(counts[reqKey] or 0)+1 used=used+weight
-                        end
-                        break
+		local match
+		-- A source-specific line gets first use of that source's stock.
+		-- General lines consume remaining stock, never count an original twice.
+		for pass=1,2 do
+		    for n,l in ipairs(o.items) do
+			if (pass==1 and l.sourceId==id or pass==2 and not l.sourceId)
+			    and item:getFullType()==l.fullType
+			    and (state.counts[n] or 0)<l.quantity-l.delivered then match=n break end
+		    end
+		    if match then break end
+		end
+		local itemId=item:getID()
+		if match and not state.seen[itemId] and not Store.owner(itemId) and Producers.eligible(item) then
+		    local weight=item:getUnequippedWeight()
+		    if weight>env.npc:getMaxWeight() then state.overweight=true
+		    elseif weight<=free-state.used and env.npc:getInventory():hasRoomFor(env.npc,item) then
+			state.picks[#state.picks+1]=itemId state.types[tostring(itemId)]=item:getFullType()
+			state.origins[tostring(itemId)]=id state.used=state.used+weight
+			state.counts[match]=(state.counts[match] or 0)+1 state.seen[itemId]=true
                     end
                 end
-                if #picks==30 then break end
             end
-            state.offset=i
-            if #picks>0 then
-                scans[key]=nil
-                return {producer='DELIVERY',source=id,destination='player:'..o.requesterId,
-                    settlementId=o.settlementId,sourceMode='STORAGE',items=picks,itemTypes=types,
-                    orderId=o.id,orderRevision=o.revision,requesterId=o.requesterId}
             end
-            if i<list:size() then return nil,'STOCK_OBSERVING' end
+	    state.offset=i
+	    if i<list:size() and #state.picks<256 then return nil,'STOCK_OBSERVING' end
         end
         state.source,state.offset=state.source+1,0
-        if scanned>=256 then return nil,'STOCK_OBSERVING' end
+	if scanned>=256 and state.source<=#ids and #state.picks<256 then return nil,'STOCK_OBSERVING' end
     end
     scans[key]=nil
-    return nil,state.overweight and 'NPC_ITEM_OVERWEIGHT' or 'STOCK_OR_CAPACITY_WAIT' 
+    if #state.picks>0 then
+	return {producer='DELIVERY',source=state.origins[tostring(state.picks[1])],destination='player:'..o.requesterId,
+	    settlementId=o.settlementId,sourceMode='STORAGE',items=state.picks,itemTypes=state.types,itemSources=state.origins,
+	    orderId=o.id,orderRevision=o.revision,requesterId=o.requesterId}
+    end
+    return nil,state.overweight and 'NPC_ITEM_OVERWEIGHT' or 'STOCK_OR_CAPACITY_WAIT'
+end
+-- Pure projection shared by execution and terminal order settlement. A receipt
+-- credits exactly one request; source-specific demand precedes general demand.
+function Service.projectDelivery(o,r)
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.deliveryReceived then return EmberRoutesProbeJava.deliveryReceived(o,r) end
+    local counts={} for i,l in ipairs(o.items) do counts[i]=l.delivered end
+    for _,line in ipairs(r.manifest) do
+	if line.deliveryReceipt and line.deliveryReceipt.destinationId=='player:'..o.requesterId then
+	    local credited=false
+	    for pass=1,2 do
+		for i,request in ipairs(o.items) do
+		    if (pass==1 and request.sourceId==line.sourceId or pass==2 and not request.sourceId)
+			and request.fullType==r.itemTypes[tostring(line.itemId)] and counts[i]<request.quantity then
+			counts[i]=counts[i]+1 credited=true break
+		    end
+		end
+		if credited then break end
+	    end
+	end
+    end
+    return counts
+end
+function Service.hasOutstanding(o,r)
+    local counts=Service.projectDelivery(o,r)
+    for i,line in ipairs(o.items) do if counts[i]<line.quantity then return true end end
+    return false
 end
 function Service.discover(env)
     local ids={}
@@ -211,18 +259,8 @@ function Service.advance(env)
             local r=Business.record(o.jobId,'HAUL')
             if r and r.producer=='DELIVERY' then
                 if r.state=='DONE' and not runtime:status(o.npcId,o.jobId) then
-                    for _,l in ipairs(r.manifest) do
-                        if l.deliveryReceipt and l.deliveryReceipt.destinationId=='player:'..o.requesterId then
-                            for _,request in ipairs(o.items) do
-                                if request.fullType==r.itemTypes[tostring(l.itemId)]
-                                    and (not request.sourceId or request.sourceId==r.source)
-                                    and request.delivered<request.quantity then
-                                    request.delivered=request.delivered+1
-                                    break
-                                end
-                            end
-                        end
-                    end
+		    local counts=Service.projectDelivery(o,r)
+		    for i,request in ipairs(o.items) do request.delivered=counts[i] end
                     env.directory:release('delivery:'..o.id,o.jobId,{effects='KNOWN',obligationsCleared=true})
                     o.jobId,o.npcId=nil,nil o.revision=o.revision+1
                     o.cancelled=o.cancelled or r.returning

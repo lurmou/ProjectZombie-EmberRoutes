@@ -35,6 +35,12 @@ public final class ProbeRuntime {
     private static ProbeSaveReceipt saveReceipt;
     private ProbeRuntime() {}
     public static String version() { return BuildInfo.VERSION; }
+    public static se.krka.kahlua.vm.KahluaTable laborMutate(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable claims,se.krka.kahlua.vm.KahluaTable contracts,Object cleanup,Object id,Object revision,Object payload,Object mutation) {
+	return LaborCommitKernel.mutate(zombie.Lua.LuaManager.thread,store,owner,claims,contracts,cleanup,id,revision,payload,mutation);
+    }
+    public static se.krka.kahlua.vm.KahluaTable jobDataCopy(se.krka.kahlua.vm.KahluaTable source) {
+	return JobData.copy(source);
+    }
     public static double diagnosticTimeNanos() { return System.nanoTime(); }
     private static final Map<String,se.krka.kahlua.vm.KahluaTable> modDataCache=new HashMap<>();
     /** getOrCreate root handle cache for per-tick Lua read paths; each Lua call to
@@ -74,6 +80,23 @@ public final class ProbeRuntime {
     }
     public static se.krka.kahlua.vm.KahluaTable waterSourceBacking(zombie.iso.IsoObject tap) {
         return WaterReads.backing(tap);
+    }
+    public static se.krka.kahlua.vm.KahluaTable inventoryIndexBegin(se.krka.kahlua.vm.KahluaTable containers) {
+	return InventoryIndex.begin(containers);
+    }
+    public static se.krka.kahlua.vm.KahluaTable inventoryIndexStep(se.krka.kahlua.vm.KahluaTable state,int budget) {
+	return InventoryIndex.step(state,budget);
+    }
+    public static se.krka.kahlua.vm.KahluaTable inventoryIndex(se.krka.kahlua.vm.KahluaTable containers) {
+	return InventoryIndex.index(containers);
+    }
+    public static se.krka.kahlua.vm.KahluaTable deliverySelectSlice(zombie.inventory.ItemContainer source,
+	    zombie.characters.IsoGameCharacter npc,String sourceId,se.krka.kahlua.vm.KahluaTable requests,
+	    se.krka.kahlua.vm.KahluaTable owners,se.krka.kahlua.vm.KahluaTable state,int budget) {
+	return DeliverySelection.scan(source,npc,sourceId,requests,owners,state,budget);
+    }
+    public static se.krka.kahlua.vm.KahluaTable deliveryReceived(se.krka.kahlua.vm.KahluaTable order,se.krka.kahlua.vm.KahluaTable payload) {
+	return DeliverySelection.received(order,payload);
     }
     public static se.krka.kahlua.vm.KahluaTable inventoryReadSlice(zombie.inventory.ItemContainer container,
             ArrayList<zombie.inventory.InventoryItem> items,int size,int offset,int limit) {
@@ -145,6 +168,23 @@ public final class ProbeRuntime {
         return runtime!=null ? runtime : slots.get(id);
     }
     public static String selectedId() { return current().id()==null ? "" : current().id(); }
+    public static se.krka.kahlua.vm.KahluaTable workerDecisionWindow(int cursor,int limit) {
+	return DispatchSelection.window(cursor,limit,catalogue.size(),ProbeRuntime::workerIdAt);
+    }
+    public static se.krka.kahlua.vm.KahluaTable dispatchChoose(se.krka.kahlua.vm.KahluaTable candidates,se.krka.kahlua.vm.KahluaTable priorities) {
+	return DispatchSelection.choose(candidates,priorities);
+    }
+    public static se.krka.kahlua.vm.KahluaTable planningWakeNew() {return PlanningInvalidation.create();}
+    public static void planningWakeLoad(se.krka.kahlua.vm.KahluaTable state,Object root) {PlanningInvalidation.load(state,root);}
+    public static double planningWakeRevision(se.krka.kahlua.vm.KahluaTable state) {return PlanningInvalidation.revision(state);}
+    public static se.krka.kahlua.vm.KahluaTable planningWakeCapture(se.krka.kahlua.vm.KahluaTable state,Object scope,se.krka.kahlua.vm.KahluaTable ids) {
+	return PlanningInvalidation.capture(state,scope,ids);
+    }
+    public static boolean planningWakeChanged(se.krka.kahlua.vm.KahluaTable state,se.krka.kahlua.vm.KahluaTable token) {
+	return PlanningInvalidation.changed(state,token);
+    }
+    public static void planningWakeContainerChanged(se.krka.kahlua.vm.KahluaTable state,Object id) {PlanningInvalidation.containerChanged(state,id);}
+    public static void planningWakeScopeChanged(se.krka.kahlua.vm.KahluaTable state,Object id) {PlanningInvalidation.scopeChanged(state,id);}
     public static int workerCount() { return catalogue.size(); }
     public static String workerIdAt(int index) {
         if (index<0 || index>=catalogue.size()) return "";

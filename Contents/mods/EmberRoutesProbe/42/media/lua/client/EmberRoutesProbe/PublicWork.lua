@@ -457,7 +457,7 @@ local function eligible(actor,npcId,scope)
     local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
     local ToolReturnService=require 'EmberRoutesProbe/ToolReturnService'
     local returningInterruptible=ToolReturnService and ToolReturnService.canInterrupt and ToolReturnService.canInterrupt(npcId)
-    if not binding or not binding.handle or (Work.busy(npcId) and not returningInterruptible)
+    if not binding or not binding.handle or (Work.busy(npcId) and not returningInterruptible and not probing)
         or Probe.careBlocksWork and Probe.careBlocksWork(npcId) and not probing then return end
     if require('EmberRoutesProbe/CookingProvider').retained(npcId) then return end
     if require('EmberRoutesProbe/FieldWork').retained(npcId) then return end
@@ -475,27 +475,19 @@ local function eligible(actor,npcId,scope)
 end
 local function decide(actor,npcId,now,binding,entry)
     if not binding then binding,entry=eligible(actor,npcId) end
-    if not binding then CraftingProvider.cancel(npcId) idle:clear(npcId) return end
+    if not binding then Providers.cancelPending(npcId) idle:clear(npcId) return end
     local npc=binding.handle
-    local current=Work.record(npcId)
-    local Logistics=require 'EmberRoutesProbe/LogisticsService'
-    if current and current.state~='DONE' then
-        if current.producer=='LOGISTICS' and current.settlementId==entry.id
-            and (current.reason=='SAVE' or current.reason=='LOAD_RECOVERY')
-            and not current.controlUncertain and Logistics.preparePublic(actor,entry) then Work.resumeFor(actor,npcId) end
-        return
-    end
-    if Work.hasCargo(actor,npcId) then CraftingProvider.cancel(npcId) return end
+    if Providers.blocksDecision(actor,npcId,entry) then return end
+    if Work.hasCargo(actor,npcId) then Providers.cancelPending(npcId) return end
     if TaskJobs.current():ordinaryCount()>=JobStore.LIMIT then
-        local e=CraftingProvider.pending(npcId)
-        if e and data.orders[e.orderId] then signal(data.orders[e.orderId],'JOB_LIMIT') end
-        CraftingProvider.cancel(npcId) return
+	Providers.capacityBlocked(npcId,data.orders,signal)
+	Providers.cancelPending(npcId) return
     end
     local priorities=Service.priorities(npcId) local candidates={} local studyTarget
     local member=Members and Members.view and Members.view(npcId)
     local stamp=entry.id..':'..tostring(entry.revision)..':'..tostring(member and member.revision)
         ..':'..tostring(priorities.revision)..':'..tostring(catalogEpoch[entry.id] or 0)
-    if not CraftingProvider.pending(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Wake.changed) then
+    if not Providers.hasPending(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Providers.discoveryChanged) then
         if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,'IDLE') end
         for _,provider in ipairs(Providers.all()) do
             if (priorities[provider.category] or 0)>0 and provider.idle then
@@ -533,32 +525,22 @@ local function decide(actor,npcId,now,binding,entry)
     for _,candidate in ipairs(candidates) do
         if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
     end
-    local pending=CraftingProvider.pending(npcId)
-    -- One bounded grace window, without a body reservation.
-    if pending and not pending.ready and now-pending.started<250 and priorities.crafting>0 then
-        local craftP=priorities.crafting
-        local higherOther=false
-        for _,c in ipairs(candidates) do
-            local p=priorities[c.category]
-            if p and p>0 and p<craftP then higherOther=true break end
-        end
-        if not higherOther then return end
-    end
+    if Providers.holdSelection(envDiscover) then return end
     local selected,jobId
     for _=1,3 do
         selected=Selector.choose(candidates,priorities)
         if not selected then
             local orders=orderIds(entry.id)
-            local complete,scanWatch=CraftingProvider.scanStatus(npcId,orders)
+	    local complete,scanWatch=Providers.scanStatus(npcId,orders)
             if envDiscover.pending then complete=false end
             idleStudyTargets[npcId]=studyTarget
             idle:empty(npcId,now,stamp,Wake.revision and Wake.revision() or 0,scanWatch,
-                complete and not CraftingProvider.pending(npcId),retryWake[npcId])
+		complete and not Providers.hasPending(npcId),retryWake[npcId])
             if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,
-                complete and not CraftingProvider.pending(npcId) and 'IDLE' or 'OBSERVING')
-            elseif complete and not CraftingProvider.pending(npcId) and Probe.idleLeisure then Probe.idleLeisure(npcId,entry) end
+		complete and not Providers.hasPending(npcId) and 'IDLE' or 'OBSERVING')
+	    elseif complete and not Providers.hasPending(npcId) and Probe.idleLeisure then Probe.idleLeisure(npcId,entry) end
             for _,provider in ipairs(Providers.all()) do
-                if (priorities[provider.category] or 0)>0 and not CraftingProvider.pending(npcId) and provider.idle then
+		if (priorities[provider.category] or 0)>0 and not Providers.hasPending(npcId) and provider.idle then
                     provider.idle(npcId,entry,studyTarget)
                 end
             end
@@ -579,11 +561,8 @@ local function decide(actor,npcId,now,binding,entry)
         selected.allowed=false selected=nil
     end
     if not selected then return end
-    CraftingProvider.cancel(npcId)
-    local ToolReturnService=require 'EmberRoutesProbe/ToolReturnService'
-    if selected.category~='toolReturn' and ToolReturnService.canInterrupt(npcId) then
-        ToolReturnService.interrupt(npcId,'PREEMPTED_BY_'..string.upper(selected.category))
-    end
+    Providers.cancelPending(npcId)
+    Providers.beforeClaim(selected,npcId)
     local result
     local provider=Providers.get(selected.category)
     if provider and provider.claim then
@@ -604,14 +583,14 @@ local function advance(now,discover,providerDue,precheckDue)
     load()
     if world.executionSave and world.executionSave.state=='BLOCKED' then return end
     local actor=getSpecificPlayer(0) if not actor or actor:isDead() then return end
-    require('EmberRoutesProbe/FieldDemand').advance(actor,now,eligible,Service.priorities)
+    Providers.observeDemand(actor,now,eligible,Service.priorities)
     if providerDue then
         for _,provider in ipairs(Providers.all()) do
             if provider.advance then provider.advance({actor=actor,now=now,directory=directory}) end
         end
     end
-    if precheckDue and CraftingProvider.evaluations():size()>0 then
-        local ops,slices=CraftingProvider.step({
+    if precheckDue and Providers.hasPrechecks() then
+	local ops,slices=Providers.precheck({
             actor=actor,now=now,orders=data.orders,
             eligible=function(a,id,scope) return eligible(a,id,scope) end,
             hasCargo=function(a,id) return Work.hasCargo(a,id) end,
@@ -622,15 +601,16 @@ local function advance(now,discover,providerDue,precheckDue)
         })
         tickOps,tickSlices=ops,slices
         local ready=readyWorkers readyWorkers={}
-        for _,id in ipairs(ready) do if CraftingProvider.pending(id) then decide(actor,id,now) end end
+	for _,id in ipairs(ready) do if Providers.hasPending(id) then decide(actor,id,now) end end
     end
     if not discover then return end
     nextTick=now+Config.discoveryMs nextWake=now+100 dispatchDirty=false
     reconcile() stock(actor,now)
-    local count=EmberRoutesProbeJava.workerCount() if count<1 or count>256 then return end
+    local window=EmberRoutesProbeJava.workerDecisionWindow and EmberRoutesProbeJava.workerDecisionWindow(cursor,16)
+    local count=window and window.count or EmberRoutesProbeJava.workerCount() if count<1 or count>256 then return end
     local decisions=0
     for _=1,math.min(16,count) do
-        cursor=cursor%count+1 local id=EmberRoutesProbeJava.workerIdAt(cursor-1)
+	cursor=cursor%count+1 local id=window and window.ids[_] or EmberRoutesProbeJava.workerIdAt(cursor-1)
         local binding,entry=eligible(actor,id)
         if binding then decide(actor,id,now,binding,entry) decisions=decisions+1 if decisions>=4 then break end end
     end
@@ -650,7 +630,7 @@ function Service.tick()
             if p.advance and p.hasWork and p.hasWork() then providerDue=true break end
         end
     end
-    if not discover and not providerDue and CraftingProvider.evaluations():size()==0 then return end
+    if not discover and not providerDue and not Providers.hasPrechecks() then return end
     if faultWorld==Registry.data() then return end
     tickOps,tickSlices=0,0
     local ok,reason=pcall(advance,now,discover,providerDue,precheckDue)

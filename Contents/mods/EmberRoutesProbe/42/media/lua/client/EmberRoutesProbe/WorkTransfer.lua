@@ -61,6 +61,12 @@ end
 
 function Transfer.item(context, item, from, to, endpoint)
     local action, performed, stopped, notified,attempted,lastCheck,diagnosed
+    local progressAt=getTimestampMs()
+    local function notify()
+	local registry=require 'EmberRoutesProbe/ContainerRegistry'
+	registry.inventoryChanged(from) registry.inventoryChanged(to)
+	notified=true
+    end
     -- Same conjunction and order as before; each clause records its own bucket
     -- so a mid-action stop can name the failing precondition in diagnostics.
     local function valid()
@@ -91,6 +97,7 @@ function Transfer.item(context, item, from, to, endpoint)
             .." performed="..tostring(performed==true).." stopped="..tostring(stopped==true))
     end
     return {
+	progressAt=function() return progressAt end,
         start = function()
             if not valid() then return "FAILED", "TRANSFER_PRECONDITION" end
             if not context.npc:getCharacterActions():isEmpty() then return "FAILED", "NATIVE_ACTION_BUSY" end
@@ -98,6 +105,33 @@ function Transfer.item(context, item, from, to, endpoint)
             action.useProgressBar, action.forceProgressBar = false, false
             local nativeValid, nativePerform, nativeStop = action.isValid, action.perform, action.stop
             local nativeAnim, nativeUpdate = action.startActionAnim, action.update
+	    local nativeTransfer=action.transferItem
+	    local continuous=context.nextTransfer and nativeTransfer and action.queueList~=nil
+	    if continuous then
+		-- Own this action's internal queue. Never absorb another owner's
+		-- queued action (vanilla merging wipes that action and its hooks).
+		action.canMergeAction=function() return false end
+		action.transferItem=function(self,value)
+		    nativeTransfer(self,value)
+		    local moved=value:getContainer()==to and to:getItems():contains(value)
+			and not from:getItems():contains(value)
+		    local acknowledged=not context.transferred or context.transferred(value,from,to)
+		    if acknowledged==false then error('TRANSFER_RECEIPT_FAILED') end
+		    performed=moved progressAt=getTimestampMs()
+		    if moved then notify() end
+		    local nextPart=moved and context.nextTransfer and context.nextTransfer() or nil
+		    if not nextPart then return end
+		    if nextPart.from~=from or nextPart.to~=to or nextPart.endpoint~=endpoint then
+			error('TRANSFER_CONTINUATION_ENDPOINT_CHANGED')
+		    end
+		    -- Vanilla perform() sees this entry before it decides whether
+		    -- to end the animation. Only its next item has an active intent.
+		    local seed=ISInventoryTransferAction:new(context.npc,nextPart.item,from,to,90)
+		    self.queueList[#self.queueList+1]=seed.queueList[1]
+		    context,item=nextPart.context,nextPart.item
+		    performed,notified,lastCheck=false,false,nil
+		end
+	    end
             action.isValid = function(self)
                 if not valid() then return false end
                 local ok = nativeValid(self)
@@ -118,8 +152,12 @@ function Transfer.item(context, item, from, to, endpoint)
                 attempted=true
                 if not self:isValid() then self:stop() return end
                 nativePerform(self)
-                performed = true
-                if context.transferred then context.transferred(item, from, to) end
+		if continuous then
+		    if #self.queueList>0 then attempted=false end
+		else
+		    performed = true progressAt=getTimestampMs()
+		    if context.transferred and context.transferred(item,from,to)==false then error('TRANSFER_RECEIPT_FAILED') end
+		end
             end
             action.stop = function(self)
                 if context.body and (stopped or performed) then return end
@@ -143,8 +181,7 @@ function Transfer.item(context, item, from, to, endpoint)
                 return "FAILED", "INSTANCE_TRANSFER_MISMATCH"
             end
             if not notified then
-                local registry=require "EmberRoutesProbe/ContainerRegistry"
-                registry.inventoryChanged(from) registry.inventoryChanged(to) notified=true
+		notify()
             end
             return "PASSED"
         end,

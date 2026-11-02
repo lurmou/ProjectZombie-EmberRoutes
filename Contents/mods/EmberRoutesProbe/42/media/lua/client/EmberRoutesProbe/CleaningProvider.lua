@@ -12,4 +12,7 @@ function P.claim(...) local s = use() return s and s.claim(...) or 'CLEANING_UNA
 function P.reconcile() if service then return service.reconcile() end end
 function P.advance(env) local s = use() if s then return s.advance(env) end end
 function P.hasWork() return service and service.hasWork() or false end
+function P.observeDemand(actor,now,eligible,priorities)
+    return require('EmberRoutesProbe/FieldDemand').advance(actor,now,eligible,priorities)
+end
 return P

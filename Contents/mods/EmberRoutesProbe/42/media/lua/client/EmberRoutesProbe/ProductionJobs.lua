@@ -74,7 +74,7 @@ function M.commit(r)
 	    e.failed=not current or current.revision~=e.job.revision
 	    return false,why
 	end
-	e.job=Jobs.current():get(r.id)
+	e.job=Jobs.current():peek(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'PRODUCTION_POST_COMMIT_CHANGED' end
 	if e.job.state==target then return true end
     end

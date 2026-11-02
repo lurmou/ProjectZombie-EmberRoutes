@@ -1,6 +1,14 @@
 -- Ephemeral read-only index. Never persists userdata or acts as an asset ledger.
 local View = {}
 function View.scan(containers)
+    local bridge=EmberRoutesProbeJava
+    if bridge and bridge.inventoryIndexBegin and bridge.inventoryIndexStep then
+	local state=bridge.inventoryIndexBegin(containers)
+	return {step=function(_,budget)
+	    local result=bridge.inventoryIndexStep(state,budget)
+	    return result.index,result.reason
+	end}
+    end
     local scan={containers=containers,lists={},sizes={},index={},location=1,position=0}
     for i,container in ipairs(containers) do
         scan.lists[i]=container:getItems() scan.sizes[i]=scan.lists[i]:size()
@@ -28,6 +36,10 @@ function View.scan(containers)
     return scan
 end
 function View.index(containers)
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.inventoryIndex then
+	local result=EmberRoutesProbeJava.inventoryIndex(containers)
+	return result.index,result.reason
+    end
     local result = {}
     for location, container in ipairs(containers) do
         local items = container:getItems()

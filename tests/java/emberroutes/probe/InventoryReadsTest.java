@@ -58,6 +58,35 @@ public final class InventoryReadsTest {
         check("ITEM_LOCATION_CHANGED".equals(rejected.rawget("reason")) && rejected.rawget("rows")==null,"wrong location never publishes partial rows");
         check(items.size()==70,"read never removes originals");
         check(!ProbeRuntime.bindingValid(null,"missing") && !ProbeRuntime.bindingValid(null,null),"missing native body never validates");
+	var sources=J2SEPlatform.getInstance().newTable();sources.rawset(1,container);
+	var cursor=InventoryIndex.begin(sources);
+	check("SCAN_PENDING".equals(InventoryIndex.step(cursor,32).rawget("reason")),"native index yields at the existing item budget");
+	var indexed=(KahluaTable)InventoryIndex.step(cursor,38).rawget("index");
+	var indexedItem=(KahluaTable)indexed.rawget(2.0);
+	check(indexedItem.rawget("item")==items.get(1) && indexedItem.rawget("container")==container
+	    && indexedItem.rawget("location").equals(1.0),"native index returns original identity and location");
+	var stale=InventoryIndex.begin(sources);var removed=items.remove(items.size()-1);
+	check("INVENTORY_CHANGED".equals(InventoryIndex.step(stale,32).rawget("reason")),"native cursor rejects a changed collection size");
+	items.add(removed);
+	var second=new ItemContainer();var duplicate=new InventoryItem("Base","ReadTest","ReadTest",new zombie.scripting.objects.Item());
+	duplicate.setID(2);duplicate.setContainer(second);second.getItems().add(duplicate);sources.rawset(2,second);
+	var duplicates=(KahluaTable)InventoryIndex.index(sources).rawget("index");
+	check(((KahluaTable)duplicates.rawget(2.0)).rawget("count").equals(2.0),"native index preserves duplicate-ID detection across containers");
+	var order=J2SEPlatform.getInstance().newTable();var requests=J2SEPlatform.getInstance().newTable();
+	var general=J2SEPlatform.getInstance().newTable();general.rawset("fullType","Base.ReadTest");general.rawset("quantity",1.0);general.rawset("delivered",0.0);
+	var scoped=J2SEPlatform.getInstance().newTable();scoped.rawset("fullType","Base.ReadTest");scoped.rawset("sourceId","box");scoped.rawset("quantity",1.0);scoped.rawset("delivered",0.0);
+	requests.rawset(1,general);requests.rawset(2,scoped);order.rawset("items",requests);order.rawset("requesterId","owner");
+	var payload=J2SEPlatform.getInstance().newTable();var manifest=J2SEPlatform.getInstance().newTable();var types=J2SEPlatform.getInstance().newTable();
+	for (int i=1;i<=2;i++) {
+	    var line=J2SEPlatform.getInstance().newTable();var receipt=J2SEPlatform.getInstance().newTable();
+	    line.rawset("itemId",Double.valueOf(i));line.rawset("sourceId","box");receipt.rawset("destinationId","player:owner");line.rawset("deliveryReceipt",receipt);
+	    manifest.rawset(i,line);types.rawset(Integer.toString(i),"Base.ReadTest");
+	}
+	payload.rawset("manifest",manifest);payload.rawset("itemTypes",types);
+	var received=DeliverySelection.received(order,payload);
+	check(received.rawget(1).equals(1.0) && received.rawget(2).equals(1.0),"Java receipts credit each original once with scoped demand first");
+	manifest.rawset(2,(Object)null);received=DeliverySelection.received(order,payload);
+	check(received.rawget(1).equals(0.0) && received.rawget(2).equals(1.0),"one receipt cannot satisfy both scoped and general requests");
         System.out.println("PASS "+checks+" installed inventory/Kahlua native-read checks; loaded world and live NPC NOT RUN");
     }
 }

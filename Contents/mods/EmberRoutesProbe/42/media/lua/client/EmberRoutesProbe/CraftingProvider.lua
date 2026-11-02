@@ -330,4 +330,23 @@ function CraftingProvider.hasWork(env)
     return evaluations:size() > 0
 end
 
+-- Crafting alone owns its speculative planning/grace-window policy.
+function CraftingProvider.capacityBlocked(npcId,orders,signal)
+    local e=evaluations:get(npcId)
+    if e and orders[e.orderId] then signal(orders[e.orderId],'JOB_LIMIT') end
+end
+function CraftingProvider.holdSelection(env)
+    local pending=evaluations:get(env.npcId)
+    local priority=env.priorities.crafting
+    if pending and not pending.ready and env.now-pending.started<250 and priority>0 then
+	for _,candidate in ipairs(env.candidates) do
+	    local other=env.priorities[candidate.category]
+	    if other and other>0 and other<priority then return false end
+	end
+	return true
+    end
+    return false
+end
+function CraftingProvider.hasPrechecks() return evaluations:size()>0 end
+function CraftingProvider.precheck(env) return CraftingProvider.step(env) end
 return CraftingProvider

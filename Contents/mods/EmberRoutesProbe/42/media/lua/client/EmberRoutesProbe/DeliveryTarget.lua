@@ -99,7 +99,8 @@ function D.move(c)
     return {timeout=185000,start=function() return poll() end,poll=poll}
 end
 function D.returnTarget(c,item)
-    local e=Registry.resolve(c.job.source,'put',c.job.scopeId)
+    local line=require('EmberRoutesProbe/HaulManifest').line(c.job,item:getID())
+    local e=line and Registry.resolve(line.sourceId,'put',c.job.scopeId)
     local area=Ledger.get(c.job.settlementId)
     local p=e and Registry.describe(e.id)
     if e and area and p and Geometry.inside(area,p.x,p.y) and Registry.logistics(e)=='STORAGE'
@@ -113,7 +114,8 @@ Producers.register('DELIVERY',{
         local own=c.npc:getInventory()
         if to==own then
             local o=D.order(c.job)
-            local source=Registry.resolve(c.job.source,'take',c.job.scopeId)
+	    local line=require('EmberRoutesProbe/HaulManifest').line(c.job,item:getID())
+	    local source=line and Registry.resolve(line.sourceId,'take',c.job.scopeId)
             return not c.job.returning and o and not o.cancelled and source and source.container==from
                 and Registry.logistics(source)=='STORAGE' and Producers.freeCarry(c.npc)>=item:getUnequippedWeight()
         end

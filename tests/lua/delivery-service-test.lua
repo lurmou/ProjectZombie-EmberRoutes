@@ -213,6 +213,55 @@ source.container.full=false
 for _=1,180 do step(1,true) if farOrder.state=='CANCELLED' then break end end
 check(farOrder.state=='CANCELLED' and farItem:getContainer()==source.container and farOrder.items[1].delivered==0,
     'return capacity wake finishes same obligation without false player delivery')
+-- One trip must collect from multiple actual sources before visiting the player.
+actor.x=4.5 actor.moving=false
+local sourceTwo=f.fixture.object(16)
+local multiFilter=Filter.new() multiFilter.types.mixA=true multiFilter.types.mixB=true multiFilter.types.returnMix=true
+storageFilter.types.mixA=true storageFilter.types.returnMix=true
+assert(Registry.configure(actor,source,storageFilter,source.container,'STORAGE')=='FILTER_CONFIGURED')
+actor.x=16.5
+assert(Registry.configure(actor,sourceTwo,multiFilter,sourceTwo.container,'STORAGE')=='FILTER_CONFIGURED')
+actor.x=4.5
+local mixed={f.fixture.item('mixA',source.container),f.fixture.item('mixA',source.container),
+    f.fixture.item('mixB',sourceTwo.container),f.fixture.item('mixB',sourceTwo.container)}
+local carryLimit=#npc.root.items+3
+function npc:getMaxWeight() return carryLimit end
+local _,mixedId=Delivery.createOrder(actor,entry.id,{{fullType='mixA',quantity=2},{fullType='mixB',quantity=2}},'multi-source')
+local mixedOrder=Delivery.order(mixedId) local mixedJob=assign(mixedOrder)
+local sourceSet={} for _,line in ipairs(mixedJob.manifest) do sourceSet[line.sourceId]=true end
+local sourceCount=0 for _ in pairs(sourceSet) do sourceCount=sourceCount+1 end
+check(#mixedJob.items==3 and sourceCount==2,'one capacity-bounded Job selects a combined manifest from both sources')
+actor.x=45.5 actor.moving=true
+local loadedMixed=0
+for _=1,200 do
+    step(1,true) loadedMixed=0
+    for _,value in ipairs(mixed) do if value:getContainer()==npc.root then loadedMixed=loadedMixed+1 end end
+    if loadedMixed==3 then break end
+end
+check(loadedMixed==3 and mixedOrder.items[1].delivered==0 and mixedOrder.items[2].delivered==0,
+    'courier collects across both sources up to carry limit before player delivery')
+actor.moving=false
+for _=1,240 do step(1,true) if not mixedOrder.jobId then break end end
+check(mixedOrder.state=='WAITING' and mixedOrder.items[1].delivered+mixedOrder.items[2].delivered==3,
+    'first multi-source trip counts all three originals once and leaves only the remainder')
+assign(mixedOrder)
+for _=1,240 do step(1,true) if mixedOrder.state=='DONE' then break end end
+check(mixedOrder.state=='DONE' and mixedOrder.items[1].delivered==2 and mixedOrder.items[2].delivered==2,
+    'next trip completes the remaining mixed checklist without double counting')
+function npc:getMaxWeight() return 100 end
+actor.x=4.5 actor.moving=false
+local returnOne=f.fixture.item('returnMix',source.container)
+local returnTwo=f.fixture.item('returnMix',sourceTwo.container)
+local _,returnMixedId=Delivery.createOrder(actor,entry.id,{{fullType='returnMix',quantity=2}},'return-multi-source')
+local returnMixedOrder=Delivery.order(returnMixedId) local returnMixedJob=assign(returnMixedOrder)
+actor.x=45.5 actor.moving=true
+for _=1,200 do step(1,true) if returnOne:getContainer()==npc.root and returnTwo:getContainer()==npc.root then break end end
+check(returnOne:getContainer()==npc.root and returnTwo:getContainer()==npc.root,'cancel case first holds originals from both sources')
+assert(Delivery.cancel(actor,returnMixedId,returnMixedOrder.revision)=='CANCEL_REQUESTED')
+for _=1,240 do step(1,true) if returnMixedOrder.state=='CANCELLED' then break end end
+check(returnMixedOrder.state=='CANCELLED' and returnOne:getContainer()==source.container and returnTwo:getContainer()==sourceTwo.container,
+    'multi-source cancellation returns each original to its own source instead of the first box')
+actor.x=4.5 actor.moving=false
 -- Neither endpoint contains the original: UNKNOWN cannot be replayed or released.
 actor.x=4.5 actor.moving=false
 local unknown=f.fixture.item('unknown',source.container)

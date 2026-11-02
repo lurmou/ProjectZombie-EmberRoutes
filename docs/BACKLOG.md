@@ -4,6 +4,16 @@
 
 ## NPC 架构执行记录
 
+2026-11-02 公共框架Java计算：0.29.26在0.29.25仲裁/失效索引/名册窗口基础上，增加至少4个既有资源的容量提交粗粒度Java入口；同一Claims表、原Lua JobStore提交、领域校验/恢复和小型提交保留。30件宿主复测约6913→5251ms/万次，1件反向，故设有界后端选择；通用JobUpdate/逐项Claims桥及此前目录试验均因成本不利撤回，不宣称全部框架Java化或游戏帧收益。容量失败/回滚/提交后隔离/终态与嵌套通知定向验证，Runtime/Controller尚未迁。只做必要检查，见[提交内核证据](reviews/2026-11-02/java-labor-commit-kernel.md)及[派工证据](reviews/2026-11-02/java-dispatch-kernel.md)。
+
+2026-11-02 Java优先执行：按用户要求核对ProjectRemnants当前根NPCFW.jar的实际Java搬运/批次执行调用，未复制其独立TaskRunner。0.29.24将InventoryView扫描/重复ID索引、配送请求HashMap匹配/Claims只读过滤/负重累计与收货投影下沉Java，Lua保留端点与唯一提交协议、原版动作；ModData元表保留逐件Lua求值。实际ItemContainer/Kahlua 36项及配送55/连续动作8项通过；Java NPC选货容量、实机与帧性能未验证。只做必要检查，见[证据](reviews/2026-11-02/java-haul-read-paths.md)。
+
+2026-11-02 配送跨源集货反馈：0.29.23已将首箱即派送改为跨仓库累计清单和负重，同一Job逐站收集；按每件sourceId校验/归还/计数，旧单箱事实继续有效。配送单Job原件上限30扩至256，达到此记录上限仍分趟，不宣称无界装载。配送55项（含两箱同趟及分别归还）和普通物流改道30项通过，实机待用户。见[证据](reviews/2026-11-02/delivery-multisource.md)。
+
+2026-11-02 搬运与健身实机反馈：0.29.22修复同停靠点逐件结束动画，复用原版perform内部队列、实际逐件回执后才接续下一件，存档仍只有一个activeAttempt；有界扫描不逐件重做。修复已识别闲暇仍被Work.busy提前排除，确认工作候选后沿既有workReady停止/起身再派工。派工78项、搬运改道30项、配送46项及安装原版连续分支8项通过；只做必要检查，实机待用户。见[证据](reviews/2026-11-02/haul-continuity-and-leisure-yield.md)。
+
+2026-11-02 公共内核与领域边界收敛：用户批准并授权实施，0.29.21 已接领域契约注册、JobStore 策略委托、通用资源提交/领域适配拆分、公共派工策略下放Provider、六类声明恢复与现役兼容恢复分离，以及 Java 有界任务记录复制（不复制游戏物品）。提交复制减至一次，搬运/制作提交后使用只读 envelope。定向回归、Java 19项、构建与普通/Debug编译通过；集中180套142过/38失败，隔离基线补齐生成夹具后失败集合相同。完整LuaLS/preflight按用户最新“只做必要检查、用户实机”要求停止，不能记通过。候选包已生成，未提交/发布；实机与帧性能未验证。见[实施证据](reviews/2026-11-02/public-kernel-domain-cutover.md)及[计划](superpowers/plans/2026-11-02-public-kernel-domain-cutover.md)。
+
 配送重构（2026-10-28）：按已确认[执行链设计](superpowers/specs/2026-10-27-delivery-rebuild-design.md)、[计划](superpowers/plans/2026-10-27-delivery-rebuild.md)接通订单持久事实/请求幂等、同 hauling provider 公共派工、DELIVERY 类型 HAUL Job、共享原件声明、按负重分段及空手返仓续批、移动玩家/同层/停稳复验、背包满持货等待、单件超重阻断、边界外 50 格/取消后实际返仓、观察蹲行、统一保存恢复与 UNKNOWN 留责。46 项配送、77 项公共派工、26 项搬运等定向 Kahlua 接缝通过，原生为替身。用户随后确认[UI 局部重构](superpowers/specs/2026-10-28-delivery-ui-design.md)：中键活动页上升沿/原生遮挡命中取代无效子控件额外事件，右侧清单与详情切换、共享按钮命中矩形、滚动/长名/容量/失败反馈及已有工单入口已接；68 项 UI 接缝通过，CN/EN 布局预览已查看。当前版本 0.29.14，本地构建和完整 preflight 通过；末轮三个窄改补语法/回归通过，release-check 0 错误，CN/EN 1138 键一致，254 文件包与工作区一致；未上传工坊。完整旧页签夹具的人员页 Public.categories 替身缺口仍记为失败，未算通过。真实鼠标、游戏渲染/寻路/动作/磁盘重进及旧内存携货现场尚未验收，不记作玩法完成；见[实现与证据](reviews/2026-10-28/delivery-rebuild.md)。
 
 | 项目 | 当前记录（续接原位更新） |

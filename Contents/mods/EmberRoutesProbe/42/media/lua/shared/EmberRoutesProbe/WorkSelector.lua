@@ -2,6 +2,8 @@
 -- selector and may never be outweighed by distance or waiting time.
 local Selector={}
 function Selector.choose(candidates,priorities)
+    if candidates[1]==nil then return nil end
+    if EmberRoutesProbeJava and EmberRoutesProbeJava.dispatchChoose then return EmberRoutesProbeJava.dispatchChoose(candidates,priorities) end
     local best,bestPriority
     for _,c in ipairs(candidates) do
         local p=priorities[c.category]

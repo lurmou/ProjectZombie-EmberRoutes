@@ -77,6 +77,7 @@ EmberRoutesProbeJava = {
     actionCarrier = function() if active then return npc end end,
     carrierActive = function(expected) return active and expected == npc end,
 }
+if ERLaborTestBridge then for key,value in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[key]=value end end
 local queued
 ISTimedActionQueue = { queues = {} }
 function ISTimedActionQueue.add(action)

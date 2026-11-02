@@ -8,7 +8,15 @@ import se.krka.kahlua.vm.*;
 class KahluaLaborTest {
     public static void main(String[] args) throws Exception {
         var files=args.length>0 ? Arrays.stream(args).filter(a->!a.startsWith("--")).toList() : List.of("labor-core-test.lua","sort-policy-test.lua","logistics-test.lua","multi-worker-test.lua","companion-test.lua","persistence-test.lua","boot-pause-test.lua");
+	if (Arrays.asList(args).contains("--all")) {
+	    try (var paths=Files.list(Path.of("tests/lua"))) {
+		files=paths.map(p->p.getFileName().toString()).filter(n->n.endsWith("-test.lua")).sorted().toList();
+	    }
+	}
+	var failures=new ArrayList<String>();
         for (String file:files) {
+	    try {
+
             var platform=J2SEPlatform.getInstance(); var env=platform.newTable(); env.rawset("_G",env);
             se.krka.kahlua.stdlib.BaseLib.register(env);
             se.krka.kahlua.stdlib.StringLib.register(platform,env);
@@ -19,7 +27,11 @@ class KahluaLaborTest {
             var thread=new KahluaThread(platform,env); thread.debugOwnerThread=Thread.currentThread();
             KahluaUtil.setWorkerThread(env,thread);
             run(thread,env,Path.of("D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/stdlib.lua"));
+	    if (Arrays.asList(args).contains("--evidence-userdata")) {
+		var io=platform.newTable();io.rawset("stdout",new Object());env.rawset("io",io);
+	    }
             env.rawset("next",null); // PZ gameplay does not expose the standard Lua next global.
+	    for(String arg:args) if(arg.startsWith("--cost-width=")) env.rawset("ERCostWidth",Double.valueOf(arg.substring(13)));
             if (Arrays.asList(args).contains("--timing"))
                 env.rawset("_ERTestNanos",(JavaFunction)(frame,n)->{frame.push((double)System.nanoTime());return 1;});
             for (String arg:args) if (arg.startsWith("--translations=")) {
@@ -30,6 +42,52 @@ class KahluaLaborTest {
                 }
                 env.rawset("ERTestTranslations",translations);
             }
+	    if (Arrays.asList(args).contains("--java-job-data")) {
+		var bridge=platform.newTable();
+		var method=Class.forName("emberroutes.probe.JobData").getMethod("copy",KahluaTable.class);
+		bridge.rawset("jobDataCopy",(JavaFunction)(frame,n)->{
+		    try { frame.push(method.invoke(null,frame.get(0))); return 1; }
+		    catch (java.lang.reflect.InvocationTargetException e) { throw (RuntimeException)e.getCause(); }
+		    catch (ReflectiveOperationException e) { throw new RuntimeException(e); }
+		});
+		env.rawset("EmberRoutesProbeJava",bridge);
+	    }
+	    if (Arrays.asList(args).contains("--java-labor")) {
+		var bridge=platform.newTable();
+		for(String[] binding:new String[][]{{"laborMutate","LaborCommitKernel","mutate"},{"jobDataCopy","JobData","copy"}}) {
+		    var method=Arrays.stream(Class.forName("emberroutes.probe."+binding[1]).getMethods()).filter(m->m.getName().equals(binding[2])).findFirst().orElseThrow();
+		    bridge.rawset(binding[0],(JavaFunction)(frame,n)->{
+			Object[] values=new Object[method.getParameterCount()];int offset=method.getParameterTypes()[0]==KahluaThread.class?1:0;
+			if(offset==1)values[0]=frame.getThread();
+			for(int i=offset;i<values.length;i++)values[i]=frame.get(i-offset);
+			try {frame.push(method.invoke(null,values));return 1;}
+			catch(java.lang.reflect.InvocationTargetException e){throw (RuntimeException)e.getCause();}
+			catch(ReflectiveOperationException e){throw new RuntimeException(e);}
+		    });
+		}
+		env.rawset("ERLaborTestBridge",bridge);env.rawset("EmberRoutesProbeJava",bridge);
+	    }
+	    if (Arrays.asList(args).contains("--java-dispatch")) {
+		var bridge=platform.newTable();
+		for (String[] binding:new String[][]{
+		    {"dispatchChoose","DispatchSelection","choose"},{"planningWakeNew","PlanningInvalidation","create"},
+		    {"planningWakeLoad","PlanningInvalidation","load"},{"planningWakeRevision","PlanningInvalidation","revision"},
+		    {"planningWakeCapture","PlanningInvalidation","capture"},{"planningWakeChanged","PlanningInvalidation","changed"},
+		    {"planningWakeContainerChanged","PlanningInvalidation","containerChanged"},{"planningWakeScopeChanged","PlanningInvalidation","scopeChanged"}}) {
+		    var method=Arrays.stream(Class.forName("emberroutes.probe."+binding[1]).getMethods())
+			.filter(m->m.getName().equals(binding[2])).findFirst().orElseThrow();
+		    bridge.rawset(binding[0],(JavaFunction)(frame,n)->{
+			Object[] values=new Object[method.getParameterCount()];for(int i=0;i<values.length;i++) values[i]=frame.get(i);
+			try {
+			    Object result=method.invoke(null,values);
+			    if (method.getReturnType()==void.class) return 0;
+			    frame.push(result);return 1;
+			} catch (java.lang.reflect.InvocationTargetException e) {throw (RuntimeException)e.getCause();}
+			catch (ReflectiveOperationException e) {throw new RuntimeException(e);}
+		    });
+		}
+		env.rawset("ERDispatchTestBridge",bridge);
+	    }
             var pkg=platform.newTable(); var loaded=platform.newTable(); pkg.rawset("loaded",loaded); pkg.rawset("path",""); env.rawset("package",pkg);
             env.rawset("print",(JavaFunction)(frame,n)->{System.out.println(frame.get(0));return 0;});
             env.rawset("require",(JavaFunction)(frame,n)->{
@@ -48,6 +106,15 @@ class KahluaLaborTest {
                     .map(a->List.of(a.substring("--preview-tabs=".length()).split(",")))
                     .orElse(List.of("warehouse","orders","logistics","crafting","publicOrder","priorities"))) preview(thread,env,tab,args);
             System.out.println("PASS installed Kahlua: "+file+"; native host mocked");
+	    } catch (Throwable error) {
+		if (!Arrays.asList(args).contains("--keep-going")) throw error;
+		failures.add(file);
+		System.out.println("FAIL installed Kahlua: "+file+" "+error);
+	    }
+	}
+	if (Arrays.asList(args).contains("--keep-going")) {
+	    System.out.println("REGRESSION total="+files.size()+" passed="+(files.size()-failures.size())+" failed="+failures.size()+" failures="+failures);
+	    if (!failures.isEmpty()) System.exit(1);
         }
     }
     static Object call(KahluaThread thread,KahluaTable env,Path file) {

@@ -65,7 +65,7 @@ function R.valid(job)
     end
 
     -- 4. Strict manifest array validation
-    if not isDenseArray(p.manifest, 64) or #p.manifest < 1 then return false end
+    if not isDenseArray(p.manifest, p.producer=='DELIVERY' and 256 or 64) or #p.manifest < 1 then return false end
     local seenItems = {}
     for _, l in ipairs(p.manifest) do
         if type(l) ~= 'table' or not Validate.itemId(l.itemId) then return false end

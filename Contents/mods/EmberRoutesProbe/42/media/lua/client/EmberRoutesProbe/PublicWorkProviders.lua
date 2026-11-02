@@ -37,6 +37,74 @@ function Registry.all()
     return list
 end
 
+-- Optional domain scheduling hooks; no domain names or execution strategy here.
+function Registry.observeDemand(actor,now,eligible,priorities)
+    for _,kind in ipairs(order) do local p=defs[kind]
+	if p.observeDemand then p.observeDemand(actor,now,eligible,priorities) end
+    end
+end
+function Registry.cancelPending(npcId)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.cancel then p.cancel(npcId) end end
+end
+function Registry.hasPending(npcId)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.pending and p.pending(npcId) then return true end end
+    return false
+end
+function Registry.capacityBlocked(npcId,orders,signal)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.capacityBlocked then p.capacityBlocked(npcId,orders,signal) end end
+end
+function Registry.blocksDecision(actor,npcId,entry)
+    for _,kind in ipairs(order) do local p=defs[kind]
+	if p.blocksDecision and p.blocksDecision(actor,npcId,entry) then return true end
+    end
+    return false
+end
+function Registry.holdSelection(env)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.holdSelection and p.holdSelection(env) then return true end end
+    return false
+end
+function Registry.scanStatus(npcId,orders)
+    local complete,watch,group=true,nil,nil
+    for _,kind in ipairs(order) do local p=defs[kind]
+	if p.scanStatus then
+	    local done,dependency=p.scanStatus(npcId,orders)
+	    if not done then complete=false end
+	    if dependency then
+		if not watch then watch=dependency
+		else
+		    group=group or {providerWatches={watch}}
+		    group.providerWatches[#group.providerWatches+1]=dependency
+		end
+	    end
+	end
+    end
+    return complete,group or watch
+end
+function Registry.discoveryChanged(watch)
+    local Wake=require 'EmberRoutesProbe/PlanningWake'
+    if watch and watch.providerWatches then
+	for _,dependency in ipairs(watch.providerWatches) do if Wake.changed(dependency) then return true end end
+	return false
+    end
+    return Wake.changed(watch)
+end
+function Registry.beforeClaim(selected,npcId)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.beforeClaim then p.beforeClaim(selected,npcId) end end
+end
+function Registry.hasPrechecks()
+    for _,kind in ipairs(order) do local p=defs[kind] if p.hasPrechecks and p.hasPrechecks() then return true end end
+    return false
+end
+function Registry.precheck(env)
+    local ops,slices=0,0
+    for _,kind in ipairs(order) do local p=defs[kind]
+	if p.hasPrechecks and p.hasPrechecks() and p.precheck then
+	    local a,b=p.precheck(env) ops=ops+(a or 0) slices=slices+(b or 0)
+	end
+    end
+    return ops,slices
+end
+
 function Registry.reset()
     defs={}
     order={}

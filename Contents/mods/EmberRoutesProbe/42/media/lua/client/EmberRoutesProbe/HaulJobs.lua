@@ -31,6 +31,18 @@ function M.record(npcId)
     end
     return selected and adopt(selected) or nil
 end
+local function desired(r)
+    local unknown=r.controlUncertain==true
+    local state=unknown and 'RECONCILE_REQUIRED' or r.state=='DONE' and 'DONE'
+	or r.state=='RUNNING' and 'RUNNING' or 'SUSPENDED'
+    return state,(unknown or r.activeAttempt~=nil) and 'UNKNOWN' or 'KNOWN',state=='DONE'
+end
+local function nextState(from,target)
+    if target=='DONE' and from~='SETTLING' then return 'SETTLING' end
+    if target=='SUSPENDED' and from=='RUNNING' then return 'STOPPING' end
+    if target=='RUNNING' and from=='SUSPENDED' then return 'PREPARING' end
+    return target
+end
 function M.commit(r,capacity)
     local e=entry(r)
     if not e or e.failed then return false,'HAUL_DRAFT_STALE' end
@@ -42,15 +54,11 @@ function M.commit(r,capacity)
 	local any=false for _ in pairs(r.reservation.items) do any=true break end
 	if not any then r.reservation=nil end
     end
-    local unknown=r.controlUncertain==true
-    local target=unknown and 'RECONCILE_REQUIRED' or r.state=='DONE' and 'DONE' or r.state=='RUNNING' and 'RUNNING' or 'SUSPENDED'
-    local effects=(unknown or r.activeAttempt~=nil) and 'UNKNOWN' or 'KNOWN'
-    local cleared=target=='DONE'
+    local target,effects,cleared=desired(r)
+    -- Keep each legal public transition and its notification, but reuse the
+    -- same execution draft; intermediate envelopes are read-only references.
     for _=1,3 do
-	local state=target
-	if target=='DONE' and e.job.state~='SETTLING' then state='SETTLING'
-	elseif target=='SUSPENDED' and e.job.state=='RUNNING' then state='STOPPING'
-	elseif target=='RUNNING' and e.job.state=='SUSPENDED' then state='PREPARING' end
+	local state=nextState(e.job.state,target)
 	local token=Store.getToken(r.id)
 	if not token then e.failed=true return false,'HAUL_TOKEN_MISSING' end
 	local have,want,add,remove={},{},{},{}
@@ -64,7 +72,7 @@ function M.commit(r,capacity)
 	    e.failed=not current or current.revision~=e.job.revision
 	    return false,why
 	end
-	capacity=nil e.job=Jobs.current():get(r.id)
+	capacity=nil e.job=Jobs.current():peek(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'HAUL_POST_COMMIT_CHANGED' end
 	if e.job.state==target then return true end
     end

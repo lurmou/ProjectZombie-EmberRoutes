@@ -45,6 +45,7 @@ package.loaded['EmberRoutesProbe/LogisticsService']={publicOffer=function(_,_,n)
 function isClient() return false end function isServer() return false end
 function getTimestampMs() return now end function getSpecificPlayer() return actor end
 EmberRoutesProbeJava={workerCount=function() return #workers end,workerIdAt=function(i) return workers[i+1] end}
+if ERDispatchTestBridge then for key,value in pairs(ERDispatchTestBridge) do EmberRoutesProbeJava[key]=value end end
 package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'crate'} end}
 -- This dispatch fixture contains no tool custody or return work. Model that
 -- business fact explicitly; do not load native transfer actions as a side effect.
@@ -214,11 +215,12 @@ package.loaded['EmberRoutesProbe/ProductionChain'].new=function() return {step=f
 local boot=package.loaded['EmberRoutesProbe/Boot'] local interrupted=0 local probing=true
 boot.careBlocksWork=function() return probing end
 boot.careProbeWork=function() return probing end
+busy.alice=true -- A real leisure Session owns the body even though no work is executing.
 boot.leisureWorkReady=function() interrupted=interrupted+1 end
 handles.alice.getCharacterActions=function() return {isEmpty=function() return not probing end} end
 Public.create(actor,'s','saw',1,nil,'leisure-preempt') tick() tick()
 check(interrupted>0 and #calls==0,'idle native action remains observable; ready work requests stop without claiming')
-probing=false tick() tick()
+probing=false busy.alice=nil tick() tick()
 check(#calls==1,'work claims only after personal leisure has stopped and released its body')
 boot.careBlocksWork=nil boot.careProbeWork=nil boot.leisureWorkReady=nil
 -- A fully planned candidate can still lose a resource at real admission.

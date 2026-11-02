@@ -53,3 +53,20 @@ check(store:create(job('counted')) and store:ordinaryCount()==2,'capacity count 
 assert(store:update('counted',1,{state='SETTLING'})) assert(store:update('counted',2,{state='DONE'}))
 check(store:removeSettled('counted',3) and store:ordinaryCount()==1,'safe retirement releases counted capacity exactly once')
 print('PASS '..n..' independent Job store checks; persistence table only, game/save codec NOT RUN')
+
+local Contracts=require 'EmberRoutesProbe/JobContracts'
+check(Contracts.register('TEST_DOMAIN',{
+    validate=function(j) return type(j.payload.work)=='number' end,
+    transition=function(a,b) return b.payload.work>=a.payload.work,'TEST_WORK_REVERSED' end,
+    blocksScope=function(j) return j.payload.pending==true end,
+}), 'new domain registers without editing core')
+check(not Contracts.register('TEST_DOMAIN',{}),'duplicate domain registration rejected')
+local custom=job('registered') custom.providerType='TEST_DOMAIN' custom.payload={work=1}
+check(store:create(custom),'registered validator accepts domain facts')
+check(not store:update(custom.id,1,{payload={work=0}}),'registered transition enforces domain rule')
+check(store:update(custom.id,1,{payload={work=2,pending=true}}) and store:scopeBlocked('s'),'registered pending fact blocks scope')
+check(store:update(custom.id,2,{payload={work=3}}) and not store:scopeBlocked('s'),'registered settlement unblocks scope')
+local old=store:get(custom.id) local proposed={work=4,nested={value=7}}
+check(store:update(custom.id,3,{payload=proposed}),'replacement accepted') proposed.nested.value=9
+check(store:get(custom.id).payload.nested.value==7 and old.payload.work==3,'single copy retains caller and prior-snapshot isolation')
+print('PASS registered domain extension and copy ownership checks')
