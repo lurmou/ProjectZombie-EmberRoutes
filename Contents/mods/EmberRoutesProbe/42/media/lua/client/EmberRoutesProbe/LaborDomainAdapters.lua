@@ -107,7 +107,9 @@ end
 function Store.claimField(job)
     Store.data()
     local saved=state.root.taskJobs.byId[job.id]
-    if not saved or saved.providerType~='FIELD_WORK' or saved.revision~=job.revision then return nil,'FIELD_JOB_CHANGED' end
+    if not saved or saved.providerType~='FIELD_WORK' or saved.revision~=job.revision
+        or not require('EmberRoutesProbe/FieldRecord').valid(saved) or saved.effects~='KNOWN'
+        or saved.payload.phase=='SETTLED' then return nil,'FIELD_JOB_CHANGED' end
     local claimId = ensureEntityClaimId(state.root, saved, job.id)
     local token,why=state.claims:acquire(job.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId })
     if token then state.fieldTokens[job.id]=token end

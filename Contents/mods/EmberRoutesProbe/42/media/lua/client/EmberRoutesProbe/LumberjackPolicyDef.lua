@@ -15,6 +15,7 @@ function LumberjackPolicyDef.getDefaults()
         maxStoredLogs = 20,
         lumberZoneId = '',
         continuousBatch = true,
+        maxContinuousBatch = 4,
     }
 end
 
@@ -55,6 +56,9 @@ function LumberjackPolicyDef.validate(draft)
     end
     if draft.continuousBatch ~= nil and type(draft.continuousBatch) ~= 'boolean' then
         return false, 'INVALID_CONTINUOUS_BATCH'
+    end
+    if draft.maxContinuousBatch ~= nil and (type(draft.maxContinuousBatch) ~= 'number' or draft.maxContinuousBatch < 1 or draft.maxContinuousBatch > 32) then
+        return false, 'INVALID_MAX_CONTINUOUS_BATCH'
     end
     return true
 end

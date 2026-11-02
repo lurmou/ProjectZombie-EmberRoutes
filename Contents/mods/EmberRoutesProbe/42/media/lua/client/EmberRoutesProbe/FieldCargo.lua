@@ -30,18 +30,28 @@ function C.ground(target)
 end
 function C.outputs(c,before,after,ground)
     if not before or not after then return false end
-    return c.change(function(j)
+    -- The 96-asset cap must not throw inside a record edit: an error here can
+    -- tear through stop protocols that call classify/settle without a pcall.
+    -- Overflow items stay unregistered originals and the observation reports
+    -- itself incomplete instead, which the attempt protocol reads as not
+    -- applied - the safe direction.
+    local overflow=false
+    local ok=c.change(function(j)
         for id,value in pairs(after) do
             if not before[id] and not Record.asset(j,id) then
                 local item=ground and value.item or value
-                if #j.payload.assets>=96 then error('FIELD_OUTPUT_LIMIT') end
-                j.payload.assets[#j.payload.assets+1]={id=id,fullType=item:getFullType(),
-                    custody=ground and 'GROUND' or 'HELD',x=ground and value.x or nil,
-                    y=ground and value.y or nil,z=ground and value.z or nil}
-                Record.addClaim(j.payload,'item:'..id)
+                if #j.payload.assets>=96 then overflow=true
+                else
+                    j.payload.assets[#j.payload.assets+1]={id=id,fullType=item:getFullType(),
+                        custody=ground and 'GROUND' or 'HELD',x=ground and value.x or nil,
+                        y=ground and value.y or nil,z=ground and value.z or nil}
+                    Record.addClaim(j.payload,'item:'..id)
+                end
             end
         end
     end)
+    if overflow then c.reason='FIELD_OUTPUT_LIMIT' return false end
+    return ok
 end
 local function original(c,a)
     local inv=C.snapshot(c.npc:getInventory()) if not inv then return nil end

@@ -380,8 +380,4 @@ function Service.recoverFor(actor,npcId)
     return false,'NO_HELD_CUSTODY'
 end
 
-function Service.reset()
-    live={} tracked={} world=Registry.data()
-end
-
 return Service

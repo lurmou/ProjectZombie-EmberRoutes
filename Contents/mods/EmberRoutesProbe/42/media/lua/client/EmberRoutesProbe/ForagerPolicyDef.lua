@@ -21,6 +21,7 @@ function ForagerPolicyDef.getDefaults()
         maxStones = 40,
         maxHerbs = 30,
         autoRefillZone = true,
+        maxContinuousBatch = 8,
     }
 end
 
@@ -92,6 +93,9 @@ function ForagerPolicyDef.validate(draft)
     end
     if draft.maxHerbs ~= nil and (type(draft.maxHerbs) ~= 'number' or draft.maxHerbs < 0 or draft.maxHerbs > 500) then
         return false, 'INVALID_MAX_HERBS'
+    end
+    if draft.maxContinuousBatch ~= nil and (type(draft.maxContinuousBatch) ~= 'number' or draft.maxContinuousBatch < 1 or draft.maxContinuousBatch > 32) then
+        return false, 'INVALID_MAX_CONTINUOUS_BATCH'
     end
     return true
 end

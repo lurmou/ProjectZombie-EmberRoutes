@@ -114,11 +114,6 @@ function Provider.hasWork()
     return false
 end
 
-function Provider.reset()
-    idleSince={} idleItems={}
-    owned={} iterator=nil nextRecovery=0 world=Registry.data()
-end
-
 function Provider.beforeClaim(selected,npcId)
     if selected.category~=Provider.category and ToolReturnService.canInterrupt(npcId) then
 	ToolReturnService.interrupt(npcId,'PREEMPTED_BY_'..string.upper(selected.category))

@@ -16,6 +16,7 @@ function CleaningPolicyDef.getDefaults()
         cleanRadius = 20,
         haulRottenFood = true,
         cleanBloodOnly = false,
+        maxContinuousBatch = 8,
     }
 end
 
@@ -60,6 +61,9 @@ function CleaningPolicyDef.validate(draft)
     end
     if draft.corpseZoneId ~= nil and type(draft.corpseZoneId) ~= 'string' then
         return false, 'INVALID_CORPSE_ZONE'
+    end
+    if draft.maxContinuousBatch ~= nil and (type(draft.maxContinuousBatch) ~= 'number' or draft.maxContinuousBatch < 1 or draft.maxContinuousBatch > 32) then
+        return false, 'INVALID_MAX_CONTINUOUS_BATCH'
     end
     return true
 end

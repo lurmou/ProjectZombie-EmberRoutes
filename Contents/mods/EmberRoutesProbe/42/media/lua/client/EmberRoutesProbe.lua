@@ -28,6 +28,7 @@ local DisplayNames=require "EmberRoutesProbe/DisplayNames"
 local Driver=require "EmberRoutesProbe/Driver"
 require "EmberRoutesProbe/CleaningPolicyDef"
 require "EmberRoutesProbe/CookingPolicyDef"
+require 'EmberRoutesProbe/FarmingPolicyDef'
 require 'EmberRoutesProbe/LumberjackPolicyDef'
 require 'EmberRoutesProbe/ForagerPolicyDef'
 

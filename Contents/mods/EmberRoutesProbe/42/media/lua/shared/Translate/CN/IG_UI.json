@@ -1758,5 +1758,9 @@
   "IGUI_EmberRoutesProbe_Monitor_step_SKIPPED": "后续不再执行",
   "tab_policies": "工作规程",
   "IGUI_EmberRoutesProbe_Crafting_excludeStation": "从自动工作站搜索中排除",
-  "IGUI_EmberRoutesProbe_Crafting_includeStation": "允许自动搜索此工作站"
+  "IGUI_EmberRoutesProbe_Crafting_includeStation": "允许自动搜索此工作站",
+  "IGUI_EmberRoutesProbe_Policy_farm_title": "农耕规程",
+  "IGUI_EmberRoutesProbe_Policy_farm_desc": "据点农耕作业的规程设置。",
+  "IGUI_EmberRoutesProbe_Policy_farm_maxBatch": "连续作业目标数",
+  "IGUI_EmberRoutesProbe_Policy_farm_maxBatch_tip": "一名工人连续处理相邻作物目标的上限，达到后先交付已收获的产物。"
 }

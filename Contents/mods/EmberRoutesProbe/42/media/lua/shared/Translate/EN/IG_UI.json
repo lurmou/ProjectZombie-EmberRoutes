@@ -1758,5 +1758,9 @@
   "IGUI_EmberRoutesProbe_Monitor_step_SKIPPED": "No further execution",
   "tab_policies": "Policies",
   "IGUI_EmberRoutesProbe_Crafting_excludeStation": "Exclude from automatic station search",
-  "IGUI_EmberRoutesProbe_Crafting_includeStation": "Allow automatic station search"
+  "IGUI_EmberRoutesProbe_Crafting_includeStation": "Allow automatic station search",
+  "IGUI_EmberRoutesProbe_Policy_farm_title": "Farming",
+  "IGUI_EmberRoutesProbe_Policy_farm_desc": "Settlement directives for farming work.",
+  "IGUI_EmberRoutesProbe_Policy_farm_maxBatch": "Continuous batch size",
+  "IGUI_EmberRoutesProbe_Policy_farm_maxBatch_tip": "How many neighbouring crop targets one worker handles in a row before delivering what was harvested."
 }

@@ -6,14 +6,19 @@ local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local ToolDiscovery=require 'EmberRoutesProbe/ToolDiscovery'
 local M={}
 local providers={}
-local priorities={cleaning=2,farming=3,lumberjack=3,forager=3}
+-- Category default priorities live only on the PublicWork-facing provider
+-- shims (CleaningProvider etc.); nothing in the composition layer restates
+-- them, so the two copies cannot drift apart.
+local function corpseZoneReady(category,entry)
+    local zoneId=Discovery.policy(category,entry.id).corpseZoneId
+    local zone=zoneId and require('EmberRoutesProbe/SettlementZones').get(zoneId)
+    return zone and zone.enabled and zone.settlementId==entry.id or false
+end
 local function claim(category,selected,npc,entry,jobId)
     local t,keys,why=Discovery.claim(selected.point,npc,entry,category)
     if not t then return nil,nil,why end
-    if t.kind=='CORPSE' then
-	local zoneId=Discovery.policy(category,entry.id).corpseZoneId
-	local zone=zoneId and require('EmberRoutesProbe/SettlementZones').get(zoneId)
-	if not zone or not zone.enabled or zone.settlementId~=entry.id then return nil,nil,'FIELD_CORPSE_ZONE_REQUIRED' end
+    if t.kind=='CORPSE' and not corpseZoneReady(category,entry) then
+	return nil,nil,'FIELD_CORPSE_ZONE_REQUIRED'
     end
     local supplies=ToolDiscovery.findSupplies(entry,npc,t.kind)
     if not supplies then return nil,nil,'FIELD_TOOLS_UNAVAILABLE' end
@@ -100,7 +105,7 @@ local function hasSupplies(entry,npc,kind)
 end
 function M.get(category)
     if providers[category] then return providers[category] end
-    local def={category=category,defaultPriority=priorities[category],step=Operations.step,collect=category=='lumberjack'}
+    local def={category=category,step=Operations.step,collect=category=='lumberjack'}
     function def.valid(c)
         local entry=c.entry
         if not entry then return false end
@@ -112,7 +117,10 @@ function M.get(category)
         if not policyReady(env,category) then return end
         local offered=0
         for _,t in ipairs(Discovery.targets(env,category)) do
-            if Discovery.allowed(category,env.entry,t,env.npc) and hasSupplies(env.entry,env.npc,t.kind) then
+            -- Corpse offers without a usable dump zone can only fail at claim
+            -- time; do not generate them in the first place.
+            if (t.kind~='CORPSE' or corpseZoneReady(category,env.entry))
+                and Discovery.allowed(category,env.entry,t,env.npc) and hasSupplies(env.entry,env.npc,t.kind) then
                 if Field.offer(env,category,t,t.kind=='HARVEST' and 0.95 or 0.8) then
                     offered=offered+1 if offered>=3 then break end
                 end
