@@ -89,7 +89,6 @@ function Recipe.examples()
 end
 function Recipe.inspect(actor,npc,object,id,requireKnowledge,near)
     local spec,reason=Recipe.read(id) if not spec then return nil,reason end
-    if not actor:isRecipeKnown(spec.recipe,true) then return nil,"PLAYER_RECIPE_UNKNOWN" end
     for i=0,spec.recipe:getRequiredSkillCount()-1 do
         local skill=spec.recipe:getRequiredSkill(i)
         if npc:getPerkLevel(skill:getPerk())<skill:getLevel() then return nil,"NPC_SKILL_TOO_LOW" end

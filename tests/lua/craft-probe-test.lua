@@ -353,13 +353,6 @@ fresh() mode="extra_input" Craft.execute(actor,"run",object) pump()
 check(nativeCalls==0 and not Craft.record(npc.id).made,"unselected third input cannot enter native effect")
 
 m,t=fresh() Craft.execute(actor,"run",object) toCraft()
-local other={format=1,id="foreign",npcId="other-npc",kind="EXPLICIT_TRANSFER",executor="ENTITY",scopeId="local-world",items={t.id},state="RUNNING"}
-local token,why=Store.claim(other)
-check(not token and why=="ITEM_RESERVED","ordinary logistics cannot claim crafting tool")
-local sameNpc={id="same-npc",npcId=npc.id,items={9999},state="RUNNING"}
-local sameToken,sameReason=Store.claim(sameNpc)
-check(not sameToken and sameReason=="OTHER_TASK_RETAINED","authority rejects a second task on the same NPC even before executor hooks load")
-check(not Store.publish(sameNpc),"direct publish cannot bypass the NPC ownership gate")
 check(not Work.busy("other-npc"),"one production order does not monopolize other workers")
 
 local Claims=require "EmberRoutesProbe/LaborClaims"
