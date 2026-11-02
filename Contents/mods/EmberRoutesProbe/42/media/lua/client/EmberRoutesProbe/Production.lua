@@ -9,6 +9,7 @@ local Supply=require "EmberRoutesProbe/CraftSupply"
 local Transfer=require "EmberRoutesProbe/WorkTransfer"
 local Actions=require "EmberRoutesProbe/ProductionActions"
 local Carry=require "EmberRoutesProbe/ProductionCarry"
+local Stations=require "EmberRoutesProbe/CraftStations"
 local Surfaces=require "EmberRoutesProbe/CraftSurfaces"
 local Signals=require "EmberRoutesProbe/LaborSignals"
 local Log=require "EmberRoutesProbe/Log"
@@ -96,7 +97,12 @@ function Production.stopAdapter(id,controller,ticket)
         end})
 end
 local function releaseBench(c)
-    if c.ownsBench and c.object and c.object:getUsingPlayer()==c.npc then c.object:setUsingPlayer(nil) end c.ownsBench=false
+    if c.ownsBench and c.object then
+        if c.object:getUsingPlayer()==c.npc then c.object:setUsingPlayer(nil) end
+        local data=c.object:getModData() local marker=data.EmberRoutesCraftOccupancy
+        if marker and marker.jobId==c.record.id and marker.leaseId==c.record.id then data.EmberRoutesCraftOccupancy=nil end
+    end
+    c.ownsBench=false
 end
 local function changed(c,message)
     local ok,why=JobExecution.commit(c.record)
@@ -158,16 +164,58 @@ function Production.reset() Production.pauseAll("WORLD_RESET") JobExecution.rese
 local function context(actor,binding,r,entry,object,body)
     local c={actor=actor,npc=binding.handle,binding=binding,record=r,entry=entry,object=object,root=Registry.data(),generation=r.generation,body=body}
     c.valid=function()
+        local locationObject=c.object
+        if r.station then locationObject=nil end
         return body.current() and contexts[r.npcId]==c and not c.cancelled and c.root==Registry.data() and record(r.npcId)==r
             and r.generation==c.generation and r.state=="RUNNING" and not actor:isDead()
             and actor:getUsername()==r.requester and Driver.valid(binding)
             and c.npc:getBodyDamage():getOverallBodyHealth()>=95
-	    and Supply.entry(actor,c.npc,c.object,r.settlementId,true)~=nil and JobExecution.valid(r,c.token)
+	    and Supply.entry(actor,c.npc,locationObject,r.settlementId,true)~=nil and JobExecution.valid(r,c.token)
     end
     c.changed=function(message) changed(c,message) return not c.commitFailure,c.commitFailure end
     return c
 end
+-- Rebind only before a unit's native effect; replace atomically migrates bench claims.
+local function station(c)
+    local r=c.record
+    if c.returnOnly or r.unitMade or r.uncertain or r.phase=="COMMITTING" then return true end
+    if not r.station then return true end
+    if r.station.id~=r.benchId then return nil,"STATION_RETAINED" end
+    local spec,why=Recipe.read(r.recipeId) if not spec then return nil,why end
+    if not spec.station then return nil,"RECIPE_CHANGED" end
+    if spec.signature~=r.signature then return nil,"RECIPE_CHANGED" end
+    local object=Stations.resolve(r.station)
+    if object then
+        local entry,reason=Supply.entry(c.actor,c.npc,object,r.settlementId,true)
+        if not entry then return nil,reason end
+        c.object=object return true
+    end
+    releaseBench(c) c.object=nil
+    local search=Stations.search(c.entry,spec.facts,function(candidate)
+        local marker=candidate:getModData().EmberRoutesCraftOccupancy
+        return not marker or marker.jobId==r.id
+    end)
+    local site
+    -- At most 4096 observed slots, including pending facility observations.
+    for _=1,64 do
+        local reason
+        site,reason=search:step(64)
+        if site or reason~='SITE_OBSERVING' then break end
+    end
+    if not site then return nil,"STATION_UNAVAILABLE" end
+    local entry,reason=Supply.entry(c.actor,c.npc,site.object,r.settlementId,true)
+    if not entry then return nil,reason end
+    local data=site.object:getModData()
+    data.EmberRoutesCraftProbeBenchId=data.EmberRoutesCraftProbeBenchId or Registry.id()
+    local proposed={} for k,v in pairs(r) do proposed[k]=v end
+    proposed.benchId=data.EmberRoutesCraftProbeBenchId
+    proposed.station={id=proposed.benchId,position=site.position}
+    local ok,failed=JobExecution.replace(r,c.token,proposed) if not ok then return nil,failed end
+    c.object=site.object
+    return true
+end
 local function makePlan(c,select)
+    local ready,failed=station(c) if not ready then return nil,failed end
     if c.record.chain and c.record.chain.index==0 and not c.returnOnly then
         local r=c.record
         c.chainRequest=require("EmberRoutesProbe/ProductionChain").new(c.actor,c.npc,c.entry,r.recipeId,r.requested,c.object,r.id,false,r.preferences)
@@ -179,8 +227,9 @@ local function makePlan(c,select)
             local object,why=Surfaces.resolve(c.record.surface,c.record.benchId)
             if not object then return nil,why end c.object=object
         end
-        spec,reason=Recipe.inspect(c.actor,c.npc,c.object,c.record.recipeId,true,false)
+        spec,reason=Recipe.inspect(c.actor,c.npc,c.object,c.record.recipeId,true,false,c.record.id)
         if not spec then return nil,reason end
+        if (spec.station==true)~=(c.record.station~=nil) then return nil,"RECIPE_CHANGED" end
         if spec.signature~=c.record.signature then return nil,"RECIPE_CHANGED" end
     end
     local plan,why=Plan.new(c.entry,c.npc,spec,c.record,select)
@@ -194,7 +243,10 @@ local function activateNode(c,index)
     local spec,reason=Recipe.read(node.recipeId)
     if not spec or spec.signature~=node.signature then return nil,reason or "RECIPE_CHANGED" end
     local object
-    if spec.surface then
+    if spec.station then
+        if node.recipeId~=r.chain.goal.recipeId or not node.location or not node.benchId then return nil,"STATION_NODE_UNSUPPORTED" end
+        object=Stations.resolve({id=node.benchId,position=node.location})
+    elseif spec.surface then
         object,reason=Surfaces.resolve(node.location,node.benchId)
         if not object then return nil,reason or "CRAFT_SURFACE_REQUIRED" end
     end
@@ -202,10 +254,11 @@ local function activateNode(c,index)
     local proposed={} for k,v in pairs(r) do proposed[k]=v end
     proposed.recipeId=node.recipeId proposed.signature=node.signature proposed.product=spec.product proposed.recipeName=spec.name
     proposed.requested=node.requested proposed.target=node.requested proposed.unitYield=spec.yield proposed.produced=0 proposed.delivered=0
-    proposed.benchId=node.benchId proposed.surface=node.location proposed.phase="PLANNING" proposed.unitMade=false
+    proposed.benchId=node.benchId proposed.surface=not spec.station and node.location or nil proposed.phase="PLANNING" proposed.unitMade=false
+    proposed.station=spec.station and {id=node.benchId,position={x=node.location.x,y=node.location.y,z=node.location.z}} or nil
     local ok,failed=JobExecution.replace(r,c.token,proposed) if not ok then return nil,failed end
     for _,key in ipairs({"recipeId","signature","product","recipeName","requested","target","unitYield","produced","delivered","phase","unitMade"}) do r[key]=proposed[key] end
-    r.benchId=proposed.benchId r.surface=proposed.surface r.chain.index=index
+    r.benchId=proposed.benchId r.surface=proposed.surface r.station=proposed.station r.chain.index=index
     c.entry=entry c.object=object c.returned=nil c.route=nil c.inputs=nil
     return makePlan(c,true)
 end
@@ -366,6 +419,7 @@ local function advance(c)
         finish(c) return nil
     end
     if not r.unitMade then
+        local ready,why=station(c) if not ready then return nil,why end
         for _,input in ipairs(c.inputs) do
             if not Actions.inRoot(input.item,root,input.id) then
                 local item,reason,source=find(c,input.asset) if not item then return nil,reason end
@@ -374,7 +428,12 @@ local function advance(c)
             end
         end
         r.phase="CRAFTING"
-        if c.spec.surface and not require("EmberRoutesProbe/CraftRecipeAdapter").atBench(c.npc,c.object) then return nil,nil,{object=c.object} end
+        if not r.station and c.spec.surface and not require("EmberRoutesProbe/CraftRecipeAdapter").atBench(c.npc,c.object) then return nil,nil,{object=c.object} end
+        if r.station then
+            local site,why=Stations.read(c.object,c.spec.facts) if not site then return nil,why end
+            local logic=HandcraftLogic.new(c.npc,site.bench,c.object)
+            if not logic:isCharacterInRangeOfWorkbench() then return nil,nil,{object=c.object} end
+        end
         return Actions.craft(c)
     end
     releaseBench(c)
@@ -431,6 +490,12 @@ local function tick(c)
     if not c.returnOnly and not fits(c) then return "CAPACITY_UNAVAILABLE" end
     local now=getTimestampMs() if now<(c.nextTick or 0) then return end c.nextTick=now+100
     if c.planning then local _,reason=prepare(c) return reason end
+    if c.moving and c.record.station and not c.returnOnly and not c.record.unitMade
+        and not c.record.uncertain and not Stations.resolve(c.record.station) then
+        if not c.body.clear() then return "STATION_UNAVAILABLE" end
+        c.moving=nil
+        local ready,why=station(c) if not ready then return why end
+    end
     if c.moving then
         local state,reason=c.moving.poll()
         if state=="FAILED" or now-c.started>185000 then return reason or "MOVE_TIMEOUT" end
@@ -474,18 +539,24 @@ local function execute(actor,command,object,id,options,body,validateOnly)
         if not spec then return why end
         local n=options.quantity
         if type(n)~="number" or n~=math.floor(n) or n<1 or n>9999 then return "INVALID_QUANTITY" end
-        if not spec.surface then object=nil end
+        if not spec.surface and not spec.station then object=nil end
         local entry,reason=Supply.entry(actor,npc,object,options.settlementId) if not entry then return reason end
         if options.settlementId and entry.id~=options.settlementId then return "SETTLEMENT_MISMATCH" end
         if validateOnly then return true end
         if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
         local benchId
         if object then local data=object:getModData() data.EmberRoutesCraftProbeBenchId=data.EmberRoutesCraftProbeBenchId or Registry.id() benchId=data.EmberRoutesCraftProbeBenchId end
+        local stationSite
+        if spec.station then
+            stationSite=Stations.read(object,spec.facts)
+            if not stationSite then return "STATION_UNAVAILABLE" end
+        end
         local taskId=options.taskId or Registry.id()
         r={format=3,id=taskId,npcId=id,requester=actor:getUsername(),generation=1,state="RUNNING",phase="PLANNING",
             recipeId=spec.id,signature=spec.signature,product=spec.product,recipeName=spec.name,unitYield=spec.yield,
             requested=n,target=math.ceil(n/spec.yield)*spec.yield,produced=0,delivered=0,materials={},tools={},outputs={},
-            settlementId=entry.id,benchId=benchId,surface=object and Surfaces.location(object) or nil,released=false}
+            settlementId=entry.id,benchId=benchId,surface=spec.surface and not spec.station and Surfaces.location(object) or nil,released=false}
+        if spec.station then r.station={id=benchId,position=stationSite.position} end
         if options.origin then r.origin=options.origin end
         r.workerName=require('EmberRoutesProbe/DisplayNames').name(id,npc)
         if options.orderId then r.orderId=options.orderId end

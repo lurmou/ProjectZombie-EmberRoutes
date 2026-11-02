@@ -19,7 +19,7 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing,
         -- Child producers still pass the unchanged ordinary execution gate.
         if typedRoot and spec.id==typedRoot.id then return typedRoot end
         if self.cache[spec.id] then return self.cache[spec.id] end
-        local surface=spec.surface and object or nil
+        local surface=(spec.surface or spec.station and spec.id==recipeId) and object or nil
         if spec.surface and not surface then
             for _,location in ipairs(Surfaces.list(entry)) do
                 local candidate=Surfaces.resolve(location,location.id)
@@ -27,6 +27,7 @@ function Chain.new(actor,npc,entry,recipeId,quantity,object,taskId,knownMissing,
             end
         end
         local checked,why=Recipe.inspect(actor,npc,surface,spec.id,true,false)
+        if spec.station and spec.id~=recipeId then checked=nil why="STATION_NODE_UNSUPPORTED" end
         if checked then local valid,reason=Supply.entry(actor,npc,surface,entry.id) if not valid then checked=nil why=reason end end
         local r={id=spec.id,name=spec.name,signature=spec.signature,product=spec.product,yield=spec.yield,
             outputs=spec.outputs,surface=spec.surface,inputs={},reason=not checked and why or nil}

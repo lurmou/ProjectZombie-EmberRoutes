@@ -4,6 +4,7 @@ local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Supply=require "EmberRoutesProbe/CraftSupply"
 local Carry=require "EmberRoutesProbe/ProductionCarry"
 local Recipe=require "EmberRoutesProbe/ProductionRecipe"
+local Stations=require "EmberRoutesProbe/CraftStations"
 local Inputs=require "EmberRoutesProbe/CraftRecipeInputs"
 require "Entity/TimedActions/ISHandcraftAction"
 require "TimedActions/ISInventoryTransferAction"
@@ -75,10 +76,17 @@ function Actions.craft(c)
         if not c.valid() then return "CRAFT_CONTEXT_CHANGED" end
         if not EmberRoutesProbeJava.carrierActive(npc) then return "CARRIER_MOVING" end
         if r.phase~="CRAFTING" or r.uncertain or r.unitMade then return "CRAFT_PHASE_CHANGED" end
-        local spec,reason=Recipe.inspect(c.actor,npc,c.object,r.recipeId,true,true)
+        local spec,reason=Recipe.inspect(c.actor,npc,c.object,r.recipeId,true,true,r.id)
         if not spec then return reason end
+        if (spec.station==true)~=(r.station~=nil) then return "RECIPE_CHANGED" end
+        if r.station then
+            local marker=c.object:getModData().EmberRoutesCraftOccupancy
+            if not marker or marker.jobId~=r.id or marker.leaseId~=r.id or marker.npcId~=r.npcId
+                or c.object:getUsingPlayer()~=npc or c.object:getModData().EmberRoutesCraftProbeBenchId~=r.benchId
+                or r.station.id~=r.benchId then return "STATION_RETAINED" end
+        end
         if spec.signature~=r.signature then return "RECIPE_CHANGED" end
-        if spec.surface and (not c.object:isUsingPlayer(npc) or c.object:getModData().EmberRoutesCraftProbeBenchId~=r.benchId) then
+        if not r.station and spec.surface and (not c.object:isUsingPlayer(npc) or c.object:getModData().EmberRoutesCraftProbeBenchId~=r.benchId) then
             return "SURFACE_OCCUPANCY_CHANGED"
         end
         for _,entry in ipairs(entries) do
@@ -95,12 +103,22 @@ function Actions.craft(c)
     end
     local binding,bindingReason=Inputs.bind(c.spec.facts,entries,npc)
     if not binding then return nil,bindingReason end
-    if c.spec.surface then
+    local site
+    if r.station then
+        if not c.spec.station then return nil,"RECIPE_CHANGED" end
+        local why
+        site,why=Stations.read(c.object,c.spec.facts) if not site then return nil,why end
+        local marker=c.object:getModData().EmberRoutesCraftOccupancy
+        if marker and marker.jobId~=r.id then return nil,"STATION_RETAINED" end
+        if c.object:getUsingPlayer() and c.object:getUsingPlayer()~=npc then return nil,"BENCH_OCCUPIED" end
+        c.object:setUsingPlayer(npc) c.ownsBench=true
+        c.object:getModData().EmberRoutesCraftOccupancy={leaseId=r.id,npcId=r.npcId,jobId=r.id}
+    elseif c.spec.surface then
         if c.object:getUsingPlayer() and c.object:getUsingPlayer()~=npc then return nil,"BENCH_OCCUPIED" end
         c.object:setUsingPlayer(npc) c.ownsBench=true
     end
     local why=invalid() if why then return nil,why end
-    local action=ISHandcraftAction:new(npc,c.spec.recipe,ArrayList.new(),c.object,nil,binding.manual,nil,nil,1,0)
+    local action=ISHandcraftAction:new(npc,c.spec.recipe,ArrayList.new(),c.object,site and site.bench or nil,binding.manual,nil,nil,1,0)
     ---@cast action EmberRoutesProductionCraft
     action.containers:add(inventory)
     local nativeValid,nativeStart,nativeStop,nativePerform,nativeRecipe=action.isValid,action.start,action.stop,action.perform,action.performRecipe
@@ -114,6 +132,8 @@ function Actions.craft(c)
         nativeStart(self)
         if not self.craftStarted or not Inputs.applied(self.logic,binding) then
             self.failure="NATIVE_INPUT_SET_CHANGED" self:forceStop()
+        elseif r.station and not self.logic:isCharacterInRangeOfWorkbench() then
+            self.failure="STAND_BY_SURFACE" self:forceStop()
         end
     end
     action.stop=function(self)

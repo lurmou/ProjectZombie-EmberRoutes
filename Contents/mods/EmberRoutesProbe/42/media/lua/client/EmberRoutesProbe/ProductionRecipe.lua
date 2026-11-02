@@ -1,4 +1,5 @@
 local Legacy=require "EmberRoutesProbe/CraftRecipeAdapter"
+local Stations=require "EmberRoutesProbe/CraftStations"
 local Facts=require "EmberRoutesProbe/CraftRecipeFacts"
 local Recipe={limit=64,outputLimit=32}
 local function integer(n,max) return type(n)=="number" and n>=1 and n<=max and n==math.floor(n) end
@@ -6,13 +7,14 @@ local function integer(n,max) return type(n)=="number" and n>=1 and n<=max and n
 function Recipe.fromFacts(facts)
     if not facts then return nil,"RECIPE_UNAVAILABLE" end
     local recipe,id=facts.recipe,facts.id
-    if facts.workstation or facts.buildable or not (facts.surface or facts.inHand)
+    if facts.buildable then return nil,"BUILDABLE_NOT_SUPPORTED" end
+    if not (facts.workstation or facts.surface or facts.inHand)
         or facts.onTick or facts.callbacks or facts.specialOutputs then
         return nil,"RECIPE_MECHANISM_UNSUPPORTED"
     end
     local spec={id=id,recipe=recipe,inputs={},outputs={},outputWeight=0,inputCount=0,toolCount=0,
-        surface=facts.surface,name=facts.name,facts=facts}
-    local signature={id,tostring(recipe:getTime()),tostring(spec.surface)}
+        surface=facts.surface,station=facts.workstation,name=facts.name,facts=facts}
+    local signature={id,tostring(recipe:getTime()),tostring(spec.surface),tostring(spec.station)}
     local inputs,outputs=recipe:getInputs(),recipe:getOutputs()
     if inputs:size()==0 or inputs:size()>16 or outputs:size()==0 or outputs:size()>8 then return nil,"RECIPE_MECHANISM_UNSUPPORTED" end
     for i=0,inputs:size()-1 do
@@ -58,7 +60,7 @@ function Recipe.read(id)
 end
 -- Bounded, detached display metadata. No inventory scan and no native handles escape.
 function Recipe.describe(spec)
-    local row={id=spec.id,name=spec.name,product=spec.product,yield=spec.yield,surface=spec.surface,inputs={},outputs={},supported=true}
+    local row={id=spec.id,name=spec.name,product=spec.product,yield=spec.yield,surface=spec.surface,station=spec.station,inputs={},outputs={},supported=true}
     for _,input in ipairs(spec.inputs) do
         local names,seen,choices={},{},{} local possible=input.io:getPossibleInputItems()
         for i=0,possible:size()-1 do
@@ -87,14 +89,24 @@ function Recipe.examples()
     end
     return rows
 end
-function Recipe.inspect(actor,npc,object,id,requireKnowledge,near)
+function Recipe.inspect(actor,npc,object,id,requireKnowledge,near,jobId)
     local spec,reason=Recipe.read(id) if not spec then return nil,reason end
     for i=0,spec.recipe:getRequiredSkillCount()-1 do
         local skill=spec.recipe:getRequiredSkill(i)
         if npc:getPerkLevel(skill:getPerk())<skill:getLevel() then return nil,"NPC_SKILL_TOO_LOW" end
     end
     if requireKnowledge and not npc:isRecipeKnown(spec.recipe,true) then return nil,"NPC_RECIPE_UNKNOWN" end
-    if spec.surface then
+    if spec.station then
+        local site,why=Stations.read(object,spec.facts)
+        if not site then return nil,why end
+        if object:getUsingPlayer() and object:getUsingPlayer()~=npc then return nil,"BENCH_OCCUPIED" end
+        local marker=object:getModData().EmberRoutesCraftOccupancy
+        if marker and (not jobId or marker.jobId~=jobId) then return nil,"STATION_RETAINED" end
+        if near then
+            local logic=HandcraftLogic.new(npc,site.bench,object)
+            if not logic:isCharacterInRangeOfWorkbench() then return nil,"STAND_BY_SURFACE" end
+        end
+    elseif spec.surface then
         local square=object and object:getSquare() local cell=getCell()
         if not object or not object.isGenericCraftingSurface or not object:isGenericCraftingSurface()
             or not square or not cell or cell:getGridSquare(square:getX(),square:getY(),square:getZ())~=square

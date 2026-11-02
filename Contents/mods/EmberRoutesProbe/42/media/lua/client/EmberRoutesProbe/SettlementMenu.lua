@@ -79,10 +79,20 @@ function Menu.craftAt(actor,object)
         if panel then panel:openPublicOrder({surfaceId=surface.id}) end
     else actor:Say(require("EmberRoutesProbe/CraftingText").reason(reason)) end
 end
+function Menu.toggleCraftExclusion(actor,object)
+    if not Ledger.authorized(actor) then return end
+    local data=object:getModData()
+    data.EmberRoutesExcluded=data.EmberRoutesExcluded~=true or nil
+end
 function Menu.craftSurfaces(actor,menu,objects)
     for _,object in ipairs(objects) do
-        if object.isGenericCraftingSurface and object:isGenericCraftingSurface() then
-            menu:addOption(getText("IGUI_EmberRoutesProbe_Crafting_useSurface"),actor,Menu.craftAt,object)
+        local surface=object.isGenericCraftingSurface and object:isGenericCraftingSurface()
+        local bench=object.getComponent and ComponentType and ComponentType.CraftBench
+            and object:getComponent(ComponentType.CraftBench)
+        if surface or bench then
+            if surface then menu:addOption(getText("IGUI_EmberRoutesProbe_Crafting_useSurface"),actor,Menu.craftAt,object) end
+            local excluded=object:getModData().EmberRoutesExcluded==true
+            menu:addOption(getText("IGUI_EmberRoutesProbe_Crafting_"..(excluded and "includeStation" or "excludeStation")),actor,Menu.toggleCraftExclusion,object)
             return
         end
     end

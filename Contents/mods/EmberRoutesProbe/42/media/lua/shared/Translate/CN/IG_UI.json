@@ -1756,5 +1756,7 @@
   "IGUI_EmberRoutesProbe_Monitor_cookDuty": "炉具监管与关火责任",
   "IGUI_EmberRoutesProbe_Monitor_cookDutyOpen": "炉具义务尚未清偿；停止当前会话不代表已关火",
   "IGUI_EmberRoutesProbe_Monitor_step_SKIPPED": "后续不再执行",
-  "tab_policies": "工作规程"
+  "tab_policies": "工作规程",
+  "IGUI_EmberRoutesProbe_Crafting_excludeStation": "从自动工作站搜索中排除",
+  "IGUI_EmberRoutesProbe_Crafting_includeStation": "允许自动搜索此工作站"
 }

@@ -51,7 +51,7 @@ function S.search(entry,facts,accept)
             end
             if observed then
                 local candidate=S.read(observed.object,facts)
-                if candidate and not candidate.object:getUsingPlayer() and (not accept or accept(candidate.object)) then return candidate end
+                if candidate and candidate.object:getModData().EmberRoutesExcluded~=true and not candidate.object:getUsingPlayer() and (not accept or accept(candidate.object)) then return candidate end
             end
         end
         return nil,'SITE_OBSERVING'
@@ -74,6 +74,7 @@ local function resolve(station)
     if not found then return nil,'CRAFT_STATION_UNAVAILABLE' end
     return found
 end
+S.resolve=resolve
 function S.reserve(c,object,facts)
     if not Context.active(c) or c.job.effects~='KNOWN' then return nil,'COOKING_CONTROL_REQUIRED' end
     if not require('EmberRoutesProbe/CookingDirectives').kitchen(c.job.scopeId,object) then return nil,'KITCHEN_ZONE_UNAVAILABLE' end

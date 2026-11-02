@@ -1,5 +1,6 @@
 local Queue = require 'EmberRoutesProbe/PrecheckQueue'
 local Surfaces = require 'EmberRoutesProbe/CraftSurfaces'
+local Stations = require 'EmberRoutesProbe/CraftStations'
 local Recipe = require 'EmberRoutesProbe/ProductionRecipe'
 local Production = require 'EmberRoutesProbe/Production'
 local CraftYield = require 'EmberRoutesProbe/ProductionYield'
@@ -139,7 +140,9 @@ function CraftingProvider.discover(env)
                 end
                 local spec, why
                 if not reason then
-                    spec, why = Recipe.inspect(env.actor, env.npc, object, o.recipeId, true, false)
+                    local read = Recipe.read(o.recipeId)
+                    if read and read.station then spec = read
+                    else spec, why = Recipe.inspect(env.actor, env.npc, object, o.recipeId, true, false) end
                 end
                 scan.seen[o.id] = true
                 if (reason and string.find(reason, 'UNLOADED', 1, true)) or (why and string.find(why, 'UNLOADED', 1, true)) then
@@ -163,6 +166,40 @@ function CraftingProvider.discover(env)
                             env.actor, env.npc, env.entry, o.recipeId, CraftYield.remaining(o), object, 'offer:' .. o.id, false, o.preferences
                         )
                     }
+                    if spec.station then
+                        local search=Stations.search(env.entry,spec.facts)
+                        local chain
+                        e.request={
+                            cancel=function() if chain then chain:cancel() end end,
+                            step=function(_,budget)
+                                if not chain then
+                                    local site,why=search:step(budget)
+                                    if not site then
+                                        if why=='SITE_OBSERVING' then return end
+                                        return nil,'STATION_UNAVAILABLE'
+                                    end
+                                    e.object=site.object
+                                    local checked,failed=Recipe.inspect(env.actor,env.npc,e.object,o.recipeId,true,false)
+                                    if not checked then
+                                        if failed=='NPC_RECIPE_UNKNOWN' and Probe.idleStudy and env.setStudyTarget then
+                                            local read=Recipe.read(o.recipeId)
+                                            if read and read.recipe and read.recipe.getName then
+                                                local meta=read.recipe.getMetaRecipe and read.recipe:getMetaRecipe()
+                                                local keys={read.recipe:getName()}
+                                                if meta and meta~='' then keys[#keys+1]=meta end
+                                                if read.recipe.getTranslationName then keys[#keys+1]=read.recipe:getTranslationName() end
+                                                env.setStudyTarget({orderId=o.id,recipeId=o.recipeId,knowledge=keys})
+                                            end
+                                        end
+                                        return nil,failed
+                                    end
+                                    chain=require('EmberRoutesProbe/ProductionChain').new(
+                                        env.actor,env.npc,env.entry,o.recipeId,CraftYield.remaining(o),e.object,'offer:'..o.id,false,o.preferences)
+                                end
+                                return chain:step(budget)
+                            end
+                        }
+                    end
                     evaluations:put(env.npcId, e)
                 else
                     if why == 'NPC_RECIPE_UNKNOWN' and Probe.idleStudy then
