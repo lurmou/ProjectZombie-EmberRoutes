@@ -98,4 +98,10 @@ haul.producer='DELIVERY' haul.settlementId='s' haul.orderId=deliveryOrder.id hau
 haul.itemTypes={['21']='Base.Log'} haul.manifest={{itemId=21,custodyState='DELIVERED',deliveryReceipt={destinationId='storage',attemptId='return'}}}
 haul.delivered=1 deliveryOrder.jobId=haul.id
 check(deliveryRow().delivered==0,'returned-storage receipt is never shown as a player delivery')
+root.toolCustody={byId={c={id='tool-duty',npcId='a',itemId=99,role='CLEAN_TOOL',sequence=1,state='RECONCILE_REQUIRED',
+    returnIntent={scopeId='s'}}}}
+local duty
+for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='TOOL_CUSTODY' then duty=r end end
+check(duty and duty.readOnly and duty.bucket=='attention' and duty.assets[1].id==99,'orphan tool responsibility remains visible without ordinary Job')
+check(Service.command({},'s',duty.id,duty.generation,'return')=='TASK_READ_ONLY','view cannot cancel or erase original tool responsibility')
 print('PASS '..checks..' order monitor projection/command checks; no engine/inventory run')

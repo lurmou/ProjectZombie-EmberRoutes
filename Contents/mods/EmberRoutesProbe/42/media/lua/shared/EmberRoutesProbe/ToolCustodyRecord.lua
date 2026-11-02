@@ -17,6 +17,10 @@ function R.valid(entry)
     if entry.activeJobId~=nil and not Validate.stringId(entry.activeJobId) then return false end
     if entry.returnJobId~=nil and not Validate.stringId(entry.returnJobId) then return false end
     if entry.sourceContainerId~=nil and not Validate.stringId(entry.sourceContainerId) then return false end
+    local intent=entry.returnIntent
+    if intent~=nil and (type(intent)~='table' or intent.format~=1 or not Validate.stringId(intent.jobId)
+        or not Validate.stringId(intent.destinationId) or not Validate.stringId(intent.scopeId)
+        or entry.state=='PENDING_RETURN' and intent.jobId~=entry.returnJobId) then return false end
     if type(entry.claims)~='table' or #entry.claims~=1 or entry.claims[1]~=('item:'..entry.itemId) then
         return false
     end

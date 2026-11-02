@@ -191,11 +191,12 @@ package.loaded['EmberRoutesProbe/CraftingService']={status=function() return cra
 local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'
 local Logistics=require 'EmberRoutesProbe/LogisticsDashboard'
 -- Reuse only the native-host fixture for focused delivery visual inspection.
-if ERDeliveryPreviewOnly then
+if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
     function ERSettlementPreview(tab,height,screenWidth,screenHeight)
         sw,sh,fh=screenWidth or 1280,screenHeight or 900,height
         local window=Dashboard.open(actor,entry.id)
         window.x,window.y=0,0
+        if ERMonitorPreviewOnly then window:selectTab('orders') return window end
         local page=window.pages.warehouse local samples={}
         for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do
             page.itemNames[id]=ERTestTranslations and ERTestTranslations['TEST_ItemName_'..id] or id

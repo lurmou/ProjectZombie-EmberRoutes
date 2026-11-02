@@ -33,10 +33,19 @@ end
 
 function Cards.signature(row)
     local fields={}
-    for _,key in ipairs({'id','name','title','state','phase','reason','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable'}) do
+    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','observationRevision','feasibilityRevision'}) do
         fields[#fields+1]=tostring(row[key])
     end
-    for _,asset in ipairs(row.assets or {}) do fields[#fields+1]=tostring(asset.fullType or '') end
+    for _,asset in ipairs(row.assets or {}) do
+        for _,key in ipairs({'id','kind','fullType','custody','custodyState','held','delivered','destinationId'}) do
+            fields[#fields+1]=tostring(asset[key])
+        end
+    end
+    fields[#fields+1]=tostring(row.workflow and row.workflow.viewRevision)
+    for _,label in ipairs(row.blockerLabels or {}) do fields[#fields+1]=label end
+    for _,step in ipairs(row.stages or {}) do
+        for _,key in ipairs({'key','labelKey','status','progress'}) do fields[#fields+1]=tostring(step[key]) end
+    end
     local member=row.membership
     if member then
         for _,key in ipairs({'revision','context','settlementId','settlementName','reason'}) do fields[#fields+1]=tostring(member[key]) end
@@ -96,6 +105,14 @@ local BOM_COLORS={
     MISSING={r=1.0,g=0.42,b=0.38,a=1.0},
     TRANSIT={r=0.25,g=0.75,b=1.0,a=1.0},
 }
+local function stepState(row,index,current)
+    local explicit=row.stages and row.stages[index] and row.stages[index].status
+    if explicit then
+        return explicit=='COMPLETED' and 'done' or (explicit=='ACTIVE' or explicit=='BLOCKED'
+            or explicit=='UNCERTAIN' or explicit=='OBSERVING' or explicit=='STOPPING') and 'active' or 'wait'
+    end
+    return index<current and 'done' or index==current and 'active' or 'wait'
+end
 
 function Cards.stageNames(row)
     local result={}
@@ -178,7 +195,7 @@ local function buildTrackCandidate(row,tier,isChinese)
     local fullText=''
 
     for i=1,#names do
-        local nodeState=(i<cur) and 'done' or (i==cur) and 'active' or 'wait'
+        local nodeState=stepState(row,i,cur)
         local icon=(nodeState=='done') and ICON_DONE or (nodeState=='active') and ICON_ACTIVE or ICON_WAIT
         local col=(nodeState=='done') and COLOR_DONE
             or (nodeState=='active') and (row.bucket=='attention' and (Visual.colors.blocked or Theme.status.ERROR) or COLOR_ACTIVE)
@@ -310,12 +327,17 @@ function Cards.rows()
         local names=Cards.stageNames(row)
         local stageName=names[curPhase] or ''
         local activeLabel=curPhase==0 and Cards.reason(row.state) or stageName..(curProg~='' and (' '..curProg) or '')
-        local lines={Cards.title(row),row.name or ''}
+        local labelWidth=math.max(1,list.width-(p*2+iconSize)-math.min(130,list.width-(p*2+iconSize)-p*2)-p*1.5)
+        activeLabel=Text.wrapLimited(activeLabel,labelWidth,UIFont.Small,1)[1] or ''
+        local lines={Cards.title(row),row.summaryText or row.name or ''}
         for i=1,2 do lines[i]=Text.wrapLimited(lines[i],width,UIFont.Small,1)[1] or '' end
+        local nodeStates={}
+        for i=1,#names do nodeStates[i]=stepState(row,i,curPhase) end
         return {
             lines=lines,
             curPhase=curPhase,
             nodeCount=#names,
+            nodeStates=nodeStates,
             activeLabel=activeLabel,
             blockerText=blockerText,
             height=h*3+p*2,
@@ -345,7 +367,7 @@ function Cards.rows()
         for seg=1,nodeCount-1 do
             local x1=railX+(seg-1)*nodeSpacing
             local x2=railX+seg*nodeSpacing
-            local segDone=(seg<curPhase)
+            local segDone=v.nodeStates[seg]=='done' and v.nodeStates[seg+1]=='done'
             local segColor=segDone and COLOR_DONE or COLOR_ARROW
             local lineH=segDone and 2 or 1
             Theme.rect(list,x1,railY-math.floor(lineH/2),x2-x1,lineH,segColor)
@@ -355,9 +377,9 @@ function Cards.rows()
         local pulseA=0.65+0.35*math.sin(nowMs*0.006)
         for i=1,nodeCount do
             local nx=railX+(i-1)*nodeSpacing
-            if i<curPhase then
+            if v.nodeStates[i]=='done' then
                 Theme.rect(list,nx-3,railY-3,6,6,COLOR_DONE)
-            elseif i==curPhase then
+            elseif v.nodeStates[i]=='active' then
                 local isAttention=(entry.item.value.bucket=='attention')
                 local actR=(isAttention and 1.0 or COLOR_ACTIVE.r)
                 local actG=(isAttention and 0.42 or COLOR_ACTIVE.g)
@@ -406,7 +428,7 @@ function Cards.details(owner,bounds)
             local stageName=names[curPhase] or ''
             local curProg=Cards.stageProgress(row,curPhase)
             local stageDesc=stageName~='' and (stageName..(curProg~='' and (' '..curProg) or '')) or ''
-            local stateText=Cards.reason(row.state)
+            local stateText=row.stateText or Cards.reason(row.state)
             local badge='['..stateText..']'..(stageDesc~='' and (' · '..text('stage',stageDesc)) or '')
             add(badge,Visual.colors[state(row)] or Theme.accent)
 
@@ -427,6 +449,8 @@ function Cards.details(owner,bounds)
                 if row.requested~=row.target then add(text('rounded',row.requested,row.target),Theme.muted) end
             end
             if row.noteKey then add(getText(row.noteKey),Theme.muted) end
+            if row.demandSummary then add(row.demandSummary,Theme.muted) end
+            if row.responsibilitySummary then add(row.responsibilitySummary,Theme.status.ERROR) end
             if row.targetLocation then
                 local target=row.targetLocation
                 add(text('targetLocation',target.x,target.y,target.z),Theme.muted)
@@ -439,6 +463,16 @@ function Cards.details(owner,bounds)
                 if isAttention and not row.readOnly then
                     local adviceKey=row.state=='SUSPENDED' and 'advice_suspended' or 'advice_blocked'
                     add('▲ '..text(adviceKey),Theme.gold)
+                end
+            end
+            for _,label in ipairs(row.blockerLabels or {}) do add('- '..label,Theme.muted) end
+            if row.workflow and row.workflow.steps then
+                add(text('steps'),Theme.gold)
+                for _,step in ipairs(row.workflow.steps) do
+                    local status=step.status or 'PLANNED'
+                    add(getText(step.labelKey)..' ['..text('step_'..status)..']'
+                        ..(step.progress and (' '..step.progress) or ''),
+                        status=='UNCERTAIN' and Theme.status.ERROR or status=='COMPLETED' and COLOR_DONE or Theme.muted)
                 end
             end
             if row.uncertain then add(text('reconcile'),Theme.accent) end

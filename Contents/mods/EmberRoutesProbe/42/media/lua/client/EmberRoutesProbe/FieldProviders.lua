@@ -12,10 +12,16 @@ local priorities={cleaning=2,farming=3,lumberjack=3,forager=3}
 local function claim(category,selected,npc,entry,jobId)
     local t,keys,why=Discovery.claim(selected.point,npc,entry,category)
     if not t then return nil,nil,why end
+    if t.kind=='CORPSE' then
+	local zoneId=Discovery.policy(category,entry.id).corpseZoneId
+	local zone=zoneId and require('EmberRoutesProbe/SettlementZones').get(zoneId)
+	if not zone or not zone.enabled or zone.settlementId~=entry.id then return nil,nil,'FIELD_CORPSE_ZONE_REQUIRED' end
+    end
     local supplies=ToolDiscovery.findSupplies(entry,npc,t.kind)
     if not supplies then return nil,nil,'FIELD_TOOLS_UNAVAILABLE' end
     t.tools={}
-    local npcId=tostring((npc.getDescriptor and npc:getDescriptor():getID()) or 0)
+    local npcId=EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc)
+    if type(npcId)~='string' or npcId=='' then return nil end
     local toolSupplyReqs={}
     local createdCustodies={}
     for _,req in ipairs(supplies.requirements) do
@@ -61,12 +67,19 @@ local function claim(category,selected,npc,entry,jobId)
         end
     end
     if t.kind=='ROTTEN' then keys[#keys+1]='item:'..t.itemId end
-    if t.kind=='CORPSE' then
-        local zoneId=Discovery.policy(category,entry.id).corpseZoneId
-        local zone=zoneId and require('EmberRoutesProbe/SettlementZones').get(zoneId)
-        if not zone or not zone.enabled or zone.settlementId~=entry.id then return nil,nil,'FIELD_CORPSE_ZONE_REQUIRED' end
-    end
     return t,keys
+end
+local function sameSource(a,b)
+    return a.kind==b.kind and a.identity==b.identity and a.itemId==b.itemId and a.iconId==b.iconId
+	and a.x==b.x and a.y==b.y and a.z==b.z
+end
+local function rollbackNewTools(c,target)
+    local released=true
+    for _,id in ipairs(target.createdCustodies or {}) do
+	if not Store.releaseCustody(id) then released=false end
+    end
+    if not released then c.unknown('FIELD_TOOL_ROLLBACK_UNCONFIRMED') end
+    return released
 end
 local function policyReady(env,category)
     if category=='lumberjack' then
@@ -110,6 +123,9 @@ function M.get(category)
     end
     function def.claim(selected,npc,entry) return claim(category,selected,npc,entry) end
     function def.continue(c)
+	local p=c.job.payload local a=p.attempt
+	if c.job.effects~='KNOWN' or p.workDone~=true or p.holding or p.capacity or p.toolSupply or #p.assets>=96
+	    or a and a.state~='APPLIED' and a.state~='ABORTED' then return false end
         local policy=Discovery.policy(category,c.job.scopeId)
         local maxBatch=policy and policy.maxContinuousBatch or (category=='lumberjack' and 4 or 8)
         if (c.job.payload.batchCount or 1)>=maxBatch
@@ -121,19 +137,33 @@ function M.get(category)
         local previous=c.job.payload.target
         local env={entry=entry,npc=c.npc,npcId=c.job.npcId,actor=c.actor,now=getTimestampMs()}
         for _,t in ipairs(Discovery.targets(env,category)) do
-            if (t.x~=previous.x or t.y~=previous.y or t.z~=previous.z) and math.abs(t.x-previous.x)<=5
-                and math.abs(t.y-previous.y)<=5 and t.z==previous.z and Discovery.object(t) then
+	    if math.abs(t.x-previous.x)<=5 and math.abs(t.y-previous.y)<=5 and t.z==previous.z then
                 local target,keys=claim(category,{point=t},c.npc,entry,c.job.id)
                 if target then
-                    local free=true
+		    local free=not sameSource(previous,target)
                     for _,key in ipairs(keys) do local owner=Store.resourceOwner(key)
                         if owner and owner.taskId~=c.job.id then free=false end
                     end
-                    if free then return c.change(function(j)
-                        j.payload.target=target j.payload.claims=keys j.payload.assets={}
-                        j.payload.workDone=nil j.payload.attempt=nil j.payload.phase='WORK'
-                        j.payload.batchCount=(j.payload.batchCount or 1)+1
-                    end) end
+		    if free then
+			local changed=c.change(function(j)
+			    local kept,seen={},{}
+			    for _,key in ipairs(j.payload.claims) do
+				if string.sub(key,1,13)~='field-target:' then kept[#kept+1]=key seen[key]=true end
+			    end
+			    for _,key in ipairs(keys) do
+				if not seen[key] then kept[#kept+1]=key seen[key]=true end
+			    end
+			    j.payload.target=target j.payload.claims=kept
+			    j.payload.workDone=nil j.payload.attempt=nil j.payload.spotted=nil
+			    j.payload.toolSupply=target.toolSupply
+			    j.payload.phase=target.toolSupply and 'PREPARE' or 'WORK'
+			    j.payload.batchCount=(j.payload.batchCount or 1)+1
+			end)
+			if changed then return true end
+			rollbackNewTools(c,target)
+			return false
+		    end
+		    if not rollbackNewTools(c,target) then return false end
                 end
             end
         end

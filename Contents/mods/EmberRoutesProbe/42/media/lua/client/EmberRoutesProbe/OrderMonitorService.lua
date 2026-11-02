@@ -119,6 +119,12 @@ function Service.status(actor,id)
                 row.target=row.requested row.canCancel=not o.cancelled
             end
         end
+        local job=root.taskJobs and root.taskJobs.byId[r.id]
+        if kind=='CRAFT' and r.format==4 then
+            require('EmberRoutesProbe/CraftWorkflowView').attach(row,r,control,job and job.revision)
+        elseif kind=='HAUL' and (r.format==2 or r.format==3) then
+            require('EmberRoutesProbe/HaulWorkflowView').attach(row,r,control,job and job.revision)
+        end
         result.rows[#result.rows+1]=row
     end
     for _,r in pairs(require('EmberRoutesProbe/BusinessJobs').records('CRAFT')) do
@@ -165,6 +171,8 @@ function Service.status(actor,id)
             end
         end
     end
+    for _,row in ipairs(require('EmberRoutesProbe/FieldDemand').rows(id)) do result.rows[#result.rows+1]=row end
+    for _,row in ipairs(require('EmberRoutesProbe/ToolCustodyMonitor').rows(id)) do result.rows[#result.rows+1]=row end
     table.sort(result.rows,function(a,b) if a.closed~=b.closed then return not a.closed end return a.id<b.id end)
     return result
 end

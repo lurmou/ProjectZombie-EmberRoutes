@@ -1,1 +1,1 @@
-return { version = '0.29.16', prefix = '[EmberRoutes v0.29.16]' }
+return { version = '0.29.20', prefix = '[EmberRoutes v0.29.20]' }

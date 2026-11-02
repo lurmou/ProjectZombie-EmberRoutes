@@ -6,9 +6,9 @@ getItemNameFromFullType=function(id) return id end
 local color={r=1,g=1,b=1,a=1}
 package.loaded['EmberRoutesProbe/UI/CachedList']={}
 package.loaded['EmberRoutesProbe/UI/Theme']={muted=color,textColor=color,gold=color,accent=color,status={ERROR=color}}
-package.loaded['EmberRoutesProbe/UI/Text']={}
+package.loaded['EmberRoutesProbe/UI/Text']={wrapLimited=function(value) return {value} end}
 package.loaded['EmberRoutesProbe/UI/StatusVisual']={colors={done=color,paused=color,blocked=color}}
-package.loaded['EmberRoutesProbe/UI/ItemPresentation']={new=function() return {} end}
+package.loaded['EmberRoutesProbe/UI/ItemPresentation']={new=function() return {icon=function() end} end}
 local detail
 package.loaded['EmberRoutesProbe/UI/InfoList']={new=function() return {list={},set=function(_,lines) detail=lines end} end}
 local Cards=require 'EmberRoutesProbe/UI/OrderMonitorCards'
@@ -35,4 +35,24 @@ check(Cards.phaseIndex(row)==4,'completion is after the configured stage count')
 row.state='CANCELLED'
 check(Cards.phaseIndex(row)==0,'cancelled is closed without inventing completed stages')
 check(Cards.phaseIndex({phase='HEATING'})==3,'legacy cooking stages remain supported')
+local oldSignature=Cards.signature(row)
+row.stages[2].labelKey='new-route' row.stages[2].status='PLANNED'
+check(Cards.signature(row)~=oldSignature,'step changes invalidate cache even when phase and job version stay the same')
+package.loaded['EmberRoutesProbe/MembershipService']={view=function() end}
+package.loaded['EmberRoutesProbe/DisplayNames']={name=function() return 'Worker' end}
+local projector=require 'EmberRoutesProbe/FieldWorkMonitor'
+local fieldJob={id='clean',npcId='n',revision=1,state='RUNNING',effects='KNOWN',payload={category='cleaning',
+    phase='WORK',target={kind='STAIN',x=1,y=1,z=0},assets={}}}
+local view=projector.project({bind=function() end},fieldJob)
+check(#view.stages==1 and view.stages[1].key=='work','zero-output cleaning does not invent cargo steps')
+fieldJob.payload.assets={{id=2,fullType='Base.Log',custody='GROUND'}} fieldJob.payload.workDone=true
+view=projector.project({bind=function() end},fieldJob)
+check(#view.stages==3 and view.stages[1].status=='COMPLETED' and view.stages[2].status=='PLANNED',
+    'ground originals add conditional collection/delivery without marking unexecuted steps done')
+fieldJob.effects='UNKNOWN'
+view=projector.project({bind=function() end},fieldJob)
+check(view.stages[1].status=='UNCERTAIN','unknown work cannot be painted completed')
+UIFont={Small='small'}
+local visual=Cards.rows().prepare({emberPad=4,emberFontHeight=12,width=450},view)
+check(visual.nodeStates[1]~='done' and visual.nodeStates[2]~='done','cached graphical rail also respects explicit uncertainty and unexecuted steps')
 print('PASS '..checks..' monitor presentation fact checks; native UI NOT RUN')

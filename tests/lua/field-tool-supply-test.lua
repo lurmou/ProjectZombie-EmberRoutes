@@ -1,3 +1,4 @@
+EmberRoutesProbeJava={carrierId=function() return '1' end}
 -- Field tool supply integration test (Phase 1B).
 -- Verifies autonomous fetching of tools from settlement warehouse containers,
 -- ISInventoryTransferAction execution, phase transition from PREPARE to WORK,
@@ -56,7 +57,7 @@ local npcInv={
 }
 local npcSquare={getX=function() return 5 end,getY=function() return 5 end,getZ=function() return 0 end,canReachTo=function() return true end}
 local npc={
-    getDescriptor=function() return {getID=function() return 1 end} end,
+    getDescriptor=function() return {getID=function() return 987 end} end,
     getInventory=function() return npcInv end,
     getCurrentSquare=function() return npcSquare end,
     getX=function() return 5 end,getY=function() return 5 end,getZ=function() return 0 end,
@@ -177,6 +178,8 @@ local ToolDiscovery=require 'EmberRoutesProbe/ToolDiscovery'
 local FieldSupplies=require 'EmberRoutesProbe/FieldSupplies'
 local ToolReq=require 'EmberRoutesProbe/ToolRequirements'
 local Providers=require 'EmberRoutesProbe/FieldProviders'
+check(not ToolReq.matchPhysical({getFluidContainer=function() return nil end},'CLEAN_FLUID'),'ordinary item without fluid is rejected safely')
+check(not ToolReq.matchPhysical({},'CLEAN_FLUID'),'missing fluid capability is rejected safely')
 
 -- 1. Verify ToolDiscovery detects warehouse supplies when inventory is empty
 local supplies=ToolDiscovery.findSupplies(entry,npc,'STAIN')

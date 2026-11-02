@@ -113,6 +113,10 @@ function C.step(c,def)
         if a.custody=='GROUND' and not ground then ground=a end
         if a.custody=='HELD' and not held then held=a end
     end
+    local phase=held and 'DELIVER' or ground and 'COLLECT'
+    if phase and c.job.payload.phase~=phase then
+        if not c.change(function(j) j.payload.phase=phase end) then return 'Failure' end
+    end
     -- Deliver a carried batch before picking up more than the safe carry allowance.
     if ground and not held then
         local square=Spatial.square(ground) if not square then c.reason='FIELD_OUTPUT_UNLOADED' return 'Failure' end

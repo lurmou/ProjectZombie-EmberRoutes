@@ -29,7 +29,7 @@ package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root
 package.loaded['EmberRoutesProbe/SettlementZones']={revision=function() return 1 end}
 package.loaded['EmberRoutesProbe/ActivityAttendance']={blocksOrdinary=function() return false end}
 package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={}} end,legacyHauls=function() return {tasks={},byNpc={}} end,legacyCrafts=function() return {} end,flush=function() end}
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 Jobs.current()
 local controls={}

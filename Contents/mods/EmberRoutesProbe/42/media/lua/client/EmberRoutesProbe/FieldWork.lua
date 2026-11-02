@@ -4,11 +4,10 @@ local Store=require 'EmberRoutesProbe/LaborStore'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Driver=require 'EmberRoutesProbe/Driver'
-local Members=require 'EmberRoutesProbe/MembershipService'
-local Record=require 'EmberRoutesProbe/FieldRecord'
 local Probe=require 'EmberRoutesProbe/Boot'
 local Signals=require 'EmberRoutesProbe/LaborSignals'
-local Log=require 'EmberRoutesProbe/Log'
+local Context=require 'EmberRoutesProbe/FieldContext'
+local Session=require 'EmberRoutesProbe/FieldSession'
 local F={}
 local definitions,live={},{}
 local world,nextAdvance
@@ -35,162 +34,9 @@ local function submit(actor,job,careId)
     if not binding or not Driver.valid(binding) or binding.handle:isDead() then return false end
     local def=definitions[job.payload.category] if not def then return false end
     local root=reset()
-    local c={actor=actor,npc=binding.handle,job=job,reason=nil,nextTick=0}
-    c.token=Store.claimField(job) if not c.token then return false end
-    function c.same() return Registry.data()==root and Store.validField(c.job,c.token) end
-    function c.change(edit)
-        if not c.same() then return false end
-        local j=Jobs.current():get(c.job.id) edit(j)
-        local ok,value=Store.replaceField(c.job,c.token,j)
-        if not ok then c.reason=value return false end
-        c.job=value return true
-    end
-    function c.unknown(why)
-        c.reason=tostring(why or 'FIELD_EFFECT_UNKNOWN')
-        return c.change(function(j)
-            j.effects='UNKNOWN' j.payload.reason=string.sub(c.reason,1,256)
-            if j.payload.attempt then j.payload.attempt.state='UNKNOWN' end
-        end)
-    end
-    local function recoveryRequested()
-        local member=Members.view(job.npcId)
-        local command=member and member.pending
-        return member and not member.retired and member.settlementId==job.scopeId
-            and (member.context=='RETURN' or command and (command.kind=='UNASSIGN'
-                or (command.kind=='TRANSFER' or command.kind=='SETTLE') and command.settlementId~=job.scopeId)) or false
-    end
-    -- Accepted membership changes wait on old custody. Only already observed
-    -- originals may finish delivery under RECOVERY; never resume field labour.
-    if recoveryRequested() and c.job.effects=='KNOWN' then
-        local cargo=false
-        for _,asset in ipairs(c.job.payload.assets) do if asset.custody~='DELIVERED' then cargo=true break end end
-        if cargo and not c.job.payload.holding then
-            c.recoveryOnly=true
-            if not c.change(function(j) j.payload.phase=def.collect and 'COLLECT' or 'DELIVER' end) then return false end
-        end
-    end
-    function c.valid()
-        if not c.same() or c.stopping or c.npc:isDead() or actor:isDead() then return false end
-        local recovery=c.job.payload.phase~='WORK'
-        if not recovery and require('EmberRoutesProbe/ActivityAttendance').blocksOrdinary(job.npcId) then return false end
-        local entry,_,memberRevision=Members.entry(job.npcId,job.scopeId)
-        if not entry then return false end
-        c.entry=entry -- trusted internal read-only view; never modify it
-        local ledger=require('EmberRoutesProbe/SettlementLedger').data()
-        local policyRevision=ledger.jobPolicies and ledger.jobPolicies.revision or 0
-        local zoneRevision=require('EmberRoutesProbe/SettlementZones').revision()
-        local cached=c.validity local now=getTimestampMs()
-        if cached and cached.target==c.job.payload.target and cached.recovery==recovery
-            and cached.member==memberRevision and cached.entry==entry.revision
-            and cached.policy==policyRevision and cached.zones==zoneRevision and now<cached.untilAt then return cached.allowed end
-        local purpose=c.recoveryOnly and recovery and recoveryRequested() and 'RECOVERY' or 'FIELD_WORK'
-        local m=Members.check(job.npcId,purpose,
-            {x=c.npc:getX(),y=c.npc:getY(),z=c.npc:getZ(),scopeId=job.scopeId})
-        local allowed=m.allowed==true and (recovery or not def.valid or def.valid(c))
-        c.validity={target=c.job.payload.target,recovery=recovery,member=memberRevision,entry=entry.revision,
-            policy=policyRevision,zones=zoneRevision,untilAt=now+500,allowed=allowed}
-        return allowed
-    end
-    function c.move(square,arrived)
-        if arrived then c.path=nil return 'Success' end
-        if not square then c.reason='FIELD_NO_APPROACH' return 'Failure' end
-        local key=square:getX()..':'..square:getY()..':'..square:getZ()
-        if not c.path or c.path.key~=key then
-            local ok,result=c.body.move(actor,{x=square:getX()+0.5,y=square:getY()+0.5,z=square:getZ()})
-            if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then
-                c.reason=tostring(result) return 'Failure'
-            end
-            c.path={key=key,at=getTimestampMs()} return 'Running'
-        end
-        local result=EmberRoutesProbeJava.motionResult(c.npc)
-        if result=='MOVING' and getTimestampMs()-c.path.at<185000 then return 'Running' end
-        c.reason='FIELD_PATH_'..tostring(result) return 'Failure'
-    end
-    local spec={npcId=job.npcId,jobId=job.id,kind='FIELD_WORK',binding=binding,
-        nonPreemptive=true,captureStop=true,reconcileErrors=true}
-    function spec.validate() return c.job.effects=='KNOWN' and c.valid() end
-    function spec.start(body)
-        c.body=body
-        if c.job.state=='SUSPENDED' and not c.change(function(j) j.state='PREPARING' end) then return false end
-        if not c.change(function(j) j.state='RUNNING' j.payload.reason=nil end) then return false end
-        return true
-    end
-    function spec.tick()
-        if not c.valid() then c.reason='FIELD_CONTEXT_CHANGED' c.done=true return end
-        if getTimestampMs()<c.nextTick then return end c.nextTick=getTimestampMs()+100
-        local result
-        if c.job.payload.phase=='PREPARE' then result=require('EmberRoutesProbe/FieldSupplies').step(c)
-        elseif c.job.payload.phase=='WORK' then result=def.step(c)
-        else result=require('EmberRoutesProbe/FieldCargo').step(c,def) end
-        if result=='Success' and c.job.payload.phase=='WORK' then
-            c.change(function(j) j.payload.phase=def.collect and 'COLLECT' or 'DELIVER' end)
-            c.node=nil c.path=nil
-        elseif result=='Success' then
-            if not c.recoveryOnly and def.continue and def.continue(c) then c.node=nil c.path=nil return end
-            c.completed=true c.done=true
-            c.change(function(j) j.state='SETTLING' end)
-        elseif result=='Failure' then
-            c.done=true
-            local assets=false for _,a in ipairs(c.job.payload.assets) do if a.custody~='DELIVERED' then assets=true end end
-            c.abandon=c.job.effects=='KNOWN' and not assets and not c.job.payload.holding
-        end
-    end
-    function spec.finished() return c.done==true end
-    function spec.stopAdapter(controller,ticket)
-        return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,
-            npc=c.npc,npcId=job.npcId,jobId=job.id,same=c.same,
-            pause=function(reason)
-                c.stopping=true c.reason=c.reason or reason
-                if reason=='MEMBERSHIP_COMMAND' or reason=='REPLACED' then
-                    local retained=c.job.payload.holding==true
-                    for _,asset in ipairs(c.job.payload.assets) do if asset.custody~='DELIVERED' then retained=true end end
-                    c.abandon=not retained and c.job.effects=='KNOWN'
-                end
-                if c.job.state=='RUNNING' and not c.change(function(j) j.state='STOPPING' end) then return false end
-                if not c.body.clear() then return false end
-                if c.npc:isDraggingCorpse() then
-                    if not c.job.payload.holding then c.unknown('FIELD_CORPSE_RELEASE_UNCONFIRMED') end
-                    if not c.body.releaseCorpse() then return false end
-                end
-                return true
-            end,
-            effects=function()
-                local native=c.body.snapshot()
-                local q=ISTimedActionQueue.queues[c.npc]
-                if native.available and native.nativeStopped and (not q or #q.queue==0 and q.current==nil)
-                    then
-                    if c.job.payload.holding and not require('EmberRoutesProbe/FieldOperations').settleCorpse(c) then return 'UNKNOWN' end
-                    if c.node and not c.node.settle() then return 'UNKNOWN' end
-                end
-                return c.job.effects
-            end,
-            persist=function(fact)
-                if not fact.bodyStopped then return false end
-                if c.node and not c.node.settle() then return false end
-                local ok=c.change(function(j)
-                    j.payload.reason=string.sub(tostring(c.reason or 'FIELD_STOPPED'),1,256)
-                    if (c.completed or c.abandon) and j.effects=='KNOWN' then
-                        if j.state~='SETTLING' then j.state='SETTLING' end
-                    else j.state=j.effects=='KNOWN' and 'SUSPENDED' or 'RECONCILE_REQUIRED' end
-                end)
-                if ok and (c.completed or c.abandon) and c.job.effects=='KNOWN' then
-                    ok=c.change(function(j)
-                        j.state=c.abandon and 'CANCELLED' or 'DONE'
-                        j.payload.phase='SETTLED' j.payload.claims={} j.obligations={}
-                    end)
-                    if c.abandon then cooldowns[c.job.payload.offerKey]=getTimestampMs()+10000 end
-                end
-                if ok then Signals.changed(job.npcId) end
-                return ok
-            end})
-    end
-    function spec.persistFailure(fact,why)
-        if not c.same() then return false end
-        return c.change(function(j)
-            j.state=fact.effects=='KNOWN' and 'SUSPENDED' or 'RECONCILE_REQUIRED'
-            j.effects=fact.effects j.payload.reason=string.sub(tostring(why or 'FIELD_START_FAILED'),1,256)
-        end)
-    end
+    local c=Context.new(actor,job,binding,def,root)
+    if not c then return false end
+    local spec=Session.spec(c,def,cooldowns)
     local handle=runtime:submit(spec)
     if not handle then return false end
     live[job.id]={c=c,handle=handle,runtime=runtime,root=root}

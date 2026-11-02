@@ -22,7 +22,8 @@ local ToolReq=require 'EmberRoutesProbe/ToolRequirements'
 local O={}
 local function canUse(npc,item,jobId)
     if not item or (item.isBroken and item:isBroken()) then return false end
-    local npcId=npc and npc.getDescriptor and npc:getDescriptor():getID() or 0
+    local npcId=EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc)
+    if type(npcId)~='string' or npcId=='' then return nil end
     if jobId then
         return Store.validToolUse(npcId,jobId,item:getID()) or Store.canClaimTool(npcId,item:getID())
     end

@@ -50,6 +50,8 @@ package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return
 -- business fact explicitly; do not load native transfer actions as a side effect.
 package.loaded['EmberRoutesProbe/LaborStore']={custodyForNpc=function() return {} end}
 package.loaded['EmberRoutesProbe/ToolReturnService']={canInterrupt=function() return false end,
+ reconcile=function() end,returnResult=function() end,liveTask=function() end,
+ forgetResult=function() error('no tracked tool return in dispatch-only fixture') end,
  startFor=function() error('unexpected tool return in dispatch-only fixture') end}
 local Public=require 'EmberRoutesProbe/PublicWork'
 local rawCreate=Public.create local requestTokens={}
@@ -299,6 +301,13 @@ check(Public.createPrerequisite(actor,parent.id,{recipeId='saw',requested=3})=='
     'paused requests cannot create more predecessor work')
 actor.isRecipeKnown=function() return true end
 workers={'alice'} root={} busy={} cargo={} records={} craftRecords={}
+local savedDemand=package.loaded['EmberRoutesProbe/FieldDemand']
+local observedWithoutWorkers=false
+package.loaded['EmberRoutesProbe/FieldDemand']={advance=function() observedWithoutWorkers=true end}
+local savedWorkers=workers workers={}
+tick()
+check(observedWithoutWorkers,'independent demand observation runs before zero-worker return')
+workers=savedWorkers package.loaded['EmberRoutesProbe/FieldDemand']=savedDemand
 package.loaded['EmberRoutesProbe/ProductionChain'].new=function() error('provider fixture failure') end
 Public.create(actor,'s','saw',1,nil,'fault') tick()
 check(package.loaded['EmberRoutesProbe/Boot'].runtimeReady,'provider failure does not disable existing body/save runtime')

@@ -8,18 +8,39 @@ local Transfer=require 'EmberRoutesProbe/WorkTransfer'
 local Record=require 'EmberRoutesProbe/ToolReturnRecord'
 local CraftSupply=require 'EmberRoutesProbe/CraftSupply'
 local Signals=require 'EmberRoutesProbe/LaborSignals'
+local Stop=require 'EmberRoutesProbe/TaskBusinessStop'
+require 'TimedActions/ISInventoryTransferAction'
 
 local Service={}
 local live={}
+local tracked={}
+local resultSequence=0
+local world
+local function currentWorld()
+    local root=Registry.data()
+    if world~=root then world,live,tracked=root,{},{} end
+    return root
+end
+function Service.returnResult(jobId) currentWorld() return tracked[jobId] end
+function Service.forgetResult(jobId) currentWorld() tracked[jobId]=nil end
+local function stoppedResult(task)
+    local result=tracked[task.returnJobId]
+    if result and result.world==task.world and result.sequence==task.resultSequence then
+        result.knownStopped=task.knownStopped==true result.state=task.record.state
+    end
+end
 
 function Service.liveTask(npcId)
+    currentWorld()
     return live[tostring(npcId)]
 end
 
 function Service.canInterrupt(npcId)
+    currentWorld()
     local task=live[tostring(npcId)]
     if not task then return false end
-    return not task.committed and not task.finished and not task.failed
+    return not task.stopping and not task.committed and not task.finished and not task.failed
+        and not task.recoveryOnly
 end
 
 function Service.interrupt(npcId,reason)
@@ -27,25 +48,31 @@ function Service.interrupt(npcId,reason)
     if not Service.canInterrupt(npcId) then return false,'CANNOT_INTERRUPT' end
     local task=live[npcId]
     local runtime=Runtime.current()
-    if runtime then runtime:stop(npcId,reason or 'TOOL_RETURN_INTERRUPTED') end
-    Store.abortToolReturn(task.custodyId,task.returnJobId)
-    task.record.state='CANCELLED'
-    live[npcId]=nil
-    Signals.changed(npcId)
-    return true
+    if not runtime then return false,'RUNTIME_NOT_ACCEPTING' end
+    local before=runtime:status(npcId,task.returnJobId)
+    local ok,why=runtime:stopJob(npcId,task.returnJobId,reason or 'TOOL_RETURN_INTERRUPTED')
+    -- A cancelled pending request never received a body or dispatched an action.
+    if ok and before and before.pending and not task.body then
+        if not Store.abortToolReturn(task.custodyId,task.returnJobId) then return false,'CUSTODY_CHANGED' end
+        task.record.state='CANCELLED' task.stopPersisted=true
+        task.knownStopped=true
+        stoppedResult(task)
+        live[npcId]=nil Signals.changed(npcId)
+    end
+    return ok,why
 end
 
 local function findDestination(actor,npc,scopeId,item,sourceContainerId)
     if sourceContainerId then
         local endpoint=Registry.resolve(sourceContainerId,'put','local-world')
         if endpoint and endpoint.container and Registry.revalidate(endpoint,'put','local-world')
-            and Registry.logistics(endpoint)=='STORAGE' and endpoint.container:hasRoomFor(npc,item) then
+            and Registry.logistics(endpoint)=='STORAGE' and Registry.accepts(endpoint,item) and endpoint.container:hasRoomFor(npc,item) then
             return endpoint
         end
     end
     if CraftSupply and CraftSupply.returnRoute then
         local route=CraftSupply.returnRoute(actor,npc,scopeId,item,function(endpoint)
-            return Registry.logistics(endpoint)=='STORAGE' and endpoint.container:hasRoomFor(npc,item)
+            return Registry.logistics(endpoint)=='STORAGE' and Registry.accepts(endpoint,item) and endpoint.container:hasRoomFor(npc,item)
         end,{allowOutside=true})
         if route then
             local endpoint,done=route:step(32)
@@ -57,7 +84,8 @@ local function findDestination(actor,npc,scopeId,item,sourceContainerId)
     if data and data.containers then
         for cid,_ in pairs(data.containers) do
             local ep=Registry.resolve(cid,'put','local-world')
-            if ep and ep.container and Registry.logistics(ep)=='STORAGE' and ep.container:hasRoomFor(npc,item) then
+            if ep and ep.container and Registry.revalidate(ep,'put','local-world') and Registry.logistics(ep)=='STORAGE'
+                and Registry.accepts(ep,item) and ep.container:hasRoomFor(npc,item) then
                 return ep
             end
         end
@@ -65,14 +93,21 @@ local function findDestination(actor,npc,scopeId,item,sourceContainerId)
     return nil
 end
 
-function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
+function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
     npcId=tostring(npcId)
+    Service.reconcile()
+    if live[npcId] then return false,'ALREADY_RETURNING' end
     local custody=nil
     local list=Store.custodyForNpc(npcId)
     for _,c in ipairs(list) do
         if c.id==custodyId then custody=c break end
     end
     if not custody then return false,'CUSTODY_NOT_FOUND' end
+    local recovering=custody.state=='PENDING_RETURN' or custody.state=='RECONCILE_REQUIRED' and custody.returnIntent~=nil
+    if recovering and (custody.returnJobId~=returnJobId or not custody.returnIntent) then
+        custody.state='RECONCILE_REQUIRED'
+        return false,'RETURN_INTENT_REQUIRED'
+    end
 
     local binding=Driver.bindId(actor,npcId)
     if not binding or not Driver.valid(binding) then return false,'BINDING_INVALID' end
@@ -81,15 +116,28 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
 
     local inv=npc:getInventory()
     local item=inv:getFirstEvalRecurse(function(i) return i:getID()==custody.itemId end)
-    if not item then return false,'ITEM_NOT_IN_INVENTORY' end
-
-    local ok,err=Store.assignToolReturn(custodyId,returnJobId)
-    if not ok then return false,err end
-
-    local endpoint=findDestination(actor,npc,scopeId or 'local-world',item,custody.sourceContainerId)
-    if not endpoint or not endpoint.container then
-        Store.abortToolReturn(custodyId,returnJobId)
-        return false,'DESTINATION_NOT_AVAILABLE'
+    if not item and not recovering then return false,'ITEM_NOT_IN_INVENTORY' end
+    local endpoint,destinationId
+    if recovering then
+        scopeId=custody.returnIntent.scopeId
+        destinationId=custody.returnIntent.destinationId
+        endpoint=Registry.resolve(destinationId,'put','local-world')
+        if endpoint and endpoint.container and not item then
+            local list=endpoint.container:getItems()
+            if list:size()<=512 then
+                for i=0,list:size()-1 do
+                    local candidate=list:get(i)
+                    if candidate:getID()==custody.itemId then item=candidate break end
+                end
+            end
+        end
+    else
+        endpoint=findDestination(actor,npc,scopeId or 'local-world',item,custody.sourceContainerId)
+        if not endpoint or not endpoint.container then return false,'DESTINATION_NOT_AVAILABLE' end
+        destinationId=endpoint.id
+        local ok,err=Store.assignToolReturn(custodyId,returnJobId,
+            {format=1,jobId=returnJobId,destinationId=endpoint.id,scopeId=scopeId or 'local-world'})
+        if not ok then return false,err end
     end
 
     local record={
@@ -100,16 +148,17 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
         itemId=custody.itemId,
         role=custody.role,
         phase='APPROACH',
-        destinationId=endpoint.id,
+        destinationId=destinationId,
         state='RUNNING',
         sequence=1
     }
     if not Record.valid(record) then
-        Store.abortToolReturn(custodyId,returnJobId)
+        if not recovering then Store.abortToolReturn(custodyId,returnJobId) end
         return false,'TOOL_RETURN_RECORD_INVALID'
     end
 
     local task={
+        world=Registry.data(),
         actor=actor,
         npc=npc,
         npcId=npcId,
@@ -124,11 +173,59 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
         failed=false,
         body=nil
     }
+    task.recoveryOnly=recovering
+    task.itemId=custody.itemId
 
     local runtime=Runtime.current()
     if not runtime or not runtime:accepting() then
-        Store.abortToolReturn(custodyId,returnJobId)
+        if not recovering then Store.abortToolReturn(custodyId,returnJobId) end
         return false,'RUNTIME_NOT_ACCEPTING'
+    end
+
+    local function arrived()
+        return task.item and task.endpoint and task.endpoint.container
+            and Registry.revalidate(task.endpoint,'put','local-world') and Registry.logistics(task.endpoint)=='STORAGE'
+            and task.item:getContainer()==task.endpoint.container
+            and task.endpoint.container:getItems():contains(task.item)
+    end
+    local function retained()
+        return task.item and task.item:getContainer()==inv and inv:getItems():contains(task.item)
+    end
+    local function transferAllowed()
+        local owner=Store.resourceOwner('item:'..task.itemId)
+        local c=Store.custodyByItem(task.itemId)
+        return task.world==Registry.data() and not task.stopping and retained()
+            and c and c.id==task.custodyId and c.returnJobId==task.returnJobId and c.state=='PENDING_RETURN'
+            and owner and owner.taskId==task.custodyId
+            and task.endpoint and Registry.revalidate(task.endpoint,'put','local-world')
+            and Registry.logistics(task.endpoint)=='STORAGE' and Registry.accepts(task.endpoint,task.item)
+            and Transfer.reachable(npc,task.endpoint) and task.endpoint.container:hasRoomFor(npc,task.item)
+    end
+    local function persistStopped(fact)
+        if task.stopPersisted then return true end
+        if not fact or fact.bodyStopped~=true then return false end
+        if task.world~=Registry.data() then return false end
+        local custodyNow=Store.custodyByItem(task.itemId)
+        if custodyNow and custodyNow.state=='DEAD_CARRIER' then
+            task.record.state='FAILED'
+        elseif arrived() then
+            if not Store.completeCustodyReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item) then return false end
+            task.finished=true task.record.state='DONE' task.record.phase='SETTLED'
+            task.knownStopped=true
+        elseif retained() then
+            if not Store.abortToolReturn(task.custodyId,task.returnJobId) then return false end
+            task.record.state='CANCELLED'
+            task.knownStopped=true
+        else
+            -- An absent original is not evidence of return. Keep custody for reconciliation.
+            task.record.state='FAILED'
+            if custodyNow and custodyNow.id==task.custodyId then custodyNow.state='RECONCILE_REQUIRED' end
+        end
+        task.stopPersisted=true
+        stoppedResult(task)
+        if live[npcId]==task then live[npcId]=nil end
+        Signals.changed(npcId)
+        return true
     end
 
     local spec={
@@ -142,7 +239,8 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
             return true
         end,
         tick=function()
-            if task.finished or task.failed then return end
+            if task.stopping or task.finished or task.failed then return end
+            if task.recoveryOnly then task.finished=true return end -- Observation only; never repeat the transfer.
             if npc:isDead() or (actor and actor:isDead()) then
                 task.failed=true
                 if npc:isDead() then Store.markNpcCustodiesDead(npcId) end
@@ -165,13 +263,21 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
 
             if task.phase=='TRANSFER' then
                 if not task.action then
+                    if not transferAllowed() then task.failed=true return end
                     task.committed=true
                     task.action=ISInventoryTransferAction:new(npc,task.item,inv,task.endpoint.container,60)
+                    local action=task.action local valid,transfer=action.isValid,action.transferItem
+                    action.isValid=function(self) return transferAllowed() and valid(self) end
+                    action.transferItem=function(self,item)
+                        if item~=task.item or not transferAllowed() then return false end
+                        return transfer(self,item)
+                    end
+                    action.canMergeAction=function() return false end
+                    action.checkQueueList=function() end
                     local ok,why=task.body.add(task.action)
                     if not ok then
                         task.failed=true
                         task.record.state='FAILED'
-                        live[npcId]=nil
                         Signals.changed(npcId)
                     end
                     return
@@ -180,19 +286,10 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
                 -- Action observation: verify physical presence in container
                 if task.item:getContainer()==task.endpoint.container
                     and task.endpoint.container:getItems():contains(task.item) then
-                    local completeOk=Store.completeCustodyReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item)
-                    if completeOk then
-                        task.phase='SETTLED'
-                        task.record.phase='SETTLED'
-                        task.record.state='DONE'
-                        task.finished=true
-                        live[npcId]=nil
-                        Signals.changed(npcId)
-                    else
-                        task.failed=true
-                        task.record.state='FAILED'
-                        live[npcId]=nil
-                    end
+                    -- Settlement waits for the same physical-stop receipt as interruption.
+                    task.phase='SETTLED' task.finished=true
+                    task.record.phase='SETTLED'
+                    Signals.changed(npcId)
                     return
                 end
 
@@ -203,7 +300,6 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
                     -- Timed action finished or got aborted without physical arrival
                     task.failed=true
                     task.record.state='FAILED'
-                    live[npcId]=nil
                     Signals.changed(npcId)
                 end
             end
@@ -211,65 +307,71 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId)
         validate=function()
             if npc:isDead() or (actor and actor:isDead()) then return false end
             local c=Store.custodyByItem(custody.itemId)
-            return c and c.id==custodyId and c.state=='PENDING_RETURN'
+            return c and c.id==custodyId and c.returnJobId==returnJobId
+                and (c.state=='PENDING_RETURN' or task.recoveryOnly and c.state=='RECONCILE_REQUIRED')
         end,
         finished=function()
             return task.finished or task.failed
         end,
         stopAdapter=function(controller,ticket)
-            return {
-                requestStop=function(reason)
-                    if not task.committed then
-                        Store.abortToolReturn(task.custodyId,task.returnJobId)
-                        task.record.state='CANCELLED'
-                        live[npcId]=nil
-                        Signals.changed(npcId)
-                        return true
-                    end
-                    -- If already committed to native transfer, check physical arrival before resetting
-                    if task.item:getContainer()==task.endpoint.container
-                        and task.endpoint.container:getItems():contains(task.item) then
-                        Store.completeCustodyReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item)
-                        task.record.state='DONE'
-                    else
-                        task.record.state='FAILED'
-                    end
-                    live[npcId]=nil
-                    Signals.changed(npcId)
-                    return true
+            return Stop.new({controller=controller,ticket=ticket,npc=npc,npcId=npcId,jobId=returnJobId,
+                same=function() return task.world==Registry.data() and (live[npcId]==task or task.stopPersisted==true) end,
+                pause=function()
+                    task.stopping=true
+                    return task.body.clear()
                 end,
-                observeStop=function()
-                    return {bodyStopped=true,effects='KNOWN'}
-                end,
-                persistEffects=function(fact)
-                    return true
-                end
-            }
+                effects=function() return (arrived() or retained()) and 'KNOWN' or 'UNKNOWN' end,
+                persist=persistStopped})
         end,
-        persistFailure=function(fact,why)
-            if not task.committed then
-                Store.abortToolReturn(task.custodyId,task.returnJobId)
-            end
-            live[npcId]=nil
-            Signals.changed(npcId)
-        end
+        persistFailure=persistStopped
     }
 
     local handle=runtime:submit(spec)
     if not handle then
-        Store.abortToolReturn(custodyId,returnJobId)
+        if not recovering then Store.abortToolReturn(custodyId,returnJobId) end
         return false,'SUBMIT_FAILED'
     end
 
+    task.handle=handle
     live[npcId]=task
+    if options and options.trackResult or tracked[returnJobId] then
+        resultSequence=resultSequence+1 task.resultSequence=resultSequence
+        tracked[returnJobId]={world=task.world,sequence=resultSequence,knownStopped=false}
+    end
     return true,returnJobId
 end
 
+-- Pending requests may be rejected/cancelled by runtime admission or the save barrier.
+-- Only their terminal handle plus absence of a body grant permits cancellation cleanup.
+function Service.reconcile()
+    currentWorld()
+    local runtime=Runtime.current()
+    local world=Registry.data()
+    for id,task in pairs(live) do
+        if task.world~=world then
+            live[id]=nil -- World-local cache only; never touch another world's custody.
+        elseif not task.body and runtime then
+            local result=runtime:inspect(task.handle)
+            if result and (result.state=='CANCELLED' or result.state=='REJECTED')
+                and (task.recoveryOnly or Store.abortToolReturn(task.custodyId,task.returnJobId)) then
+                task.record.state='CANCELLED' task.stopPersisted=true
+                task.knownStopped=not task.recoveryOnly
+                stoppedResult(task)
+                live[id]=nil Signals.changed(id)
+            end
+        end
+    end
+end
+
 function Service.recoverFor(actor,npcId)
+    Service.reconcile()
     npcId=tostring(npcId)
     if live[npcId] then return false,'ALREADY_RETURNING' end
     local list=Store.custodyForNpc(npcId)
     for _,c in ipairs(list) do
+        if (c.state=='PENDING_RETURN' or c.state=='RECONCILE_REQUIRED') and c.returnJobId then
+            return Service.startFor(actor,npcId,c.id,c.returnJobId,nil)
+        end
         if c.state=='HELD' and not c.activeJobId and not c.returnJobId then
             local returnJobId=Registry.id()
             return Service.startFor(actor,npcId,c.id,returnJobId,nil)
@@ -279,7 +381,7 @@ function Service.recoverFor(actor,npcId)
 end
 
 function Service.reset()
-    live={}
+    live={} tracked={} world=Registry.data()
 end
 
 return Service

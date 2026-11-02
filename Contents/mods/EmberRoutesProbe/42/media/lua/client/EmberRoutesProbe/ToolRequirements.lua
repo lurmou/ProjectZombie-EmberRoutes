@@ -14,6 +14,7 @@ function T.matchPhysical(item,role)
     elseif role=='CLEAN_FLUID' then
         local f=item.getFluidContainer and item:getFluidContainer()
         local minAmount=(ZomboidGlobals and ZomboidGlobals.CleanBloodBleachAmount) or 0.2
+        if not f then return false end
         local b1=Fluid and Fluid.Bleach and f:contains(Fluid.Bleach)
         local b2=Fluid and Fluid.CleaningLiquid and f:contains(Fluid.CleaningLiquid)
         return f and (b1 or b2) and f:getAmount()>=minAmount or false

@@ -2,6 +2,9 @@
 local M={providerType='COOKING'}
 local custodyStates={SOURCE='UNCOLLECTED',HELD='WITHDRAWN',STATION='STATION',WORLD='UNCOLLECTED',
     UNKNOWN='RECONCILE',DELIVERED='STORED',RETURNED='RETURNED',CONSUMED='CONSUMED'}
+local phaseLabels={PREPARING='cookPlan',FETCHING='cookFetch',FILLING='cookFill',ADDING='cookAdd',
+    SEASONING='cookSeason',HEATING='cookHeat',UNLOADING='cookUnload',DELIVERING='cookDeliver',
+    RETURNING='cookReturn',RECONCILE='cookReconcile',SETTLED='cookSettled'}
 function M.project(context,j)
     local runtime=context.runtime
     local p=j.payload
@@ -39,6 +42,32 @@ function M.project(context,j)
         end
     end
     row.membership=require('EmberRoutesProbe/MembershipService').view(j.npcId)
+    local steps={} local stageIndex=1
+    local function add(key,status,progress)
+        steps[#steps+1]={key=key,labelKey='IGUI_EmberRoutesProbe_Monitor_'..key,status=status,progress=progress}
+    end
+    if p.heat and p.phase~='HEATING' then
+        add('cookHeat',p.heat.closed and (p.heat.aborted and 'SKIPPED' or 'COMPLETED') or 'PLANNED')
+    end
+    local current=phaseLabels[p.phase] or 'cookReconcile'
+    if pouring then current=attempt.kind=='WATER' and 'cookWater' or 'cookFluid' end
+    add(current,closed and 'COMPLETED' or row.uncertain and 'UNCERTAIN' or state=='STOPPING' and 'STOPPING'
+        or control and not control.pending and control.state=='ACTIVE' and 'ACTIVE' or 'BLOCKED')
+    stageIndex=#steps
+    local outputs,delivered=0,0
+    for _,asset in ipairs(p.assets) do
+        if asset.role=='OUTPUT' then outputs=outputs+1 if asset.custody=='DELIVERED' then delivered=delivered+1 end end
+    end
+    if outputs>0 and p.phase~='DELIVERING' then
+        add('cookDeliver',not row.uncertain and delivered==outputs and 'COMPLETED' or 'PLANNED',delivered..'/'..outputs)
+    end
+    if p.duty then
+        local state=p.duty.state
+        add('cookDuty',(state=='OBSERVATION_REQUIRED' or state=='TRANSFER_PENDING') and 'OBSERVING'
+            or state=='STOP_REQUIRED' and 'BLOCKED' or 'PLANNED')
+        row.responsibilitySummary=getText('IGUI_EmberRoutesProbe_Monitor_cookDutyOpen')
+    end
+    row.stages=steps row.stageIndex=stageIndex row.workflow={viewRevision=j.revision,steps=steps}
     return row
 end
 function M.command(context,row,action)

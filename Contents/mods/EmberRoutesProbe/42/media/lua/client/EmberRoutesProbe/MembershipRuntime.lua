@@ -74,7 +74,8 @@ local function recover(id,actor,row,runtime,now)
         if okCustodies and type(custodies)=='table' then
             local hasCustody=false
             for _,c in ipairs(custodies) do
-                if c.state=='HELD' and not c.activeJobId and not c.returnJobId then
+                if c.state=='HELD' and not c.activeJobId and not c.returnJobId
+                    or (c.state=='PENDING_RETURN' or c.state=='RECONCILE_REQUIRED') and c.returnJobId then
                     hasCustody=true break
                 end
             end

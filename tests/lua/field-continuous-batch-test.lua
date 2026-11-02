@@ -1,3 +1,4 @@
+EmberRoutesProbeJava={carrierId=function() return '1' end}
 -- Field continuous batch and cross-job tool retention test (Phase 1C).
 -- Verifies:
 -- 1. Continuous batching: after completing target 1, continue() automatically picks up
@@ -84,7 +85,7 @@ local npcInv={
 }
 local npcSquare={getX=function() return 5 end,getY=function() return 5 end,getZ=function() return 0 end,canReachTo=function() return true end}
 local npc={
-    getDescriptor=function() return {getID=function() return 1 end} end,
+    getDescriptor=function() return {getID=function() return 987 end} end,
     getInventory=function() return npcInv end,
     getCurrentSquare=function() return npcSquare end,
     getX=function() return 5 end,getY=function() return 5 end,getZ=function() return 0 end,
@@ -203,7 +204,7 @@ local activeStains={stain1Point,stain2Point,stain3Point}
 
 package.loaded['EmberRoutesProbe/FieldDiscovery']={
     claim=function(pt)
-        return {kind='STAIN',x=pt.x,y=pt.y,z=pt.z,identity=pt.identity},{'field-target:'..pt.identity}
+	return {kind=pt.kind,x=pt.x,y=pt.y,z=pt.z,identity=pt.identity,iconId=pt.iconId},{'field-target:'..pt.identity}
     end,
     policy=function() return {continuousBatch=true,maxContinuousBatch=4} end,
     allowed=function() return true end,
@@ -297,12 +298,23 @@ table.remove(activeStains,1)
 -- Part 2: Continuous Batching - Immediate Transition to Stain 2
 -- =========================================================================
 -- Now def.continue(context1) is invoked when stain 1 finishes
+context1.change(function(j)
+    j.payload.workDone=true j.payload.spotted='APPLIED'
+    j.payload.assets={{id=401,fullType='Base.Log',custody='GROUND',x=6,y=5,z=0},
+	{id=402,fullType='Base.Twigs',custody='HELD'}}
+    j.payload.claims[#j.payload.claims+1]='item:401'
+    j.payload.claims[#j.payload.claims+1]='item:402'
+end)
 local continued=cleaningProvider.continue(context1)
 check(continued==true,'continuous batch continuation succeeded')
 check(context1.job.payload.batchCount==2,'batchCount incremented to 2')
 check(context1.job.payload.target.identity=='stain-102','target switched to stain-102')
 check(context1.job.payload.phase=='WORK','continuous batch remains in WORK phase (0 warehouse visits)')
 check(context1.job.payload.toolSupply==nil,'no toolSupply required for continuous batch')
+check(#context1.job.payload.assets==2,'switching target retains GROUND and HELD originals')
+check(Store.resourceOwner('item:401').taskId=='job-1' and Store.resourceOwner('item:402').taskId=='job-1',
+    'switching target preserves both original claims')
+check(context1.job.payload.spotted==nil,'new target cannot reuse old forage spot receipt')
 
 -- Verify that resource lock for stain-101 was released and stain-102 is now claimed
 check(Store.resourceOwner('field-target:stain-101')==nil,'stain-101 target lock released')
@@ -313,10 +325,36 @@ check(Store.resourceOwner('field-target:stain-102').taskId=='job-1','stain-102 o
 check(Store.validToolUse('1','job-1',301),'mop still authorized for continuous batch')
 check(Store.validToolUse('1','job-1',302),'bleach still authorized for continuous batch')
 
+-- A rejected next-target commit must undo only its new, unused warehouse tool custody.
+local oldFind=ToolDiscovery.findSupplies
+local replacement={getID=function() return 499 end}
+ToolDiscovery.findSupplies=function()
+    return {ready=false,requirements={{item=replacement,role='CLEAN_TOOL',endpoint=crateEndpoint,inInventory=false},
+	{item=bleachItem,role='CLEAN_FLUID',inInventory=true}}}
+end
+local oldTargets=activeStains
+activeStains={{kind='STAIN',x=8,y=5,z=0,identity='failed-next'}}
+context1.change(function(j) j.payload.workDone=true end)
+local oldChange1=context1.change
+context1.change=function(edit)
+    local proposed=Jobs.current():get(context1.job.id) edit(proposed)
+    check(proposed.payload.phase=='PREPARE' and proposed.payload.toolSupply.requirements[1].itemId==499,
+	'next target needing a warehouse tool must prepare before WORK')
+    return false
+end
+check(not cleaningProvider.continue(context1),'failed next-target CAS rejects new tool plan')
+check(Store.custodyByItem(499)==nil and Store.resourceOwner('item:499')==nil,'unused new warehouse tool claim is rolled back')
+check(Store.custodyByItem(301)~=nil and Store.custodyByItem(302)~=nil,'old held tools are not rolled back')
+check(Store.resourceOwner('item:401').taskId=='job-1','failed next target retains original cargo claim')
+context1.change=oldChange1
+ToolDiscovery.findSupplies=oldFind
+activeStains=oldTargets
+
 -- Remove stain 2 from active stains (stain 2 cleaned)
 table.remove(activeStains,1)
 
 -- Try continue again: remaining stain-103 is at (20,20), which is >5 tiles away
+context1.change(function(j) j.payload.workDone=true end)
 local continueFar=cleaningProvider.continue(context1)
 check(continueFar==false,'distant stain outside 5-tile radius rejected by continuous batch')
 
@@ -326,6 +364,7 @@ context1.change(function(cur)
     cur.state='SETTLING'
     cur.obligations={}
     cur.payload.claims={}
+    for _,a in ipairs(cur.payload.assets) do a.custody='DELIVERED' end -- Fixture supplies verified delivery facts.
 end)
 context1.change(function(cur)
     cur.state='DONE'
@@ -388,5 +427,36 @@ check(Store.finishField(context2.job),'job-2 finished cleanly')
 -- Tool custody remains intact in HELD state on the NPC
 check(Store.custodyByItem(301).state=='HELD','mop custody retained on worker')
 check(Store.custodyByItem(302).state=='HELD','bleach custody retained on worker')
+
+-- Same tile, distinct forage icons: no IsoObject is required to validate either source.
+local icon1={kind='FORAGE',x=8,y=5,z=0,identity='icon-1',iconId='icon-1'}
+local icon2={kind='FORAGE',x=8,y=5,z=0,identity='icon-2',iconId='icon-2'}
+activeStains={icon1,icon2}
+package.loaded['EmberRoutesProbe/FieldDiscovery'].object=function() error('forage must use typed claim, not IsoObject') end
+local forager=Providers.get('forager')
+check(forager.claim({key='forage-offer',point=icon1},'1','forage-job',{actor=npc,entry=entry})=='QUEUED','forage job created')
+local fc={job=Jobs.current():get('forage-job'),npc=npc,actor=npc}
+fc.token=Store.claimField(fc.job)
+fc.change=function(fn)
+    local proposed=Jobs.current():get(fc.job.id) fn(proposed)
+    local ok,saved=Store.replaceField(fc.job,fc.token,proposed)
+    if ok then fc.job=saved end return ok
+end
+fc.change(function(j) j.payload.workDone=true j.payload.spotted='APPLIED' end)
+check(forager.continue(fc),'same-tile different forage icon can continue')
+check(fc.job.payload.target.iconId=='icon-2' and fc.job.payload.spotted==nil,'forage source and per-target spot receipt change together')
+check(Store.resourceOwner('field-target:icon-1')==nil and Store.resourceOwner('field-target:icon-2').taskId=='forage-job',
+    'only old forage target lock is replaced')
+check(not forager.continue(fc),'unfinished next target cannot continue again')
+fc.change(function(j) j.payload.workDone=true j.payload.attempt={id='open-attempt',kind='FORAGE',state='PREPARED',dispatched=true} end)
+check(not forager.continue(fc),'unresolved native attempt blocks target replacement')
+fc.change(function(j) j.payload.attempt=nil end)
+activeStains={icon1}
+local oldChange=fc.change
+fc.change=function() return false end
+check(not forager.continue(fc),'failed target publication rejects continuation')
+check(Jobs.current():get('forage-job').payload.target.iconId=='icon-2' and Store.resourceOwner('field-target:icon-2').taskId=='forage-job',
+    'failed publication retains old authoritative target and claim')
+fc.change=oldChange
 
 print('PASS '..n..' field continuous batch & tool retention checks')

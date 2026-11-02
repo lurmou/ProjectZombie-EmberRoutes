@@ -1,8 +1,5 @@
 -- Detached facts only. Known failures are retried by FieldWork, never by a UI command.
 local M={providerType='FIELD_WORK'}
-local stageKeys={'IGUI_EmberRoutesProbe_Monitor_fieldWork','IGUI_EmberRoutesProbe_Monitor_fieldCollect',
-    'IGUI_EmberRoutesProbe_Monitor_fieldDeliver'}
-local phaseIndex={WORK=1,COLLECT=2,DELIVER=3,SETTLED=4}
 local reasons={FIELD_STORAGE_UNAVAILABLE='fieldStorage',FIELD_CAPACITY_UNAVAILABLE='fieldStorage',
     FIELD_CARRY_FULL='fieldCarry',FIELD_ITEM_TOO_HEAVY='fieldCarry',
     FIELD_TOOL_MISSING='fieldTools',FIELD_TOOLS_UNAVAILABLE='fieldTools',
@@ -36,12 +33,23 @@ function M.project(context,job)
         if asset.custody~='GROUND' then collected=collected+1 end
         if asset.custody=='DELIVERED' then delivered=delivered+1 end
     end
-    local stages={}
-    for i,key in ipairs(stageKeys) do stages[i]={labelKey=key} end
-    if #assets>0 then
-        stages[2].progress=collected..'/'..#assets
-        stages[3].progress=delivered..'/'..#assets
+    local stages={} local stageIndex=1
+    local function add(key,phase,done,progress)
+        local current=p.phase==phase
+        local status=uncertain and current and 'UNCERTAIN' or stopping and current and 'STOPPING'
+            or done and not uncertain and 'COMPLETED' or current and active and 'ACTIVE'
+            or current and 'BLOCKED' or 'PLANNED'
+        stages[#stages+1]={key=string.lower(key),labelKey='IGUI_EmberRoutesProbe_Monitor_field'..key,status=status,progress=progress}
+        if current then stageIndex=#stages end
     end
+    if p.toolSupply then add('Prepare','PREPARE',false) end
+    add('Work','WORK',p.workDone==true,getText('IGUI_EmberRoutesProbe_Monitor_targetNumber',p.batchCount or 1))
+    stages[#stages].labelKey='IGUI_EmberRoutesProbe_Monitor_work_'..p.target.kind
+    -- Show only cargo responsibilities supported by actual originals, not a fixed template.
+    local ground=false
+    for _,a in ipairs(p.assets) do if a.custody=='GROUND' then ground=true break end end
+    if ground or p.phase=='COLLECT' then add('Collect','COLLECT',collected==#assets,collected..'/'..#assets) end
+    if #assets>0 then add('Deliver','DELIVER',delivered==#assets,delivered..'/'..#assets) end
     return {id='FIELD_WORK:'..job.id,jobId=job.id,kind='FIELD_WORK',npcId=job.npcId,generation=job.revision,
         title=getText('IGUI_EmberRoutesProbe_Public_'..p.category),
         name=require('EmberRoutesProbe/DisplayNames').name(job.npcId,binding and binding.handle),
@@ -50,7 +58,7 @@ function M.project(context,job)
         bucket=closed and 'closed' or uncertain and 'attention' or (stopping or active) and 'active' or 'waiting',
         bodyMode=control and control.kind or 'HOLD',membership=require('EmberRoutesProbe/MembershipService').view(job.npcId),
         requested=#assets,target=#assets,delivered=delivered,nodes={},assets=assets,
-        stages=stages,stageIndex=phaseIndex[p.phase],targetLocation={x=p.target.x,y=p.target.y,z=p.target.z},
+        stages=stages,stageIndex=stageIndex,workflow={viewRevision=job.revision,steps=stages},targetLocation={x=p.target.x,y=p.target.y,z=p.target.z},
         noteKey=uncertain and 'IGUI_EmberRoutesProbe_Monitor_fieldUncertain'
             or p.holding and 'IGUI_EmberRoutesProbe_Monitor_fieldCorpseHeld'
             or 'IGUI_EmberRoutesProbe_Monitor_fieldAutomatic',

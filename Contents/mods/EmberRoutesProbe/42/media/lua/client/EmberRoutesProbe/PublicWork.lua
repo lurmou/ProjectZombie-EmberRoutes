@@ -604,6 +604,7 @@ local function advance(now,discover,providerDue,precheckDue)
     load()
     if world.executionSave and world.executionSave.state=='BLOCKED' then return end
     local actor=getSpecificPlayer(0) if not actor or actor:isDead() then return end
+    require('EmberRoutesProbe/FieldDemand').advance(actor,now,eligible,Service.priorities)
     if providerDue then
         for _,provider in ipairs(Providers.all()) do
             if provider.advance then provider.advance({actor=actor,now=now,directory=directory}) end

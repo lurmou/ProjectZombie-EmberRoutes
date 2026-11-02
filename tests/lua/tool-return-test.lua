@@ -11,6 +11,7 @@ local registry={
     resolve=function() end,
     revalidate=function() return true end,
     logistics=function() return 'STORAGE' end,
+    accepts=function() return true end,
     inventoryChanged=function() end
 }
 package.loaded['EmberRoutesProbe/ContainerRegistry']=registry
@@ -43,7 +44,8 @@ EmberRoutesProbeJava={
 }
 ISInventoryTransferAction={
     new=function(s,char,item,src,dst,time)
-        return {character=char,item=item,src=src,dst=dst,time=time}
+        return {character=char,item=item,src=src,dst=dst,time=time,
+            isValid=function() return true end,transferItem=function() return true end}
     end
 }
 
@@ -51,11 +53,14 @@ ModData={getOrCreate=function(k) return {} end}
 getTimestampMs=function() return 1000 end
 
 local submittedSpec=nil
+local delayStart=false
+local terminalHandle=nil
 local actionAdded=nil
 local bodyActions={}
 local fakeBody={
     move=function() return true end,
     stop=function() return true end,
+    clear=function() return true end,
     add=function(a,b)
         actionAdded=b or a
         table.insert(bodyActions,actionAdded)
@@ -69,10 +74,12 @@ local fakeRuntime={
             owns=function(s,id) return false end,
             submit=function(s,spec)
                 submittedSpec=spec
-                spec.start(fakeBody)
+                if not delayStart then spec.start(fakeBody) end
                 return {ticket=1}
             end,
-            stop=function() return true end
+            status=function() return {pending=delayStart} end,
+            inspect=function() return terminalHandle end,
+            stopJob=function() return true end
         }
     end
 }
@@ -104,6 +111,11 @@ check(CustodyRecord.valid(validCustody),'custody record with DEAD_CARRIER passes
 validCustody.state='RECONCILE_REQUIRED'
 check(CustodyRecord.valid(validCustody),'custody record with RECONCILE_REQUIRED passes schema')
 validCustody.state='HELD'
+validCustody.returnIntent={format=1,jobId='return-1',destinationId='crate-1',scopeId='home'}
+check(CustodyRecord.valid(validCustody),'optional durable return intent validates exact destination')
+validCustody.returnIntent.destinationId={}
+check(not CustodyRecord.valid(validCustody),'invalid persistent destination is rejected')
+validCustody.returnIntent=nil
 
 local validReturn={
     format=1,
@@ -153,6 +165,8 @@ Store.assignToolReturn(custody.id,'return-job-1')
 -- Destination container mock
 local destItems={
     items={},
+    size=function(s) return #s.items end,
+    get=function(s,i) return s.items[i+1] end,
     contains=function(s,it)
         for _,x in ipairs(s.items) do if x==it then return true end end
         return false
@@ -253,6 +267,7 @@ local envDiscover={
 
 -- At t=1000, first discovery records idle timestamp
 Provider.discover(envDiscover)
+Provider.reconcile()
 check(#candidates==0,'no candidate offered immediately on first idle observation')
 
 -- At t=20000 (20s later), still under 30s threshold
@@ -276,7 +291,8 @@ Service.reset()
 
 local invItems={}
 local npcInv={
-    getItems=function() return {size=function() return #invItems end,get=function(_,i) return invItems[i+1] end} end,
+    getItems=function() return {size=function() return #invItems end,get=function(_,i) return invItems[i+1] end,
+        contains=function(_,item) for _,v in ipairs(invItems) do if v==item then return true end end return false end} end,
     getFirstEvalRecurse=function(_,fn)
         for _,it in ipairs(invItems) do if fn(it) then return it end end
         return nil
@@ -316,6 +332,10 @@ check(submittedSpec.finished()==false,'not finished yet')
 submittedSpec.tick()
 check(actionAdded~=nil,'action dispatched through body.add')
 check(not Service.canInterrupt('1'),'canInterrupt is false once transfer action committed')
+check(actionAdded:isValid(),'queued transfer is valid while custody and destination remain authorized')
+registry.accepts=function() return false end
+check(not actionAdded:isValid() and not actionAdded:transferItem(mopItem),'destination filter is revalidated at native effect boundary')
+registry.accepts=function() return true end
 
 -- Move item to destination storage
 destItems.items={}
@@ -325,7 +345,24 @@ table.insert(destItems.items,mopItem)
 -- Tick 3: verifies arrival and completes
 submittedSpec.tick()
 check(submittedSpec.finished()==true,'task finished after physical arrival confirmed')
-check(Store.custodyByItem(701)==nil,'custody completely cleared in store')
+check(Store.custodyByItem(701)~=nil,'custody retained until physical stop receipt')
+ISTimedActionQueue={queues={}}
+local stoppedNative=false
+local stopCalls=0
+local function stopAdapter(spec,npc)
+    local controller={
+        inspect=function() return {state='STOPPING',npcId=spec.npcId,jobId=spec.jobId} end,
+        bodySnapshot=function() return {available=true,nativeStopped=stoppedNative} end,
+        stopBody=function() stopCalls=stopCalls+1 return true end
+    }
+    return spec.stopAdapter(controller,function() return {} end)
+end
+local doneAdapter=stopAdapter(submittedSpec,fakeNpc)
+check(doneAdapter.requestStop('COMPLETED'),'completion requests actual body stop')
+check(not doneAdapter.observeStop().bodyStopped,'moving body is not confirmed stopped')
+stoppedNative=true
+check(doneAdapter.persistEffects(doneAdapter.observeStop()),'completion persists after actual stop')
+check(Store.custodyByItem(701)==nil,'custody cleared only after stop')
 
 -- =========================================================================
 -- 6. Safe Interrupt & Preemption by Higher-Priority Work (Step 5)
@@ -349,11 +386,61 @@ check(Service.canInterrupt('1'),'interruptible during approach')
 -- Preempt by high-priority work
 local intOk=Service.interrupt('1','PREEMPTED_BY_CLEANING')
 check(intOk,'interrupt succeeded')
+check(tool801.state=='PENDING_RETURN','interrupt retains custody until stopped')
+local interrupted=stopAdapter(submittedSpec,fakeNpc)
+stoppedNative=false
+check(interrupted.requestStop('PREEMPTED_BY_CLEANING'),'interruption requests native stop')
+check(stopCalls==2,'both completion and interruption reach controller stop')
+check(not interrupted.observeStop().bodyStopped,'interruption waits for native stop')
+stoppedNative=true
+ISTimedActionQueue.queues[fakeNpc]={queue={{}},current={}}
+check(not interrupted.observeStop().bodyStopped,'queued native action prevents release')
+ISTimedActionQueue.queues[fakeNpc]={queue={},current=nil}
+check(interrupted.persistEffects(interrupted.observeStop()),'custody is settled after queue and body stop')
+check(submittedSpec.persistFailure({bodyStopped=true}),'stop persistence is idempotent on execution-error path')
 check(tool801.state=='HELD','aborted return restored custody to HELD')
 check(tool801.returnJobId==nil,'returnJobId cleared')
 check(Store.validToolUse('1','clean-job-new',801)==false,'not assigned yet')
 Store.assignToolUse(tool801.id,'clean-job-new')
 check(Store.validToolUse('1','clean-job-new',801),'tool immediately usable by new job without warehouse visit')
+
+-- Pending requests can cancel without a body; active ones must wait for stop.
+local tool802=Store.claimCustody('1',802,'MOP','crate-1',nil)
+tool802.state='HELD'
+local mop802={getID=function() return 802 end,getContainer=function() return npcInv end}
+invItems={mop801,mop802}
+delayStart=true
+check(Service.startFor(fakeActor,'1',tool802.id,'ret-job-802','home'),'pending return submitted')
+check(Service.interrupt('1','CANCEL_PENDING'),'pending return cancelled')
+check(tool802.state=='HELD' and tool802.returnJobId==nil,'unstarted request restores held custody')
+check(Service.liveTask('1')==nil,'pending cancellation has no orphan live task')
+local tool804=Store.claimCustody('1',804,'MOP','crate-1',nil)
+tool804.state='HELD'
+local mop804={getID=function() return 804 end,getContainer=function() return npcInv end}
+invItems={mop801,mop804}
+check(Service.startFor(fakeActor,'1',tool804.id,'ret-job-804','home'),'pending save-cancel candidate submitted')
+terminalHandle={state='PENDING'}
+Service.reconcile()
+check(tool804.state=='PENDING_RETURN','pending status alone cannot release custody')
+terminalHandle={state='CANCELLED'}
+Service.reconcile()
+check(tool804.state=='HELD' and Service.liveTask('1')==nil,'terminal unstarted request cleans up after save cancellation')
+terminalHandle=nil
+delayStart=false
+
+-- Missing originals keep durable reconciliation responsibility after physical stop.
+local tool803=Store.claimCustody('1',803,'MOP','crate-1',nil)
+tool803.state='HELD'
+local mop803={container=npcInv,getID=function() return 803 end,getContainer=function(self) return self.container end}
+invItems={mop801,mop803}
+check(Service.startFor(fakeActor,'1',tool803.id,'ret-job-803','home'),'return with later missing original submitted')
+mop803.container=nil
+local missing=stopAdapter(submittedSpec,fakeNpc)
+check(missing.requestStop('SAVE'),'missing original does not prevent physical stop')
+local missingFact=missing.observeStop()
+check(missingFact.bodyStopped and missingFact.effects=='UNKNOWN','missing original remains unknown')
+check(missing.persistEffects(missingFact),'unknown custody retained after stop')
+check(tool803.state=='RECONCILE_REQUIRED' and not Store.canClaimTool('2',803),'unknown original stays claimed for reconciliation')
 
 -- =========================================================================
 -- 7. Membership Obligations & Recovery (Step 4)
@@ -408,8 +495,78 @@ local reloadRoot={
 registry.data=function() return reloadRoot end
 local reloadedLedger=Store.data()
 local reloadedCustody=reloadRoot.toolCustody.byId['custody:9:901']
-check(reloadedCustody.state=='HELD','PENDING_RETURN reverted to HELD on load recovery')
-check(reloadedCustody.returnJobId==nil,'returnJobId cleared on load recovery')
-check(Store.canClaimTool('9',901),'claim ownership successfully restored after load')
+check(reloadedCustody.state=='PENDING_RETURN','loading cannot assume pending transfer never happened')
+check(reloadedCustody.returnJobId=='old-ret-job','loading preserves the unresolved return identity')
+check(not Store.canClaimTool('9',901),'unverified pending return cannot authorize new labour')
+
+-- Save between physical PUT and custody settlement: restore via a stop-only session.
+Service.reset()
+local recoveringNpc={id='9',isDead=fakeNpc.isDead,getInventory=fakeNpc.getInventory,
+    getCurrentSquare=fakeNpc.getCurrentSquare,getX=fakeNpc.getX,getY=fakeNpc.getY,getZ=fakeNpc.getZ}
+currentNpcMap['9']=recoveringNpc
+local arrivedCustody=Store.claimCustody('9',902,'AXE','crate-1',nil)
+arrivedCustody.state='HELD'
+check(Store.assignToolReturn(arrivedCustody.id,'saved-return-902',
+    {format=1,jobId='saved-return-902',destinationId='crate-1',scopeId='home'}),'record exact return destination')
+local arrivedItem={getID=function() return 902 end,getContainer=function() return destContainer end}
+destItems.items={arrivedItem} invItems={}
+local beforeActions=#bodyActions
+check(Service.startFor(fakeActor,'9',arrivedCustody.id,'saved-return-902','home',{trackResult=true}),'recovery accepts original already in saved destination')
+submittedSpec.tick()
+check(#bodyActions==beforeActions,'recovery never repeats transfer action')
+check(Store.custodyByItem(902)~=nil,'arrival alone cannot clear custody before stop')
+local restored=stopAdapter(submittedSpec,recoveringNpc)
+check(restored.requestStop('LOAD_RECOVERY'),'recovery requests actual stop')
+check(restored.persistEffects(restored.observeStop()),'known arrival settles after native/Lua stop')
+check(Store.custodyByItem(902)==nil and Service.returnResult('saved-return-902').knownStopped,'recovered original and known stop are available for directory settlement')
+Service.forgetResult('saved-return-902')
+
+-- A Provider-owned return cancelled while still carrying must release its old Offer.
+Service.reset() Provider.reset()
+local tc=Store.claimCustody('1',1001,'MOP','crate-1',nil) tc.state='HELD'
+local tool={getID=function() return 1001 end,getContainer=function() return npcInv end}
+invItems={tool}
+local dir=require('EmberRoutesProbe/TaskDirectory').new()
+local key='toolReturn:'..tc.id
+dir:upsert(key,1,'toolReturn','home') assert(dir:claim(key,1,'1','return-directory'))
+check(Provider.claim({key=key,custodyId=tc.id},'1','return-directory',{actor=fakeActor,entry={id='home'},directory=dir})=='STARTED','provider owns accepted directory allocation')
+check(Service.interrupt('1','PREEMPTED'),'provider return interrupted')
+local cancelled=stopAdapter(submittedSpec,fakeNpc)
+check(cancelled.requestStop('PREEMPTED') and cancelled.persistEffects(cancelled.observeStop()),'cancelled attempt has actual stop and held-original evidence')
+Provider.advance({actor=fakeActor,now=1000,directory=dir})
+check(dir:upsert(key,2,'toolReturn','home').jobId==nil,'known cancellation releases old directory allocation')
+check(Store.custodyByItem(1001)~=nil,'directory release does not release held tool responsibility')
+check(Service.returnResult('return-directory')==nil,'consumed directory evidence does not accumulate')
+
+assert(dir:claim(key,2,'1','return-directory-again'))
+check(Provider.claim({key=key,custodyId=tc.id},'1','return-directory-again',{actor=fakeActor,entry={id='home'},directory=dir})=='STARTED',
+    'same custody can be dispatched again after known cancellation')
+invItems={}
+local unknownStop=stopAdapter(submittedSpec,fakeNpc)
+check(unknownStop.requestStop('SAVE') and unknownStop.persistEffects(unknownStop.observeStop()),'missing original produces a retained stopped result')
+Provider.advance({actor=fakeActor,now=6000,directory=dir})
+check(dir:upsert(key,3,'toolReturn','home').jobId=='return-directory-again','unknown outcome cannot release directory')
+check(not Store.canClaimTool('1',1001) and not Store.assignToolUse(tc.id,'new-job'),'same carrier cannot use unresolved custody')
+check(Store.claimCustody('1',1001,'MOP',nil,'new-job')==nil,'new claim cannot bypass unresolved custody state')
+
+-- Recover that exact intent once the original becomes observable at its destination.
+destItems.items={tool}
+tool.getContainer=function() return destContainer end
+local beforeRecoveryActions=#bodyActions
+check(Service.recoverFor(fakeActor,'1'),'unknown return has a controlled observation recovery')
+submittedSpec.tick()
+local resolved=stopAdapter(submittedSpec,fakeNpc)
+check(resolved.requestStop('RECOVERY') and resolved.persistEffects(resolved.observeStop()),'recovered original settles only after actual stop')
+Provider.advance({actor=fakeActor,now=11000,directory=dir})
+check(dir:upsert(key,4,'toolReturn','home').jobId==nil and Store.custodyByItem(1001)==nil,'known recovered arrival clears original and old directory allocation')
+check(#bodyActions==beforeRecoveryActions,'recovering unknown return never replays PUT')
+
+local priorWorld=reloadRoot
+local otherDirectory=require('EmberRoutesProbe/TaskDirectory').new()
+otherDirectory:upsert(key,1,'toolReturn','other-world') assert(otherDirectory:claim(key,1,'1','new-world-job'))
+registry.data=function() return {} end
+Provider.advance({actor=fakeActor,now=16000,directory=otherDirectory})
+check(otherDirectory:upsert(key,2,'toolReturn','other-world').jobId=='new-world-job','old-world callbacks cannot release new-world allocation')
+check(priorWorld.toolCustody.byId['custody:9:901']~=nil,'world switch cannot clear old persistent responsibility')
 
 print(string.format('PASS %d Stage 2 tool return, custody lifecycle & recovery checks',n))

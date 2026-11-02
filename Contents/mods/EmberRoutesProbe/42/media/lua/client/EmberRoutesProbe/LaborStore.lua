@@ -662,10 +662,8 @@ function Store.data()
         if current.toolCustody and current.toolCustody.byId then
             local CustodyRecord = require('EmberRoutesProbe/ToolCustodyRecord')
             for id, entry in pairs(current.toolCustody.byId) do
-                if entry.state == 'PENDING_RETURN' then
-                    entry.state = 'HELD'
-                    entry.returnJobId = nil
-                end
+                -- A physical PUT may already have happened. Keep the exact return
+                -- identity/intent until a controlled stop and original observation.
                 if not CustodyRecord.valid(entry) then error('TOOL_CUSTODY_RECORD_INVALID') end
                 if hasConflict(entry.claims) then
                     entry.state = 'HELD'
@@ -1596,7 +1594,8 @@ function Store.canClaimTool(npcId,itemId)
     if not owner then return true end
     if root.toolCustody and root.toolCustody.byItem then
         local c=root.toolCustody.byItem[itemId]
-        if c and tostring(c.npcId)==npcId and owner.taskId==c.id then return true end
+        if c and tostring(c.npcId)==npcId and owner.taskId==c.id
+            and (c.state=='HELD' or c.state=='RESERVED') then return true end
     end
     return false
 end
@@ -1609,7 +1608,8 @@ function Store.validToolUse(npcId,jobId,itemId)
     if owner.taskId==jobId then return true end
     if root.toolCustody and root.toolCustody.byItem then
         local c=root.toolCustody.byItem[itemId]
-        if c and tostring(c.npcId)==npcId and owner.taskId==c.id and c.activeJobId==jobId and c.state~='PENDING_RETURN' then
+        if c and tostring(c.npcId)==npcId and owner.taskId==c.id and c.activeJobId==jobId
+            and (c.state=='HELD' or c.state=='RESERVED') then
             return true
         end
     end
@@ -1626,6 +1626,7 @@ function Store.claimCustody(npcId,itemId,role,sourceContainerId,activeJobId)
     local custodyId='custody:'..npcId..':'..itemId
     local existing=custodyStore.byId[custodyId]
     if existing then
+        if existing.state~='HELD' and existing.state~='RESERVED' then return nil,'TOOL_CUSTODY_UNRESOLVED' end
         if existing.activeJobId and existing.activeJobId~=activeJobId then
             return nil,'TOOL_ALREADY_ASSIGNED'
         end
@@ -1680,6 +1681,7 @@ function Store.assignToolUse(custodyId,jobId)
     local custodyStore=root.toolCustody
     local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
     if not entry then return false,'CUSTODY_NOT_FOUND' end
+    if entry.state~='HELD' and entry.state~='RESERVED' then return false,'TOOL_CUSTODY_UNRESOLVED' end
     entry.activeJobId=jobId
     return true
 end
@@ -1699,13 +1701,17 @@ function Store.custodyByItem(itemId)
     Store.data()
     return root.toolCustody and root.toolCustody.byItem and root.toolCustody.byItem[itemId] or nil
 end
-function Store.assignToolReturn(custodyId,returnJobId)
+function Store.assignToolReturn(custodyId,returnJobId,intent)
     Store.data()
     local custodyStore=root.toolCustody
     local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
     if not entry then return false,'CUSTODY_NOT_FOUND' end
     if entry.state~='HELD' and entry.state~='RESERVED' then return false,'INVALID_CUSTODY_STATE' end
     if entry.returnJobId and entry.returnJobId~=returnJobId then return false,'ALREADY_RETURNING' end
+    if intent~=nil and (type(intent)~='table' or intent.format~=1 or intent.jobId~=returnJobId
+        or type(intent.destinationId)~='string' or intent.destinationId==''
+        or type(intent.scopeId)~='string' or intent.scopeId=='') then return false,'RETURN_INTENT_INVALID' end
+    entry.returnIntent=intent and {format=1,jobId=returnJobId,destinationId=intent.destinationId,scopeId=intent.scopeId} or nil
     entry.state='PENDING_RETURN'
     entry.returnJobId=returnJobId
     entry.activeJobId=nil
@@ -1716,9 +1722,11 @@ function Store.abortToolReturn(custodyId,returnJobId)
     local custodyStore=root.toolCustody
     local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
     if not entry then return false,'CUSTODY_NOT_FOUND' end
-    if entry.returnJobId==returnJobId and entry.state=='PENDING_RETURN' then
+    if entry.returnJobId==returnJobId and (entry.state=='PENDING_RETURN'
+        or entry.state=='RECONCILE_REQUIRED' and entry.returnIntent~=nil) then
         entry.state='HELD'
         entry.returnJobId=nil
+        entry.returnIntent=nil
         return true
     end
     return false,'NOT_IN_RETURN_STATE'
@@ -1728,15 +1736,18 @@ function Store.completeCustodyReturn(custodyId,returnJobId,destinationId,item)
     local custodyStore=root.toolCustody
     local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
     if not entry then return false,'CUSTODY_NOT_FOUND' end
-    if entry.returnJobId~=returnJobId or entry.state~='PENDING_RETURN' then
+    if entry.returnJobId~=returnJobId or (entry.state~='PENDING_RETURN'
+        and not (entry.state=='RECONCILE_REQUIRED' and entry.returnIntent~=nil)) then
         return false,'RETURN_JOB_MISMATCH'
     end
+    if entry.returnIntent and entry.returnIntent.destinationId~=destinationId then return false,'RETURN_DESTINATION_CHANGED' end
     if not item or item:getID()~=entry.itemId then
         return false,'RETURN_ITEM_MISMATCH'
     end
     local Registry=require('EmberRoutesProbe/ContainerRegistry')
     local endpoint=Registry.resolve(destinationId,'put','local-world')
-    if not endpoint or not endpoint.container then
+    if not endpoint or not endpoint.container or not Registry.revalidate(endpoint,'put','local-world')
+        or Registry.logistics(endpoint)~='STORAGE' then
         return false,'DESTINATION_NOT_RESOLVED'
     end
     local container=endpoint.container

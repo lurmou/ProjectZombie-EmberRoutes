@@ -16,7 +16,8 @@ function D.findSupplies(entry,npc,kind)
     local roles=ToolReq.requiredRoles(kind)
     if #roles==0 then return {ready=true,requirements={}} end
 
-    local npcId=(npc.getDescriptor and npc:getDescriptor():getID()) or 0
+    local npcId=EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc)
+    if type(npcId)~='string' or npcId=='' then return nil end
     local requirements={}
     local allInInventory=true
     local neededRoles={}
@@ -50,14 +51,18 @@ function D.findSupplies(entry,npc,kind)
 
     -- 2. Search settlement warehouse containers for remaining roles
     local containerIds=Membership.query(entry)
-    if not containerIds or #containerIds==0 then return nil end
+    if not containerIds then return nil,'FIELD_OBSERVING',{complete=false,missingRoles=neededRoles} end
+    if #containerIds==0 then return nil,'FIELD_TOOLS_UNAVAILABLE',{complete=true,missingRoles=neededRoles} end
 
     local readBudget=500
     local readCount=0
+    local unknown=false
+    local reserved=false
 
     for _,cid in ipairs(containerIds) do
         if #neededRoles==0 then break end
         local endpoint=Registry.resolve(cid,'take','local-world')
+        if not endpoint then unknown=true end
         if endpoint and endpoint.object and endpoint.container and Registry.logistics(endpoint)~='EXCLUDED' then
             local sq=endpoint.object:getSquare()
             if sq and Geometry.inside(entry,sq:getX(),sq:getY()) then
@@ -65,8 +70,11 @@ function D.findSupplies(entry,npc,kind)
                 local size=items:size()
                 for i=0,size-1 do
                     readCount=readCount+1
-                    if readCount>readBudget then return nil end
+                    if readCount>readBudget then return nil,'FIELD_OBSERVING',{complete=false,missingRoles=neededRoles} end
                     local it=items:get(i)
+                    if it and not Store.canClaimTool(npcId,it:getID()) then
+                        for _,role in ipairs(neededRoles) do if ToolReq.matchPhysical(it,role) then reserved=true end end
+                    end
                     if it and not usedItemIds[it:getID()] and Store.canClaimTool(npcId,it:getID()) then
                         for rIdx,role in ipairs(neededRoles) do
                             if ToolReq.matchPhysical(it,role) then
@@ -89,7 +97,8 @@ function D.findSupplies(entry,npc,kind)
     end
 
     -- If all roles satisfied, return plan; otherwise nil
-    if #neededRoles>0 then return nil end
+    if #neededRoles>0 then return nil,unknown and 'FIELD_OBSERVING' or reserved and 'FIELD_TOOL_RESERVED' or 'FIELD_TOOLS_UNAVAILABLE',
+        {complete=not unknown,missingRoles=neededRoles} end
     return {ready=allInInventory,requirements=requirements}
 end
 
