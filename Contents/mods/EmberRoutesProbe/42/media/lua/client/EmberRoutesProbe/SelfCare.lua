@@ -42,7 +42,7 @@ function Service.blocksWork(id)
     local p=job.payload local ref=p.resume
     if job.effects~='KNOWN' or p.step~='IDLE' or #p.claims>0 then return true end
     for _ in pairs(job.obligations) do return true end
-    return ref and ref.state~='RESTORED' and ref.state~='INVALIDATED' and ref.epoch==Resume.epoch(id) or false
+    return Resume.pending(ref,id)
 end
 function Service.activity(id)
     local job=personalView(id)

@@ -70,7 +70,7 @@ function M.canRetire(id,orderId)
     for _,other in ipairs(store:forNpc(j.npcId,'SELF_CARE')) do
         if other.providerType=='SELF_CARE' then
             local ref=other.payload.resume
-            if ref and ref.jobId==id and ref.state~='RESTORED' and ref.state~='INVALIDATED'
+            if ref and ref.jobId==id and require('EmberRoutesProbe/TaskResume').pending(ref,other.npcId)
                 and (other.effects~='KNOWN' or ref.state~='RESTORE_QUEUED') then return false end
         end
     end

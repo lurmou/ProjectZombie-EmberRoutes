@@ -28,8 +28,7 @@ function R.inspect(id,ref,careId)
                 block('WAIT',p.kind=='STUDY' and 'ACTIVITY_BOOK_RETURN' or 'ACTIVITY_PERSONAL_SETTLING',2)
             end
             local resume=p.resume
-            if resume and resume.state~='RESTORED' and resume.state~='INVALIDATED'
-                and resume.epoch==require('EmberRoutesProbe/TaskResume').epoch(id) then
+            if require('EmberRoutesProbe/TaskResume').pending(resume,id) then
                 block('WAIT','ACTIVITY_PREDECESSOR_PENDING',3)
             end
         elseif job.providerType=='ACTIVITY' and p.eventId==ref.eventId then

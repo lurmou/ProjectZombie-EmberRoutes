@@ -150,6 +150,27 @@ function Store.finishField(job)
     end
     return true
 end
+-- The one exit for an ACTIVITY participant Job whose effects can no longer be
+-- proven (load recovery marked it UNKNOWN, or its carrier died mid-session).
+-- Business evidence, checked by the caller before this runs: the scene is
+-- closing or the member withdrawn, the runtime holds no state for the job,
+-- the personal side has no pending cleanup, and the job holds no obligations.
+-- An ACTIVITY job's only claim is a placement tile - never an item original -
+-- so releasing it under those facts cannot strand custody. Mirrors
+-- finishActivity's write-then-release order; the caller then completes the
+-- normal settle tail, which writes the terminal state as CANCELLED.
+function Store.settleActivityWedged(job)
+    Store.data() local saved=state.root.taskJobs.byId[job.id]
+    if not saved or saved.providerType~='ACTIVITY' or saved.npcId~=job.npcId then return false end
+    if not (saved.state=='RECONCILE_REQUIRED' or saved.effects=='UNKNOWN') then return false end
+    for _ in pairs(saved.obligations) do return false end
+    local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={} p.stopped=true
+    if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,
+        {payload=p,state='SETTLING',effects='KNOWN'}) then return false end
+    local token=state.activityTokens[job.id]
+    if token then state.claims:release(token) cleanToken(job.id) end
+    return true
+end
 function Store.validActivity(job,token)
     if not scopeAllowed(job.id,job.scopeId) then return false end
     Store.data() local saved=state.root.taskJobs.byId[job.id]

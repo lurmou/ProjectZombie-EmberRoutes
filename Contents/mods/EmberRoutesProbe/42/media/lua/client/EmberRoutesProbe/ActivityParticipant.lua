@@ -62,6 +62,24 @@ local function settle(event,id,member)
         if member.settled then handles[member.jobId]=nil ready[member.jobId]=nil end
         return member.settled==true
     end
+    -- Forced settlement (audit A1): a participant whose effects went UNKNOWN -
+    -- load recovery, or death during the WAITING session - could never pass
+    -- the gates below, so its scene never closed, its tile claim never
+    -- released, and the NPC stayed blocked from all future activities. The
+    -- body is provably gone when the scene is already closing (or the member
+    -- withdrawn), the runtime holds no state for this job, and the personal
+    -- side has no pending cleanup (checked above). The adapter releases the
+    -- tile claim and records the job KNOWN/SETTLING; the normal tail then
+    -- completes it as CANCELLED.
+    local forcedCancel=false
+    if (job.state=='RECONCILE_REQUIRED' or job.effects=='UNKNOWN')
+        and empty(job.obligations)
+        and (member.withdrawn or event.state=='WINDING_DOWN' or event.state=='SETTLING' or event.state=='CLOSED')
+        and not (status and status.jobId==member.jobId)
+        and not handles[job.id] then
+        if not Assets.settleActivityWedged(job) then return false end
+        job=Jobs.current():peek(job.id) forcedCancel=true
+    end
     if job.effects~='KNOWN' or not empty(job.obligations) then return false end
     if job.payload.started and not job.payload.stopped then return false end
     local handle=handles[job.id]
@@ -74,7 +92,7 @@ local function settle(event,id,member)
         if job.state~='SETTLING' then
             if not update(job,p,'SETTLING') then return false end job=Jobs.current():peek(job.id)
         end
-        if not update(job,p,event.outcome=='COMPLETED' and 'DONE' or 'CANCELLED') then return false end
+        if not update(job,p,forcedCancel and 'CANCELLED' or event.outcome=='COMPLETED' and 'DONE' or 'CANCELLED') then return false end
     end
     member.settled=true member.state='SETTLED' Store.touch(event)
     handles[member.jobId]=nil ready[member.jobId]=nil assessments[id]=nil samples[id]=nil

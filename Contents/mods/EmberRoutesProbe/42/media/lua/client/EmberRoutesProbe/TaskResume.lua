@@ -10,6 +10,16 @@ local function epochs()
     if type(data)~='table' or data.format~=1 or type(data.byNpc)~='table' then error('COMMAND_EPOCH_INVALID') end
     return data.byNpc
 end
+-- The one shared reading of a resume reference: it still binds its owner
+-- while it is neither RESTORED nor INVALIDATED in the current care epoch.
+-- A stale-epoch reference is already dead to this module (resume() treats it
+-- as superseded, stopped() invalidates it), so consumers must not re-derive
+-- the test without the epoch term. Sites keep their own additional
+-- conditions; only this fragment is shared.
+function Resume.pending(ref,id)
+    return ref and ref.state~='RESTORED' and ref.state~='INVALIDATED'
+        and ref.epoch==Resume.epoch(id) or false
+end
 function Resume.epoch(id)
     local value=epochs()[id] or 0
     if type(value)~='number' or value<0 or value>=9007199254740991 or value~=math.floor(value) then error('COMMAND_EPOCH_INVALID') end
