@@ -214,6 +214,10 @@ local function createOrder(actor,scope,recipeId,quantity,surfaceId,requestId,pre
     local why
     if not spec then spec,why=Recipe.read(recipeId) end
     if not spec then return why end
+    -- Deliberate asymmetry: cooking demand is not gated on the player's recipe
+    -- knowledge (evolved recipes have no player-knowledge concept, and NPC
+    -- learning is the study system's job). Craft orders gate because the
+    -- player commissions one specific recipe.
     if not cooking and not parent and not actor:isRecipeKnown(spec.recipe,true) then return 'PLAYER_RECIPE_UNKNOWN' end
     local surface
     if spec.surface then
@@ -258,6 +262,11 @@ function Service.createPrerequisite(actor,parentId,node)
     local child=parent.prerequisiteId and data.orders[parent.prerequisiteId]
     if child and child.state~='DONE' and child.state~='CANCELLED' then return 'ORDER_CREATED',child.id end
     if type(node)~='table' or node.recipeId==parent.recipeId then return 'CHAIN_CYCLE' end
+    -- A player-cancelled prerequisite for this same node is a decision, not
+    -- a gap to refill: never recreate it silently. The parent stalls with
+    -- this reason until the player resumes the parent (clears the link) or
+    -- cancels it. A different current node is a different need and proceeds.
+    if child and child.state=='CANCELLED' and child.recipeId==node.recipeId then return 'PREREQUISITE_CANCELLED',child.id end
     -- A fresh receipt is allocated only when no active predecessor remains.
     local result,id=createOrder(actor,parent.settlementId,node.recipeId,node.requested,node.benchId,
         Service.requestId(),parent.preferences,parent)

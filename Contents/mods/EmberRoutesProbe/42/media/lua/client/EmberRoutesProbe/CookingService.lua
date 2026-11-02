@@ -155,7 +155,8 @@ local function requestPlan(row,o,entry,binding,b,actor)
         if not binding.handle:isRecipeKnown(spec.recipe,true) then
             row.reason='NPC_RECIPE_UNKNOWN' row.studyTarget=Orders.study(o,spec) return
         end
-        if not require('EmberRoutesProbe/CookingCraft').known(binding.handle,spec.recipe) then row.reason='NPC_SKILL_TOO_LOW' return end
+        local knownOk,knownWhy=require('EmberRoutesProbe/CookingCraft').known(binding.handle,spec.recipe)
+        if not knownOk then row.reason=knownWhy return end
         if spec.profile.facts.workstation or spec.profile.facts.surface then
             if not row.stationScan then row.stationScan=require('EmberRoutesProbe/CraftStations').search(entry,spec.profile.facts,function(object) return require('EmberRoutesProbe/CookingDirectives').kitchen(entry.id,object) end) end
             local allowance=math.min(16,b.scan) if allowance<1 then return end b.scan=b.scan-allowance
@@ -373,7 +374,8 @@ function S.claim(selected,npcId,jobId,env)
             selection,reason=row.menu:result() if not selection then return reason end
             selection,reason=Menu.fit(selection,.3) if not selection then return reason end
         else
-            if not require('EmberRoutesProbe/CookingCraft').known(binding.handle,descriptor.recipe) then return 'NPC_RECIPE_UNKNOWN' end
+            local knownOk,knownWhy=require('EmberRoutesProbe/CookingCraft').known(binding.handle,descriptor.recipe)
+            if not knownOk then return knownWhy end
             local bound,why=require('EmberRoutesProbe/CraftRecipeInputs').bind(descriptor.profile.facts,selection.entries,binding.handle)
             if not bound then return why end
             for _,r in ipairs(selection.entries) do

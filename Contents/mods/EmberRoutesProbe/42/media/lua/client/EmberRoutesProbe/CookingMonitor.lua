@@ -28,7 +28,7 @@ function M.project(context,j)
         requested=request and request.quantity or 1,target=request and request.target or 1,
         delivered=request and request.delivered or 0,produced=0,nodes={},assets={},
         canPause=not closed and (request and not request.pauseRequested or not request and (state=='RUNNING' or state=='PREPARING' or control~=nil)),
-        canResume=not closed and j.effects=='KNOWN' and binding~=nil and not (control and control.state=='STOPPING') and (request and request.pauseRequested==true or not request and (state=='PAUSED' or state=='SUSPENDED')),
+        canResume=not closed and j.effects=='KNOWN' and binding~=nil and not (control and control.state=='STOPPING') and (request and request.pauseRequested==true or not request and state=='SUSPENDED'),
         canCancel=not closed and (request and not request.cancelRequested or not request and not p.cancelRequested)}
     for _,asset in ipairs(p.assets) do
         row.assets[#row.assets+1]={id=asset.id,fullType=asset.fullType,

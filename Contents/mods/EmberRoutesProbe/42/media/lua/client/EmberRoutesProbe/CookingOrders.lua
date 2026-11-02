@@ -78,7 +78,13 @@ function M.command(o,action)
     if action=='resume' then
         local job=o.jobId and Jobs.current():peek(o.jobId)
         if job and job.effects~='KNOWN' then return 'COOKING_RECONCILE_REQUIRED' end
-        if not o.pauseRequested and o.state~='PAUSED' then return 'INVALID_COMMAND' end
+        local root=Registry.data()
+        local child=o.prerequisiteId and root.publicWork and root.publicWork.orders[o.prerequisiteId]
+        if child and child.state=='CANCELLED' then
+            -- Resume after the player cancelled this order's prerequisite:
+            -- drop the dead link so planning may create a fresh prerequisite.
+            o.prerequisiteId=nil
+        elseif not o.pauseRequested and o.state~='PAUSED' then return 'INVALID_COMMAND' end
         o.pauseRequested=nil if not o.jobId then o.state='WAITING' end
     elseif action=='stop' or action=='return' then
         o.pauseRequested=action=='stop' or nil o.cancelRequested=action=='return' or nil

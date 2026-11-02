@@ -133,7 +133,8 @@ function M.new(actor,binding,job,object,budgets,safe,options)
                 if not profile or profile.facts.signature~=c.job.payload.fixed.signature then
                     c.reason=why or 'COOKING_PROFILE_CHANGED' return 'Failure'
                 end
-                if not Craft.known(c.npc,profile.facts.recipe) then c.reason='NPC_RECIPE_UNKNOWN' return 'Failure' end
+                local knownOk,knownWhy=Craft.known(c.npc,profile.facts.recipe)
+                if not knownOk then c.reason=knownWhy return 'Failure' end
                 local added=0
                 for _,input in ipairs(c.job.payload.fixed.inputs) do
                     local item=c.items[input.id]

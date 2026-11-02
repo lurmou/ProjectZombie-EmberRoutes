@@ -53,10 +53,10 @@ function M.profile(id,native)
     return result
 end
 local function knowledge(npc,recipe)
-    if not npc:isRecipeKnown(recipe,true) then return false end
+    if not npc:isRecipeKnown(recipe,true) then return false,'NPC_RECIPE_UNKNOWN' end
     for i=0,recipe:getRequiredSkillCount()-1 do
         local skill=recipe:getRequiredSkill(i)
-        if npc:getPerkLevel(skill:getPerk())<skill:getLevel() then return false end
+        if npc:getPerkLevel(skill:getPerk())<skill:getLevel() then return false,'NPC_SKILL_TOO_LOW' end
     end
     return true
 end
