@@ -78,3 +78,42 @@ local active={effects='KNOWN',payload={step='ACTING',kind='STUDY'}}
 package.loaded['EmberRoutesProbe/TaskJobs'].current=function() return {forNpc=function() return {active} end} end
 assert(not Social.available('b'),'a reader cannot advertise as available for a new pair')
 print('P3.5 service/coordinator integration: entry shape, actual pairing, arrival barrier, busy reader')
+
+-- Exercise the real formation path, counting only the chance RNG (10000).
+active.payload.step='IDLE'
+local chanceRolls=0
+local inviting=false
+local invite=Social.invite
+Social.invite=function(...)
+    inviting=true local result=invite(...) inviting=false return result
+end
+ZombRand=function(n) if inviting and n==10000 then chanceRolls=chanceRolls+1 end return n-1 end
+Service.reset() Service.offer('a',entry) Service.offer('b',entry)
+Social.advertise('b',entry,{x=1,y=1,z=0},now)
+local function discover() return Service.candidate({},bindings.a,sample,{scan=32,paths=1}) end
+discover() discover()
+assert(chanceRolls==1,'one failed roll per eligible partner per discovery round')
+now=1500 Service.offer('a',entry) discover()
+assert(chanceRolls==2,'later discovery round retries')
+now=3000 Service.offer('a',entry) bindings.b=nil discover()
+assert(chanceRolls==2,'missing actual partner does not consume chance')
+bindings.b={id='b',handle=npc}
+discover() assert(chanceRolls==3,'eligible partner can roll once after binding appears')
+Service.workState('a',entry,'READY') discover()
+assert(not Social.invite('b',entry,now,function(a,b) return a,b end),'ready work withdraws advert')
+Service.workState('a',entry,'OBSERVING') discover()
+assert(not Social.invite('b',entry,now,function(a,b) return a,b end),'observing work withdraws advert')
+print('PASS cut 3 eligible-only single chance per round, later retry and WORK_READY/WORK_OBSERVING withdrawal')
+
+active.payload.step='ACTING' active.payload.kind='LEISURE'
+for _,activity in ipairs({'OBSERVE','SIT','READING','STROLL','FITNESS','SMOKE'}) do
+    active.payload.leisure={activity=activity}
+    assert(Social.available('b')==(activity=='OBSERVE'),'idle-only invitation scope: '..activity)
+end
+active.payload.leisure={activity='OBSERVE',zoneVisit='zone'}
+assert(not Social.available('b'))
+active.payload.leisure={activity='OBSERVE',roleDuty=true}
+assert(not Social.available('b'))
+active.effects='UNKNOWN' active.payload.leisure={activity='OBSERVE'}
+assert(not Social.available('b'))
+print('PASS cut 3 unchanged idle/disposable OBSERVE invitation scope')

@@ -155,8 +155,11 @@ local function seekSocial(env)
     local chance=time>=Config.socialChance.from and time<Config.socialChance.to
         and Config.socialChance.evening or Config.socialChance.other
     if rule==2 then chance=math.min(1,chance*2) end
-    if not key and env.hours>=(env.cooling.SOCIAL or 0) and env.budget.paths>0 and ZombRand(10000)/10000<chance then
+    if not key and env.hours>=(env.cooling.SOCIAL or 0) and env.budget.paths>0 then
         env.budget.paths=env.budget.paths-1
+        -- One outcome per eligible partner in each existing discovery round.
+        local round=math.floor(env.now/1500)
+        if env.state.round~=round then env.state.round=round env.state.rolls={} end
         key=Social.invite(env.id,env.entry,env.now,function(a,b,aid,bid)
             local partner=require('EmberRoutesProbe/Driver').bindId(env.actor,bid)
             if not partner then return end
@@ -169,6 +172,13 @@ local function seekSocial(env)
                 local aRule,bRule=zoneRule(env.entry,p,'SOCIAL',aid),zoneRule(env.entry,target,'SOCIAL',bid)
                 if sa and sb and aRule and aRule>0 and bRule and bRule>0 and sa:canReachTo(sb) then return p,target end
             end
+        end,function(other)
+            local passed=env.state.rolls[other]
+            if passed==nil then
+                passed=ZombRand(10000)/10000<chance
+                env.state.rolls[other]=passed
+            end
+            return passed
         end)
     end
     if key then

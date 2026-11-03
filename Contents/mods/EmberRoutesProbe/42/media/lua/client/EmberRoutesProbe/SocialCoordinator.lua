@@ -8,7 +8,7 @@ local function load()
 end
 function S.advertise(id,entry,point,now)
     load() local ok,revision=S.eligible(id,entry) if not ok or not S.available(id) then S.withdraw(id) return end
-    advertised[id]={entry=entry,point=point,untilTime=now+3000,membershipRevision=revision}
+    advertised[id]={entry=entry,point=point,untilTime=now+6000,membershipRevision=revision}
 end
 function S.eligible(id,entry,revision)
     local r=require('EmberRoutesProbe/MembershipService').view(id)
@@ -38,10 +38,13 @@ function S.peekPending(id)
     load() local p=byNpc[id] and pairsById[byNpc[id]]
     return p and not p.cancelled and validPair(p) and p.id or nil
 end
-function S.invite(id,entry,now,choose)
+function S.invite(id,entry,now,choose,roll)
     load()
+    for other,row in pairs(advertised) do
+        if row.untilTime<=now then advertised[other]=nil end
+    end
     if byNpc[id] then return S.pending(id) end
-    local mine=advertised[id] if not mine or mine.untilTime<now or not S.eligible(id,entry,mine.membershipRevision) then return end
+    local mine=advertised[id] if not mine or not S.available(id) or not S.eligible(id,entry,mine.membershipRevision) then return end
     local best,distance
     -- Roster is bounded (256). Limit eligible geometry/path checks, not just results.
     local checked=0
@@ -52,9 +55,9 @@ function S.invite(id,entry,now,choose)
             local d=(row.point.x-mine.point.x)^2+(row.point.y-mine.point.y)^2
             if d<=900 then
                 checked=checked+1
-                if not distance or d<distance then
-                    local a,b=choose(mine.point,row.point,id,other)
-                    if a and b then best={id=other,a=a,b=b} distance=d end
+                local a,b=choose(mine.point,row.point,id,other)
+                if a and b and (not roll or roll(other)) and (not distance or d<distance) then
+                    best={id=other,a=a,b=b} distance=d
                 end
             end
         end

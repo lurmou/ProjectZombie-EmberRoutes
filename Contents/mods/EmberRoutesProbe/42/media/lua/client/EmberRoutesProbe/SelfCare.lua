@@ -197,6 +197,7 @@ local function advance(actor,binding,row,now)
     observe(actor,binding,row,now)
     local sample=row.sample
     if not sample or not sample.safe or now-sample.observedAt>2000 then
+        use('SocialCoordinator').withdraw(id)
         local job=personal(id,false)
         if job and job.payload.step=='IDLE' then use('LeisureService').consumeResume(id,job.payload.leisureMemory) end
         if job and runtime:status(id,job.id) then runtime:stopJob(id,job.id,'SELF_CARE_UNSAFE') end
@@ -212,13 +213,13 @@ local function advance(actor,binding,row,now)
         local active=personal(id,false)
         if active and active.payload.kind=='LEISURE' then
             local need=Policy.choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true})
-            if active.payload.leisure and active.payload.leisure.activity=='OBSERVE'
+            if need or forcedSleep or not use('LeisureService').valid(actor,binding.handle,id,active.payload) then
+                use('SocialCoordinator').withdraw(id)
+                runtime:stopJob(id,active.id,forcedSleep and 'USER_SLEEP' or 'LEISURE_NEEDS_CARE')
+            elseif active.payload.leisure and active.payload.leisure.activity=='OBSERVE'
                 and not active.payload.leisure.roleDuty
                 and use('SocialCoordinator').pending(id) then
                 runtime:stopJob(id,active.id,'SOCIAL_INVITE')
-            end
-            if need or forcedSleep or not use('LeisureService').valid(actor,binding.handle,id,active.payload) then
-                runtime:stopJob(id,active.id,forcedSleep and 'USER_SLEEP' or 'LEISURE_NEEDS_CARE')
             end
         end
         if active and active.payload.kind=='STUDY' and active.payload.step=='ACTING'
@@ -262,6 +263,7 @@ local function advance(actor,binding,row,now)
     -- A player sleep order overrides the fatigue threshold only; safety,
     -- backoff windows and the bed requirement below still gate it.
     if forcedSleep and offers.SLEEP then kind='SLEEP' end
+    if kind then use('SocialCoordinator').withdraw(id) end
     if kind and job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint then
         if not use('LeisureService').consumeResume(id,job.payload.leisureMemory) then return end
         job=Jobs.current():get(job.id)

@@ -19,7 +19,7 @@ package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks=
 package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end,resources=function() return {} end}
 local Store=require 'EmberRoutesProbe/LaborStore'
 local status={a={jobId='craft',kind='PRODUCTION',state='ACTIVE',started=true}}
-local rejected=true local submitted={}
+local rejected=true local submitted={} local stopReasons={}
 local runtime={accepting=function() return true end,owns=function(_,id) return status[id]~=nil end,
     status=function(_,id) return status[id] end,
     submit=function(_,spec)
@@ -27,7 +27,7 @@ local runtime={accepting=function() return true end,owns=function(_,id) return s
         local h={state='PENDING'} submitted[#submitted+1]={spec=spec,handle=h}
         return h
     end,inspect=function(_,h) return h end,
-    stopJob=function() stopRequests=stopRequests+1 return true end}
+    stopJob=function(_,id,jobId,reason) stopRequests=stopRequests+1 stopReasons[#stopReasons+1]=reason return true end}
 package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
 package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) return {id=id,handle=npcs[id]} end}
 package.loaded['EmberRoutesProbe/NeedsObserver']={sample=function(_,id,time)
@@ -45,6 +45,10 @@ package.loaded['EmberRoutesProbe/SelfCareExecution']={new=function(_,binding,job
     local s={npcId=binding.id,jobId=job.id,kind='SELF_CARE'} contexts[#contexts+1]=s return s
 end}
 EmberRoutesProbeJava={workerCount=function() return 2 end,workerIdAt=function(i) return i==0 and 'a' or 'b' end}
+local withdrawn,pendingChecks=0,0
+package.loaded['EmberRoutesProbe/SocialCoordinator']={withdraw=function(id)
+    withdrawn=withdrawn+1
+end,pending=function() pendingChecks=pendingChecks+1 return 'pending-pair' end}
 local Service=require 'EmberRoutesProbe/SelfCare'
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 Service.install() Service.tick()
@@ -111,3 +115,20 @@ check(#submitted==beforeSleep+1 and sleeping.payload.kind=='SLEEP' and sleeping.
     'forced sleep falls back to a real floor candidate instead of giving up for no bed')
 check(Store.resourceOwner('repose:floor:1:1:0').taskId==sleeping.id,'floor claim belongs to the existing personal task')
 print('PASS forced no-bed sleep admission and shared floor claim; native body mocked')
+
+-- Cut 3: a hungry observer must submit the need stop first and withdraw its
+-- pending pair; TaskController retains the first requested reason.
+withdrawn,pendingChecks=0,0
+local live=Jobs.current():get(sleeping.id)
+local payload=live.payload payload.kind='LEISURE' payload.step='ACTING'
+payload.leisure={format=1,activity='OBSERVE',hours=1}
+assert(Jobs.current():update(live.id,live.revision,{payload=payload}))
+hunger=.6 now=400000
+local stops=#stopReasons
+Service.tick()
+assert(#stopReasons==stops+1 and stopReasons[#stopReasons]=='LEISURE_NEEDS_CARE')
+assert(withdrawn==1 and pendingChecks==0,'need withdraws pair without submitting SOCIAL_INVITE')
+status.a={jobId=live.id,kind='SELF_CARE',state='ACTIVE'}
+safe=false now=402000 Service.tick()
+assert(withdrawn==2 and stopReasons[#stopReasons]=='SELF_CARE_UNSAFE')
+print('PASS cut 3 need/danger stop priority and pending-pair withdrawal; body runtime mocked')

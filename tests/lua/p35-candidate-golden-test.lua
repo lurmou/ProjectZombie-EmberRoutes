@@ -26,7 +26,7 @@ package.loaded['EmberRoutesProbe/SettlementFacilities']={describe=function() end
 package.loaded['EmberRoutesProbe/SocialCoordinator']={
     advertise=function() end,withdraw=function() end,reset=function() end,
     pending=function() return mode.socialPending and 'k1' or nil end,
-    invite=function() return 'k2' end,
+    invite=function() return nil end, -- No eligible advertised partner in this fixture.
     view=function(key,id) return {other='b',point={x=1,y=1,z=0}} end}
 package.loaded['EmberRoutesProbe/LibraryIndex']={choose=function(actor,npc,e,_,budget,offset,leisure)
     if mode.requireContainer then assert(budget.containers==1) budget.containers=budget.containers-1 end
@@ -73,27 +73,27 @@ mode.socialPending=false mode.readingDone=false
 c=Service.candidate({},binding,s,fresh())
 assert(c and c.leisure.activity=='FITNESS','unfinished library does not block known activities')
 mode.readingDone=true mode.readingCandidate={study=true,entry=entry}
--- Social chance consumes first roll; stroll direction second; weighted roll third.
-rolls={9999,0,0}
+-- No eligible social partner: only stroll direction and weighted selection roll.
+rolls={0,0}
 c=Service.candidate({},binding,s,fresh())
 assert(c and c.study,'reading participates in the same candidate pool')
 mode.readingCandidate=nil mode.seat=true
 Service.seatReleased('home')
 local restingMemory={cooldowns={FITNESS=hours+1}}
-local b=fresh() rolls={9999,0,0}
+local b=fresh() rolls={0,0}
 c=Service.candidate({},binding,s,b,restingMemory)
 assert(c and c.site and c.leisure.activity=='SIT','usable seat beats standing even at fallback selection')
 assert(b.scan<=32 and b.scan>=0,'bounded shared scan')
 mode.seatDeferred=true
 Service.reset() Service.offer('a',entry)
-rolls={9999,0,9999}
+rolls={0,9999}
 c=Service.candidate({},binding,s,fresh())
 assert(c and c.leisure.activity=='FITNESS','seat discovery does not block known activity')
-rolls={9999,0,9999}
+rolls={0,9999}
 c=Service.candidate({},binding,s,fresh(),restingMemory)
 assert(c and c.leisure.activity=='SIT','next discovery resumes seat iterator')
 Service.failed('a',c.targetKey,'SITE_PATH_FAILED')
-rolls={9999,0,0}
+rolls={0,0}
 c=Service.candidate({},binding,s,fresh())
 assert(c and c.leisure.activity~='SIT','failed target cools down without blocking alternatives')
 Service.workState('a',entry,'OBSERVING')
