@@ -184,9 +184,10 @@ local function seekSocial(env)
 end
 
 local function seekReading(env)
+    if env.resume and env.budget.scan<1 then return nil,false end
     if env.hours<(env.cooling.READING or 0) or env.budget.scan<1 then return nil,true end
     local candidate,done,reason,offset=require('EmberRoutesProbe/LibraryIndex').choose(
-        env.actor,env.npc,env.entry,nil,env.budget,env.state.offset,true)
+        env.actor,env.npc,env.entry,nil,env.budget,env.state.offset,true,env.resume and env.resume.itemId)
     env.state.offset=done and 1 or offset or env.state.offset
     if candidate then return require('EmberRoutesProbe/StudyService').decorateLeisure(candidate,env.id),true end
     if not done then return nil,false,reason end
@@ -210,9 +211,32 @@ end
 -- prepared proof plus its repose keys ride the LEISURE payload the same
 -- way REST carries them, so occupancy claims interlock with the same store.
 local function seekSit(env,preview)
+    if env.resume and env.budget.scan<1 then return nil,false end
     if not Policy.allowed('SIT',env.s,{hold=true}) or env.hours<(env.cooling.SIT or 0)
         or env.budget.scan<1
         or not (EmberRoutesProbeJava and EmberRoutesProbeJava.reposeAtWithControl) then return nil,true end
+    if env.resume then
+        local h=env.resume local p=h.point
+        env.budget.scan=env.budget.scan-1
+        local square=getCell():getGridSquare(p.x,p.y,p.z)
+        local objects=square and square:getObjects()
+        if not objects or objects:size()>64 then return nil,true end
+        local Sites=require 'EmberRoutesProbe/ReposeSites'
+        for i=0,objects:size()-1 do
+            local object=objects:get(i)
+            local meta=object:getModData().EmberRoutesRepose
+            if meta and meta.id==h.objectId and meta.partId==h.partId then
+                local quality,seats=require('EmberRoutesProbe/SettlementFacilities').describe(object)
+                if not quality and (not seats or seats<1) then return nil,true end
+                local proof=Sites.prepare({object=object,revision=meta.revision,key=h.targetKey,
+                    settlementId=env.entry.id},env.actor,env.npc,env.id,'REST')
+                if proof then return {leisure={format=1,activity='SIT',hours=env.hours},entry=env.entry,
+                    site=proof,claims=Sites.keys(proof,'REST'),targetKey=proof.key},true end
+                return nil,true
+            end
+        end
+        return nil,true
+    end
     local Facilities=require 'EmberRoutesProbe/SettlementFacilities'
     local facility=Facilities.watch(env.entry,Facilities.describe)
     local location=math.floor(env.point.x)..':'..math.floor(env.point.y)..':'..env.point.z
@@ -349,19 +373,65 @@ local function ambient(entry,point,id,eligible,hours,untilHours)
         membershipRevision=eligible.revision,settlementRevision=eligible.entryRevision}
 end
 
+-- Clearing is a Job update, never a mutation of a detached discovery snapshot alone.
+function Service.consumeResume(id,memory)
+    local jobs=Jobs.current()
+    local job=jobs:forNpc(id,'SELF_CARE')[1]
+    if job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint then
+        local p=job.payload
+        p.leisureMemory.resumeHint=nil
+        if not jobs:update(job.id,job.revision,{payload=p}) then return false end
+    end
+    if memory then memory.resumeHint=nil end
+    return true
+end
+
+function Service.interrupted(c)
+    local p=c.payload local l=p.leisure
+    local reading=p.study and p.study.leisure
+    if c.reason~='LEISURE_WORK_READY' or l and (l.finished or l.ambient or l.zoneVisit or l.roleDuty)
+        or not reading and not (l and l.activity=='SIT') then return false end
+    p.leisureMemory=p.leisureMemory or {cooldowns={}}
+    local h
+    if reading then
+        local r=p.reading
+        if r and (r.completed or r.windowEnded) then return false end
+        h={activity='READING',settlementId=p.settlementId,itemId=p.itemId}
+    elseif p.site then
+        for _,part in ipairs(p.site.parts or {}) do
+            if part.id==p.site.partId then
+                h={activity='SIT',settlementId=p.settlementId,targetKey=p.site.key,
+                    objectId=p.site.id,partId=p.site.partId,point={x=part.x,y=part.y,z=part.z}}
+                break
+            end
+        end
+    end
+    p.leisureMemory.resumeHint=h
+    return true
+end
+
 function Service.candidate(actor,binding,sample,budget,memory)
     load() local id,npc=binding.id,binding.handle local offer=offers[id]
     local M=require 'EmberRoutesProbe/MembershipService'
     local eligible=M.check(id,'LEISURE',{x=npc:getX(),y=npc:getY(),z=npc:getZ()})
-    if not eligible.allowed then Social.withdraw(id) noteIdle(id,eligible.reason) return nil,true end
+    if not eligible.allowed then
+        Service.consumeResume(id,memory)
+        Social.withdraw(id) noteIdle(id,eligible.reason) return nil,true
+    end
     local entry=M.entry(id,eligible.settlementId)
-    if not entry then Social.withdraw(id) noteIdle(id,'NO_ENTRY') return nil,true end
+    if not entry then
+        Service.consumeResume(id,memory)
+        Social.withdraw(id) noteIdle(id,'NO_ENTRY') return nil,true
+    end
     if not offer or offer.membershipRevision~=eligible.revision or offer.entryRevision~=eligible.entryRevision then
         offer={entry=entry,membershipRevision=eligible.revision,entryRevision=eligible.entryRevision}
         offers[id]=offer
     end
     local s=Service.sample(npc,sample)
-    if not Policy.allowed('OBSERVE',s,{hold=true}) then Social.withdraw(id) noteIdle(id,'NOT_ELIGIBLE') return nil,true end
+    if not Policy.allowed('OBSERVE',s,{hold=true}) then
+        Service.consumeResume(id,memory)
+        Social.withdraw(id) noteIdle(id,'NOT_ELIGIBLE') return nil,true
+    end
     local now,hours=getTimestampMs(),getGameTime():getWorldAgeHours()
     local point={x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())}
     local state=offer.untilTime and offer.untilTime>=now and offer.state or 'OBSERVING'
@@ -402,6 +472,37 @@ function Service.candidate(actor,binding,sample,budget,memory)
         Social.withdraw(id) noteIdle(id,'WORK_OBSERVING')
         return {leisure={format=1,activity='OBSERVE',hours=hours,brief=true},entry=entry,pure=true,
             membershipRevision=eligible.revision,settlementRevision=eligible.entryRevision},true
+    end
+    if memory and memory.resumeHint then
+        local h=memory.resumeHint
+        if h.settlementId==entry.id and Policy.allowed(h.activity,s,{hold=true})
+            and (zoneRule(entry,point,h.activity,id) or 0)>0 then
+            offer.stateData=offer.stateData or {}
+            local key='RESUME_'..h.activity
+            local seekState=offer.stateData[key] or {}
+            offer.stateData[key]=seekState
+            local env={actor=actor,binding=binding,id=id,npc=npc,offer=offer,entry=entry,s=s,hours=hours,
+                point=point,budget=budget,cooling={},now=now,memory=memory,state=seekState,resume=h}
+            local def=Registry.get(h.activity)
+            local candidate,done=def.seek(env)
+            if candidate then
+                candidate.membershipRevision=eligible.revision candidate.settlementRevision=eligible.entryRevision
+                candidate.activityRef=gathering
+                local p={settlementId=entry.id,membershipRevision=eligible.revision,
+                    settlementRevision=eligible.entryRevision,leisure=candidate.leisure,site=candidate.site,
+                    study=candidate.study,activityRef=gathering}
+                local valid=h.activity=='SIT' and Service.valid(actor,npc,id,p)
+                    or h.activity=='READING' and require('EmberRoutesProbe/StudyService').valid(actor,npc,id,p)
+                if valid and (candidateRule(entry,point,candidate,id) or 0)>0 then
+                    candidate.resume=true -- Receipt only; the hint remains solely in leisureMemory until admission.
+                    offer.stateData[key]=nil
+                    Social.withdraw(id)
+                    return candidate,true
+                end
+            elseif done==false then return nil,false end
+            offer.stateData[key]=nil
+        end
+        if not Service.consumeResume(id,memory) then return nil,true end
     end
     local hint=preferred[id]
     if hint and hint.untilTime<now then preferred[id]=nil hint=nil end
@@ -566,6 +667,10 @@ function Service.finished(c,stopped)
         Service.failed(c.job.npcId,c.leisureKey,c.reason or 'ACTIVITY_INTERRUPTED')
     end
     if l.ambient then return end -- Waiting must not restart the decision pause or activity cooldowns.
+    if Service.interrupted(c) then
+        if stopped and l.activity=='SIT' then Service.seatReleased(p.settlementId) end
+        return
+    end
     if not l.zoneVisit and not l.roleDuty then
         p.leisureMemory=Policy.remember(p.leisureMemory,l.activity,getGameTime():getWorldAgeHours(),l.finished==true)
     else p.leisureMemory=p.leisureMemory or {cooldowns={}} end

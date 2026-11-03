@@ -64,7 +64,7 @@ local function view(entry)
     end
     return row
 end
-function Library.choose(actor,npc,entry,target,budget,offset,leisure)
+function Library.choose(actor,npc,entry,target,budget,offset,leisure,itemId)
     local row=view(entry)
     if not row.ids then return nil,true,'CONTAINER_RECORD_INVALID' end
     while not row.complete and budget.scan>0 do
@@ -102,7 +102,7 @@ function Library.choose(actor,npc,entry,target,budget,offset,leisure)
         budget.scan=budget.scan-1
         local candidate=row.books[i]
         local useful,knowledge=Library.useful(npc,candidate.item,target,leisure)
-        if useful and Library.revalidate(candidate) then
+        if (not itemId or candidate.id==itemId) and useful and Library.revalidate(candidate) then
             return {item=candidate.item,id=candidate.id,container=candidate.container,endpoint=candidate.endpoint,
                 entry=entry,npc=npc,knowledge=knowledge},true
         end

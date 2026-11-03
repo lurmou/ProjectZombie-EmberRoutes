@@ -162,3 +162,89 @@ Service.seatReleased('home') mode.seat=true mode.seatDeferred=false
 local seated=Service.candidate({},binding,s,fresh(),restingMemory)
 assert(seated and seated.leisure.activity=='SIT' and seatIterators>before,'released seat wakes failed discovery')
 print('PASS ordered seat fallback, seated no-book-scan, seat retry sleep and release wake')
+
+-- Cut 2 main chain: neutral interruption -> durable hint -> ordinary issuance /
+-- consumption -> repeated interruption; a lost original falls back cleanly.
+local function copy(v)
+    if type(v)~='table' then return v end
+    local t={} for k,x in pairs(v) do t[k]=copy(x) end return t
+end
+local Personal=require 'EmberRoutesProbe/SelfCareRecord'
+local saved=Personal.create('care','a')
+local api={forNpc=function() return {copy(saved)} end,
+    update=function(_,id,revision,patch)
+        assert(id==saved.id and revision==saved.revision)
+        for k,v in pairs(patch) do saved[k]=copy(v) end
+        saved.revision=saved.revision+1
+        assert(Personal.valid(saved))
+        return true
+    end}
+package.loaded['EmberRoutesProbe/TaskJobs'].current=function() return api end
+local proof={id='chair',partId='part',revision=1,key='seat',settlementId='home',
+    parts={{id='part',x=4,y=5,z=0}}}
+local function interrupted(activity)
+    local p={settlementId='home',leisureMemory=copy(saved.payload.leisureMemory)}
+    if activity=='SIT' then p.leisure={activity='SIT',moving=true,seated=true} p.site=proof
+    else p.study={leisure=true} p.itemId=42 p.reading={stopped=true} end
+    local context={payload=p,job=saved,reason='LEISURE_WORK_READY'}
+    if activity=='SIT' then Service.finished(context,true) else assert(Service.interrupted(context)) end
+    assert(p.leisureMemory.resumeHint.activity==activity and Record.memory(p.leisureMemory))
+    assert(not p.leisureMemory.last and not p.leisureMemory.cooldowns[activity]
+        and not p.leisureMemory.moveAfter and not p.leisureMemory.decisionAfter,
+        'work interruption adds no failure, repeat, move or decision penalty')
+    saved.payload.leisureMemory=copy(p.leisureMemory)
+end
+Service.reset() Service.offer('a',entry)
+mode.seat=false mode.readingCandidate=nil mode.requireContainer=false
+local present=true
+getCell=function() return {getGridSquare=function(_,x,y)
+    if x~=4 or y~=5 then return end
+    return {getObjects=function() return {size=function() return present and 1 or 0 end,
+        get=function() return {getModData=function() return {EmberRoutesRepose={id='chair',partId='part',revision=1}} end} end} end}
+end} end
+package.loaded['EmberRoutesProbe/SettlementFacilities'].describe=function() return nil,1 end
+package.loaded['EmberRoutesProbe/ReposeSites'].prepare=function(candidate)
+    assert(candidate.object and candidate.revision==1)
+    return copy(proof)
+end
+interrupted('SIT')
+-- Supported record validation and a detached begin retain only the memory,
+-- never the predecessor's claims or elapsed leisure record.
+local begun=assert(Personal.begin(copy(saved),'EAT',{state='RESTORED'}))
+assert(begun.leisureMemory.resumeHint.activity=='SIT' and #begun.claims==0 and not begun.leisure)
+for _,state in ipairs({'RESTORED','INVALIDATED'}) do
+    local restored=copy(saved) restored.payload.resume={state=state}
+    assert(Personal.valid(restored) and restored.payload.leisureMemory.resumeHint.activity=='SIT')
+end
+Service.workState('a',entry,'READY')
+assert(not Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory)))
+assert(saved.payload.leisureMemory.resumeHint,'work discovery does not consume the hint')
+Service.offer('a',entry)
+local resumed=Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory))
+assert(resumed and resumed.resume and resumed.site.id=='chair' and resumed.claims[1]=='repose:s:p')
+assert(saved.payload.leisureMemory.resumeHint,'validation does not consume before issuance is accepted')
+assert(Service.consumeResume('a',copy(saved.payload.leisureMemory)))
+assert(not saved.payload.leisureMemory.resumeHint,'accepted issuance clears the durable hint before rollback snapshots')
+interrupted('SIT') -- A new work interruption creates a fresh single hint.
+present=false
+local invalidMemory=copy(saved.payload.leisureMemory)
+for kind in pairs({OBSERVE=1,STROLL=1,FITNESS=1,SIT=1,READING=1,SMOKE=1,SOCIAL=1}) do invalidMemory.cooldowns[kind]=2 end
+local invalid=Service.candidate({},binding,s,fresh(),invalidMemory)
+assert(invalid and invalid.leisure.ambient and not invalid.resume and not saved.payload.leisureMemory.resumeHint,
+    'lost original is discarded once and normal discovery reaches cut-1 ambient')
+interrupted('READING')
+local book={getID=function() return 42 end}
+package.loaded['EmberRoutesProbe/LibraryIndex'].choose=function(actor,body,e,target,budget,offset,leisure,itemId)
+    assert(leisure and itemId==42,'resume re-finds only the original book through library discovery')
+    budget.scan=budget.scan-1
+    return {item=book,id=42,entry=entry},true
+end
+package.loaded['EmberRoutesProbe/StudyService'].valid=function(actor,body,id,p)
+    return p.study and p.membershipRevision~=nil and p.settlementRevision==entry.revision
+end
+local reading=Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory))
+assert(reading and reading.resume and reading.item==book and not reading.reading,'reading starts a fresh normal attempt')
+assert(Service.consumeResume('a',copy(saved.payload.leisureMemory)))
+assert(not saved.payload.leisureMemory.resumeHint)
+assert(not Record.memory({cooldowns={},resumeHint={activity='SOCIAL',settlementId='home'}}))
+print('PASS cut 2 neutral SIT/READING interruption, record continuity, single consumption and invalid-target ambient fallback')

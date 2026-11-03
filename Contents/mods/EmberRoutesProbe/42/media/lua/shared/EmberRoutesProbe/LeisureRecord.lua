@@ -46,6 +46,18 @@ function R.memory(value)
     if value.decisionAfter~=nil and (not finite(value.decisionAfter) or value.decisionAfter<0) then return false end
     if value.moveAfter~=nil and (not finite(value.moveAfter) or value.moveAfter<0) then return false end
     if value.seatPreference~=nil and not point(value.seatPreference) then return false end
+    local h=value.resumeHint
+    if h~=nil then
+        local function id(v) return type(v)=='string' and #v>0 and #v<=256 end
+        if type(h)~='table' or not id(h.settlementId) then return false end
+        if h.activity=='SIT' then
+            if not id(h.targetKey) or not id(h.objectId) or not id(h.partId) or not point(h.point)
+                or h.point.x~=math.floor(h.point.x) or h.point.y~=math.floor(h.point.y)
+                or h.point.z~=math.floor(h.point.z) then return false end
+        elseif h.activity=='READING' then
+            if not require('EmberRoutesProbe/Validate').itemId(h.itemId) then return false end
+        else return false end
+    end
     return value.last==nil or activities[value.last] or value.last=='READING'
 end
 return R

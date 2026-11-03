@@ -198,6 +198,7 @@ local function advance(actor,binding,row,now)
     local sample=row.sample
     if not sample or not sample.safe or now-sample.observedAt>2000 then
         local job=personal(id,false)
+        if job and job.payload.step=='IDLE' then use('LeisureService').consumeResume(id,job.payload.leisureMemory) end
         if job and runtime:status(id,job.id) then runtime:stopJob(id,job.id,'SELF_CARE_UNSAFE') end
         row.scan=nil row.reposeScan=nil return
     end
@@ -261,6 +262,10 @@ local function advance(actor,binding,row,now)
     -- A player sleep order overrides the fatigue threshold only; safety,
     -- backoff windows and the bed requirement below still gate it.
     if forcedSleep and offers.SLEEP then kind='SLEEP' end
+    if kind and job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint then
+        if not use('LeisureService').consumeResume(id,job.payload.leisureMemory) then return end
+        job=Jobs.current():get(job.id)
+    end
     local studyCandidate
     -- Idle discovery runs at most one settled round per 1.5s per NPC. Both
     -- providers re-check their own offers each call; the cooldown only stops
@@ -269,7 +274,8 @@ local function advance(actor,binding,row,now)
     local studyAttempted,leisureAttempted,leisureSettled=false,false,true
     local idleEligible=use('MembershipService').check(id,'LEISURE',
         {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ()}).allowed
-    if discoverReady and not gathering and not kind and idleEligible and (not job or not job.payload.resume or job.payload.resume.state=='RESTORED'
+    if discoverReady and not gathering and not kind and idleEligible
+        and not (job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint) and (not job or not job.payload.resume or job.payload.resume.state=='RESTORED'
         or job.payload.resume.state=='INVALIDATED') and budget.scan>0 then
         studyAttempted=true
         local candidate,done,reason=use('StudyService').candidate(actor,binding.handle,id,budget,job and job.payload.leisureMemory)
@@ -280,6 +286,13 @@ local function advance(actor,binding,row,now)
     if discoverReady and not kind and idleEligible and not runtime:owns(id) and (not ref or ref.state=='RESTORED' or ref.state=='INVALIDATED') then
         leisureAttempted=true
         local candidate,done=use('LeisureService').candidate(actor,binding,sample,budget,job and job.payload.leisureMemory)
+        if job then job=Jobs.current():get(job.id) end
+        -- Accept one resumed issuance into the normal attempt/claim path. Every
+        -- rejection below keeps this durable clear, including payload rollback.
+        if candidate and candidate.resume then
+            if not use('LeisureService').consumeResume(id,job and job.payload.leisureMemory) then return end
+            if job then job=Jobs.current():get(job.id) end
+        end
         if candidate and candidate.study then studyCandidate=candidate kind='STUDY'
         elseif candidate then
             job=job or personal(id,true) if not job then return end

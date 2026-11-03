@@ -116,7 +116,10 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
                 if not require('EmberRoutesProbe/StudySeat').release(c) then return false end
             end
         end
-        if c.payload.study and (c.payload.study.leisure or not c.payload.study.orderId) then
+        local hint=c.payload.leisureMemory and c.payload.leisureMemory.resumeHint
+        local returningInterruptedBook=settle and hint and hint.activity=='READING' and hint.itemId==c.payload.itemId
+        if c.payload.study and (c.payload.study.leisure or not c.payload.study.orderId)
+            and not returningInterruptedBook and not require('EmberRoutesProbe/LeisureService').interrupted(c) then
             c.payload.leisureMemory=require('EmberRoutesProbe/LeisurePolicy').remember(c.payload.leisureMemory,
                 'READING',getGameTime():getWorldAgeHours(),c.payload.reading and (c.payload.reading.completed or c.payload.reading.windowEnded))
             if c.payload.reading and (c.payload.reading.completed or c.payload.reading.windowEnded) then
