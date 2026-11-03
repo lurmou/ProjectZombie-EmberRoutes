@@ -9,6 +9,8 @@ local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
 local Text=require 'EmberRoutesProbe/UI/Text'
+local Reasons=require 'EmberRoutesProbe/UI/OrderMonitorCards'
+local meterOptions={mode='load',threshold=0.8,showPercent=false}
 
 ---@class EmberRoutesContainerInspectorDialog:ISCollapsableWindow
 local Dialog=ISCollapsableWindow:derive('EmberRoutesContainerInspectorDialog')
@@ -99,7 +101,8 @@ function Dialog:refreshList()
     self.list:clear()
     local h,p=self.fontHeight,self.pad
     local itemH=self.list.itemheight
-    local locateW=math.max(48,getTextManager():MeasureStringX(UIFont.Small,text('containerLocate'))+p)
+    self.locateLabel=text('containerLocate')
+    local locateW=math.max(48,getTextManager():MeasureStringX(UIFont.Small,self.locateLabel)+p)
     local locateH=math.floor(h*1.35)
 
     for _,c in ipairs(self.containers) do
@@ -114,14 +117,22 @@ function Dialog:refreshList()
         end
         name=name or text('container')
 
-        local floorStr=c.z==0 and text('floorGround') or ((c.z+1)..text('floorLevel'))
-        local locStr=floorStr..' ('..c.x..', '..c.y..')'
+        local locStr=''
+        if c.x and c.y and c.z then
+            local floorStr=c.z==0 and text('floorGround') or ((c.z+1)..text('floorLevel'))
+            locStr=floorStr..' ('..c.x..', '..c.y..')'
+        end
+        local blocked=c.status and c.status~='LOADED'
+        if blocked then
+            local available=self.list.width-locateW-p*3-16
+            locStr=Text.wrapLimited(Reasons.reason(c.status),available,UIFont.Small,1)[1] or ''
+        end
 
         local cap=c.capacity or 0
         local used=c.usedWeight or 0
         local ratio=cap>0 and math.max(0,math.min(1,used/cap)) or 0
         local pct=math.floor(ratio*100)
-        local weightStr=string.format('%.1f / %.1f kg (%d%%)',used,cap,pct)
+        local weightStr=blocked and '' or string.format('%.1f / %.1f kg (%d%%)',used,cap,pct)
 
         local layout={
             locate={x=self.list.width-locateW-p-16,y=math.floor((itemH-locateH)/2),width=locateW,height=locateH}
@@ -133,6 +144,8 @@ function Dialog:refreshList()
             name=name,
             locStr=locStr,
             weightStr=weightStr,
+            weightWidth=getTextManager():MeasureStringX(UIFont.Small,weightStr),
+            blocked=blocked,
             ratio=ratio,
             pct=pct,
             layout=layout
@@ -159,7 +172,7 @@ function Dialog:drawContainerRow(list,y,entry,alt)
     -- Container name
     Theme.text(list,c.name,p,nameY,Theme.textColor)
     -- Location
-    Theme.text(list,c.locStr,p,locY,Theme.muted)
+    Theme.text(list,c.locStr,p,locY,c.blocked and Theme.status.ERROR or Theme.muted)
 
     -- Meter and weight
     local meterW=math.min(120,math.max(60,math.floor(list.width*0.25)))
@@ -168,22 +181,17 @@ function Dialog:drawContainerRow(list,y,entry,alt)
     local meterX=locateX-meterW-p
     local meterY=y+math.floor((itemH-meterH)/2)
 
-    StatMeter.draw(list,meterX,meterY,meterW,meterH,c.ratio,{
-        mode='load',
-        threshold=0.8,
-        showPercent=false
-    })
+    if not c.blocked then StatMeter.draw(list,meterX,meterY,meterW,meterH,c.ratio,meterOptions) end
 
     -- Weight text above meter
-    local tm=getTextManager()
-    local weightW=tm:MeasureStringX(UIFont.Small,c.weightStr)
+    local weightW=c.weightWidth
     Theme.text(list,c.weightStr,meterX+meterW-weightW,nameY,c.pct>85 and Theme.status.ERROR or (c.pct>65 and Theme.gold or Theme.status.READY))
 
     -- Locate button
     local b=c.layout.locate
     Theme.rect(list,b.x,y+b.y,b.width,b.height,Theme.control)
     Theme.rect(list,b.x,y+b.y,b.width,b.height,Theme.border,true)
-    list:drawTextCentre(text('containerLocate'),b.x+b.width/2,y+b.y+(b.height-h)/2,Theme.textColor.r,Theme.textColor.g,Theme.textColor.b,1,UIFont.Small)
+    list:drawTextCentre(self.locateLabel,b.x+b.width/2,y+b.y+(b.height-h)/2,Theme.textColor.r,Theme.textColor.g,Theme.textColor.b,1,UIFont.Small)
 
     return y+itemH
 end

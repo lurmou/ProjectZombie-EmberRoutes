@@ -18,3 +18,5 @@ for _, id in ipairs({ "inbox", "food", "weapons", "tools", "medical", "scrap", "
     Policy.registerTag(id, { read=true, write=true })
 end
 Policy.registerTag("private", { read=false, write=false })
+
+return Policy

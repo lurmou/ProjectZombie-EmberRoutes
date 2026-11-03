@@ -280,6 +280,14 @@ local function moved(c,item,from,to,endpoint,callback)
     if not Transfer.reachable(c.npc,endpoint) then return nil,nil,endpoint end
     return Actions.transfer(c,item,from,to,endpoint,callback)
 end
+local function outputOverlap(c,asset,destinationId)
+    if c.returnOnly or not c.record.orderId then return end
+    for _,output in ipairs(c.record.outputs) do
+        if output==asset then
+            return require('EmberRoutesProbe/PublicWork').outputOverlapReason(c.record.orderId,asset.fullType,destinationId)
+        end
+    end
+end
 local function deliver(c,asset,callback)
     local item,reason,source=find(c,asset)
     if not item then
@@ -289,12 +297,15 @@ local function deliver(c,asset,callback)
     end
     if asset.fullType and item:getFullType()~=asset.fullType then return nil,"INPUT_CHANGED" end
     if source and Registry.accepts(source,item) and Registry.logistics(source)=="STORAGE" then
-        asset.destination=source.id if callback then callback() end return false
+        asset.destination=source.id
+        local why=outputOverlap(c,asset,source.id) if why then return nil,why end
+        if callback then callback() end return false
     end
     if not c.route then c.route=Supply.route(c.plan,item) end
     local target,done=c.route:step(32) if not done then return nil end c.route=nil
     if not target then return nil,"NO_CLASSIFIED_STORAGE_TARGET" end
     asset.destination=target.id
+    local why=outputOverlap(c,asset,target.id) if why then return nil,why end
     local root=c.npc:getInventory()
     if item:getContainer()~=root then
         if not source then return nil,"ITEM_LOCATION_CHANGED" end

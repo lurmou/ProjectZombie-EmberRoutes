@@ -4,6 +4,8 @@ require 'ISUI/ISTextEntryBox'
 require 'ISUI/ISComboBox'
 local Crafting=require 'EmberRoutesProbe/CraftingService'
 local Public=require 'EmberRoutesProbe/PublicWork'
+local Draft=require 'EmberRoutesProbe/PublicOrderDraft'
+local Lifecycle=require 'EmberRoutesProbe/UI/PageLifecycle'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
@@ -51,11 +53,18 @@ function EmberRoutesPublicOrderDialog.open(owner,context)
     o.fontHeight,o.pad=h,p
     o.context=context or {}
     o.title=text('createOrder')
-    o.requestId=Public.requestId()
+    o.draft=Draft.read(o.actor,o.entry.id)
+    if o.draft and (not o.context.productType or o.context.productType==o.draft.product)
+        and (not o.context.recipeId or o.context.recipeId==o.draft.recipe)
+        and (not o.context.surfaceId or o.context.surfaceId==o.draft.surface) then
+        o.context.recipeId=o.draft.recipe
+        o.context.surfaceId=o.draft.surface
+        o.restoredDraft=o.draft
+    end
     o.page=1
     o.rows={}
     o.selectedRecipe=false
-    o.preferences={}
+    o.preferences=o.restoredDraft and o.restoredDraft.preferences or {}
     o.activeTab='order' -- 'order' or 'stock'
     o.presentation=Presentation.new()
     o.resizable=false
@@ -63,6 +72,7 @@ function EmberRoutesPublicOrderDialog.open(owner,context)
     o.backgroundColor=Theme.window
     o.borderColor=Theme.border
     o:setWantKeyEvents(true)
+    Lifecycle.createActivationScope(o)
     o:initialise()
     o:addToUIManager()
     owner.publicDialog=o
@@ -133,7 +143,6 @@ function EmberRoutesPublicOrderDialog:createChildren()
         self.notice=nil
         local row=self.rows[self.recipeCombo.selected]
         self.selectedRecipe=row and row.id or false
-        self.requestId=Public.requestId()
         self.preferences={}
         self:loadRule()
         self:describe()
@@ -165,7 +174,6 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.surfaceLabel=surfRows[1]
     self.surfaceCombo=ISComboBox:new(surfRows[2].x,surfRows[2].y,surfRows[2].width,surfRows[2].height,self,function()
         self.notice=nil
-        self.requestId=Public.requestId()
         self:describe()
     end)
     self.surfaceCombo:initialise()
@@ -185,15 +193,14 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self.quantityLabel=qRows[1]
 
     local qBar=qRows[2]
-    self.quantityStepper=StepperInput:new(qBar.x,qBar.y,qBar.width,qBar.height,1,1,9999,{-5,-1,1,5},function()
+    self.quantityStepper=StepperInput:new(qBar.x,qBar.y,qBar.width,qBar.height,self.restoredDraft and self.restoredDraft.quantity or 1,1,9999,{-5,-1,1,5},function()
         self.notice=nil
-        self.requestId=Public.requestId()
         self:describe()
     end)
+    self:addChild(self.quantityStepper)
     self.quantity=self.quantityStepper.entry
     self.quantity.tooltip=craftText('quantityHint')
     Tooltip.attach(self.quantity,'prerender',self)
-    self:addChild(self.quantityStepper)
 
     -- B. Stock Thresholds (Maintain Stock)
     local stockRows=assert(Layout.axis({x=self.formRegion.x,y=self.formRegion.y,width=self.formRegion.width,height=self.formRegion.height},
@@ -205,8 +212,8 @@ function EmberRoutesPublicOrderDialog:createChildren()
         self.notice=nil
         self:describe()
     end)
-    self.minimum=self.minimumStepper.entry
     self:addChild(self.minimumStepper)
+    self.minimum=self.minimumStepper.entry
 
     self.batchLabel=stockRows[3]
     local batchBar=stockRows[4]
@@ -214,10 +221,10 @@ function EmberRoutesPublicOrderDialog:createChildren()
         self.notice=nil
         self:describe()
     end)
+    self:addChild(self.batchStepper)
     self.batch=self.batchStepper.entry
     self.batch.tooltip=craftText('quantityHint')
     Tooltip.attach(self.batch,'prerender',self)
-    self:addChild(self.batchStepper)
 
     -- 6. Main Action Button
     self.actionButton=ISButton:new(self.actionRegion.x,self.actionRegion.y,self.actionRegion.width,self.actionRegion.height,text('submit'),self,function()
@@ -298,10 +305,11 @@ function EmberRoutesPublicOrderDialog:query()
         end
     end
 
+    local activation=self.activationScope
     local token={}
     self.catalogToken=token
     local release=Crafting.watchCatalog(self.actor,self.entry.id,{search=self.search:getText(),category=false,unsupported=false,page=self.page,size=12},function(snapshot)
-        if self.disposed or self.catalogToken~=token then return end
+        if not activation:isCurrent() or self.catalogToken~=token then return end
         if not self.owner:valid() then self:close() return end
         self.rows=snapshot.rows or {}
         self.recipeCombo:clear()
@@ -317,7 +325,6 @@ function EmberRoutesPublicOrderDialog:query()
         self.recipeCombo.selected=selected
         local chosen=self.rows[selected] and self.rows[selected].id or false
         if chosen~=self.selectedRecipe then
-            self.requestId=Public.requestId()
             self.preferences={}
         end
         self.selectedRecipe=chosen
@@ -412,6 +419,17 @@ end
 
 function EmberRoutesPublicOrderDialog:describe()
     self:updateConversion()
+    local row=self.rows[self.recipeCombo.selected]
+    local quantity=tonumber(self.quantity:getText())
+    if self.activeTab=='order' and row and quantity and quantity>=1 and quantity<=9999 and quantity==math.floor(quantity) then
+        local surface=self.surfaces[self.surfaceCombo.selected]
+        if not row.surface then surface=nil end
+        local d=Draft.update(self.actor,self.entry.id,row.id,quantity,surface,self.preferences,row.product)
+        if self.requestId~=d.requestId then self.notice=nil end
+        self.draft,self.requestId=d,d.requestId
+        self.notice=d.result and require('EmberRoutesProbe/UI/OrderMonitorCards').reason(d.result) or self.notice
+        self.submitted=d.result=='ORDER_CREATED'
+    end
     if self.submitting then
         Theme.enable(self.actionButton,false)
         self:requestPreview()
@@ -422,7 +440,7 @@ function EmberRoutesPublicOrderDialog:describe()
     local n=tonumber(self.quantity:getText())
     if self.activeTab=='order' then
         local valid=row~=nil and n~=nil and n>=1 and n<=9999 and n==math.floor(n)
-        Theme.enable(self.actionButton,valid,true)
+        Theme.enable(self.actionButton,valid and not self.submitted,true)
     else
         local minVal=tonumber(self.minimum:getText())
         local batchVal=tonumber(self.batch:getText())
@@ -436,11 +454,11 @@ end
 function EmberRoutesPublicOrderDialog:switchPrecursor(product,nextRecipeId)
     self.preferences=self.preferences or {}
     self.preferences[product]=nextRecipeId
-    self.requestId=Public.requestId()
-    self:requestPreview()
+    self:describe()
 end
 
 function EmberRoutesPublicOrderDialog:requestPreview()
+    self.previewToken=nil
     if self.cancelPreview then self.cancelPreview() self.cancelPreview=nil end
     local row=self.rows[self.recipeCombo.selected]
     if not row or not row.id then
@@ -455,17 +473,22 @@ function EmberRoutesPublicOrderDialog:requestPreview()
     end
     local surfaceId=self.surfaces[self.surfaceCombo.selected]
 
+    local activation=self.activationScope
+    local token={} self.previewToken=token
     self.previewData=nil
     local spec=Recipe.read(row.id)
     self.currentSpec=row.cooking and Catalog.describe(row.id) or spec and Recipe.describe(spec) or row
     self:updateBlueprint()
 
-    self.cancelPreview=require('EmberRoutesProbe/PublicPreview').watch(self.actor,self.entry.id,row.id,qty,surfaceId,function(result)
-        if self.disposed then return end
+    local release=require('EmberRoutesProbe/PublicPreview').watch(self.actor,self.entry.id,row.id,qty,surfaceId,function(result)
+        if not activation:isCurrent() or self.previewToken~=token then return end
         self.previewData=result
         if result.cooking and result.recipe then self.currentSpec=result.recipe end
         self:updateBlueprint()
     end,self.preferences)
+    if not activation:isCurrent() or self.previewToken~=token then
+        if release then release() end
+    else self.cancelPreview=release end
 end
 
 function EmberRoutesPublicOrderDialog:updateBlueprint()
@@ -709,6 +732,8 @@ function EmberRoutesPublicOrderDialog:submitOrder()
     local qty=tonumber(self.quantity:getText())
     if not qty or qty<1 or qty>9999 or qty~=math.floor(qty) then return end
 
+    self:describe()
+    if self.submitted then return end
     self.submitting=true
     local oldTitle=text('submit')
     self.actionButton:setTitle(submittingText())
@@ -727,16 +752,11 @@ function EmberRoutesPublicOrderDialog:submitOrder()
         return
     end
 
+    Draft.result(self.actor,self.entry.id,self.requestId,result)
+    self.submitting=false
     self.notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)
-    if result=='ORDER_CREATED' then
-        self.submitting=false
-        self.owner:selectTab('orders')
-        self:close()
-    else
-        self.submitting=false
-        self.actionButton:setTitle(oldTitle)
-        self:describe()
-    end
+    self.actionButton:setTitle(oldTitle)
+    self:describe()
 end
 
 function EmberRoutesPublicOrderDialog:submitRule()
@@ -875,6 +895,7 @@ end
 
 function EmberRoutesPublicOrderDialog:close()
     if self.disposed then return end
+    Lifecycle.dispose(self)
     self.disposed=true
     self.submitting=false
     self.catalogToken=nil

@@ -560,7 +560,7 @@ function EmberRoutesWarehousePage:dispatchDeliveryCart()
         items[#items+1]={
             fullType=itm.fullType,
             quantity=itm.count,
-            sourceId=itm.source and itm.source.id or nil
+            sourceId=self.deliverySourceId or (itm.source and itm.source.id or nil)
         }
     end
 
@@ -568,7 +568,7 @@ function EmberRoutesWarehousePage:dispatchDeliveryCart()
     local result="DELIVERY_UNAVAILABLE"
     if PublicWork and PublicWork.createDeliveryOrder then
         self.deliveryRequestId=self.deliveryRequestId or require('EmberRoutesProbe/ContainerRegistry').id()
-        result=PublicWork.createDeliveryOrder(self.actor,self.entry.id,items,self.deliveryRequestId)
+        result=PublicWork.createDeliveryOrder(self.actor,self.entry.id,items,self.deliveryRequestId,self.deliveryDestinationId)
     end
 
     if result=="ORDER_CREATED" then
@@ -588,7 +588,10 @@ function EmberRoutesWarehousePage:dispatchDeliveryCart()
         local reasonKeys={ORDER_LIMIT='cartOrderLimit',INVALID_REQUEST='cartInvalidItems',REQUEST_CHANGED='cartInvalidItems',
             ACCESS_DENIED='cartAccessDenied',OUTSIDE_SETTLEMENT='cartAccessDenied',DRIVER_UNAVAILABLE='cartAccessDenied'}
         local key=reasonKeys[result] or 'cartRejected'
-        self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_'..key)
+        if result=='DESTINATION_FILTER_REJECTED' or result=='DESTINATION_UNREGISTERED'
+            or result=='DESTINATION_FULL' or result=='DESTINATION_UNREACHABLE' then
+            self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_WorkCode_'..result)
+        else self.deliveryFeedback=getText('IGUI_EmberRoutesProbe_Warehouse_'..key) end
         self:toggleCartDrawer(true)
         if _G.HaloTextHelper and HaloTextHelper.addBadText then HaloTextHelper.addBadText(self.actor,self.deliveryFeedback) end
     end

@@ -1797,5 +1797,14 @@
   "IGUI_EmberRoutesProbe_Membership_SITE_OBSERVING": "Checking beds",
   "IGUI_EmberRoutesProbe_Membership_RETURN_COMPLETED": "Completed: returned",
   "IGUI_EmberRoutesProbe_Membership_WAIT_COMPLETED": "Completed: waiting",
-  "IGUI_EmberRoutesProbe_Membership_POSTING_CHANGED": "Posting changed; reopen the menu"
+  "IGUI_EmberRoutesProbe_Membership_POSTING_CHANGED": "Posting changed; reopen the menu",
+  "IGUI_EmberRoutesProbe_Public_MANUAL_ORDER_ACTIVE": "Earlier manual demand is still live; restock waits",
+  "IGUI_EmberRoutesProbe_Public_CYCLE_ACTIVE": "Earlier restock demand is still live; manual order waits",
+  "IGUI_EmberRoutesProbe_Warehouse_cartExistingSources": "Source: keep line sources / automatic warehouse selection",
+  "IGUI_EmberRoutesProbe_Warehouse_cartPlayerDestination": "Destination: player (legacy delivery)",
+  "IGUI_EmberRoutesProbe_Warehouse_cartEndpointRemoved": "Registered endpoint unavailable: %1",
+  "IGUI_EmberRoutesProbe_Monitor_deliveryLine": "Source %1 → destination %2 · %3 · requested / delivered / remaining %4",
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREGISTERED": "Destination unregistered or unavailable; originals retained",
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_FILTER_REJECTED": "Destination filter rejected; originals retained",
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREACHABLE": "Destination unreachable; originals retained"
 }

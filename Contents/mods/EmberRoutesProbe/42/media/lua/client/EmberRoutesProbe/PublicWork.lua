@@ -155,6 +155,81 @@ end
 local function signal(o,reason)
     if reason~=o.reason then o.reason=reason o.revision=o.revision+1 Signals.changed() end
 end
+local function signalRule(rule,reason)
+    if rule.reason~=reason then rule.reason=reason Signals.changed() end
+end
+-- A policy cycle is a live demand only once its Order exists, not when the
+-- threshold is merely configured. Ordinary manual orders remain independent.
+-- Share the existing demand clock; no second order directory or suppression store.
+function Service.nextDemandSequence()
+    local store=load()
+    store.sequence=store.sequence+1
+    return store.sequence
+end
+local function live(o)
+    return o.state~='DONE' and o.state~='CANCELLED' and not o.cancelled and not o.parentOrderId
+end
+-- Public craft/stock demand has no chosen box until its real output assets do.
+-- Never infer a destination from product type or the set of accepting boxes.
+local function outputDestination(o)
+    local r=o.jobId and business().record and business().record(o.jobId,'CRAFT')
+    local destination
+    for _,asset in ipairs(r and r.outputs or {}) do
+        if asset.fullType==o.product then
+            if not asset.destination or destination and destination~=asset.destination then return end
+            destination=asset.destination
+        end
+    end
+    if destination and Registry.resolve(destination,'put','local-world') then return destination end
+end
+function Service.deliveryOverlapReason(o,line)
+    if not o.destinationId or not o.overlapSequence or not live(o) then return end
+    for _,other in pairs(load().orders) do
+        if live(other) and other.settlementId==o.settlementId and other.product==line.fullType
+            and other.sequence<o.overlapSequence and outputDestination(other)==o.destinationId then
+            return other.policyId and 'CYCLE_ACTIVE' or 'MANUAL_ORDER_ACTIVE'
+        end
+    end
+end
+-- Called at the existing public output transfer boundary once routing has
+-- selected a real box. Unknown destinations never block production by type alone.
+function Service.outputOverlapReason(orderId,fullType,destinationId)
+    local o=load().orders[orderId]
+    if not o or not live(o) or o.product~=fullType or not Registry.resolve(destinationId,'put','local-world') then return end
+    local deliveries=Registry.data().deliveryOrders
+    for _,other in pairs(deliveries and deliveries.orders or {}) do
+        if live(other) and other.overlapSequence and other.overlapSequence<o.sequence
+            and other.settlementId==o.settlementId and other.destinationId==destinationId then
+            for _,line in ipairs(other.items) do
+                if line.fullType==fullType and line.delivered<line.quantity then return 'MANUAL_ORDER_ACTIVE' end
+            end
+        end
+    end
+end
+local function overlapReason(o)
+    if o.state=='DONE' or o.state=='CANCELLED' or o.parentOrderId then return end
+    local destination=outputDestination(o)
+    local deliveryReason=destination and Service.outputOverlapReason(o.id,o.product,destination)
+    if deliveryReason then return deliveryReason end
+    local first
+    for _,other in pairs(load().orders) do
+        if other.settlementId==o.settlementId and other.product==o.product
+            and other.state~='DONE' and other.state~='CANCELLED' and not other.parentOrderId
+            and (not first or other.sequence<first.sequence) then first=other end
+    end
+    if first and first~=o and not o.parentOrderId and (first.policyId~=nil)~=(o.policyId~=nil) then
+        return first.policyId and 'CYCLE_ACTIVE' or 'MANUAL_ORDER_ACTIVE'
+    end
+end
+function Service.overlapReason(id)
+    local o=load().orders[id]
+    return o and overlapReason(o)
+end
+function Service.rules(scope)
+    local list={}
+    for _,r in pairs(load().rules) do if r.settlementId==scope then list[#list+1]=Service.rule(scope,r.product) end end
+    return list
+end
 function Service.categories() return Providers.categories() end
 function Service.registerProvider(def) return Providers.register(def) end
 function Service.provider(category) return Providers.get(category) end
@@ -273,13 +348,13 @@ function Service.createPrerequisite(actor,parentId,node)
     if result=='ORDER_CREATED' then parent.prerequisiteId=id parent.revision=parent.revision+1 end
     return result,id
 end
-function Service.createDeliveryOrder(actor,scope,items,requestId)
+function Service.createDeliveryOrder(actor,scope,items,requestId,destinationId)
     local DeliveryService=require 'EmberRoutesProbe/DeliveryService'
-    return DeliveryService.createOrder(actor,scope,items,requestId)
+    return DeliveryService.createOrder(actor,scope,items,requestId,destinationId)
 end
 function Service.order(id)
     local o=load().orders[id] if not o then return end
-    local copy={} for k,v in pairs(o) do copy[k]=k=='craftProgress' and CraftYield.copy(v) or v end return copy
+    local copy={} for k,v in pairs(o) do copy[k]=k=='craftProgress' and CraftYield.copy(v) or v end copy.reason=overlapReason(o) or copy.reason return copy
 end
 function Service.orders(scope)
     load()
@@ -287,7 +362,7 @@ function Service.orders(scope)
     local rows={}
     for _,key in ipairs(orderIds(scope)) do
         local o=data.orders[key.id]
-        if o then local r={} for k,v in pairs(o) do r[k]=k=='craftProgress' and CraftYield.copy(v) or v end rows[#rows+1]=r end
+        if o then local r={} for k,v in pairs(o) do r[k]=k=='craftProgress' and CraftYield.copy(v) or v end r.reason=overlapReason(o) or r.reason rows[#rows+1]=r end
     end
     return rows
 end
@@ -353,7 +428,7 @@ local function stock(actor,now)
     if rule.activeOrder then
         local o=data.orders[rule.activeOrder]
         if not o or o.state=='DONE' or o.state=='CANCELLED' then
-            rule.activeOrder=nil rule.nextCheck=now+2000 Index.refresh(rule.settlementId,false)
+            rule.activeOrder=nil rule.nextCheck=now+2000 signalRule(rule,nil) Index.refresh(rule.settlementId,false)
         else return end
     end
     if now<(rule.nextCheck or 0) then return end rule.nextCheck=now+1000
@@ -363,7 +438,7 @@ local function stock(actor,now)
     for _,other in ipairs(rules) do if other.product==rule.product then
         local entry=Ledger.view(actor,other.settlementId)
         for _,id in ipairs(entry and Membership.query(entry) or {}) do
-            if seen[id] and seen[id]~=other.settlementId then rule.reason='CONTAINER_OVERLAP' return end
+            if seen[id] and seen[id]~=other.settlementId then signalRule(rule,'CONTAINER_OVERLAP') return end
             seen[id]=other.settlementId
         end
     end end
@@ -371,16 +446,18 @@ local function stock(actor,now)
     if require('EmberRoutesProbe/CookingOrders').describe(rule.recipeId) then
         observed=require('EmberRoutesProbe/CookingService').stock(actor,rule)
     else observed=Index.candidates(actor,rule.settlementId,{fullType=rule.product,limit=1}) end
-    if not observed or observed.state~='READY' or not observed.complete then rule.reason='INVENTORY_UNKNOWN' return end
-    rule.knownCount=observed.knownCount rule.reason=nil
-    if observed.knownCount>=rule.minimum then return end
+    if not observed or observed.state~='READY' or not observed.complete then signalRule(rule,'INVENTORY_UNKNOWN') return end
+    rule.knownCount=observed.knownCount
+    if observed.knownCount>=rule.minimum then signalRule(rule,nil) return end
     for _,o in pairs(data.orders) do
-        if o.settlementId==rule.settlementId and o.product==rule.product and o.state~='DONE' and o.state~='CANCELLED' then return end
+        if o.settlementId==rule.settlementId and o.product==rule.product and o.state~='DONE' and o.state~='CANCELLED' then
+            signalRule(rule,'MANUAL_ORDER_ACTIVE') return
+        end
     end
     local cycle=rule.cycle+1
     local result,id=Service.create(actor,rule.settlementId,rule.recipeId,rule.batch,rule.surfaceId,
         Service.requestId(),rule.preferences)
-    rule.reason=result
+    signalRule(rule,result)
     if result=='ORDER_CREATED' then rule.cycle=cycle rule.activeOrder=id data.orders[id].policyId=rule.id end
 end
 local function cool(o,npcId,e,reason,now)
@@ -547,6 +624,9 @@ local function decide(actor,npcId,now,binding,entry)
     end
 
     for _,candidate in ipairs(candidates) do
+        local order=candidate.order or candidate.orderId and data.orders[candidate.orderId]
+        local reason=order and overlapReason(order)
+        if reason then candidate.allowed=false signal(order,reason) end
         if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
     end
     if Providers.holdSelection(envDiscover) then return end

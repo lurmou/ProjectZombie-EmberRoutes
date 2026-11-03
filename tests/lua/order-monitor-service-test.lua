@@ -63,11 +63,20 @@ check(#Service.status({},'s').rows==0,'explicit foreign hauling ownership overri
 local pending={id='public-one',settlementId='s',name='Saw',state='WAITING',reason='WAITING_CLAIM',quantity=3,target=3,revision=2}
 package.loaded['EmberRoutesProbe/Boot'].publicDispatch=true
 local publicRevision
-package.loaded['EmberRoutesProbe/PublicWork']={orders=function() return {pending} end,
+-- Call adaptation for Gate B's read-only overlap/rule projections, not a legacy fixture repair.
+package.loaded['EmberRoutesProbe/PublicWork']={rules=function() return {} end,overlapReason=function() end,orders=function() return {pending} end,
  order=function(id) if pending and pending.id==id then return pending end end,
  command=function(_,scope,id,revision) publicRevision=revision return 'ORDER_UPDATED' end}
 local publicRows=Service.status({},'s').rows
 check(#publicRows==1 and publicRows[1].kind=='ORDER' and publicRows[1].generation=='ORDER:2','unclaimed demand is visible with a distinct command revision domain')
+local public=package.loaded['EmberRoutesProbe/PublicWork']
+public.rules=function() return {{id='s:Base.Log',product='Base.Log',enabled=true,revision=1,batch=2,reason='MANUAL_ORDER_ACTIVE'}} end
+function getItemNameFromFullType(fullType) return fullType end
+local suppressed
+for _,r in ipairs(Service.status({},'s').rows) do if r.id=='RULE:s:Base.Log' then suppressed=r end end
+check(suppressed and suppressed.readOnly and suppressed.reason=='MANUAL_ORDER_ACTIVE' and not suppressed.canCancel,
+    'suppressed policy is visible on the existing monitor without an invented editable order')
+public.rules=function() return {} end
 check(Service.command({},'s','ORDER:public-one','ORDER:2','stop')=='ORDER_UPDATED' and publicRevision==2,'unclaimed pause reaches Order authority without choosing an NPC')
 pending.jobId=craft.id craft.orderId=pending.id craft.settlementId='s' craft.state='PAUSED' craft.released=false craft.generation=2
 check(Service.command({},'s','ORDER:public-one','ORDER:2','return')=='TASK_CHANGED','old unclaimed button cannot control newly assigned Job at same numeric generation')
@@ -85,7 +94,8 @@ local deliveryOrder={id='delivery-one',settlementId='s',requesterId='leader',rev
     items={{fullType='Base.Log',quantity=2,delivered=0}}}
 root.deliveryOrders={format=1,orders={[deliveryOrder.id]=deliveryOrder}}
 local cancelledRevision
-package.loaded['EmberRoutesProbe/DeliveryService']={order=function() return deliveryOrder end,
+local projectDelivery=require('EmberRoutesProbe/DeliveryService').projectDelivery
+package.loaded['EmberRoutesProbe/DeliveryService']={order=function() return deliveryOrder end,projectDelivery=projectDelivery,
     cancel=function(_,_,revision) cancelledRevision=revision return 'CANCEL_REQUESTED' end}
 local function deliveryRow()
     for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='DELIVERY' then return r end end
@@ -98,6 +108,32 @@ haul.producer='DELIVERY' haul.settlementId='s' haul.orderId=deliveryOrder.id hau
 haul.itemTypes={['21']='Base.Log'} haul.manifest={{itemId=21,custodyState='DELIVERED',deliveryReceipt={destinationId='storage',attemptId='return'}}}
 haul.delivered=1 deliveryOrder.jobId=haul.id
 check(deliveryRow().delivered==0,'returned-storage receipt is never shown as a player delivery')
+haul.manifest={{itemId=21,custodyState='CARRIED'}}
+deliveryOrder.cancelled=true deliveryOrder.state='CANCELLED'
+local cancelled=deliveryRow()
+check(cancelled.state=='CANCELLED' and not cancelled.canResume and not cancelled.canCancel
+    and cancelled.npcId=='b' and cancelled.cargoHeld==1 and cancelled.cargoSummary,
+    'cancelled order keeps carried count and responsible NPC visible without resume')
+deliveryOrder.destinationId='out'
+deliveryOrder.items[1].sourceId='in'
+haul.manifest={{itemId=21,custodyState='CARRIED'}}
+local heldBox=deliveryRow()
+check(heldBox.delivered==0 and heldBox.remaining==2 and heldBox.cargoHeld==1 and heldBox.npcId=='b',
+    'box cargo held by named carrier is never a receipt')
+check(heldBox.deliveryLines[1].sourceId=='in' and heldBox.deliveryLines[1].destinationId=='out'
+    and heldBox.deliveryLines[1].fullType=='Base.Log' and heldBox.deliverySummary,
+    'box monitor exposes endpoints, item and requested/delivered/remaining')
+haul.manifest={{itemId=21,sourceId='in',custodyState='DELIVERED',deliveryReceipt={destinationId='out',attemptId='put'}}}
+check(deliveryRow().delivered==1 and deliveryRow().remaining==1,'box receipt reaches monitor through real delivery projection')
+haul.manifest[1].deliveryReceipt.destinationId='player:leader'
+check(deliveryRow().delivered==0,'player receipt does not settle named box demand')
+haul.state='DONE' deliveryOrder.jobId=nil deliveryOrder.cancelled=nil deliveryOrder.state='WAITING'
+deliveryOrder.items[1].delivered=1
+local settledRows=0
+for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='DELIVERY' then
+    settledRows=settledRows+1 check(r.delivered==1 and r.remaining==1,'settled segment receipt is not counted again after Order baseline advances')
+end end
+check(settledRows==1,'settled historical segment does not duplicate the Order card')
 root.toolCustody={byId={c={id='tool-duty',npcId='a',itemId=99,role='CLEAN_TOOL',sequence=1,state='RECONCILE_REQUIRED',
     returnIntent={scopeId='s'}}}}
 local duty

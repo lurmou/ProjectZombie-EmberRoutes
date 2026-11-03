@@ -1,6 +1,7 @@
 -- In-page delivery review panel. No inventory mutation or order authority.
 require 'ISUI/ISCollapsableWindow'
 require 'ISUI/ISButton'
+require 'ISUI/ISComboBox'
 require 'ISUI/ISScrollingListBox'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
@@ -52,9 +53,21 @@ function Drawer:createChildren()
     local th=self:titleBarHeight()
     local buttonH=math.ceil(h*1.55)
     local blocks=assert(Layout.axis({x=0,y=th,width=self.width,height=self.height-th},
-        {{basis=h*2+p/2},{grow=1},{basis=h*4+p},{basis=buttonH}},
+        {{basis=h*2+p/2+buttonH*2+p},{grow=1},{basis=h*4+p},{basis=buttonH}},
         {direction='column',padding=p,gap=p/2}))
     self.header,self.summary=blocks[1],blocks[3]
+    local function picker(y,field,label)
+        local combo=ISComboBox:new(p,y,self.width-p*2,buttonH,self,function(_,box)
+            self.owner[field]=box.endpointIds[box.selected]
+            self.owner.deliveryRequestId=nil
+            self:refresh()
+        end)
+        combo:initialise() self:addChild(combo)
+        combo.defaultLabel=label
+        return combo
+    end
+    self.sourcePicker=picker(self.header.y+h*2,'deliverySourceId',text('cartExistingSources'))
+    self.destinationPicker=picker(self.header.y+h*2+buttonH+p/2,'deliveryDestinationId',text('cartPlayerDestination'))
 
 
 
@@ -115,6 +128,24 @@ end
 
 function Drawer:refresh()
     if not self.list then return end
+    local Service=require 'EmberRoutesProbe/DeliveryService'
+    local function refreshPicker(combo,mode,selectedId)
+        combo:clear() combo.endpointIds={}
+        combo:addOption(combo.defaultLabel) combo.selected=1
+        for _,endpoint in ipairs(Service.containers(self.owner.actor,self.owner.entry.id,mode)) do
+            combo:addOption(endpoint.id..' ('..endpoint.x..','..endpoint.y..','..endpoint.z..')')
+            local index=#combo.options combo.endpointIds[index]=endpoint.id
+            if endpoint.id==selectedId then combo.selected=index end
+        end
+        -- Removal must remain an explicit rejected destination, never become player delivery.
+        combo.invalidEndpoint=selectedId~=nil and combo.selected==1
+        if combo.invalidEndpoint then
+            combo:addOption(text('cartEndpointRemoved',selectedId))
+            combo.selected=#combo.options combo.endpointIds[combo.selected]=selectedId
+        end
+    end
+    refreshPicker(self.sourcePicker,'take',self.owner.deliverySourceId)
+    refreshPicker(self.destinationPicker,'put',self.owner.deliveryDestinationId)
     local list,h,p=self.list,self.fontHeight,self.pad
     local scroll=list.getYScroll and list:getYScroll() or 0
     local selected=list.items[list.selected or 0]
@@ -148,13 +179,13 @@ function Drawer:refresh()
         or actor and actor:getInventory():getCapacityWeight() or 0
     local free=math.max(0,(actor and actor:getMaxWeight() or 0)-weight)
     self.spaceLabel=text('cartSpaceSummary',string.format('%.1f',free))
-    self.overCapacity=(self.owner.deliveryCartWeight or 0)>free
+    self.overCapacity=not self.owner.deliveryDestinationId and (self.owner.deliveryCartWeight or 0)>free
     local message=self.owner.deliveryFeedback
     if self.overCapacity and not self.owner.deliveryFeedbackError then message=text('cartCapacityWaitHint') end
     self.messageColor=self.owner.deliveryFeedbackError and Theme.status.ERROR or self.overCapacity and Theme.gold or Theme.muted
     self.messageLines=Text.wrapLimited(message or text('cartReviewHint'),self.summary.width,UIFont.Small,2)
     self.emptyLines=Text.wrapLimited(text('cartEmptyHint'),list.width-p*2,UIFont.Small,3)
-    Theme.enable(self.callBtn,not self.isEmpty) Theme.enable(self.clearBtn,not self.isEmpty)
+    Theme.enable(self.callBtn,not self.isEmpty and not self.sourcePicker.invalidEndpoint and not self.destinationPicker.invalidEndpoint) Theme.enable(self.clearBtn,not self.isEmpty)
 end
 
 local function button(list,r,y,label,color,h)

@@ -294,6 +294,8 @@ function A.new(npcId)
 		    or not Delivery.endpointValid(c,endpoint) or not Delivery.still(c) or not Delivery.room(c,value) then return end
 	    elseif not Registry.revalidate(endpoint,kind=='TAKE' and 'take' or 'put',r.scopeId) then return end
 	    if kind=='TAKE' then
+                local order=r.producer=='DELIVERY' and Delivery.order(r)
+                if order and order.destinationId and Delivery.takeReason(c,value,nextItem.line.sourceId) then return end
 		if r.deliveryOnly or r.returning or Producers.freeCarry(c.npc)<value:getUnequippedWeight()
 		    or not first.to:hasRoomFor(c.npc,value) or not Producers.transfer(c,value,first.from,first.to) then return end
 		if r.producer~='DELIVERY' then
@@ -386,6 +388,30 @@ function A.new(npcId)
         if not Transfer.reachable(c.npc,target) then c.moveEndpoint=target c.moveRule={target=target,item=selected} return Transfer.move(c,target) end
 	return snapshotStep(c,Manifest.line(r,selected:getID()),selected,target,'PUT',index)
     end
+    local function pauseReason(c)
+        local order=c.job.producer=='DELIVERY' and Delivery.order(c.job)
+        if order and order.destinationId then
+            if order.cancelled then return 'CANCEL_REQUESTED' end
+            local item=c.attempt and c.attempt.item
+            if not item then
+                for _,line in ipairs(c.job.manifest) do
+                    if line.custodyState=='CARRIED' then
+                        local list=c.npc:getInventory():getItems()
+                        for i=0,list:size()-1 do if list:get(i):getID()==line.itemId then item=list:get(i) break end end
+                        break
+                    end
+                end
+            end
+            local why=Delivery.boxReason(c,item)
+            if why then return why end
+            if c.moveEndpoint and c.moveEndpoint.id==order.destinationId
+                or c.destination and c.destination.id==order.destinationId and c.job.phase=='DELIVER' then
+                return Delivery.failureReason(c,item)
+            end
+            return 'ROUTING_WAIT'
+        end
+        return 'ROUTING_WAIT'
+    end
     local function tick()
         local c=current if not c then return end
         local now=getTimestampMs() if now<c.nextTick then return end c.nextTick=now+100
@@ -395,7 +421,7 @@ function A.new(npcId)
             if not ok then api.pause(why) return end
         end
         if c.moveEndpoint and (not Registry.revalidate(c.moveEndpoint,'take',c.job.scopeId)
-            or c.moveRule and not Routing.accept(c,c.moveRule.target,c.moveRule.item)) then api.pause('ROUTING_WAIT') return end
+            or c.moveRule and not Routing.accept(c,c.moveRule.target,c.moveRule.item)) then api.pause(pauseReason(c)) return end
         if not c.step then
             local step,why=nextStep(c)
             if not step then
@@ -411,7 +437,7 @@ function A.new(npcId)
             end
             c.step,c.started=step,now
             local state,reason=step.start()
-            if state=='FAILED' then api.pause('ROUTING_WAIT') return end
+            if state=='FAILED' then api.pause(pauseReason(c)) return end
         end
         local state,why=c.step.poll()
         if state=='PASSED' then c.step=nil c.moveEndpoint=nil c.moveRule=nil
@@ -425,7 +451,7 @@ function A.new(npcId)
                 if count>=90 and oldest then c.backoff[oldest]=nil end
                 c.backoff[c.moveEndpoint.id]=now+15000
             end
-            api.pause('ROUTING_WAIT')
+            api.pause(pauseReason(c))
         end
     end
     function api.tick()

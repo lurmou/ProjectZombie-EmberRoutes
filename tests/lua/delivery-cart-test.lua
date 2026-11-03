@@ -22,6 +22,10 @@ _G.Events = setmetatable({}, {
     end
 })
 
+-- Detached endpoint snapshots are the picker service contract; never expose Registry roots.
+package.loaded['EmberRoutesProbe/DeliveryService']={containers=function(_,_,mode)
+    return {{id=mode=='put' and 'registered-destination' or 'registered-source',x=1,y=2,z=0}}
+end}
 local checks = 0
 local function check(value, message)
     assert(value, message or "Assertion failed")
@@ -119,6 +123,7 @@ function ISTextEntryBox:setText(v) self.value = v end
 function ISTextEntryBox:getText() return self.value or "" end
 ISComboBox = Base:derive("ISComboBox")
 function ISComboBox:new(...) local o = Base.new(self, ...) o.options = {} o.selected = 1 return o end
+function ISComboBox:clear() self.options={} end
 function ISComboBox:addOption(v) self.options[#self.options+1] = v end
 function ISComboBox:setToolTipMap() end
 
@@ -177,7 +182,7 @@ local publicDeliveryCalls = {}
 local requestSerial=0
 function getRandomUUID() requestSerial=requestSerial+1 return 'delivery-request-'..requestSerial end
 package.loaded['EmberRoutesProbe/PublicWork'] = {
-    createDeliveryOrder = function(actor, settlementId, items, requestId)
+    createDeliveryOrder = function(actor, settlementId, items, requestId, destinationId)
         publicDeliveryCalls[#publicDeliveryCalls + 1] = {
             actor = actor,
             settlementId = settlementId,
@@ -385,4 +390,20 @@ check(page.cartDrawer ~= nil and page.cartDrawer:isVisible() == true, "cartDrawe
 page:dispose()
 check(page.cartDrawer == nil, "page:dispose() cleanly clears cartDrawer")
 
+page.active=true
+page:toggleCartDrawer(true)
+local drawer=page.cartDrawer
+check(#drawer.sourcePicker.options==2 and #drawer.destinationPicker.options==2,'pickers contain registered endpoints and legacy defaults only')
+local capturedDestination,capturedSource
+package.loaded['EmberRoutesProbe/PublicWork'].createDeliveryOrder=function(_,_,items,_,destinationId)
+    capturedDestination=destinationId capturedSource=items[1].sourceId return 'DESTINATION_FULL'
+end
+page.deliverySourceId='registered-source' page.deliveryDestinationId='registered-destination'
+page.deliveryCart={box={fullType='Base.Log',count=1}} page.deliveryCartCount=1
+page:dispatchDeliveryCart()
+check(capturedDestination=='registered-destination' and capturedSource=='registered-source','cart forwards explicit box endpoints to existing Delivery authority')
+page.deliveryDestinationId='removed' drawer:refresh()
+check(drawer.destinationPicker.invalidEndpoint and not drawer.callBtn.enable and page.deliveryDestinationId=='removed',
+    'removed choice blocks submit while preserving explicit destination intent')
+page:dispose()
 print(string.format("PASS: %d delivery cart checks passed cleanly!", checks))

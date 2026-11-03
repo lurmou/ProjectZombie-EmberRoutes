@@ -14,7 +14,7 @@ assert(Monitors.register(require 'EmberRoutesProbe/CookingMonitor'))
 assert(Monitors.register(require 'EmberRoutesProbe/FieldWorkMonitor'))
 local Service={}
 local blocked={ITEM_MISSING=true,ITEM_ID_CONFLICT=true,RECONCILE_REQUIRED=true,INPUT_CHANGED=true}
-local paused={USER=true,REPLACED=true,SAVE=true,LOAD_RECOVERY=true,COMPANION_ORDER=true,SELF_CARE=true}
+local paused={DESTINATION_FILTER_REJECTED=true,DESTINATION_UNREGISTERED=true,DESTINATION_FULL=true,DESTINATION_UNREACHABLE=true,USER=true,REPLACED=true,SAVE=true,LOAD_RECOVERY=true,COMPANION_ORDER=true,SELF_CARE=true}
 local function endpoints(entry,r)
     if r.settlementId then return r.settlementId==entry.id end
     local a,b=Registry.describe(r.source),Registry.describe(r.destination)
@@ -23,6 +23,31 @@ end
 local function endpoint(id)
     local p=id and Registry.describe(id)
     return p and {id=id,x=p.x,y=p.y,z=p.z} or nil
+end
+local function deliveryDetails(row,o,r)
+    local Delivery=require 'EmberRoutesProbe/DeliveryService'
+    local counts=r and o.jobId==r.id and Delivery.projectDelivery(o,r)
+    row.requested,row.delivered=0,0
+    row.destinationId=o.destinationId or 'player:'..o.requesterId
+    row.deliveryLines={}
+    local summary={}
+    local Public=require 'EmberRoutesProbe/PublicWork'
+    for i,line in ipairs(o.items) do
+        local delivered=counts and counts[i] or line.delivered
+        local reason
+        if Public.deliveryOverlapReason then reason=Public.deliveryOverlapReason(o,line) else reason=line.reason end
+        row.requested=row.requested+line.quantity row.delivered=row.delivered+delivered
+        row.deliveryLines[#row.deliveryLines+1]={sourceId=line.sourceId,destinationId=row.destinationId,
+            fullType=line.fullType,requested=line.quantity,delivered=delivered,remaining=line.quantity-delivered,reason=reason}
+        summary[#summary+1]=getText('IGUI_EmberRoutesProbe_Monitor_deliveryLine',line.sourceId or '*',row.destinationId,
+            getItemNameFromFullType(line.fullType),tostring(line.quantity)..' / '..tostring(delivered)..' / '..tostring(line.quantity-delivered))
+            ..(reason and ' ['..reason..']' or '')
+        if reason and not r then row.reason=reason end
+    end
+    row.target=row.requested row.remaining=row.requested-row.delivered
+    row.deliverySummary=table.concat(summary,'; ')
+    row.cargoHeld=row.cargoHeld or 0
+    row.cargoSummary=row.cargoSummary or getText('IGUI_EmberRoutesProbe_Monitor_cargoSummary',tostring(row.cargoHeld),tostring(row.withdrawn or 0))
 end
 function Service.status(actor,id)
     local entry,reason=Ledger.view(actor,id)
@@ -34,6 +59,10 @@ function Service.status(actor,id)
     local runtime=Runtime.current()
     local displayBudget={remaining=256}
     local function add(r,kind,order)
+        if r.producer=='DELIVERY' and r.state=='DONE' then
+            local delivery=require('EmberRoutesProbe/DeliveryService').order(r.orderId)
+            if delivery and delivery.jobId~=r.id then return end -- Its receipts are already in the Order baseline.
+        end
         local demand=kind=='CRAFT' and r.orderId and require('EmberRoutesProbe/PublicWork').order and require('EmberRoutesProbe/PublicWork').order(r.orderId)
         if demand and demand.jobId~=r.id then return end -- A continued demand has one visible current execution.
         local binding=Probe.ready and Probe.hasJava() and Driver.bindId(actor,r.npcId) or nil
@@ -57,6 +86,7 @@ function Service.status(actor,id)
             target=order and order.target or (kind=='CRAFT' and 1 or #(r.items or {})),
             produced=order and order.produced or nil,delivered=order and order.delivered or r.delivered or 0,
             source=endpoint(r.source),destination=endpoint(r.destination),nodes={},assets={}}
+        if demand then row.reason=require('EmberRoutesProbe/PublicWork').overlapReason(demand.id) or row.reason end
         if demand and demand.craftProgress then
             local prior=demand.craftProgress.delivered
             row.requested,row.target=demand.quantity,demand.target
@@ -103,14 +133,13 @@ function Service.status(actor,id)
             if o then
                 row.id='DELIVERY:'..o.id row.kind='DELIVERY' row.generation='ORDER:'..o.revision
                 row.title=getText('IGUI_EmberRoutesProbe_Monitor_delivery')
-                row.requested,row.delivered=0,0
-                for _,request in ipairs(o.items) do
-                    row.requested=row.requested+request.quantity row.delivered=row.delivered+request.delivered
+                deliveryDetails(row,o,r) row.canCancel=not o.cancelled
+                if o.cancelled then
+                    row.state='CANCELLED' row.reason=row.uncertain and 'RECONCILE_REQUIRED' or 'CANCEL_REQUESTED'
+                    row.canPause,row.canResume=false,false
+                    -- A cancelled demand may still own cargo: keep the responsible Job visible.
+                    row.closed=false row.bucket=row.uncertain and 'attention' or 'paused'
                 end
-                for _,line in ipairs(r.manifest) do
-                    if line.deliveryReceipt and line.deliveryReceipt.destinationId=='player:'..o.requesterId then row.delivered=row.delivered+1 end
-                end
-                row.target=row.requested row.canCancel=not o.cancelled
             end
         end
         local job=root.taskJobs and root.taskJobs.byId[r.id]
@@ -135,11 +164,13 @@ function Service.status(actor,id)
                 assets[#assets+1]={kind='cargo',fullType=line.fullType}
             end
             local closed=o.state=='DONE' or o.state=='CANCELLED'
-            result.rows[#result.rows+1]={id='DELIVERY:'..o.id,orderId=o.id,kind='DELIVERY',generation='ORDER:'..o.revision,
+            local row={id='DELIVERY:'..o.id,orderId=o.id,kind='DELIVERY',generation='ORDER:'..o.revision,
                 title=getText('IGUI_EmberRoutesProbe_Monitor_delivery'),state=o.state,reason=o.reason,
                 bucket=closed and 'closed' or o.state=='RECONCILE_REQUIRED' and 'attention' or 'waiting',
                 closed=closed,requested=count,target=count,delivered=delivered,nodes={},assets=assets,
                 canPause=false,canResume=false,canCancel=not closed}
+            deliveryDetails(row,o)
+            result.rows[#result.rows+1]=row
         end
     end
     local context={actor=actor,scopeId=id,runtime=runtime,bind=function(npcId)
@@ -156,12 +187,23 @@ function Service.status(actor,id)
             if not o.jobId then
                 local closed=o.state=='DONE' or o.state=='CANCELLED'
                 result.rows[#result.rows+1]={id='ORDER:'..o.id,jobId=o.id,orderId=o.id,kind='ORDER',generation='ORDER:'..o.revision,
-                    name=getText('IGUI_EmberRoutesProbe_Public_unclaimed'),title=o.name,product=o.product,state=o.state,phase='WAITING_CLAIM',reason=o.reason,
+                    name=getText('IGUI_EmberRoutesProbe_Public_unclaimed'),title=o.name,product=o.product,state=o.state,phase='WAITING_CLAIM',reason=require('EmberRoutesProbe/PublicWork').overlapReason(o.id) or o.reason,
                     closed=closed,bucket=closed and 'closed' or o.state=='PAUSED' and 'paused' or 'waiting',bodyMode='UNCLAIMED',
                     carrierAvailable=true,requested=o.quantity,target=o.target,
                     produced=o.craftProgress and o.craftProgress.delivered or 0,
                     delivered=o.craftProgress and o.craftProgress.delivered or o.delivered or 0,nodes={},assets={},
                     canPause=not closed and o.state~='PAUSED',canResume=o.state=='PAUSED',canCancel=not closed}
+            end
+        end
+    end
+    if Probe.publicDispatch then
+        for _,r in ipairs(require('EmberRoutesProbe/PublicWork').rules(id)) do
+            if r.reason and not r.activeOrder and r.enabled then
+                result.rows[#result.rows+1]={id='RULE:'..r.id,kind='ORDER',title=getItemNameFromFullType(r.product),
+                    product=r.product,state='WAITING',reason=r.reason,generation='RULE:'..r.revision,
+                    bucket='waiting',closed=false,readOnly=true,carrierAvailable=true,
+                    requested=r.batch,target=r.batch,delivered=0,nodes={},assets={},
+                    canPause=false,canResume=false,canCancel=false}
             end
         end
     end

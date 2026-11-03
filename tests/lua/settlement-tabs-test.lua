@@ -93,6 +93,8 @@ function getTimestampMs() return 10000 end
 function isClient() return false end function isServer() return false end
 local actor={getIndex=function() return 0 end,getJoypadBind=function() return -1 end,Say=function() end,
  getInventoryWeight=function() return 8 end,getMaxWeight=function() return 16 end}
+local actorData={}
+function actor:getModData() return actorData end
 local currentActor=actor
 function getSpecificPlayer() return currentActor end
 local root={} local permitted=true
@@ -110,6 +112,7 @@ package.loaded['EmberRoutesProbe/LogisticsMenu']={command=function() return 'MOD
 publicCalls={} publicRevision=2
 package.loaded['EmberRoutesProbe/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
 package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/ContainerRegistry'].id() end,
+    categories=function() return {'crafting','hauling'} end,
     available=function() return true end,
     rule=function() return {minimum=50,batch=12} end,
     create=function(_,scope,recipe,n,surface,token)
@@ -234,7 +237,10 @@ if ERTestTranslations then
     check(not shell.title:find('IGUI_',1,true),'management title translated')
 end
 check(Dashboard.open(actor,entry.id)==shell and wareCount==1,'same settlement open reuses shell without duplicate watch')
-page:nextPage() page.itemList.selected=7 page:selectItem(page.itemList.items[7].item.value) page.itemList:setYScroll(-100)
+page:nextPage()
+local selectedRow=page.itemGrid.cells[7].row
+check(type(selectedRow.fullType)=='string','selection fixture supplies the real fullType row DTO')
+page:selectItem(selectedRow) page.itemGrid:setYScroll(-100)
 local selected=page.store.value.selection.fullType
 page:help() local help=page.helpModal
 page.categories.expanded=true page.controls.sort.expanded=true page.search.focused=true
@@ -447,7 +453,9 @@ local token=dialog.requestId dialog.quantity:setText('7')
 check(dialog.requestId~=token,'quantity change renews idempotent draft token')
 dialog:submitOrder()
 check(#publicCalls==1 and publicCalls[1].n==7 and publicCalls[1].scope==entry.id,'public submit uses only demand and scope')
-check(not shell.publicDialog and catalogCount==0,'successful submission closes dialog and releases catalogue')
+check(shell.publicDialog==dialog and not dialog.actionButton.enable and dialog.notice,'submitted intent keeps its result visible and disables submit')
+dialog:close()
+check(catalogCount==0,'closing submitted dialog releases catalogue')
 shell:openPriorities()
 check(shell.activeTab=='personnel','openPriorities navigates directly to personnel management tab')
 local personnel=shell.pages.personnel

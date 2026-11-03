@@ -94,6 +94,15 @@ local function fastScanJava(ctx)
     local containerList={}
     for _,id in ipairs(ctx.ids or {}) do
         local endpoint=Registry.resolve(id,"take","local-world")
+        if not endpoint then
+            -- Native index collapses private/removed endpoints into UNLOADED.
+            -- Preserve the registry's actual reason through the existing rollup.
+            if not ctx.luaFallback then
+                ctx.fastContainers=nil ctx.luaFallback=true
+                Index.refresh(ctx.id,false)
+            end
+            return false
+        end
         local pos=Registry.data().containers[id]
         if endpoint and endpoint.container then
             local c=endpoint.container
@@ -130,6 +139,7 @@ local function fastScanJava(ctx)
         rowByType[r.fullType]=r
     end
     ctx.rowByType=rowByType
+    ctx.luaFallback=nil
     ctx.fastContainers=snapshot.containers
     ctx.pending=false
     ctx.pendingSince=nil
@@ -353,11 +363,12 @@ function Index.containers(id)
     end
     local list={}
     for cid,res in pairs(ctx.results or {}) do
+        local position=Registry.describe(cid)
         list[#list+1]={
             id=cid,
-            x=res.x,
-            y=res.y,
-            z=res.z,
+            x=res.x or position and position.x,
+            y=res.y or position and position.y,
+            z=res.z or position and position.z,
             kind=res.kind,
             displayType=res.displayType,
             customName=res.customName,

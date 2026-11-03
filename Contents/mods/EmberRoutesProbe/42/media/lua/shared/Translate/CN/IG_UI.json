@@ -1797,5 +1797,14 @@
   "IGUI_EmberRoutesProbe_Membership_SITE_OBSERVING": "正在观察床位",
   "IGUI_EmberRoutesProbe_Membership_RETURN_COMPLETED": "已完成：已返回",
   "IGUI_EmberRoutesProbe_Membership_WAIT_COMPLETED": "已完成：等待中",
-  "IGUI_EmberRoutesProbe_Membership_POSTING_CHANGED": "岗位已变化，请重新打开菜单"
+  "IGUI_EmberRoutesProbe_Membership_POSTING_CHANGED": "岗位已变化，请重新打开菜单",
+  "IGUI_EmberRoutesProbe_Public_MANUAL_ORDER_ACTIVE": "先建立的人工活需求尚未结束，补库存等待",
+  "IGUI_EmberRoutesProbe_Public_CYCLE_ACTIVE": "先建立的补库存活需求尚未结束，人工单等待",
+  "IGUI_EmberRoutesProbe_Warehouse_cartExistingSources": "来源：保留各行来源／自动选择仓库",
+  "IGUI_EmberRoutesProbe_Warehouse_cartPlayerDestination": "目标：玩家（传统配送）",
+  "IGUI_EmberRoutesProbe_Warehouse_cartEndpointRemoved": "登记端点已失效：%1",
+  "IGUI_EmberRoutesProbe_Monitor_deliveryLine": "来源 %1 → 目标 %2 · %3 · 需求 / 已交付 / 剩余 %4",
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREGISTERED": "目标箱未登记或不可用，保留原件并暂停",
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_FILTER_REJECTED": "目标箱过滤器拒绝，保留原件并暂停",
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREACHABLE": "目标箱不可达，保留原件并暂停"
 }

@@ -22,10 +22,16 @@ local function withdrawSource(c,sourceId)
 end
 function F.next(c,snapshotStep,withdraw)
     local r=c.job
+    local order=Target.order(r)
+    if order and order.cancelled then return nil,'CANCEL_REQUESTED' end
+    if order and order.destinationId then
+        if r.returning then return nil,'DESTINATION_UNREACHABLE' end
+        local reason=Target.boxReason(c) if reason then return nil,reason end
+    end
     if r.returning then withdraw(c) end
     local sourceId=not r.deliveryOnly and nextSource(r) or nil
     local source=sourceId and Registry.resolve(sourceId,'take',r.scopeId) or nil
-    if sourceId and (not source or Registry.logistics(source)~='STORAGE') then
+    if sourceId and (not source or (Registry.logistics(source)~='STORAGE' and not (Registry.logistics(source)=='INPUT' and Target.sourceAllowed(c,sourceId)))) then
 	-- No effect was attempted at this stop. Withdraw only its untouched
 	-- originals; another source's pending requests can still be collected.
 	withdrawSource(c,sourceId) c.scan=nil return nil,'SCAN_PENDING'
@@ -58,6 +64,7 @@ function F.next(c,snapshotStep,withdraw)
     if not r.deliveryOnly then
 	if uncollected then
 	    local item=uncollected.item
+            if order and order.destinationId then local reason=Target.takeReason(c,item,sourceId) if reason then return nil,reason end end
 	    c.source=source
 	    if Producers.freeCarry(c.npc)>=item:getUnequippedWeight() and c.npc:getInventory():hasRoomFor(c.npc,item) then
 		if not Transfer.reachable(c.npc,source) then c.moveEndpoint=source return Transfer.move(c,source) end
@@ -85,6 +92,7 @@ function F.next(c,snapshotStep,withdraw)
         return nil,'DONE'
     end
     local item=held[1]
+    if order and order.destinationId then local reason=Target.boxReason(c,item) if reason then return nil,reason end end
     if not r.returning then
         local target=Target.endpoint(c)
         if not target then r.returning=true return nil,'SCAN_PENDING' end
