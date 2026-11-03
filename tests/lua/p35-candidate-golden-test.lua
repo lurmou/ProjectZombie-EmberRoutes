@@ -105,7 +105,25 @@ print('P3.5 golden v1.2: shared pool, slow discovery, bounded target backoff, in
 
 Service.workState('a',entry,'IDLE')
 local c,done,why=Service.candidate({},binding,s,fresh(),{cooldowns={},decisionAfter=2})
-assert(c==nil and done and why=='LEISURE_PAUSE','successful activity pause suppresses only new idle discovery')
+assert(c and c.leisure.ambient and c.leisure.activity=='OBSERVE' and c.leisure.untilHours==2
+    and not c.leisure.point and done and why=='LEISURE_PAUSE',
+    'decision pause returns resource-free observation with the original deadline')
+local Record=require 'EmberRoutesProbe/LeisureRecord'
+assert(Record.valid({kind='LEISURE',settlementId=entry.id,leisure=c.leisure}))
+local pausedMemory={cooldowns={OBSERVE=2},decisionAfter=2}
+Service.finished({job={npcId='a'},reason='LEISURE_NEEDS_CARE',
+    payload={leisure=c.leisure,leisureMemory=pausedMemory}},true)
+assert(pausedMemory.decisionAfter==2 and pausedMemory.cooldowns.OBSERVE==2,
+    'interrupted ambient waiting preserves the existing decision deadline and cooldown')
+local memory={cooldowns={OBSERVE=2,STROLL=2,FITNESS=2,SIT=2,READING=2,SMOKE=2,SOCIAL=2}}
+local fallback=Service.candidate({},binding,s,fresh(),memory)
+assert(fallback and fallback.leisure.ambient and not fallback.leisure.point,
+    'all activity cooldowns still permit resource-free ambient observation')
+assert(Record.valid({kind='LEISURE',settlementId=entry.id,leisure=fallback.leisure}))
+fallback.leisure.finished=true
+Service.finished({job={npcId='a'},payload={leisure=fallback.leisure,leisureMemory=memory}},true)
+assert(memory.cooldowns.OBSERVE==2 and memory.decisionAfter==nil,
+    'ambient completion neither changes cooldowns nor starts another decision pause')
 Service.workState('a',entry,'READY')
 c,done,why=Service.candidate({},binding,s,fresh(),{cooldowns={},decisionAfter=2})
 assert(not c and Service.status('a').reason=='WORK_READY','work takes precedence over an idle decision pause')

@@ -8,6 +8,8 @@ function R.valid(p)
     if not l then return p.kind~='LEISURE' end
     if p.kind~='LEISURE' or type(l)~='table' or l.format~=1 or not activities[l.activity] or not finite(l.hours) or l.hours<0 then return false end
     if type(p.settlementId)~='string' or #p.settlementId<1 or #p.settlementId>256 then return false end
+    if l.ambient~=nil and (l.ambient~=true or l.activity~='OBSERVE' or l.brief~=nil
+        or l.point~=nil or l.zoneVisit~=nil or l.roleDuty~=nil or not finite(l.untilHours) or l.untilHours<l.hours) then return false end
     if l.roleDuty~=nil and (l.roleDuty~='ROLE_SPEAK' and l.roleDuty~='ROLE_LISTEN'
         or l.activity~='OBSERVE' or l.brief~=true or l.zoneVisit~=nil or type(p.activityRef)~='table'
         or p.activityRef.dutyId~=l.roleDuty or p.activityRef.dutyFormat~=2) then return false end

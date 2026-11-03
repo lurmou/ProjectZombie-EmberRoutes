@@ -339,6 +339,16 @@ function Service.review(c,elapsed)
     return false
 end
 
+-- Resource-free standing episode, still admitted through the ordinary personal
+-- Job/Session. A decision pause keeps its original deadline and memory.
+local function ambient(entry,point,id,eligible,hours,untilHours)
+    if (zoneRule(entry,point,'OBSERVE',id) or 0)==0 then return end
+    statuses[id]={activity='OBSERVE',reason='AMBIENT_IDLE',at=getTimestampMs()}
+    return {leisure={format=1,activity='OBSERVE',hours=hours,ambient=true,
+        untilHours=untilHours or hours+Config.observeMinutes/60},entry=entry,pure=true,
+        membershipRevision=eligible.revision,settlementRevision=eligible.entryRevision}
+end
+
 function Service.candidate(actor,binding,sample,budget,memory)
     load() local id,npc=binding.id,binding.handle local offer=offers[id]
     local M=require 'EmberRoutesProbe/MembershipService'
@@ -396,7 +406,8 @@ function Service.candidate(actor,binding,sample,budget,memory)
     local hint=preferred[id]
     if hint and hint.untilTime<now then preferred[id]=nil hint=nil end
     if not gathering and not hint and memory and hours<(memory.decisionAfter or 0) then
-        Social.withdraw(id) noteIdle(id,'LEISURE_PAUSE') return nil,true,'LEISURE_PAUSE'
+        Social.withdraw(id)
+        return ambient(entry,point,id,eligible,hours,memory.decisionAfter),true,'LEISURE_PAUSE'
     end
     offer.stateData=offer.stateData or {}
     local env={actor=actor,binding=binding,id=id,npc=npc,offer=offer,entry=entry,s=s,hours=hours,
@@ -509,7 +520,13 @@ function Service.candidate(actor,binding,sample,budget,memory)
         else c=Policy.choose(activities,memory,hours,roll) or Policy.choose(seats,memory,hours,roll)
             or Policy.choose(standing,memory,hours,roll) end
     end
-    if not c then noteIdle(id,deferred or 'NO_CANDIDATE') return nil,true end
+    if not c then
+        Social.withdraw(id)
+        local fallback=ambient(entry,point,id,eligible,hours)
+        if fallback then fallback.activityRef=gathering end
+        if not fallback then noteIdle(id,deferred or 'NO_CANDIDATE') end
+        return fallback,true
+    end
     if not c.leisure and not c.study then
         c={leisure={format=1,activity=c.activity,point=c.point,hours=hours,moving=c.moving},entry=entry,pure=true,
             leisureTarget=c.target,targetKey=c.targetKey}
@@ -548,6 +565,7 @@ function Service.finished(c,stopped)
     if not l.finished and c.reason~='LEISURE_WORK_READY' and c.reason~='SOCIAL_INVITE' then
         Service.failed(c.job.npcId,c.leisureKey,c.reason or 'ACTIVITY_INTERRUPTED')
     end
+    if l.ambient then return end -- Waiting must not restart the decision pause or activity cooldowns.
     if not l.zoneVisit and not l.roleDuty then
         p.leisureMemory=Policy.remember(p.leisureMemory,l.activity,getGameTime():getWorldAgeHours(),l.finished==true)
     else p.leisureMemory=p.leisureMemory or {cooldowns={}} end

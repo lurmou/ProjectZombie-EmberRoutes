@@ -84,7 +84,7 @@ function A.new(c)
     local wait=require('EmberRoutesProbe/LeisureTimed').new(c,{
         start=function()
             local duration=l.brief and Config.briefMinutes or l.activity=='STROLL' and Config.strollMinutes or Config.observeMinutes
-            untilHours=getGameTime():getWorldAgeHours()+duration/60
+            untilHours=l.ambient and l.untilHours or getGameTime():getWorldAgeHours()+duration/60
             if c.leisureTarget then c.npc:faceThisObject(c.leisureTarget) end
         end,
         update=function()
