@@ -1806,5 +1806,7 @@
   "IGUI_EmberRoutesProbe_Monitor_deliveryLine": "来源 %1 → 目标 %2 · %3 · 需求 / 已交付 / 剩余 %4",
   "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREGISTERED": "目标箱未登记或不可用，保留原件并暂停",
   "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_FILTER_REJECTED": "目标箱过滤器拒绝，保留原件并暂停",
-  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREACHABLE": "目标箱不可达，保留原件并暂停"
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREACHABLE": "目标箱不可达，保留原件并暂停",
+    "IGUI_EmberRoutesProbe_Monitor_allocation": "分配 %1 · 已结算 %2 · 剩余 %3",
+    "IGUI_EmberRoutesProbe_Monitor_allocationItem": "原件 %1 → %2 · 已转移 %3 · 剩余 %4"
 }

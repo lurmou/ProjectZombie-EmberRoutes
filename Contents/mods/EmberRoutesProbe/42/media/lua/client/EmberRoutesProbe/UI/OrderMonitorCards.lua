@@ -34,7 +34,7 @@ end
 
 function Cards.signature(row)
     local fields={}
-    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','remaining','observationRevision','feasibilityRevision'}) do
+    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','allocationSummary','allocationDetails','allocated','settled','remaining','observationRevision','feasibilityRevision'}) do
         fields[#fields+1]=tostring(row[key])
     end
     for _,asset in ipairs(row.assets or {}) do
@@ -445,6 +445,7 @@ function Cards.details(owner,bounds)
                 add(text('delivered',row.delivered,row.target),Theme.accent)
                 if row.requested~=row.target then add(text('rounded',row.requested,row.target),Theme.muted) end
             end
+            if row.allocationSummary then add(row.allocationSummary,Theme.muted) end
             if row.cargoSummary then add(row.cargoSummary,Theme.accent) end
             if row.noteKey then add(getText(row.noteKey),Theme.muted) end
             if row.deliverySummary then add(row.deliverySummary,Theme.muted) end
@@ -506,6 +507,7 @@ function Cards.details(owner,bounds)
                 end
             end
 
+            for _,line in ipairs(row.allocationLines or {}) do add(line,Theme.muted) end
             local assets=row.assets or {}
             if #assets>0 then
                 add(text('originals',#assets),Theme.accent)

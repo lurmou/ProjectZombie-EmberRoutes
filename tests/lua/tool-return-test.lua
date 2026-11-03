@@ -249,7 +249,7 @@ check(Store.custodyByItem(601)==nil,'first tool custody 601 safely rolled back u
 -- 4. ToolReturnProvider 30s Idle Dispatch
 -- =========================================================================
 local Provider=require 'EmberRoutesProbe/ToolReturnProvider'
-Provider.reset()
+Provider.reconcile()
 
 -- Claim a tool for NPC 1
 local tool701=Store.claimCustody('1',701,'MOP','crate-1',nil)
@@ -287,7 +287,7 @@ check(candidates[1].custodyId==tool701.id,'candidate references correct custody'
 -- 5. ToolReturnService Execution & Single Body Control
 -- =========================================================================
 local Service=require 'EmberRoutesProbe/ToolReturnService'
-Service.reset()
+Service.reconcile()
 
 local invItems={}
 local npcInv={
@@ -367,7 +367,7 @@ check(Store.custodyByItem(701)==nil,'custody cleared only after stop')
 -- =========================================================================
 -- 6. Safe Interrupt & Preemption by Higher-Priority Work (Step 5)
 -- =========================================================================
-Service.reset()
+Service.reconcile()
 -- Claim tool 801 for NPC 1
 local tool801=Store.claimCustody('1',801,'MOP','crate-1',nil)
 tool801.state='HELD'
@@ -466,11 +466,11 @@ check(not blockedAdvance,'MembershipService.advance blocks when obligations pres
 -- =========================================================================
 -- 8. Death & Save Recovery Handling (Step 6)
 -- =========================================================================
--- NPC death marks custody DEAD_CARRIER and does NOT release claim
-local deadCount=Store.markNpcCustodiesDead('1')
-check(deadCount>=1,'marked custodies dead for NPC 1')
-check(tool801.state=='DEAD_CARRIER','custody transitioned to DEAD_CARRIER')
-check(not Store.canClaimTool('2',801),'item 801 claim is NOT released on death (remains on corpse)')
+-- Existing death contract releases claims without moving physical originals.
+local deadCount=Store.settleNpcDeath('1')
+check(deadCount>=1,'settled deceased NPC custody claims')
+check(Store.custodyByItem(801)==nil,'death settles custody under current contract')
+check(Store.canClaimTool('2',801),'death releases claim without moving the physical tool')
 
 -- World reload recovery test
 local entry901={
@@ -500,7 +500,7 @@ check(reloadedCustody.returnJobId=='old-ret-job','loading preserves the unresolv
 check(not Store.canClaimTool('9',901),'unverified pending return cannot authorize new labour')
 
 -- Save between physical PUT and custody settlement: restore via a stop-only session.
-Service.reset()
+Service.reconcile()
 local recoveringNpc={id='9',isDead=fakeNpc.isDead,getInventory=fakeNpc.getInventory,
     getCurrentSquare=fakeNpc.getCurrentSquare,getX=fakeNpc.getX,getY=fakeNpc.getY,getZ=fakeNpc.getZ}
 currentNpcMap['9']=recoveringNpc
@@ -522,7 +522,7 @@ check(Store.custodyByItem(902)==nil and Service.returnResult('saved-return-902')
 Service.forgetResult('saved-return-902')
 
 -- A Provider-owned return cancelled while still carrying must release its old Offer.
-Service.reset() Provider.reset()
+Service.reconcile() Provider.reconcile()
 local tc=Store.claimCustody('1',1001,'MOP','crate-1',nil) tc.state='HELD'
 local tool={getID=function() return 1001 end,getContainer=function() return npcInv end}
 invItems={tool}

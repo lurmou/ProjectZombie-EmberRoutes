@@ -60,7 +60,11 @@ function S.step(c)
     local pendingReq=nil
     for _,req in ipairs(reqs) do
         local inInv=inv:getFirstEvalRecurse(function(i) return i:getID()==req.itemId end)
-        if not inInv then
+        if inInv then
+            if not Store.validToolUse(c.job.npcId,c.job.id,req.itemId) then c.reason='TOOL_CUSTODY_CHANGED' return 'Failure' end
+            local custody=Store.custodyByItem(req.itemId)
+            if custody then custody.state='HELD' end
+        else
             pendingReq=req
             break
         end
@@ -117,4 +121,32 @@ function S.step(c)
     return c.node and 'Running' or 'Failure'
 end
 
+-- Stop cleanup distinguishes warehouse reservations from held originals.
+function S.releaseUncollected(c,supply)
+    local observed={}
+    for _,req in ipairs(supply and supply.requirements or {}) do
+        local held=c.npc:getInventory():getFirstEvalRecurse(function(item) return item:getID()==req.itemId end)
+        local custody=Store.custodyByItem(req.itemId)
+        if not custody or custody.id~=req.custodyId then return false end
+        if held then observed[#observed+1]={custody=custody,held=true}
+        else
+            local source=Registry.resolve(req.containerId,'take','local-world')
+            local found=false
+            if source and Registry.revalidate(source,'take','local-world') then
+                local items=source.container:getItems()
+                for i=0,items:size()-1 do
+                    local item=items:get(i)
+                    if item:getID()==req.itemId and item:getContainer()==source.container then found=true break end
+                end
+            end
+            if not found then return false end
+            observed[#observed+1]={custody=custody}
+        end
+    end
+    for _,row in ipairs(observed) do
+        if row.held then row.custody.state='HELD'
+        elseif not Store.releaseCustody(row.custody.id) then return false end
+    end
+    return true
+end
 return S

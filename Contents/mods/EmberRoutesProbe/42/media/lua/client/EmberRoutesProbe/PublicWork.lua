@@ -171,22 +171,25 @@ local function live(o)
 end
 -- Public craft/stock demand has no chosen box until its real output assets do.
 -- Never infer a destination from product type or the set of accepting boxes.
-local function outputDestination(o)
+local function outputHasDestination(o,destinationId)
     local r=o.jobId and business().record and business().record(o.jobId,'CRAFT')
-    local destination
     for _,asset in ipairs(r and r.outputs or {}) do
-        if asset.fullType==o.product then
-            if not asset.destination or destination and destination~=asset.destination then return end
-            destination=asset.destination
+        if asset.fullType==o.product and asset.destination==destinationId
+            and Registry.resolve(destinationId,'put','local-world') then return true end
+    end
+    -- Prior batch transfer facts remain relevant while the same demand is live.
+    for _,asset in ipairs(r and r.outputAllocation and r.outputAllocation.assets or {}) do
+        for _,target in ipairs(asset.fullType==o.product and asset.targets or {}) do
+            if target.destinationId==destinationId and Registry.resolve(destinationId,'put','local-world') then return true end
         end
     end
-    if destination and Registry.resolve(destination,'put','local-world') then return destination end
+    return false
 end
 function Service.deliveryOverlapReason(o,line)
     if not o.destinationId or not o.overlapSequence or not live(o) then return end
     for _,other in pairs(load().orders) do
         if live(other) and other.settlementId==o.settlementId and other.product==line.fullType
-            and other.sequence<o.overlapSequence and outputDestination(other)==o.destinationId then
+            and other.sequence<o.overlapSequence and outputHasDestination(other,o.destinationId) then
             return other.policyId and 'CYCLE_ACTIVE' or 'MANUAL_ORDER_ACTIVE'
         end
     end
@@ -208,9 +211,13 @@ function Service.outputOverlapReason(orderId,fullType,destinationId)
 end
 local function overlapReason(o)
     if o.state=='DONE' or o.state=='CANCELLED' or o.parentOrderId then return end
-    local destination=outputDestination(o)
-    local deliveryReason=destination and Service.outputOverlapReason(o.id,o.product,destination)
-    if deliveryReason then return deliveryReason end
+    local deliveries=Registry.data().deliveryOrders
+    for _,delivery in pairs(deliveries and deliveries.orders or {}) do
+        if delivery.destinationId and outputHasDestination(o,delivery.destinationId) then
+            local reason=Service.outputOverlapReason(o.id,o.product,delivery.destinationId)
+            if reason then return reason end
+        end
+    end
     local first
     for _,other in pairs(load().orders) do
         if other.settlementId==o.settlementId and other.product==o.product
@@ -427,7 +434,8 @@ local function stock(actor,now)
     ruleCursor=ruleCursor%#rules+1 local rule=rules[ruleCursor]
     if rule.activeOrder then
         local o=data.orders[rule.activeOrder]
-        if not o or o.state=='DONE' or o.state=='CANCELLED' then
+        if not o then signalRule(rule,'TASK_RECORD_MISSING') return end
+        if o.state=='DONE' or o.state=='CANCELLED' then
             rule.activeOrder=nil rule.nextCheck=now+2000 signalRule(rule,nil) Index.refresh(rule.settlementId,false)
         else return end
     end

@@ -122,6 +122,11 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         scopeId=custody.returnIntent.scopeId
         destinationId=custody.returnIntent.destinationId
         endpoint=Registry.resolve(destinationId,'put','local-world')
+        if item and item:getContainer()==inv and (not endpoint or not endpoint.container
+            or not Registry.revalidate(endpoint,'put','local-world')) then
+            custody.reason='DESTINATION_NOT_AVAILABLE'
+            return false,'DESTINATION_NOT_AVAILABLE'
+        end
         if endpoint and endpoint.container and not item then
             local list=endpoint.container:getItems()
             if list:size()<=512 then
@@ -173,7 +178,10 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         failed=false,
         body=nil
     }
-    task.recoveryOnly=recovering
+    -- A pending return with its exact original still in the root inventory
+    -- can resume the same intent. UNKNOWN outcomes remain observation-only.
+    task.recoveryOnly=recovering and not (custody.state=='PENDING_RETURN' and item
+        and item:getContainer()==inv and inv:getItems():contains(item))
     task.itemId=custody.itemId
 
     local runtime=Runtime.current()
@@ -212,6 +220,9 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
             if not Store.completeCustodyReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item) then return false end
             task.finished=true task.record.state='DONE' task.record.phase='SETTLED'
             task.knownStopped=true
+        elseif retained() and task.stopReason=='SAVE' then
+            -- Save is a pause, not evidence that the return obligation ended.
+            task.record.state='PAUSED'
         elseif retained() then
             if not Store.abortToolReturn(task.custodyId,task.returnJobId) then return false end
             task.record.state='CANCELLED'
@@ -248,6 +259,9 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
             end
 
             if task.phase=='APPROACH' then
+                if not task.endpoint or not Registry.revalidate(task.endpoint,'put','local-world') then
+                    task.failed=true task.record.reason='DESTINATION_NOT_AVAILABLE' return
+                end
                 if not Transfer.reachable(npc,task.endpoint) then
                     local p=Transfer.prepareMove({npc=npc},task.endpoint)
                     if p and p.square then
@@ -316,7 +330,8 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         stopAdapter=function(controller,ticket)
             return Stop.new({controller=controller,ticket=ticket,npc=npc,npcId=npcId,jobId=returnJobId,
                 same=function() return task.world==Registry.data() and (live[npcId]==task or task.stopPersisted==true) end,
-                pause=function()
+                pause=function(reason)
+                    task.stopReason=reason
                     task.stopping=true
                     return task.body.clear()
                 end,

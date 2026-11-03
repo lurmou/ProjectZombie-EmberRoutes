@@ -108,6 +108,27 @@ function Service.status(actor,id)
                 row.assets[#row.assets+1]={id=asset.id,kind=name,fullType=asset.fullType,delivered=asset.delivered==true}
             end
         end
+        if kind=='CRAFT' and r.format==4 then
+            row.allocated,row.settled,row.remaining=require('EmberRoutesProbe/ProductionAllocation').count(r,r.product)
+            if order and order.allocated~=nil then row.allocated,row.settled,row.remaining=order.allocated,order.settled,order.remaining end
+            if demand and demand.craftProgress then
+                row.allocated=math.min(row.target,demand.craftProgress.delivered+row.allocated)
+                row.settled=row.delivered row.remaining=math.max(0,row.target-row.settled)
+            end
+            row.allocationSummary=getText('IGUI_EmberRoutesProbe_Monitor_allocation',row.allocated,row.settled,row.remaining)
+            row.outputAllocation={} row.allocationLines={}
+            for _,a in ipairs(r.outputAllocation and r.outputAllocation.assets or {}) do
+                local targets={}
+                for _,t in ipairs(a.targets) do targets[#targets+1]={destinationId=t.destinationId,quantity=t.quantity,transferred=t.transferred} end
+                if #row.allocationLines<64 then
+                    row.allocationLines[#row.allocationLines+1]=getText('IGUI_EmberRoutesProbe_Monitor_allocationItem',
+                        tostring(a.id),targets[1] and targets[1].destinationId or '-',tostring(a.transferred),tostring(a.remaining))
+                end
+                row.outputAllocation[#row.outputAllocation+1]={id=a.id,fullType=a.fullType,actual=a.actual,
+                    allocated=a.allocated,transferred=a.transferred,remaining=a.remaining,state=a.state,targets=targets}
+            end
+        end
+        if row.allocationLines then row.allocationDetails=table.concat(row.allocationLines,'\n') end
         if kind=='HAUL' then
             local types=require('EmberRoutesProbe/ItemDisplay').types(r,binding and binding.handle,displayBudget)
             local summary={}

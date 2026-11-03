@@ -93,14 +93,15 @@ function S.spec(c,def,cooldowns)
                     -- reservations back here, or a PREPARE-phase job can never
                     -- reach a terminal state and wedges in the resubmit loop.
                     local supply=c.job.payload.toolSupply
+                    if supply and not require('EmberRoutesProbe/FieldSupplies').releaseUncollected(c,supply) then
+                        if not c.unknown('FIELD_TOOL_RETURN_UNCONFIRMED') then return false end
+                        return c.change(function(j) j.state='RECONCILE_REQUIRED' end)
+                    end
                     ok=c.change(function(j)
                         j.state=c.abandon and 'CANCELLED' or 'DONE'
                         j.payload.phase='SETTLED' j.payload.claims={} j.obligations={}
                         j.payload.toolSupply=nil
                     end)
-                    if ok and supply then
-                        for _,req in ipairs(supply.requirements) do Store.releaseCustody(req.custodyId) end
-                    end
                     if c.abandon then cooldowns[c.job.payload.offerKey]=getTimestampMs()
                         +((c.job.payload.approachFails or 0)>=3 and 600000 or 10000) end
                 end

@@ -130,6 +130,12 @@ local function scanPlants(env,row)
                 local _,minimum=D.waterGoal(p)
                 if (p.waterLvl or 0)<minimum then t.kind='WATER' end
             end
+            -- Each observed plant replaces its own stale conditions. A water
+            -- level change is not a second intent while its target is claimed.
+            for i=#row.targets,1,-1 do
+                local old=row.targets[i]
+                if old.x==t.x and old.y==t.y and old.z==t.z then table.remove(row.targets,i) end
+            end
             if t.kind then add(row,t) end
         end
     end
@@ -206,6 +212,16 @@ function D.claim(target,npc,entry,category)
     elseif t.kind=='ROTTEN' then t.identity=tostring(t.itemId)
     else
         local o=D.object(t) if not o then return nil end
+        if category=='farming' then
+            local plant=D.plant(t)
+            if not plant then return nil end
+            local dead=plant.state=='rotten' or plant.isAlive and not plant:isAlive() and plant.state~='plow'
+            local harvest=plant.canHarvest and plant:canHarvest()
+            local _,minimum=D.waterGoal(plant)
+            if t.kind=='CLEAR' and not dead or t.kind=='HARVEST' and (dead or not harvest)
+                or t.kind=='WATER' and (dead or harvest or not plant.typeOfSeed or plant.typeOfSeed=='none'
+                    or (plant.waterLvl or 0)>=minimum) then return nil,nil,'FIELD_TARGET_CHANGED' end
+        end
         t.identity=Spatial.identity(o,true)
         if not t.identity then return nil end
     end

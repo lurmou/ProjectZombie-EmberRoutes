@@ -1806,5 +1806,7 @@
   "IGUI_EmberRoutesProbe_Monitor_deliveryLine": "Source %1 → destination %2 · %3 · requested / delivered / remaining %4",
   "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREGISTERED": "Destination unregistered or unavailable; originals retained",
   "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_FILTER_REJECTED": "Destination filter rejected; originals retained",
-  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREACHABLE": "Destination unreachable; originals retained"
+  "IGUI_EmberRoutesProbe_WorkCode_DESTINATION_UNREACHABLE": "Destination unreachable; originals retained",
+    "IGUI_EmberRoutesProbe_Monitor_allocation": "Allocated %1 · Settled %2 · Remaining %3",
+    "IGUI_EmberRoutesProbe_Monitor_allocationItem": "Item %1 → %2 · Transferred %3 · Remaining %4"
 }

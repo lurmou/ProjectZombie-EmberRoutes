@@ -6,7 +6,7 @@ local phases={COLLECTING=true,CRAFTING=true,COMMITTING=true,CONFIRMED=true,RETUR
     RECONCILE_REQUIRED=true,DONE=true,CANCELLED=true}
 local integer=Validate.integer
 local function production(id,r)
-    if type(r)~='table' or r.format~=4 or not require('EmberRoutesProbe/ProductionYield').valid(r) then return false end
+    if type(r)~='table' or not require('EmberRoutesProbe/ProductionAllocation').matches(r) or r.format~=4 or not require('EmberRoutesProbe/ProductionYield').valid(r) then return false end
     if r.npcId~=id or type(id)~="string" or type(r.id)~="string" or type(r.requester)~="string"
         or type(r.recipeId)~="string" or type(r.signature)~="string" or type(r.settlementId)~="string"
         or type(r.product)~="string" or type(r.recipeName)~="string"

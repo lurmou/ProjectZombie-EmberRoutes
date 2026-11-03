@@ -295,12 +295,20 @@ function Store.data()
 	require('EmberRoutesProbe/LaborRecovery').restore({current=current,rebuilt=rebuilt,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,rebuiltPersonal=rebuiltPersonal,rebuiltCooking=rebuiltCooking,rebuiltActivity=rebuiltActivity,rebuiltField=rebuiltField,rebuiltCraft=rebuiltCraft,rebuiltHaul=rebuiltHaul,newTokens=newTokens})
 
         local rebuiltCustody = {}
+        local custodyByNpc,custodyByItem={},{}
         if current.toolCustody and current.toolCustody.byId then
             local CustodyRecord = require('EmberRoutesProbe/ToolCustodyRecord')
             for id, entry in pairs(current.toolCustody.byId) do
                 -- A physical PUT may already have happened. Keep the exact return
                 -- identity/intent until a controlled stop and original observation.
-                if not CustodyRecord.valid(entry) then error('TOOL_CUSTODY_RECORD_INVALID') end
+                if not CustodyRecord.valid(entry) or entry.id~=id or custodyByItem[entry.itemId] then
+                    error('TOOL_CUSTODY_RECORD_INVALID')
+                end
+                -- Only byId owns custody. Serialization need not preserve aliases
+                -- in the two persisted lookup caches; rebuild them before use.
+                local npcId=tostring(entry.npcId)
+                custodyByNpc[npcId]=custodyByNpc[npcId] or {}
+                custodyByNpc[npcId][id]=entry custodyByItem[entry.itemId]=entry
                 if hasConflict(entry.claims) then
                     entry.state = 'HELD'
                 else
@@ -316,6 +324,7 @@ function Store.data()
         else
             current.toolCustody = { byId = {}, byNpc = {}, byItem = {} }
         end
+        current.toolCustody.byNpc,current.toolCustody.byItem=custodyByNpc,custodyByItem
         -- Publish the cache only after the entire ledger passed validation.
         current.nextClaimSeq = math.max(current.nextClaimSeq or 1, rebuilt.nextClaimSeq or 1)
         root,claims,tokens=current,rebuilt,newTokens

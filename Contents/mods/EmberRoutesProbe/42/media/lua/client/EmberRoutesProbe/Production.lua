@@ -17,6 +17,7 @@ local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Production={}
 local JobExecution=require "EmberRoutesProbe/ProductionJobs"
 local Yield=require 'EmberRoutesProbe/ProductionYield'
+local Allocation=require 'EmberRoutesProbe/ProductionAllocation'
 local contexts,candidates,pending={},{},{}
 local requests={}
 local waiting,inventoryDirty,inventoryRevision={},false,0
@@ -234,7 +235,7 @@ local function makePlan(c,select)
     end
     local plan,why=Plan.new(c.entry,c.npc,spec,c.record,select)
     if not plan then return nil,why end
-    c.spec=spec c.plan=plan c.planning=true c.inputs=nil return true
+    c.spec=spec c.plan=plan c.planning=true c.inputs=nil c.outputPlanning=nil c.outputAllocated=nil return true
 end
 -- Every stage shares one task/token. No child completion releases intermediate originals.
 local function activateNode(c,index)
@@ -254,10 +255,12 @@ local function activateNode(c,index)
     local proposed={} for k,v in pairs(r) do proposed[k]=v end
     proposed.recipeId=node.recipeId proposed.signature=node.signature proposed.product=spec.product proposed.recipeName=spec.name
     proposed.requested=node.requested proposed.target=node.requested proposed.unitYield=spec.yield proposed.produced=0 proposed.delivered=0
+    proposed.outputAllocation=nil
     proposed.benchId=node.benchId proposed.surface=not spec.station and node.location or nil proposed.phase="PLANNING" proposed.unitMade=false
     proposed.station=spec.station and {id=node.benchId,position={x=node.location.x,y=node.location.y,z=node.location.z}} or nil
     local ok,failed=JobExecution.replace(r,c.token,proposed) if not ok then return nil,failed end
     for _,key in ipairs({"recipeId","signature","product","recipeName","requested","target","unitYield","produced","delivered","phase","unitMade"}) do r[key]=proposed[key] end
+    r.outputAllocation=nil
     r.benchId=proposed.benchId r.surface=proposed.surface r.station=proposed.station r.chain.index=index
     c.entry=entry c.object=object c.returned=nil c.route=nil c.inputs=nil
     return makePlan(c,true)
@@ -296,22 +299,50 @@ local function deliver(c,asset,callback)
         return nil,reason
     end
     if asset.fullType and item:getFullType()~=asset.fullType then return nil,"INPUT_CHANGED" end
-    if source and Registry.accepts(source,item) and Registry.logistics(source)=="STORAGE" then
-        asset.destination=source.id
-        local why=outputOverlap(c,asset,source.id) if why then return nil,why end
-        if callback then callback() end return false
+    if source and Registry.accepts(source,item) and Registry.logistics(source)=='STORAGE' then
+        local isOutput=false
+        for _,candidate in ipairs(c.record.outputs) do if candidate==asset then isOutput=true break end end
+        if not isOutput then asset.destination=source.id if callback then callback() end return false end
     end
-    if not c.route then c.route=Supply.route(c.plan,item) end
-    local target,done=c.route:step(32) if not done then return nil end c.route=nil
-    if not target then return nil,"NO_CLASSIFIED_STORAGE_TARGET" end
+    local output=false
+    for _,candidate in ipairs(c.record.outputs) do if candidate==asset then output=true break end end
+    local allocation=output and Allocation.row(c.record,asset) or nil
+    local target
+    if allocation and allocation.allocated==1 then
+        target=Supply.endpoint(c.entry,allocation.targets[1].destinationId,'put')
+        if not target then return nil,'NO_CLASSIFIED_STORAGE_TARGET' end
+    else
+        if not c.route then c.route=Supply.route(c.plan,item) end
+        local done
+        target,done=c.route:step(32) if not done then return nil end c.route=nil
+        if not target then return nil,'NO_CLASSIFIED_STORAGE_TARGET' end
+        if allocation then
+            Allocation.assign(allocation,target.id)
+            asset.destination=target.id
+            changed(c,'OUTPUT_ALLOCATED '..tostring(asset.id)..' '..target.id)
+            if c.commitFailure then return nil,c.commitFailure end
+        end
+    end
     asset.destination=target.id
     local why=outputOverlap(c,asset,target.id) if why then return nil,why end
+    -- Source presence is not a transfer receipt. Outputs settle only after the
+    -- native transfer postcondition; resumed settled outputs are skipped above.
+    if source and source.id==target.id then
+        if allocation and allocation.transferred~=1 then return nil,'RECONCILE_REQUIRED' end
+        if callback then callback() end return false
+    end
     local root=c.npc:getInventory()
     if item:getContainer()~=root then
         if not source then return nil,"ITEM_LOCATION_CHANGED" end
         return moved(c,item,source.container,root,source)
     end
-    return moved(c,item,root,target.container,target,callback)
+    return moved(c,item,root,target.container,target,function()
+        if allocation and not Allocation.settle(allocation,target.id) then
+            c.record.uncertain=true c.record.reason='RECONCILE_REQUIRED'
+            return
+        end
+        if callback then callback() end
+    end)
 end
 local function finish(c)
     local r=c.record releaseBench(c)
@@ -449,6 +480,14 @@ local function advance(c)
     end
     releaseBench(c)
     if r.phase~="RETURNING" then r.phase="RETURNING" changed(c,"RETURNING") end
+    if not c.outputAllocated then
+        c.outputPlanning=c.outputPlanning or require('EmberRoutesProbe/ProductionRouting').new(c)
+        local ready,why=c.outputPlanning:step(32)
+        if not ready then return nil,why end
+        c.outputAllocated=true c.outputPlanning=nil
+        changed(c,'OUTPUT_BATCH_ALLOCATED')
+        if c.commitFailure then return nil,c.commitFailure end
+    end
     for _,asset in ipairs(r.outputs) do
         if not asset.delivered then
             local action,reason,movement=deliver(c,asset,function()
@@ -737,6 +776,7 @@ function Production.status(r)
         uncertain=r.uncertain==true,made=r.unitMade==true,resumable=not r.released and not r.uncertain and r.phase~="COMMITTING",
         recipeId=r.recipeId,recipeName=r.recipeName,product=r.product,requested=r.requested,target=r.target,produced=r.produced,delivered=r.delivered,
         surfaceRequired=r.surface~=nil,surface=r.surface and {x=r.surface.x,y=r.surface.y,z=r.surface.z} or nil}
+    result.allocated,result.settled,result.remaining=Allocation.count(r,r.product)
     if Yield.assetFree(r) and r.activityYield.blockedReason then result.reason=r.activityYield.blockedReason end
     if r.chain then
         local goal=r.chain.goal
@@ -745,12 +785,15 @@ function Production.status(r)
         for _,key in ipairs({"recipeId","recipeName","product","requested","target"}) do result[key]=goal[key] end
         result.produced=r.chain.index==#r.chain.nodes and r.produced or 0
         result.delivered=r.chain.index==#r.chain.nodes and r.delivered or 0
+        if r.chain.index~=#r.chain.nodes then result.allocated,result.settled,result.remaining=0,0,result.target end
     end
     if r.activityContinuation then
         local c=r.activityContinuation local g=c.goal
         result.requested,result.target=g.requested,g.target result.recipeId,result.product,result.recipeName=g.recipeId,g.product,g.recipeName
         result.produced=math.min(g.target,c.delivered+(result.produced or 0))
         result.delivered=math.min(g.target,c.delivered+(result.delivered or 0))
+        result.allocated=math.min(g.target,c.delivered+(result.allocated or 0))
+        result.settled=result.delivered result.remaining=math.max(0,result.target-result.settled)
     end
     return result
 end

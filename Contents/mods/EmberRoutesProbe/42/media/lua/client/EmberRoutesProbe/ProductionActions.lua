@@ -160,7 +160,8 @@ function Actions.craft(c)
         local counts,seen={},{} local verified=ok and outputs:size()==c.spec.outputCount
         for i=0,math.min(outputs:size(),128)-1 do
             local item=outputs:get(i) local id,kind=item:getID(),item:getFullType()
-            if not seen[id] and not before[id] then r.outputs[#r.outputs+1]={id=id,fullType=kind,delivered=false} end
+            if not seen[id] and not before[id] then r.outputs[#r.outputs+1]={id=id,fullType=kind,delivered=false}
+                require('EmberRoutesProbe/ProductionAllocation').row(r,r.outputs[#r.outputs]) end
             if seen[id] or before[id] or not Actions.inRoot(item,inventory,id) then verified=false end
             seen[id]=true counts[kind]=(counts[kind] or 0)+1
             c.plan.locations[id]={item=item}
