@@ -42,7 +42,7 @@ package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return roo
 package.loaded['EmberRoutesProbe/SettlementLedger']={authorized=function() return allowed end,at=function() return {entry} end}
 package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) if known[id] then return {id=id,handle=npc} end end}
 package.loaded['EmberRoutesProbe/LaborStore']={resourceOwner=function(key) return claims[key] end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
+package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() return function() end end}
 local Sites=require 'EmberRoutesProbe/ReposeSites' Sites.RADIUS=1
 local function discover(id,kind,options)
  local request=Sites.new(actor,npc,id,kind or 'SLEEP',nil,options)

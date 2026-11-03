@@ -47,7 +47,8 @@ function Cards.signature(row)
     end
     local member=row.membership
     if member then
-        for _,key in ipairs({'revision','context','settlementId','settlementName','reason'}) do fields[#fields+1]=tostring(member[key]) end
+        for _,key in ipairs({'revision','context','settlementId','settlementName','reason','bedId','bedReason','postingReason','postingRevision'}) do fields[#fields+1]=tostring(member[key]) end
+        if member.posting then fields[#fields+1]=member.posting.zoneId fields[#fields+1]=member.posting.category end
     end
     return table.concat(fields,'|')
 end

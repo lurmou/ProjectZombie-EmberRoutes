@@ -27,8 +27,27 @@ local function receipt(data,key,value)
     -- Pending requests remain in the member row even if their technical receipt is evicted.
     while #data.receiptOrder>128 do local old=table.remove(data.receiptOrder,1) data.receipts[old]=nil end
 end
+local function scalarId(v) return type(v)=='string' and #v>0 and #v<=256 end
+local function validBed(r)
+    if r.bedId==nil then return r.bedLocation==nil end
+    if not scalarId(r.bedId) or type(r.settlementId)~='string' or type(r.bedLocation)~='table' then return false end
+    for _,axis in ipairs({'x','y','z'}) do local n=r.bedLocation[axis]
+        if type(n)~='number' or n~=n or math.abs(n)>10000000 or n~=math.floor(n) then return false end
+    end
+    return true
+end
 local function validRow(id,r)
     return type(id)=='string' and id~='' and type(r)=='table' and r.npcId==id
+        and validBed(r)
+        and (r.posting==nil or type(r.settlementId)=='string' and type(r.posting)=='table' and r.posting.format==1
+            and scalarId(r.posting.zoneId) and scalarId(r.posting.category))
+        and (r.obligations==nil or type(r.obligations)=='table')
+        and (r.lastCommand==nil or type(r.lastCommand)=='table' and kinds[r.lastCommand.kind]
+            and scalarId(r.lastCommand.requestId))
+        and (r.bedReason==nil or type(r.bedReason)=='string')
+        and (r.postingReason==nil or type(r.postingReason)=='string')
+        and (r.postingRevision==nil or type(r.postingRevision)=='number' and r.postingRevision>=0
+            and r.postingRevision<=1e12 and r.postingRevision==math.floor(r.postingRevision))
         and type(r.factionId)=='string' and contexts[r.context] and type(r.revision)=='number'
         and r.revision>=1 and r.revision<9007199254740000 and r.revision==math.floor(r.revision)
         and (r.settlementId==nil or type(r.settlementId)=='string')
@@ -87,6 +106,10 @@ function S.view(id)
     local value=copy(r) value.pending=value.pendingCommand value.pendingCommand=nil
     local e,why=S.entry(id)
     value.settlementName=e and e.name value.reason=r.reason or (r.settlementId and why)
+    if r.posting then
+        local zone=require('EmberRoutesProbe/SettlementZones').get(r.posting.zoneId)
+        value.postingName=zone and zone.name
+    end
     return value
 end
 -- Rebuild only on membership changes/world replacement; UI receives detached stable IDs.
@@ -137,7 +160,7 @@ function S.request(actor,id,c)
         local old=row.pendingCommand
         receipt(data,id..':'..old.requestId,{state='CANCELLED',requestId=old.requestId,kind=old.kind,settlementId=old.settlementId,revision=row.revision+1})
     end
-    row.revision=row.revision+1 row.reason='COMMAND_PENDING' row.obligations=nil
+    row.revision=row.revision+1 row.reason='COMMAND_PENDING'
     row.pendingCommand={state='PENDING',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,
         expectedRevision=c.expectedRevision,acceptedRevision=row.revision,leaderId=leader}
     receipt(data,key,{state='PENDING',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,revision=row.revision})
@@ -156,17 +179,34 @@ function S.advance(id,actor,obligations,bodyOwned)
     end
     local changing=c.kind=='UNASSIGN' or ((c.kind=='TRANSFER' or c.kind=='SETTLE') and c.settlementId~=r.settlementId)
         or (c.kind=='FOLLOW' and hasToolCustody)
-    if changing and #obligations>0 then r.reason='OBLIGATION_PENDING' r.obligations=copy(obligations) return false end
+    obligations=obligations or {}
+    if (changing or c.kind=='RETURN' or c.kind=='WAIT') and #obligations>0 then r.reason='OBLIGATION_PENDING' r.obligations=copy(obligations) return false end
     if c.kind=='SETTLE' or c.kind=='TRANSFER' then
         local e=Ledger.data().entries[c.settlementId]
         if not e or e.factionId~=r.factionId then r.reason='TARGET_LOST' return false end
+        local Beds=require 'EmberRoutesProbe/MembershipBeds'
+        local ready,scan=Beds.observe(e)
+        if not ready then r.reason='BED_OBSERVING' return false end
+        if r.settlementId~=c.settlementId then
+            if not Beds.release(r,S.entry(id)) then r.reason='BED_RELEASE_BLOCKED' return false end
+            r.posting=nil r.postingReason=nil
+        end
+        Beds.settle(r,e,scan)
         r.settlementId=c.settlementId r.context='SETTLEMENT'
-    elseif c.kind=='UNASSIGN' then r.settlementId=nil r.context='WAIT'
+    elseif c.kind=='UNASSIGN' then
+        if not require('EmberRoutesProbe/MembershipBeds').release(r,S.entry(id)) then r.reason='BED_RELEASE_BLOCKED' return false end
+        r.settlementId=nil r.posting=nil r.postingReason=nil r.context='WAIT'
     else r.context=c.kind end
+    r.lastCommand={kind=c.kind,requestId=c.requestId}
     r.leaderId=r.context=='FOLLOW' and c.leaderId or nil
     r.revision=r.revision+1 r.pendingCommand=nil r.reason=nil r.obligations=nil
     receipt(data,id..':'..c.requestId,{state='COMMITTED',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,revision=r.revision})
     notify(id) return true
+end
+function S.result(id,requestId)
+    if type(requestId)~='string' then return nil end
+    local data=store() local receipt=data and data.receipts[id..':'..requestId]
+    return receipt and copy(receipt)
 end
 function S.cancel(actor,id,requestId,expected)
     local data=store() local r=data and data.byNpc[id] local c=r and r.pendingCommand
@@ -195,7 +235,77 @@ function S.retire(id,settled)
         receipt(data,id..':'..c.requestId,{state='CANCELLED',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,revision=r.revision+1})
     end
     r.retired=true r.pendingCommand=nil r.revision=r.revision+1
-    if settled then data.byNpc[id]=nil end notify(id) return settled
+    if settled then
+        if not require('EmberRoutesProbe/MembershipBeds').release(r,S.entry(id)) then notify(id) return false end
+        data.byNpc[id]=nil
+    end notify(id) return settled
+end
+-- Configuration remains a membership command; furniture is the validity authority.
+function S.configureBed(actor,object,current,mode,npcId)
+    local data=store() if not data then return 'MEMBERSHIP_NEW_WORLD_REQUIRED' end
+    if not Ledger.authorized(actor) then return 'ACCESS_DENIED' end
+    local Beds=require 'EmberRoutesProbe/MembershipBeds'
+    local Sites=require 'EmberRoutesProbe/ReposeSites'
+    local actual,why=Sites.view(actor,object) if not actual then return why end
+    if actual.revision~=current.revision or actual.id~=current.id then return 'SITE_CHANGED' end
+    if mode~='PUBLIC' and mode~='DISABLED' and mode~='ASSIGNED' then return 'SITE_POLICY_INVALID' end
+    local at=object:getSquare()
+    if actor:getZ()~=at:getZ() or (actor:getX()-at:getX()-0.5)^2+(actor:getY()-at:getY()-0.5)^2>16 then return 'SITE_TOO_FAR' end
+    local parts=Sites.group(object)
+    current=actual
+    local row=mode=='ASSIGNED' and data.byNpc[npcId] or data.byNpc[current.npcId]
+    local entry=row and S.entry(row.npcId)
+    if mode=='ASSIGNED' then
+        if not row or row.retired or row.pendingCommand or not entry then return 'NO_MEMBERSHIP' end
+        if current.mode=='ASSIGNED' and current.npcId~=npcId then return 'BED_ALREADY_ASSIGNED' end
+        for _,part in ipairs(parts) do local at=part:getSquare()
+            if not require('EmberRoutesProbe/SettlementGeometry').inside(entry,at:getX(),at:getY()) then return 'SCOPE_MISMATCH' end
+        end
+    end
+    local result=Beds.configure(row,entry,object,parts,current,mode)
+    if result=='SITE_POLICY_SAVED' then
+        -- Policy proofs invalidate sleep independently. Configuration must not
+        -- masquerade as a macro command and stop unrelated body owners.
+        require('EmberRoutesProbe/LaborSignals').changed(row and row.npcId)
+    end
+    return result
+end
+function S.reconcileBed(id)
+    local data=store() local row=data and data.byNpc[id] if not row or not row.bedId then return end
+    local before,reason=row.bedId,row.bedReason
+    require('EmberRoutesProbe/MembershipBeds').reconcile(row,S.entry(id))
+    if before~=row.bedId or reason~=row.bedReason then
+        require('EmberRoutesProbe/LaborSignals').changed(id)
+    end
+end
+function S.notePosting(id,reason)
+    local data=store() local row=data and data.byNpc[id]
+    if row and row.posting and row.postingReason~=reason then
+        row.postingReason=reason require('EmberRoutesProbe/LaborSignals').changed(id)
+    end
+end
+function S.setPosting(actor,id,posting,expected,expectedPosting)
+    local data=store() local row=data and data.byNpc[id]
+    if not Ledger.authorized(actor) then return 'ACCESS_DENIED' end
+    if not row or row.retired or not row.settlementId then return 'NO_MEMBERSHIP' end
+    if row.revision~=expected then return 'STALE_MEMBERSHIP' end
+    if (row.postingRevision or 0)~=expectedPosting then return 'POSTING_CHANGED' end
+    if row.pendingCommand or row.context~='SETTLEMENT' then return 'POSTING_SETTLED_REQUIRED' end
+    local entry=S.entry(id) if not entry then return 'TARGET_LOST' end
+    if posting~=nil then
+        if type(posting)~='table' or not scalarId(posting.zoneId) or not scalarId(posting.category) then return 'POSTING_INVALID' end
+        -- PublicWork registers the currently supported provider categories.
+        local public=require 'EmberRoutesProbe/PublicWork'
+        if not public.provider(posting.category) then return 'POSTING_CATEGORY_INVALID' end
+        local zone,why=require('EmberRoutesProbe/SettlementZones').get(posting.zoneId)
+        if not zone then return why end
+        if zone.settlementId~=entry.id or not zone.enabled
+            or not require('EmberRoutesProbe/SettlementZones').coveredZone(entry,zone) then return 'POSTING_ZONE_INVALID' end
+    end
+    row.postingReason=nil
+    row.posting=posting and {format=1,zoneId=posting.zoneId,category=posting.category} or nil
+    row.postingRevision=(row.postingRevision or 0)+1
+    require('EmberRoutesProbe/LaborSignals').changed(id) return 'POSTING_SAVED'
 end
 function S.setReturnPoint(actor,scope,point,expected)
     return Ledger.setReturnPoint(actor,scope,point,expected)

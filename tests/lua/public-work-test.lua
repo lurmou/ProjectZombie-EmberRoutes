@@ -5,7 +5,7 @@ local workers={'alice','bob'} local busy={} local calls={} local records={} loca
 local recipe={recipe={getName=function() return 'saw' end},id='saw',name='Saw',product='Base.Plank',yield=3,surface=false}
 local actor={getUsername=function() return 'owner' end,isRecipeKnown=function() return true end,isDead=function() return false end}
 local entry={id='s'}
-dofile('tests/lua/membership-fixture.lua')(function() if allowed then return entry end end,workers)
+local membershipRows=dofile('tests/lua/membership-fixture.lua')(function() if allowed then return entry end end,workers)
 local function npc(id) return {id=id,getX=function() return 1 end,getY=function() return 1 end,getZ=function() return 0 end,
  getCharacterActions=function() return {isEmpty=function() return true end} end,
  getBodyDamage=function() return {getOverallBodyHealth=function() return 100 end} end} end
@@ -282,6 +282,49 @@ tick()
 check(reconciledCooking>0,'provider reconcile is invoked on tick')
 check(discoveredCooking>0 and claimedCooking==1 and calls[#calls].kind=='cook',
     'provider discover and claim are executed for registered category')
+
+-- Gate A posting passes through the real decide/eligibility/selector chain.
+local memberService=package.loaded['EmberRoutesProbe/MembershipService']
+local postingReason
+memberService.notePosting=function(_,reason) postingReason=reason end
+package.loaded['EmberRoutesProbe/SettlementZones']={
+    get=function() return {id='posted',settlementId='s',enabled=true} end,
+    coveredZone=function() return true end,
+    contains=function(_,x,y,z) return x>=0 and x<4 and y>=0 and y<4 and z==0 end}
+local postedPoint={x=1,y=1,z=0}
+local oldCookingDiscover=cookingProvider.discover
+cookingProvider.discover=function(env)
+    local offer=env.upsertOffer('posted:existing',1,'cooking',env.entry.id)
+    if offer and not offer.jobId then env.candidates[#env.candidates+1]={key=offer.key,revision=offer.revision,
+        category='cooking',point=postedPoint,allowed=true,score=10} end
+end
+local function postedScenario(priority)
+    root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'}
+    membershipRows.alice.context='SETTLEMENT'
+    membershipRows.alice.posting={format=1,zoneId='posted',category='cooking'}
+    membershipRows.alice.revision=membershipRows.alice.revision+1
+    Public.setPriority(actor,'s','alice','cooking',priority)
+end
+postedScenario(0) tick() tick()
+check(#calls==0 and postingReason=='POSTING_PRIORITY_ZERO','posting cannot override disabled category and explains ordinary no-work')
+postedScenario(1) postedPoint={x=20,y=1,z=0} tick() tick()
+check(#calls==0,'posting rejects existing candidates outside the posted zone')
+postedScenario(1) postedPoint={x=1,y=1,z=0} membershipRows.alice.context='WAIT' tick() tick()
+check(#calls==0,'posting never bypasses membership context eligibility')
+postedScenario(1)
+local oldHealth=handles.alice.getBodyDamage
+handles.alice.getBodyDamage=function() return {getOverallBodyHealth=function() return 94 end} end
+tick() tick() check(#calls==0,'posting never bypasses existing health guard')
+handles.alice.getBodyDamage=oldHealth
+postedScenario(1)
+local jobs=package.loaded['EmberRoutesProbe/BusinessJobs'] local oldCrafts=jobs.crafts
+jobs.crafts=function() return {alice={released=false}} end
+tick() tick() check(#calls==0,'posting never bypasses retained-job eligibility') jobs.crafts=oldCrafts
+postedScenario(1) busy.alice=true tick() tick()
+check(#calls==0,'posting never bypasses existing body eligibility')
+postedScenario(1) tick()
+check(#calls==1 and calls[1].kind=='cook' and postingReason==nil,'eligible posted candidate still uses existing unique claim path')
+membershipRows.alice.posting=nil memberService.notePosting=nil cookingProvider.discover=oldCookingDiscover
 
 -- Associated preparation demand uses the same bounded receipts and survives
 -- parent pause without being mistaken for a new independent player request.

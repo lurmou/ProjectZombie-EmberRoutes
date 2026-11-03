@@ -126,6 +126,9 @@ local function register(parts,p)
             mode=p.mode,npcId=p.npcId,revision=math.max(1,p.revision)}
     end
 end
+Sites.policy=policy
+Sites.writePolicy=register
+Sites.isBed=isActualBed
 function Sites.configure(actor,object,revision,mode,npcId)
     local current,why=Sites.view(actor,object) if not current then return why end
     local p=position(object)
@@ -134,6 +137,9 @@ function Sites.configure(actor,object,revision,mode,npcId)
     if not modes[mode] then return 'SITE_POLICY_INVALID' end
     if mode=='ASSIGNED' and (type(npcId)~='string' or not require('EmberRoutesProbe/Driver').bindId(actor,npcId)) then
         return 'SITE_NPC_UNAVAILABLE'
+    end
+    if isActualBed(object) then
+        return require('EmberRoutesProbe/MembershipService').configureBed(actor,object,current,mode,npcId)
     end
     if mode~='ASSIGNED' then npcId=nil end
     if current.mode==mode and current.npcId==npcId and current.revision>0 then return 'SITE_POLICY_SAVED' end
@@ -220,6 +226,7 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
     local excluded={} local started=getTimestampMs()
     for key,untilTime in pairs(blocked or {}) do if untilTime>started then excluded[key]=true end end
     local M=require 'EmberRoutesProbe/MembershipService'
+    if M.reconcileBed then M.reconcileBed(npcId) end
     local entry=M.entry(npcId)
     local entryRevision=entry and entry.revision
     local member=M.view(npcId) local revision=member and member.revision
@@ -239,7 +246,13 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
             local record=row.slots[index] index=index+1
             if record==nil then
                 local chosen=best index,best=1,nil
-                if chosen and live(chosen.object) then return chosen,true end
+                if chosen and live(chosen.object) then
+                    if kind=='SLEEP' and chosen.assigned==0 and (not row.complete or row.frame or row.dirtyCount>0
+                        or member and member.bedId and member.bedReason=='SITE_UNLOADED') then
+                        return nil,false,Facilities.reason(row)
+                    end
+                    return chosen,true
+                end
                 if Facilities.pending(row) then return nil,false,Facilities.reason(row) end
                 return nil,true,'SITE_UNAVAILABLE'
             elseif record then

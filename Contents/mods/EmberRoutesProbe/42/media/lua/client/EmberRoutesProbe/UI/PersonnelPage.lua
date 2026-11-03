@@ -247,6 +247,7 @@ function EmberRoutesPersonnelPage:createChildren()
     self.matrixList.onRightMouseDown=function(list,x,y)
         local row=list.items[list:rowAt(x,y)] local key=categoryAt(list,x)
         if row and key then self:cycleWorkerPriority(row.item.value,key,-1) return true end
+        if row then self.store:setState({selected=row.item.value}) self:onListActivate() return true end
         return false
     end
     local origWheel=self.matrixList.onMouseWheel
@@ -310,6 +311,7 @@ end
 
 function EmberRoutesPersonnelPage:deactivate()
     Lifecycle.unmount(self)
+    self.batchResults=nil self.memberMenu=nil
     Tooltip.dismissOwner(self)
     if self.dossierDrawer then self.dossierDrawer:close() end
     if self.detailNpc then require('EmberRoutesProbe/PersonnelService').release(self.detailNpc) self.detailNpc=nil end
@@ -337,7 +339,8 @@ function EmberRoutesPersonnelPage:refresh()
     else
         selected=enriched[1] or nil
     end
-    self.store:setState({workers=enriched,selected=selected,revision=self.store.value.revision+1})
+    local batchLines=require('EmberRoutesProbe/MembershipMenu').batchLines(self.batchResults)
+    self.store:setState({workers=enriched,selected=selected,batchLines=batchLines,revision=self.store.value.revision+1})
 end
 
 function EmberRoutesPersonnelPage:project(value)
@@ -446,6 +449,7 @@ function EmberRoutesPersonnelPage:project(value)
     -- 2. Prepare Colonist Inspector detail items for self.info
     local detail={}
     if sel then
+        detail[#detail+1]={text=require('EmberRoutesProbe/MembershipText').summary(sel.membership),color=Theme.muted}
         -- 2a. Health Bar (Compact single line)
         if sel.health~=nil then
             local healthFraction=math.max(0,math.min(1,sel.health/100))
@@ -538,6 +542,7 @@ function EmberRoutesPersonnelPage:project(value)
         if self.detailMode=='skills' or self.detailMode=='knowledge' then detail={} end
         for _,row in ipairs(extra) do detail[#detail+1]=row end
     end
+    for _,line in ipairs(value.batchLines or {}) do detail[#detail+1]=line end
     self.info:set(detail)
     if self.dossierDrawer and self.dossierDrawerOpen then
         self.dossierDrawer:setWorker(sel)
@@ -628,9 +633,20 @@ end
 function EmberRoutesPersonnelPage:onListActivate()
     local worker=self.store.value.selected if not worker then return end
     local category=self.editCategory or 'crafting'
+    if not self.active or not self.activationScope or not self.activationScope:isCurrent() then return end
+    if self.memberMenu then self.memberMenu:release() self.memberMenu=nil end
     local menu=ISContextMenu.get(self.actor:getIndex(),self:getAbsoluteX(),self:getAbsoluteY())
+    self.memberMenu=self.activationScope:own(menu,function(value) value:hideSelfAndChildren2() end)
+    local activation=self.activation
+    local function guard() return self.active and not self.disposed and self.activation==activation and self.owner:valid() end
+    local members=require 'EmberRoutesProbe/MembershipMenu'
+    members.posting(self.actor,menu,worker.id,guard)
+    members.batch(self.actor,menu,self.entry.id,self.store.value.workers,guard,function(results)
+        if not guard() then return end
+        self.batchResults=results self:refresh()
+    end)
     for value=0,4 do menu:addOption(text(category)..': '..pubText('priority_'..value),self,function()
-        if not self.active or self.disposed or not self.owner:valid() then return end
+        if not guard() then return end
         local result=self:setWorkerPriority(worker,category,value)
         self.store:setState({notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)}) self:refresh()
     end) end

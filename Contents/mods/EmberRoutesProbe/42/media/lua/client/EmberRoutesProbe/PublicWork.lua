@@ -493,7 +493,7 @@ local function decide(actor,npcId,now,binding,entry)
     local priorities=Service.priorities(npcId) local candidates={} local studyTarget
     local member=Members and Members.view and Members.view(npcId)
     local stamp=entry.id..':'..tostring(entry.revision)..':'..tostring(member and member.revision)
-        ..':'..tostring(priorities.revision)..':'..tostring(catalogEpoch[entry.id] or 0)
+        ..':'..tostring(member and member.postingRevision)..':'..tostring(priorities.revision)..':'..tostring(catalogEpoch[entry.id] or 0)
     if not Providers.hasPending(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Providers.discoveryChanged) then
         if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,'IDLE') end
         for _,provider in ipairs(Providers.all()) do
@@ -526,6 +526,23 @@ local function decide(actor,npcId,now,binding,entry)
         if p>0 and provider.discover then
             envDiscover.priority=p
             provider.discover(envDiscover)
+        end
+    end
+
+    local posting=member and member.posting
+    if posting then
+        local Filter=require 'EmberRoutesProbe/MembershipPosting'
+        local zone,why=Filter.zone(posting,entry)
+        local reason=why or ((priorities[posting.category] or 0)==0 and 'POSTING_PRIORITY_ZERO' or 'POSTING_NO_ELIGIBLE_WORK')
+        local accepted=false
+        for _,candidate in ipairs(candidates) do
+            local allowed,blocked=Filter.allows(posting,zone,candidate)
+            if not allowed then candidate.allowed=false
+                if blocked=='POSTING_TARGET_UNAVAILABLE' then reason=blocked end
+            elseif candidate.allowed then accepted=true end
+        end
+        if Members.notePosting then
+            if accepted then Members.notePosting(npcId,nil) else Members.notePosting(npcId,reason) end
         end
     end
 

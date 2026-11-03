@@ -1,3 +1,5 @@
+-- This host fixture has no world furniture; model the no-bed commit explicitly.
+package.loaded['EmberRoutesProbe/MembershipBeds']={observe=function() return true end,settle=function(row) row.bedReason='BED_NONE' return true end,release=function() return true end,reconcile=function() end}
 local root={} local seq=0 local md={}
 local actor={isDead=function() return false end,getModData=function() return md end}
 local entry={id='home',factionId='f',revision=1,areas={{x=0,y=0,w=30,h=30}}}

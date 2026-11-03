@@ -102,6 +102,9 @@ local function advance(id,actor,runtime,now)
         S.advance(id,actor,obligations,runtime:owns(id)) return
     end
     row.stopping=nil
+    if now>=(row.bedCheckAt or 0) then
+        row.bedCheckAt=now+Config.memberIdleMs S.reconcileBed(id)
+    end
     if member.context=='FOLLOW' then
         if actor and (actor:isDead() or S.character(actor)~=member.leaderId) then
             runtime:stop(id,'LEADER_LOST')
@@ -160,7 +163,7 @@ function M.tick()
     if not root.npcMembership or not runtime or not runtime:accepting() then return end
     if root.executionSave and root.executionSave.state=='BLOCKED' then return end
     retired:step(2,function(id)
-        if not runtime:owns(id) and #M.obligations(id)==0 then S.retire(id,true) retired:remove(id) end
+        if not runtime:owns(id) and #M.obligations(id)==0 then if S.retire(id,true) then retired:remove(id) end end
     end)
     local count=EmberRoutesProbeJava.workerCount() if count<1 or count>256 then return end
     local actor=getSpecificPlayer(0)

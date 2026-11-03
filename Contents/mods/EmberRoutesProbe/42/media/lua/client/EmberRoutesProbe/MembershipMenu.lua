@@ -212,17 +212,84 @@ function Menu.npcEntries(actor,context,worldobjects)
 
 end
 
-function Menu.batch(actor,menu,scope,workers)
-
-    local ids={} for _,worker in ipairs(workers) do local row=S.view(worker.id) if row then ids[#ids+1]={id=worker.id,revision=row.revision} end end
-
-    menu:addOption(T.reason('BATCH_SETTLE'),actor,function(a)
-
-        for _,row in ipairs(ids) do Menu.send(a,row.id,'SETTLE',scope,row.revision) end
-
-    end)
-
+-- Detached per-NPC revision snapshot, matching the original BATCH_SETTLE loop.
+function Menu.batchRequest(actor,scope,kind,rows)
+    local results={}
+    for _,row in ipairs(rows) do
+        local current=S.view(row.id)
+        local receipt
+        if kind~='SETTLE' and (not current or current.retired or current.settlementId~=scope) then
+            receipt={state='REJECTED',reason='SCOPE_MISMATCH'}
+        else
+            receipt=S.request(actor,row.id,{kind=kind,settlementId=kind=='SETTLE' and scope or nil,
+                expectedRevision=row.revision,requestId=Registry.id()})
+        end
+        local status=Menu.commandStatus(row.id,kind,receipt)
+        results[#results+1]={id=row.id,kind=kind,receipt=receipt,status=status.state,reason=status.reason}
+        actor:Say(Names.name(row.id)..': '..T.reason(status.state)..(status.reason and ' · '..T.reason(status.reason) or ''))
+    end
+    return results
 end
-
+function Menu.commandStatus(id,kind,receipt)
+    receipt=S.result(id,receipt.requestId) or receipt
+    if receipt.state=='REJECTED' or receipt.state=='CANCELLED' then return {state='FAILED',reason=receipt.reason or receipt.state} end
+    local row=S.view(id)
+    if not row then return {state='FAILED',reason='NO_MEMBERSHIP'} end
+    if row.pending and row.pending.requestId~=receipt.requestId then return {state='FAILED',reason='STALE_REQUEST'} end
+    if not row.pending and row.lastCommand and row.lastCommand.requestId~=receipt.requestId then return {state='FAILED',reason='STALE_REQUEST'} end
+    if row.pending then
+        return {state=row.reason and row.reason~='COMMAND_PENDING' and 'BLOCKED' or 'ACCEPTED_PENDING',reason=row.reason~='COMMAND_PENDING' and row.reason or nil}
+    end
+    if row.reason then return {state='BLOCKED',reason=row.reason} end
+    local committed=receipt.state=='COMMITTED' or row.lastCommand and row.lastCommand.requestId==receipt.requestId and row.lastCommand.kind==kind
+    if committed and (kind=='RETURN' and row.context=='SETTLEMENT' or kind=='WAIT' and row.context=='WAIT'
+        or kind=='SETTLE' and row.context=='SETTLEMENT') then return {state='COMPLETED'} end
+    return {state='ACCEPTED_PENDING'}
+end
+function Menu.batch(actor,menu,scope,workers,guard,receive)
+    local settlers={} for _,worker in ipairs(workers or {}) do local row=S.view(worker.id)
+        if row then settlers[#settlers+1]={id=worker.id,revision=row.revision} end
+    end
+    for _,kind in ipairs({'SETTLE','RETURN','WAIT'}) do
+        local rows={}
+        if kind=='SETTLE' then rows=settlers else
+            for _,id in ipairs(S.members(scope)) do local row=S.view(id)
+                if row then rows[#rows+1]={id=id,revision=row.revision} end
+            end
+        end
+        local command,snapshot=kind,rows
+        menu:addOption(T.reason('BATCH_'..command),actor,function(a)
+            if not guard or guard() then
+                local results=Menu.batchRequest(a,scope,command,snapshot)
+                if receive then receive(results) end
+                return results
+            end
+        end)
+    end
+end
+function Menu.batchLines(results)
+    local lines={}
+    for _,result in ipairs(results or {}) do
+        local status=Menu.commandStatus(result.id,result.kind,result.receipt)
+        lines[#lines+1]={text=Names.name(result.id)..': '..T.reason(status.state)..(status.reason and ' · '..T.reason(status.reason) or '')}
+    end
+    return lines
+end
+function Menu.posting(actor,menu,id,guard)
+    local row=S.view(id) if not row or not row.settlementId then return end
+    local function send(value)
+        if guard and not guard() then return end
+        actor:Say(T.reason(S.setPosting(actor,id,value,row.revision,row.postingRevision or 0)))
+    end
+    menu:addOption(T.reason('POSTING_CLEAR'),nil,function() send(nil) end)
+    local zones=require('EmberRoutesProbe/SettlementZones').list(row.settlementId) or {}
+    for _,zone in ipairs(zones) do if zone.enabled then
+        local option=menu:addOption(T.reason('POSTING')..' · '..zone.name,nil,nil)
+        local choices=ISContextMenu:getNew(menu) menu:addSubMenu(option,choices)
+        for _,category in ipairs(require('EmberRoutesProbe/PublicWork').categories()) do
+            local value={zoneId=zone.id,category=category}
+            choices:addOption(getText('IGUI_EmberRoutesProbe_Public_'..category),nil,function() send(value) end)
+        end
+    end end
+end
 return Menu
-
