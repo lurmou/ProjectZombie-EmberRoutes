@@ -38,6 +38,12 @@ public final class ProbeRuntime {
     public static se.krka.kahlua.vm.KahluaTable laborMutate(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable claims,se.krka.kahlua.vm.KahluaTable contracts,Object cleanup,Object id,Object revision,Object payload,Object mutation) {
 	return LaborCommitKernel.mutate(zombie.Lua.LuaManager.thread,store,owner,claims,contracts,cleanup,id,revision,payload,mutation);
     }
+    public static se.krka.kahlua.vm.KahluaTable laborCancel(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable claims,se.krka.kahlua.vm.KahluaTable contracts,Object cleanup,Object id,Object revision,Object payload,Object mutation) {
+        return LaborCommitKernel.cancel(zombie.Lua.LuaManager.thread,store,owner,claims,contracts,cleanup,id,revision,payload,mutation);
+    }
+    public static se.krka.kahlua.vm.KahluaTable laborCreate(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable state,se.krka.kahlua.vm.KahluaTable contracts,Object allocate,se.krka.kahlua.vm.KahluaTable job) {
+        return LaborCommitKernel.create(zombie.Lua.LuaManager.thread,store,owner,state,contracts,allocate,job);
+    }
     public static se.krka.kahlua.vm.KahluaTable jobDataCopy(se.krka.kahlua.vm.KahluaTable source) {
 	return JobData.copy(source);
     }

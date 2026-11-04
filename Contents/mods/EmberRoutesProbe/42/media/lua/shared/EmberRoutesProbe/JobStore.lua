@@ -179,7 +179,7 @@ function Store.open(root)
         notify(value)
         return true
     end
-    function api:update(key,revision,patch)
+    local function update(key,revision,patch,cancelling)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
         if terminal[old.state] then return false,'JOB_TERMINAL' end
@@ -192,17 +192,32 @@ function Store.open(root)
         candidate.revision=revision+1
         if not valid(candidate) then return false,'JOB_RECORD_INVALID' end
 	local rule=contract(old.providerType)
-	if rule.transition then
+	if rule.transition and not cancelling then
 	    local allowed,why=rule.transition(old,candidate)
 	    if not allowed then return false,why end
         end
-        if candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
+        if not cancelling and candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
 	indexAttempt(old,true)
         data.byId[key]=value
 	indexAttempt(value)
         notify(value)
         return true,value.revision
+    end
+    function api:update(key,revision,patch) return update(key,revision,patch,false) end
+    -- Kernel cancel is distinct from ordinary transitions. Validity and domain
+    -- record validation still apply; no obligations/claims may be discarded.
+    function api:cancel(key,revision,patch)
+        if type(patch)~='table' or patch.state~='CANCELLED' then return false,'CANCEL_PATCH_INVALID' end
+        local old=data.byId[key]
+        if not old or old.revision~=revision then return false,'JOB_CHANGED' end
+        local payload=patch.payload or old.payload
+        local effects=patch.effects or old.effects
+        local obligations=patch.obligations or old.obligations
+        if effects~='KNOWN' then return false,'CANCEL_BLOCKED_EFFECTS_UNKNOWN' end
+        if not empty(obligations) then return false,'CANCEL_BLOCKED_OBLIGATIONS' end
+        if #(payload.claims or {})>0 then return false,'CANCEL_BLOCKED_CLAIMS' end
+        return update(key,revision,patch,true)
     end
     -- Only LaborStore's verified physical handoff uses this narrow operation.
     -- Ordinary update cannot rewrite stable ownership or the indexed NPC.

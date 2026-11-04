@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+DEC-003 单一 Java 提交内核：[Phase 0 入口盘点](reviews/2026-11-04/dec003-entry-inventory.md)、[本轮执行与明确开放项](reviews/2026-11-04/dec003-execution.md)。尚未切换生产路径，不是实施完成或 parity 证明；当前状态见 BACKLOG。
+
 公共调度Java计算：[实施计划](superpowers/plans/2026-11-02-java-dispatch-kernel.md)、[0.29.25证据](reviews/2026-11-02/java-dispatch-kernel.md)。候选仲裁/失效索引/名册窗口已接Java；目录迁移因补测反向而撤回，领域策略与物理协议不变，实机性能未验证。
 资源与记录提交Java计算：[实施计划](superpowers/plans/2026-11-02-java-labor-commit-kernel.md)、[0.29.26证据](reviews/2026-11-02/java-labor-commit-kernel.md)。大批量容量提交粗粒度下沉；小型提交、通用Job CAS和恢复保留Lua，Runtime尚未迁移。
 
@@ -66,3 +68,5 @@ Java优先搬运/配送：[实施计划](superpowers/plans/2026-11-02-java-haul-
 - requirements中的本地正文为历史快照；history中的聊天、reviews中的旧实现结论都不自动成为当前授权。
 - 新增有效设计、实施计划或重要证据时，在对应任务行补链接，并原位更新BACKLOG；替代旧方案时说明替代关系，保留原文追溯。
 - doclink检查引用是否有效，不能证明内容一致或不存在遗漏；续接仍须核查源码与相关证据。
+
+DEC-003 当前 kernel core 契约与定向验证：[Phase 1（修订范围）](reviews/2026-11-04/dec003-phase1-contract.md)；无领域迁移，Java/实机验证仍未运行。

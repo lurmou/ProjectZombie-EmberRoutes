@@ -58,6 +58,10 @@ end
 
 function Probe.begin()
     validatedBridge,validatedMode=nil,nil
+    -- Independent fail-closed commit admission; does not alter body startup.
+    local kernel=require 'EmberRoutesProbe/LaborKernelAvailability'
+    local available,diagnosis=kernel.validate()
+    if not available then Log.write('KERNEL_UNAVAILABLE',diagnosis) end
     Performance.reset()
     Probe.ready = false
     Probe.runtimeReady = false

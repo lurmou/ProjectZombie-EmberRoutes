@@ -54,7 +54,7 @@ class KahluaLaborTest {
 	    }
 	    if (Arrays.asList(args).contains("--java-labor")) {
 		var bridge=platform.newTable();
-		for(String[] binding:new String[][]{{"laborMutate","LaborCommitKernel","mutate"},{"jobDataCopy","JobData","copy"}}) {
+		for(String[] binding:new String[][]{{"laborMutate","LaborCommitKernel","mutate"},{"laborCreate","LaborCommitKernel","create"},{"laborCancel","LaborCommitKernel","cancel"},{"jobDataCopy","JobData","copy"}}) {
 		    var method=Arrays.stream(Class.forName("emberroutes.probe."+binding[1]).getMethods()).filter(m->m.getName().equals(binding[2])).findFirst().orElseThrow();
 		    bridge.rawset(binding[0],(JavaFunction)(frame,n)->{
 			Object[] values=new Object[method.getParameterCount()];int offset=method.getParameterTypes()[0]==KahluaThread.class?1:0;

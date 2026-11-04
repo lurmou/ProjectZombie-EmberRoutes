@@ -2,99 +2,187 @@ package emberroutes.probe;
 import java.util.*;
 import se.krka.kahlua.vm.*;
 import static emberroutes.probe.KernelValues.*;
-/** Synchronous resource/record commit; policies are registered Lua domain contracts. */
+
+/** One synchronous commit sequence. Lua owns envelope/domain/transition policy.
+ * No receipts, retry cache, persistent recovery queue or business rules. */
 public final class LaborCommitKernel {
     private LaborCommitKernel() {}
     private static Set<Object> keys(KahluaTable list) {
-	Set<Object> r=new HashSet<>();if(list!=null)for(int i=1;i<=list.len();i++)r.add(list.rawget(i));return r;
+        Set<Object> r=new HashSet<>();
+        if(list!=null)for(int i=1;i<=list.len();i++)r.add(list.rawget(i));
+        return r;
     }
     private static boolean any(KahluaTable list) {return list!=null && list.len()>0;}
-    private static void restore(KahluaTable claims,KahluaTable token,KahluaTable before) {
-	ClaimsKernel.releaseCapacity(claims,token,null);
-	if(yes(before.rawget("key"))) {
-	    KahluaTableIterator it=t(before,"items").iterator();while(it.advance())
-		require(ClaimsKernel.restore(claims,token,before.rawget("key"),it.getKey(),it.getValue()),"assertion failed!");
-	}
+    private static KahluaTable failure(String code,Object why) {
+        KahluaTable r=result(false,code);r.rawset("evidence",text(why));return r;
     }
-    private static KahluaTable unknown() {KahluaTable p=table();p.rawset("state","RECONCILE_REQUIRED");p.rawset("effects","UNKNOWN");return p;}
-    private static void isolate(KahluaThread vm,KahluaTable owner,KahluaTable keys,String reason,Object id,Object rev,Object why) {
-	for(int i=1;i<=keys.len();i++) {
-	    KahluaTable evidence=table();evidence.rawset("jobId",id);evidence.rawset("rev",rev);evidence.rawset("why",text(why));
-	    call(vm,owner.rawget("quarantineResource"),keys.rawget(i),reason,evidence);
-	}
+    /** Invocation-local resource snapshot; one restore attempt, no recovery authority. */
+    private static final class Tx {
+        final KahluaTable claims;
+        KahluaTable token,before,resources;
+        boolean touched,casReached,created;
+        Object next,claimsRevision;
+        Tx(KahluaTable c) {claims=c;}
+        void snapshot() {
+            claimsRevision=g(claims,"revision");
+            resources=shallow(t(token,"resources"));
+            Object key=g(token,"capacityKey");
+            KahluaTable previous=t(t(t(t(claims,"capacity"),key),"entries"),g(token,"taskId"));
+            before=table();before.rawset("key",key);before.rawset("items",shallow(t(previous,"items")));
+        }
+        boolean restore() {
+            try {
+                if(created) {ClaimsKernel.release(claims,token);return true;}
+                if(!touched)return true;
+                KahluaTable owners=t(claims,"owners");
+                // Never overwrite a foreign owner, even during the single restore.
+                for(int i=1;i<=resources.len();i++) {
+                    Object owner=g(owners,resources.rawget(i));
+                    if(owner!=null && owner!=token)return false;
+                }
+                KahluaTable current=t(token,"resources");
+                Set<Object> original=keys(resources);
+                for(int i=1;i<=current.len();i++) {
+                    Object key=current.rawget(i);
+                    if(!original.contains(key) && g(owners,key)==token)owners.rawset(key,null);
+                }
+                for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),token);
+                token.rawset("resources",resources);
+                ClaimsKernel.releaseCapacity(claims,token,null);
+                KahluaTableIterator it=t(before,"items").iterator();
+                while(it.advance())if(!ClaimsKernel.restore(claims,token,g(before,"key"),it.getKey(),it.getValue()))return false;
+                claims.rawset("revision",claimsRevision);
+                return true;
+            } catch(RuntimeException error) {return false;}
+        }
+        KahluaTable fail(String code,Object why) {
+            if(!casReached && !restore())return failure("ROLLBACK_FAILURE","RECONCILE_REQUIRED:PARTIAL_RESTORE:"+text(why));
+            // CAS callbacks may throw after publishing. Never compensate or publish again.
+            return failure(code,(casReached?"CAS_REACHED_RELOAD_FROM_SAVE:":"")+text(why));
+        }
     }
     public static KahluaTable mutate(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable claims,KahluaTable contracts,Object cleanup,Object id,Object rev,Object payload,Object command) {
-	Object record=first(method(vm,store,"get",id));
-	KahluaTable job=yes(record)?t(record):null;
-	if(job==null || !eq(job.rawget("revision"),rev))return result(false,"STALE_REVISION");
-	Object runtimeToken=first(call(vm,owner.rawget("getToken"),id));
-	KahluaTable token=yes(runtimeToken)?t(runtimeToken):null;
-	if(token==null)return result(false,"NO_RUNTIME_TOKEN");
-	if(!(payload instanceof KahluaTable proposed))return result(false,"PROPOSED_PAYLOAD_INVALID");
-	KahluaTable mutation=yes(command)?t(command):null,add=t(mutation,"addKeys"),remove=t(mutation,"removeKeys");
-	Set<Object> addSet=keys(add),removeSet=keys(remove),owned=keys(t(token,"resources"));
-	if(add!=null && addSet.size()!=add.len())return result(false,"RESOURCE_DUPLICATED");
-	for(Object key:addSet)if(removeSet.contains(key))return result(false,"MUTATION_KEYS_MUTUALLY_EXCLUSIVE_VIOLATION");
-	for(Object key:addSet)if(owned.contains(key))return result(false,"ADD_KEYS_ALREADY_OWNED");
-	if(proposed.rawget("claims")!=null) {
-	    Set<Object> expected=new HashSet<>(owned);expected.removeAll(removeSet);expected.addAll(addSet);
-	    KahluaTable list=t(proposed,"claims");Set<Object> actual=keys(list);
-	    if(actual.size()!=list.len())return result(false,"RESOURCE_DUPLICATED");
-	    if(!expected.equals(actual))return result(false,"CLAIMS_PAYLOAD_MISMATCH");
-	}
-	if(any(remove)) {String why=ClaimsKernel.canShrink(claims,token,remove);if(why!=null)return result(false,"SHRINK_FAILED:"+why);}
-	Object cap=g(mutation,"capacity");
-	if(cap!=null) {
-	    KahluaTable rule=t(first(call(vm,contracts.rawget("get"),job.rawget("providerType"))));
-	    if(!yes(g(rule,"capacityMutable")) || any(add) || !Boolean.FALSE.equals(cap) && !(cap instanceof KahluaTable))return result(false,"CAPACITY_MUTATION_UNSUPPORTED");
-	    Object key=token.rawget("capacityKey");
-	    KahluaTable prior=t(t(t(t(claims,"capacity"),key),"entries"),token.rawget("taskId")),expected=shallow(t(prior,"items"));
-	    if(Boolean.FALSE.equals(cap)) {expected=table();key=null;}
-	    else {
-		KahluaTable c=t(cap);
-		if(yes(c.rawget("releaseItemId")))expected.rawset(c.rawget("releaseItemId"),null);
-		else {if(!(c.rawget("items") instanceof KahluaTable))return result(false,"CAPACITY_PAYLOAD_MISMATCH");expected=t(c,"items");key=c.rawget("key");}
-	    }
-	    KahluaTable reservation=yes(proposed.rawget("reservation"))?t(proposed,"reservation"):null;boolean any=false;KahluaTableIterator it=expected.iterator();
-	    while(it.advance()) {
-		any=true;
-		if(reservation==null || !eq(reservation.rawget("key"),key) || !eq(g(t(reservation,"items"),it.getKey()),it.getValue()))return result(false,"CAPACITY_PAYLOAD_MISMATCH");
-	    }
-	    if(reservation!=null) {
-		if(!any)return result(false,"CAPACITY_PAYLOAD_MISMATCH");
-		KahluaTable items=t(reservation,"items");if(items!=null) {it=items.iterator();while(it.advance())if(!eq(expected.rawget(it.getKey()),it.getValue()))return result(false,"CAPACITY_PAYLOAD_MISMATCH");}
-	    }
-	}
-	// Capacity commands reject addKeys above; no resource growth in this entry.
-	KahluaTable before=null;
-	if(cap!=null) {
-	    Object key=token.rawget("capacityKey");KahluaTable previous=t(t(t(t(claims,"capacity"),key),"entries"),token.rawget("taskId"));
-	    before=table();before.rawset("key",key);before.rawset("items",shallow(t(previous,"items")));
-	    String why=null;
-	    if(Boolean.FALSE.equals(cap))ClaimsKernel.releaseCapacity(claims,token,null);
-	    else {
-		KahluaTable c=t(cap);
-		if(yes(c.rawget("releaseItemId")))ClaimsKernel.releaseCapacity(claims,token,c.rawget("releaseItemId"));
-		else {
-		    if(yes(key) && !eq(key,c.rawget("key")))ClaimsKernel.releaseCapacity(claims,token,null);
-		    why=ClaimsKernel.reserveMany(claims,token,c.rawget("key"),t(c,"items"),c.rawget("free"));
-		}
-	    }
-	    if(why!=null) {restore(claims,token,before);return result(false,why);}
-	}
-	KahluaTable patch=table();patch.rawset("payload",proposed);
-	for(String f:new String[]{"state","effects","obligations"})if(yes(g(mutation,f)))patch.rawset(f,g(mutation,f));
-	Object[] cas=method(vm,store,"update",id,rev,patch);Object next=cas.length>1?cas[1]:null;
-	if(!yes(first(cas))) {
-	    if(before!=null)restore(claims,token,before);
-	    if(any(add))isolate(vm,owner,add,"CAS_FAILED",id,rev,next);
-	    method(vm,store,"update",id,rev,unknown());return result(false,"CAS_FAILED_ISOLATED:"+text(next));
-	}
-	if(any(remove)) {
-	    String why=ClaimsKernel.shrink(claims,token,remove);
-	    if(why!=null) {isolate(vm,owner,remove,"SHRINK_POST_CAS_FAIL",id,next,why);method(vm,store,"update",id,next,unknown());return result(false,"SHRINK_FAILED_ISOLATED:"+why);}
-	}
-	if("DONE".equals(patch.rawget("state")) || "CANCELLED".equals(patch.rawget("state"))) {ClaimsKernel.release(claims,token);call(vm,cleanup,id);}
-	return result(true,next);
+        return change(vm,store,owner,claims,contracts,cleanup,id,rev,payload,command,false);
+    }
+    public static KahluaTable cancel(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable claims,KahluaTable contracts,Object cleanup,Object id,Object rev,Object payload,Object command) {
+        return change(vm,store,owner,claims,contracts,cleanup,id,rev,payload,command,true);
+    }
+    private static KahluaTable change(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable claims,KahluaTable contracts,Object cleanup,Object id,Object rev,Object payload,Object command,boolean cancelling) {
+        Tx tx=new Tx(claims);
+        String stage="INVALID_REQUEST";
+        try {
+            KahluaTable job=t(first(method(vm,store,"get",id)));
+            if(job==null || !eq(g(job,"revision"),rev))return failure("STALE_REVISION","JOB_CHANGED");
+            if(!(payload instanceof KahluaTable proposed) || command!=null && !(command instanceof KahluaTable))return failure("INVALID_REQUEST","PAYLOAD_OR_COMMAND_INVALID");
+            KahluaTable mutation=t(command),add=t(mutation,"addKeys"),remove=t(mutation,"removeKeys");
+            cancelling=cancelling || "CANCELLED".equals(g(mutation,"state"));
+            stage="CLAIM_FAILURE";
+            tx.token=t(first(call(vm,g(owner,"getToken"),id)));
+            KahluaTable token=tx.token;
+            if(token!=null && (!eq(g(token,"taskId"),id) || !eq(g(token,"claimId"),g(job,"claimId"))))return failure("CLAIM_FAILURE","STALE_CLAIM_IDENTITY");
+            Set<Object> owned=keys(token==null?t(t(job,"payload"),"claims"):t(token,"resources"));
+            if(token!=null)for(Object key:owned)
+                if(g(t(claims,"owners"),key)!=token)return failure("CLAIM_FAILURE","STALE_CLAIM");
+            Set<Object> addSet=keys(add),removeSet=keys(remove);
+            if(add!=null && addSet.size()!=add.len())return failure("INVALID_REQUEST","RESOURCE_DUPLICATED");
+            for(Object key:addSet)if(removeSet.contains(key) || owned.contains(key))return failure("INVALID_REQUEST","ADD_KEYS_OVERLAP");
+            Object cap=g(mutation,"capacity");
+            // A missing runtime token never authorizes resource commands.
+            // Payload/domain validity remains Lua policy.
+            if(token==null && (any(add)||any(remove)||cap!=null))return failure("CLAIM_FAILURE","NO_RUNTIME_TOKEN");
+            if(token!=null && g(t(claims,"tokensByTaskId"),id)!=token)return failure("CLAIM_FAILURE","STALE_RUNTIME_TOKEN");
+            if(any(remove))for(int i=1;i<=remove.len();i++)
+                if(g(t(claims,"owners"),remove.rawget(i))!=token)return failure("CLAIM_FAILURE","RESOURCE_NOT_OWNED");
+            stage="CAPACITY_FAILURE";
+            if(cap!=null) {
+                KahluaTable rule=t(first(call(vm,g(contracts,"get"),g(job,"providerType"))));
+                if(!yes(g(rule,"capacityMutable")) || !Boolean.FALSE.equals(cap) && !(cap instanceof KahluaTable))return failure("INVALID_REQUEST","CAPACITY_MUTATION_UNSUPPORTED");
+                if(cap instanceof KahluaTable c && g(c,"releaseItemId")==null) {
+                    if(!(g(c,"key") instanceof String) || !(g(c,"items") instanceof KahluaTable items)
+                        || !(g(c,"free") instanceof Number))return failure("INVALID_REQUEST","CAPACITY_SHAPE_INVALID");
+                    KahluaTableIterator it=items.iterator();
+                    while(it.advance())if(!(it.getKey() instanceof Number) || !(it.getValue() instanceof Number))
+                        return failure("INVALID_REQUEST","CAPACITY_SHAPE_INVALID");
+                } else if(cap instanceof KahluaTable c && !(g(c,"releaseItemId") instanceof Number))
+                    return failure("INVALID_REQUEST","CAPACITY_SHAPE_INVALID");
+            }
+            stage="CLAIM_FAILURE";
+            // Snapshot only when resources change; all resource writes precede CAS.
+            if(any(add)||any(remove)||cap!=null) {tx.snapshot();tx.touched=true;}
+            if(any(add)) {String why=ClaimsKernel.extend(claims,token,add);if(why!=null)return tx.fail("CLAIM_FAILURE",why);}
+            stage="CAPACITY_FAILURE";
+            if(cap!=null) {
+                String why=null;
+                if(Boolean.FALSE.equals(cap))ClaimsKernel.releaseCapacity(claims,token,null);
+                else {
+                    KahluaTable c=t(cap);
+                    if(yes(g(c,"releaseItemId")))ClaimsKernel.releaseCapacity(claims,token,g(c,"releaseItemId"));
+                    else {
+                        if(yes(g(token,"capacityKey")) && !eq(g(token,"capacityKey"),g(c,"key")))ClaimsKernel.releaseCapacity(claims,token,null);
+                        why=ClaimsKernel.reserveMany(claims,token,g(c,"key"),t(c,"items"),g(c,"free"));
+                    }
+                }
+                if(why!=null)return tx.fail("CAPACITY_FAILURE",why);
+            }
+            stage="CLAIM_FAILURE";
+            if(any(remove)) {String why=ClaimsKernel.shrink(claims,token,remove);if(why!=null)return tx.fail("CLAIM_FAILURE",why);}
+            KahluaTable patch=table();patch.rawset("payload",proposed);
+            for(String f:new String[]{"state","effects","obligations"})if(g(mutation,f)!=null)patch.rawset(f,g(mutation,f));
+            if(cancelling)patch.rawset("state","CANCELLED");
+            stage="TASK_WRITE_FAILURE";tx.casReached=true;
+            Object[] cas=method(vm,store,cancelling?"cancel":"update",id,rev,patch);
+            if(!yes(first(cas))) {
+                // Explicit rejection proves no publication; restore once.
+                tx.casReached=false;
+                return tx.fail("TASK_WRITE_FAILURE",cas.length>1?cas[1]:"CAS_REJECTED");
+            }
+            tx.next=cas.length>1?cas[1]:null;
+            if("DONE".equals(g(patch,"state")) || "CANCELLED".equals(g(patch,"state"))) {
+                if(token!=null)ClaimsKernel.release(claims,token);
+                call(vm,cleanup,id);
+            }
+            return result(true,tx.next);
+        } catch(RuntimeException error) {return tx.fail(stage,"CALLBACK_OR_KERNEL_THROW:"+text(error));}
+    }
+    public static KahluaTable create(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable state,KahluaTable contracts,Object allocate,KahluaTable job) {
+        KahluaTable claims=t(state,"claims");Object id=g(job,"id");
+        Tx tx=new Tx(claims);String stage="INVALID_REQUEST";
+        try {
+            // Lua validated the draft; allocation and acquisition execute inside
+            // this transaction. claimId injection is overwritten unconditionally.
+            job.rawset("claimId",first(call(vm,allocate,g(state,"root"),id)));
+            claims.rawset("nextClaimSeq",Math.max(zero(g(claims,"nextClaimSeq")),zero(g(t(state,"root"),"nextClaimSeq"))+1));
+            KahluaTable p=t(job,"payload");stage="CLAIM_FAILURE";
+            Object generation=g(p,"sequence");if(generation==null)generation=g(job,"generation");if(generation==null)generation=0.0;
+            KahluaTable resources=t(p,"claims");if(resources==null)resources=table();
+            KahluaTable acquired=ClaimsKernel.acquireNew(claims,id,generation,resources,job);
+            if(!yes(g(acquired,"ok")))return failure("CLAIM_FAILURE",g(acquired,"result"));
+            tx.token=t(acquired,"result");tx.created=true;
+            stage="CAPACITY_FAILURE";
+            KahluaTable r=t(p,"reservation");
+            if(r!=null) {
+                KahluaTable items=t(r,"items");
+                if(items==null && g(r,"itemId")!=null) {items=table();items.rawset(g(r,"itemId"),g(r,"amount"));}
+                if(items==null)return tx.fail("INVALID_REQUEST","RESERVATION_ITEMS_REQUIRED");
+                KahluaTableIterator it=items.iterator();
+                while(it.advance()) {
+                    String why=ClaimsKernel.reserve(claims,tx.token,g(r,"key"),it.getKey(),it.getValue(),g(r,"free"));
+                    if(why!=null)return tx.fail("CAPACITY_FAILURE",why);
+                }
+            }
+            // Resolve bucket before publication, so a throwing contract callback
+            // can still release the new token without a half-published Job.
+            KahluaTable rule=t(first(call(vm,g(contracts,"get"),g(job,"providerType"))));
+            Object bucket=g(rule,"tokenBucket");
+            KahluaTable bucketTokens=bucket==null?null:t(state,text(bucket)+"Tokens");
+            stage="TASK_WRITE_FAILURE";tx.casReached=true;
+            Object[] written=method(vm,store,"create",job);
+            if(!yes(first(written))) {tx.casReached=false;return tx.fail(stage,written.length>1?written[1]:"CREATE_REJECTED");}
+            t(state,"tokens").rawset(id,tx.token);
+            if(bucketTokens!=null)bucketTokens.rawset(id,tx.token);
+            return result(true,id);
+        } catch(RuntimeException error) {
+            return tx.fail(stage,"CALLBACK_OR_KERNEL_THROW:"+text(error));
+        }
     }
 }

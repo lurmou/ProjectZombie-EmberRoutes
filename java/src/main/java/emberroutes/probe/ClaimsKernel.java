@@ -19,6 +19,43 @@ final class ClaimsKernel {
     private static KahluaTable allocation(KahluaTable token) {
 	KahluaTable c=table();c.rawset("token",token);c.rawset("items",table());c.rawset("amount",0.0);c.rawset("count",0.0);return c;
     }
+    public static KahluaTable acquireNew(KahluaTable self,Object id,Object generation,KahluaTable resources,KahluaTable envelope) {
+        KahluaTable owners=t(self,"owners"),tokens=t(self,"tokensByTaskId");
+        if(g(tokens,id)!=null)return result(false,"TASK_ALREADY_HAS_CLAIMS");
+        KahluaTableIterator it=owners.iterator();
+        while(it.advance())if(eq(g(t(it.getValue()),"taskId"),id))return result(false,"TASK_ALREADY_HAS_CLAIMS");
+        Set<Object> seen=new HashSet<>();
+        for(int i=1;i<=resources.len();i++) {
+            Object key=resources.rawget(i);
+            if(!(key instanceof String) || !seen.add(key))return result(false,"RESOURCE_DUPLICATED");
+            KahluaTable owner=t(owners,key);
+            if(owner!=null)return result(false,quarantine(owner)?"RESOURCE_SYSTEM_QUARANTINED":"ITEM_RESERVED");
+        }
+        KahluaTable token=table();token.rawset("taskId",id);token.rawset("generation",generation);
+        token.rawset("resources",shallow(resources));token.rawset("claimId",g(envelope,"claimId"));
+        add(self,"nextClaimSeq",1);
+        for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),token);
+        tokens.rawset(id,token);if(resources.len()>0)add(self,"revision",1);
+        return result(true,token);
+    }
+    public static String extend(KahluaTable self,KahluaTable token,KahluaTable additions) {
+        if(token==null)return "STALE_CLAIM";
+        KahluaTable owners=t(self,"owners"),resources=t(token,"resources");
+        Set<Object> seen=new HashSet<>();
+        for(int i=1;i<=resources.len();i++) {
+            Object key=resources.rawget(i);if(g(owners,key)!=token)return "STALE_CLAIM";seen.add(key);
+        }
+        for(int i=1;i<=additions.len();i++) {
+            Object key=additions.rawget(i);if(!(key instanceof String) || !seen.add(key))return "RESOURCE_DUPLICATED";
+            if(g(owners,key)!=null)return "ITEM_RESERVED";
+        }
+        resources=shallow(resources);token.rawset("resources",resources);
+        for(int i=1;i<=additions.len();i++) {
+            Object key=additions.rawget(i);resources.rawset(resources.len()+1,key);owners.rawset(key,token);
+        }
+        if(additions.len()>0)add(self,"revision",1);
+        return null;
+    }
     public static String canShrink(KahluaTable self,KahluaTable token,Object released) {
 	if(token==null || !(released instanceof KahluaTable keys))return "STALE_CLAIM";
 	KahluaTable owners=t(self,"owners"),resources=t(token,"resources");Set<Object> owned=new HashSet<>(),drop=new HashSet<>();
@@ -73,6 +110,16 @@ final class ClaimsKernel {
 	KahluaTable items=t(c,"items");double old=zero(items.rawget(itemId));if(items.rawget(itemId)==null)add(c,"count",1);
 	items.rawset(itemId,amount);c.rawset("amount",n(c.rawget("amount"))-old+n(amount));b.rawset("total",n(b.rawget("total"))-old+n(amount));
 	entries.rawset(token.rawget("taskId"),c);capacity.rawset(key,b);token.rawset("capacityKey",key);return true;
+    }
+    /** Single reservation, matching Lua reserve; creation is not batch-limited. */
+    public static String reserve(KahluaTable self,KahluaTable token,Object key,Object itemId,Object amount,Object free) {
+        if(!valid(self,token,"item:"+text(itemId)))return "STALE_CLAIM";
+        if(!nonnegative(amount) || !nonnegative(free))return "CAPACITY_UNAVAILABLE";
+        if(yes(g(token,"capacityKey")) && !eq(g(token,"capacityKey"),key))return "CAPACITY_TARGET_CHANGED";
+        KahluaTable b=t(t(self,"capacity"),key),old=t(t(b,"entries"),g(token,"taskId"));
+        double before=zero(g(t(old,"items"),itemId));
+        if(zero(g(b,"total"))-before+n(amount)>n(free))return "CAPACITY_RESERVED";
+        return restore(self,token,key,itemId,amount)?null:"CAPACITY_UNAVAILABLE";
     }
     public static String reserveMany(KahluaTable self,KahluaTable token,Object key,KahluaTable weights,Object free) {
 	if(token==null || !(key instanceof String s) || s.isEmpty() || yes(g(token,"capacityKey")) && !eq(token.rawget("capacityKey"),key) || !nonnegative(free))return "CAPACITY_UNAVAILABLE";

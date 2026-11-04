@@ -43,6 +43,7 @@ function Store.data()
     local current=Registry.data()
     if current~=root then
         local rebuilt,newTokens=Claims.new(),{}
+        local pendingHaul={}
         current.quarantineResources = current.quarantineResources or {}
 
         -- Pass 1: Pre-scan claims across ALL providers to detect overlapping collisions
@@ -292,7 +293,7 @@ function Store.data()
 	-- every declared local (including expired scopes) in a 200-slot table.
 	-- This synchronous phase preserves scan order and shared claim authority.
 	require('EmberRoutesProbe/BuiltinLaborRecovery').install()
-	require('EmberRoutesProbe/LaborRecovery').restore({current=current,rebuilt=rebuilt,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,rebuiltPersonal=rebuiltPersonal,rebuiltCooking=rebuiltCooking,rebuiltActivity=rebuiltActivity,rebuiltField=rebuiltField,rebuiltCraft=rebuiltCraft,rebuiltHaul=rebuiltHaul,newTokens=newTokens})
+	require('EmberRoutesProbe/LaborRecovery').restore({pendingHaul=pendingHaul,current=current,rebuilt=rebuilt,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,rebuiltPersonal=rebuiltPersonal,rebuiltCooking=rebuiltCooking,rebuiltActivity=rebuiltActivity,rebuiltField=rebuiltField,rebuiltCraft=rebuiltCraft,rebuiltHaul=rebuiltHaul,newTokens=newTokens})
 
         local rebuiltCustody = {}
         local custodyByNpc,custodyByItem={},{}
@@ -338,9 +339,26 @@ function Store.data()
 	domainState.cookingTokens,domainState.activityTokens,domainState.fieldTokens=cookingTokens,activityTokens,fieldTokens
         recoveredGenerations={}
         recent={}
+        -- Invocation-local ordered cold-recovery work, NOT a persistent recovery
+        -- queue. Root and all token caches are published before any kernel call.
+        domainState.haulRecoveryFailures={}
+        for _,intent in ipairs(pendingHaul) do
+            local job=require('EmberRoutesProbe/TaskJobs').current():get(intent.id)
+            local ok,why,evidence=Store.mutateJob(intent.id,intent.revision,job.payload,
+                {state='RECONCILE_REQUIRED',effects='UNKNOWN'})
+            if ok and intent.failedToken then
+                -- Same pre-existing failed-reconstruction release, only after CAS.
+                -- Persistent claims remain on UNKNOWN Job for diagnosis/rebuild.
+                rebuilt:release(intent.failedToken)
+            elseif not ok then
+                domainState.haulRecoveryFailures[#domainState.haulRecoveryFailures+1]={
+                    id=intent.id,reason=intent.reason,error=why,evidence=evidence}
+            end
+        end
     end
     return root
 end
+function Store.haulRecoveryDiagnosis() return domainState.haulRecoveryFailures end
 function Store.record(npcId)
     Store.data()
     return require('EmberRoutesProbe/HaulJobs').record(npcId)

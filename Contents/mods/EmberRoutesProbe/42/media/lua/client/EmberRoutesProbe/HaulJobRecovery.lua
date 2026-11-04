@@ -1,6 +1,10 @@
 -- Haul domain reconstruction; called only after global collision scanning.
 local M={}
 function M.restore(context)
+    local function reconcile(id,job,reason)
+        -- Commit, per Phase 0 inventory. Never publish into a half-built Store.
+        context.pendingHaul[#context.pendingHaul+1]={id=id,revision=job.revision,reason=reason}
+    end
     local current=context.current
     local rebuilt=context.rebuilt
     local hasConflict=context.hasConflict
@@ -20,8 +24,7 @@ function M.restore(context)
 				isValid = type(p) == 'table' and type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'
 			    end
 			    if not isValid then
-				job.state = 'RECONCILE_REQUIRED'
-				job.effects = 'UNKNOWN'
+				reconcile(id,job,'HAUL_RECORD_INVALID')
 			    else
 				local claimKeys = job.payload.claims
 				if not claimKeys and job.payload.items then
@@ -33,14 +36,12 @@ function M.restore(context)
 				claimKeys = claimKeys or {}
 				if #claimKeys > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
 				    if hasConflict(claimKeys) then
-					job.state = 'RECONCILE_REQUIRED'
-					job.effects = 'UNKNOWN'
+					reconcile(id,job,'HAUL_CLAIM_CONFLICT')
 				    else
 					local claimId = ensureEntityClaimId(current, job, id)
 					local token, reason = rebuilt:acquire(id, job.payload.sequence or 0, claimKeys, { claimId = claimId })
 					if not token then
-					    job.state = 'RECONCILE_REQUIRED'
-					    job.effects = 'UNKNOWN'
+					    reconcile(id,job,'HAUL_ACQUIRE_FAILED:'..tostring(reason))
 					else
 					    local r = job.payload.reservation
 					    local okCap = true
@@ -54,9 +55,9 @@ function M.restore(context)
 						end
 					    end
 					    if not okCap then
-						job.state = 'RECONCILE_REQUIRED'
-						job.effects = 'UNKNOWN'
-						rebuilt:release(token)
+						reconcile(id,job,'HAUL_CAPACITY_RESTORE_FAILED')
+                        -- Failed reconstruction cleanup is deferred with its commit.
+                        context.pendingHaul[#context.pendingHaul].failedToken=token
 					    else
 						rebuiltHaul[id] = token
 						newTokens[id] = token
