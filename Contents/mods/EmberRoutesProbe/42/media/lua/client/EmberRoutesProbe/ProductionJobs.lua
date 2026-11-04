@@ -163,25 +163,17 @@ function M.observe(r,attemptId,complete,reason)
 	and fresh.payload.nativeAttempt.state=='APPLIED' and sameReceipt(fresh.payload.nativeAttempt.observation,receipt) then
 	return false,'PRODUCTION_POST_COMMIT_CHANGED'
     end
-    -- Native effects cannot be rolled back by refusing a draft. Keep each known
-    -- output on the existing persistent system-owned quarantine, with provenance.
-    for _,o in ipairs(receipt.outputs) do
-	Store.quarantineResource('item:'..o.id,'CRAFT_RESULT_UNCOMMITTED',
-	    {jobId=r.id,claimId=e.job.claimId,attemptId=attemptId,observation=receipt})
-    end
-    if fresh and fresh.payload.nativeAttempt and fresh.payload.nativeAttempt.id==attemptId
-	and fresh.payload.nativeAttempt.sequence==r.nativeAttempt.sequence
-	and fresh.payload.nativeAttempt.state~='APPLIED' then
-	fresh.payload.nativeAttempt.observation=receipt fresh.payload.nativeAttempt.state='UNKNOWN'
-	fresh.payload.uncertain=true fresh.payload.phase='RECONCILE_REQUIRED' fresh.payload.state='PAUSED'
-	Jobs.current():update(fresh.id,fresh.revision,{payload=fresh.payload,effects='UNKNOWN',state='RECONCILE_REQUIRED'})
-    end
+    -- Native effects cannot be rolled back. Phase 1 fails fast: reload the
+    -- last save after an uncommitted observation; no quarantine/second publish.
+    e.failed=true
     return false,why
 end
 function M.reset() entries,byNpc={},{} end
 function M.prepareRecovery()
+    -- Rebuild and publish claims/token caches before entering the kernel.
+    Store.data()
     local root=currentWorld()
-    if recoveredWorld==root then return end
+    if recoveredWorld==root then return true end
     local jobs=Jobs.current()
     for id,live in pairs(root.taskJobs.byId) do
 	if live.providerType=='CRAFT' and live.payload.executor=='PRODUCTION'
@@ -195,12 +187,16 @@ function M.prepareRecovery()
 	    end
 	    local target=unknown and 'RECONCILE_REQUIRED' or 'SUSPENDED'
 	    if job.state=='RUNNING' and target=='SUSPENDED' then
-		assert(jobs:update(id,job.revision,{payload=p,state='STOPPING'}),'PRODUCTION_RECOVERY_STOP_FAILED')
+		local ok,why,evidence=Store.mutateJob(id,job.revision,p,{state='STOPPING'})
+		if not ok then error('PRODUCTION_RECOVERY_STOP_FAILED:'..tostring(why)..':'..tostring(evidence)) end
 		job=jobs:get(id)
 	    end
-	    assert(jobs:update(id,job.revision,{payload=p,state=target,effects=unknown and 'UNKNOWN' or 'KNOWN'}),'PRODUCTION_RECOVERY_FAILED')
+	    local ok,why,evidence=Store.mutateJob(id,job.revision,p,
+		{state=target,effects=unknown and 'UNKNOWN' or 'KNOWN'})
+	    if not ok then error('PRODUCTION_RECOVERY_FAILED:'..tostring(why)..':'..tostring(evidence)) end
 	end
     end
     entries,byNpc={},{} recoveredWorld=root
+    return true
 end
 return M
