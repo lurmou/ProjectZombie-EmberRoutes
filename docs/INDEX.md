@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+需求/工单“行动档案”UI：[页面与基础能力设计草案](superpowers/specs/2026-11-04-action-dossier-ui-design.md)。包含直接复用/扩展/新增清单、头像绘制缺口及两种布局；待用户选择与确认，未实施。
+
 领域目录与 Java 桥收敛：[设计](superpowers/specs/2026-11-04-domain-layout-design.md)、[实施计划](superpowers/plans/2026-11-04-domain-layout.md)、[等价与回归证据](reviews/2026-11-04/domain-layout.md)。首批仅搬运执行 10 模块，不改变任务、存档或原件责任。
 
 需求/工单展示整理：[0.29.37 展示事实、组件复用与验证边界](reviews/2026-11-04/monitor-presentation.md)。清洁只在需求页，展开技术细节；不代表视觉与原生玩法验收完成。
