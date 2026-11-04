@@ -241,7 +241,9 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
             return nil,true,'SITE_CHANGED'
         end
         local row=Facilities.watch(entry,capability)
-        local used=Facilities.advance(row,math.floor(budget/2))
+        -- Idle fallback inspects cached records only; discovery is still owned
+        -- by the shared facility index and ordinary searches.
+        local used=options and options.indexedOnly and 0 or Facilities.advance(row,math.floor(budget/2))
         for _=used+1,budget do
             local record=row.slots[index] index=index+1
             if record==nil then
@@ -300,6 +302,7 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
                 else Facilities.invalidate(record.x,record.y) end
             end
         end
+        if options and options.indexedOnly then return best,true,'SITE_UNAVAILABLE' end
         -- Remaining indexed candidates still need a bounded comparison even
         -- when an unrelated chunk is unloaded or observation-limited.
         return nil,false,'SITE_OBSERVING'

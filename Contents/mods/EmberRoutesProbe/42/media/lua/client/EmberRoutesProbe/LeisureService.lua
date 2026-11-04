@@ -220,7 +220,7 @@ end
 -- Seated idle reuses the P2 furniture discovery/reservation untouched: a
 -- prepared proof plus its repose keys ride the LEISURE payload the same
 -- way REST carries them, so occupancy claims interlock with the same store.
-local function seekSit(env,preview)
+local function seekSit(env,preview,nearby)
     if env.resume and env.budget.scan<1 then return nil,false end
     if not Policy.allowed('SIT',env.s,{hold=true}) or env.hours<(env.cooling.SIT or 0)
         or env.budget.scan<1
@@ -257,7 +257,8 @@ local function seekSit(env,preview)
     env.state.blocked=env.offer.blocked
     if not env.state.iter then
         env.state.iter=require('EmberRoutesProbe/ReposeSites').new(env.actor,env.npc,env.id,'REST',env.state.blocked,
-            {seatingOnly=true,excludeBeds=true,preferredPoint=env.memory and env.memory.seatPreference})
+            {seatingOnly=true,excludeBeds=true,preferredPoint=env.memory and env.memory.seatPreference,
+                indexedOnly=nearby,maxDistance=nearby and 4 or nil,sameFloor=nearby})
     end
     local slice=math.min(8,env.budget.scan)
     local found,done,reason=env.state.iter:step(slice)
@@ -630,6 +631,19 @@ function Service.candidate(actor,binding,sample,budget,memory)
         if hasPreferred then c=Policy.choose(combined,memory,hours,roll)
         else c=Policy.choose(activities,memory,hours,roll) or Policy.choose(seats,memory,hours,roll)
             or Policy.choose(standing,memory,hours,roll) end
+    end
+    -- Only the no-candidate IDLE fallback gets this independent, one-shot
+    -- allowance. Never advance the facility sweep or retain a partial iterator.
+    -- Decision pauses and gathering behavior keep their existing contracts.
+    if not c and not gathering and (zoneRule(entry,point,'SIT',id) or 0)>0
+        and standable(entry,point,{npc}) and hours>=(memory and memory.moveAfter or 0) then
+        offer.ambientSit=offer.ambientSit or {}
+        local nearby={actor=actor,npc=npc,id=id,entry=entry,point=point,s=s,hours=hours,now=now,
+            cooling=env.cooling,memory=memory,offer=offer,state=offer.ambientSit,budget={scan=8}}
+        c=seekSit(nearby,false,true)
+        nearby.state.iter=nil
+        if c and (candidateRule(entry,point,c,id) or 0)==0 then c=nil end
+        if c then c.leisure.moving=true c.targetKey=c.site.key end
     end
     if not c then
         Social.withdraw(id)

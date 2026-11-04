@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+NPC idle-sit：[实现、独立预算与社交取舍](reviews/2026-11-04/idle-sit-segment.md)，当前状态见 BACKLOG；实机未验证。
+
 DEC-003 单一 Java 提交内核：[Phase 0 入口盘点](reviews/2026-11-04/dec003-entry-inventory.md)、[本轮执行与明确开放项](reviews/2026-11-04/dec003-execution.md)。尚未切换生产路径，不是实施完成或 parity 证明；当前状态见 BACKLOG。
 
 公共调度Java计算：[实施计划](superpowers/plans/2026-11-02-java-dispatch-kernel.md)、[0.29.25证据](reviews/2026-11-02/java-dispatch-kernel.md)。候选仲裁/失效索引/名册窗口已接Java；目录迁移因补测反向而撤回，领域策略与物理协议不变，实机性能未验证。

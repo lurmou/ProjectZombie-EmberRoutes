@@ -4,6 +4,8 @@
 
 ## NPC 架构执行记录
 
+2026-11-04 idle-sit：普通 IDLE 无候选回退先经现有 SIT proof/claims/执行路径尝试同层4格内座位；独立8条缓存记录预算，不推进设施扫描，耗尽即原 ambient OBSERVE。正常 SIT 不带 ambient，沿用冷却/偏好/移动间隔/释放；暂停、cut-2/cut-3及活动路径不变。定向52项加家具夹具26项、变更Lua语法与diff检查通过；实机动画/寻路/mid-sit磁盘重载/性能/社交频率未验证。社交仍仅IDLE OBSERVE，SIT不满足available，可能降低配对人数与频率，不扩大范围。无实施阻塞，未提交/推送。见[分段证据与预算限制](reviews/2026-11-04/idle-sit-segment.md)。
+
 2026-11-02 公共框架Java计算：0.29.26在0.29.25仲裁/失效索引/名册窗口基础上，增加至少4个既有资源的容量提交粗粒度Java入口；同一Claims表、原Lua JobStore提交、领域校验/恢复和小型提交保留。30件宿主复测约6913→5251ms/万次，1件反向，故设有界后端选择；通用JobUpdate/逐项Claims桥及此前目录试验均因成本不利撤回，不宣称全部框架Java化或游戏帧收益。容量失败/回滚/提交后隔离/终态与嵌套通知定向验证，Runtime/Controller尚未迁。只做必要检查，见[提交内核证据](reviews/2026-11-02/java-labor-commit-kernel.md)及[派工证据](reviews/2026-11-02/java-dispatch-kernel.md)。
 
 2026-11-02 Java优先执行：按用户要求核对ProjectRemnants当前根NPCFW.jar的实际Java搬运/批次执行调用，未复制其独立TaskRunner。0.29.24将InventoryView扫描/重复ID索引、配送请求HashMap匹配/Claims只读过滤/负重累计与收货投影下沉Java，Lua保留端点与唯一提交协议、原版动作；ModData元表保留逐件Lua求值。实际ItemContainer/Kahlua 36项及配送55/连续动作8项通过；Java NPC选货容量、实机与帧性能未验证。只做必要检查，见[证据](reviews/2026-11-02/java-haul-read-paths.md)。
