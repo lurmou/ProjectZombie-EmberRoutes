@@ -80,3 +80,7 @@ R1/R2 IDLE 回退与轮转座位窗口：[实施、门禁与验证证据](review
 DEC-003 CRAFT/Production 迁移 2/7：[七项决定、引用漂移、宿主 parity 与开放项](reviews/2026-11-04/dec003-craft-migration.md)；父任务待复核，Java/实机未验证。
 
 DEC-003 FIELD_WORK 迁移 3/7：[逐入口证据、宿主 parity、预发布恢复硬停止与开放项](reviews/2026-11-04/dec003-fieldwork-migration.md)；运行时链已转换，分段仍 OPEN，Java/实机未验证。
+
+DEC-003 COOKING 迁移 4/7：[逐入口证据、48项宿主 parity 与硬停止项](reviews/2026-11-04/dec003-cooking-migration.md)；仅无 work-capacity 链已迁移，容量/transfer/recovery 等开放，Java/实机未验证。
+
+DEC-003 工作容量：[Java 扩展、断言迁移与回归停止证据](reviews/2026-11-04/dec003-kernel-workcapacity.md)；COOKING 回归要求 legacy 路径而失败，未启用容量 contract，未完成。

@@ -29,6 +29,9 @@ public final class LaborCommitKernel {
             Object key=g(token,"capacityKey");
             KahluaTable previous=t(t(t(t(claims,"capacity"),key),"entries"),g(token,"taskId"));
             before=table();before.rawset("key",key);before.rawset("items",shallow(t(previous,"items")));
+            before.rawset("workExists",g(previous,"workAmount")!=null);
+            before.rawset("workAmount",zero(g(previous,"workAmount")));
+            before.rawset("workKey",key);
         }
         boolean restore() {
             try {
@@ -51,6 +54,8 @@ public final class LaborCommitKernel {
                 ClaimsKernel.releaseCapacity(claims,token,null);
                 KahluaTableIterator it=t(before,"items").iterator();
                 while(it.advance())if(!ClaimsKernel.restore(claims,token,g(before,"key"),it.getKey(),it.getValue()))return false;
+                if(yes(g(before,"workExists")) && ClaimsKernel.setWorkCapacity(claims,token,
+                    g(before,"workKey"),g(before,"workAmount"))!=null)return false;
                 claims.rawset("revision",claimsRevision);
                 return true;
             } catch(RuntimeException error) {return false;}
@@ -81,15 +86,15 @@ public final class LaborCommitKernel {
             KahluaTable token=tx.token;
             if(token!=null && (!eq(g(token,"taskId"),id) || !eq(g(token,"claimId"),g(job,"claimId"))))return failure("CLAIM_FAILURE","STALE_CLAIM_IDENTITY");
             Set<Object> owned=keys(token==null?t(t(job,"payload"),"claims"):t(token,"resources"));
-            if(token!=null)for(Object key:owned)
+            if(g(mutation,"workCapacity")==null && token!=null)for(Object key:owned)
                 if(g(t(claims,"owners"),key)!=token)return failure("CLAIM_FAILURE","STALE_CLAIM");
             Set<Object> addSet=keys(add),removeSet=keys(remove);
             if(add!=null && addSet.size()!=add.len())return failure("INVALID_REQUEST","RESOURCE_DUPLICATED");
             for(Object key:addSet)if(removeSet.contains(key) || owned.contains(key))return failure("INVALID_REQUEST","ADD_KEYS_OVERLAP");
-            Object cap=g(mutation,"capacity");
+            Object cap=g(mutation,"capacity"),work=g(mutation,"workCapacity");
             // A missing runtime token never authorizes resource commands.
             // Payload/domain validity remains Lua policy.
-            if(token==null && (any(add)||any(remove)||cap!=null))return failure("CLAIM_FAILURE","NO_RUNTIME_TOKEN");
+            if(token==null && (any(add)||any(remove)||cap!=null||work!=null))return failure("CLAIM_FAILURE","NO_RUNTIME_TOKEN");
             if(token!=null && g(t(claims,"tokensByTaskId"),id)!=token)return failure("CLAIM_FAILURE","STALE_RUNTIME_TOKEN");
             if(any(remove))for(int i=1;i<=remove.len();i++)
                 if(g(t(claims,"owners"),remove.rawget(i))!=token)return failure("CLAIM_FAILURE","RESOURCE_NOT_OWNED");
@@ -106,9 +111,31 @@ public final class LaborCommitKernel {
                 } else if(cap instanceof KahluaTable c && !(g(c,"releaseItemId") instanceof Number))
                     return failure("INVALID_REQUEST","CAPACITY_SHAPE_INVALID");
             }
+            if(work!=null) {
+                KahluaTable rule=t(first(call(vm,g(contracts,"get"),g(job,"providerType"))));
+                if(!yes(g(rule,"capacityMutable")))return failure("INVALID_REQUEST","CAPACITY_MUTATION_UNSUPPORTED");
+                if(!Boolean.FALSE.equals(work)) {
+                    if(!(work instanceof KahluaTable w) || !(g(w,"key") instanceof String key) || key.isEmpty()
+                        || !(g(w,"amount") instanceof Number amount) || !Double.isFinite(amount.doubleValue())
+                        || amount.doubleValue()<=0)return failure("INVALID_REQUEST","CAPACITY_SHAPE_INVALID");
+                    KahluaTableIterator fields=w.iterator();
+                    while(fields.advance())if(!"key".equals(fields.getKey()) && !"amount".equals(fields.getKey()))
+                        return failure("INVALID_REQUEST","CAPACITY_SHAPE_INVALID");
+                }
+                Object workKey=Boolean.FALSE.equals(work)?g(token,"capacityKey"):g(t(work),"key");
+                if(yes(g(token,"capacityKey")) && !eq(g(token,"capacityKey"),workKey))
+                    return failure("CAPACITY_FAILURE","CAPACITY_TARGET_CHANGED");
+                KahluaTable entry=t(t(t(t(claims,"capacity"),workKey),"entries"),id);
+                if(entry!=null && g(entry,"workAmount")!=null && !ClaimsKernel.validWorkEntry(claims,token,workKey,entry))
+                    return failure("CAPACITY_FAILURE","CAPACITY_ENTRY_INVALID");
+                if(entry!=null && (g(entry,"token")!=token || zero(g(entry,"count"))>0 || !t(entry,"items").isEmpty()))
+                    return failure("CAPACITY_FAILURE","CAPACITY_UNAVAILABLE");
+            }
+            if(work!=null && token!=null)for(Object key:owned)
+                if(g(t(claims,"owners"),key)!=token)return failure("CLAIM_FAILURE","STALE_CLAIM");
             stage="CLAIM_FAILURE";
             // Snapshot only when resources change; all resource writes precede CAS.
-            if(any(add)||any(remove)||cap!=null) {tx.snapshot();tx.touched=true;}
+            if(any(add)||any(remove)||cap!=null||work!=null) {tx.snapshot();tx.touched=true;}
             if(any(add)) {String why=ClaimsKernel.extend(claims,token,add);if(why!=null)return tx.fail("CLAIM_FAILURE",why);}
             stage="CAPACITY_FAILURE";
             if(cap!=null) {
@@ -123,6 +150,17 @@ public final class LaborCommitKernel {
                     }
                 }
                 if(why!=null)return tx.fail("CAPACITY_FAILURE",why);
+            }
+            if(work!=null) {
+                if(!(Boolean.FALSE.equals(work) && g(token,"capacityKey")==null)
+                    && g(t(claims,"owners"),"cooking:capacity:"+text(id))!=token)
+                    return tx.fail("CAPACITY_FAILURE","STALE_CLAIM");
+                if(Boolean.FALSE.equals(work))ClaimsKernel.releaseCapacity(claims,token,null);
+                else {
+                    KahluaTable w=t(work);
+                    String why=ClaimsKernel.setWorkCapacity(claims,token,g(w,"key"),g(w,"amount"));
+                    if(why!=null)return tx.fail("CAPACITY_FAILURE",why);
+                }
             }
             stage="CLAIM_FAILURE";
             if(any(remove)) {String why=ClaimsKernel.shrink(claims,token,remove);if(why!=null)return tx.fail("CLAIM_FAILURE",why);}

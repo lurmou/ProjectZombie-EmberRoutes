@@ -288,7 +288,7 @@ function M.new(actor,binding,job,object,budgets,safe,options)
         if not current() or fact.bodyStopped~=true then return false end
         if c.token then return c.job.state=='SUSPENDED' or c.job.state=='RECONCILE_REQUIRED' end
         local j=Record.copy(c.job) j.state='SUSPENDED' j.payload.reason=string.sub(tostring(why or 'COOKING_START_REJECTED'),1,256)
-        return Jobs.current():update(j.id,j.revision,{state=j.state,payload=j.payload})==true
+        return Store.mutateJob(j.id,j.revision,j.payload,{state=j.state})==true
     end
     return spec,c
 end

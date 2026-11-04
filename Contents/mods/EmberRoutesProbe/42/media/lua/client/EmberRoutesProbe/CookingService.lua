@@ -346,10 +346,10 @@ end
 local function rejectEmpty(job,token)
     if not token then
         if job.effects~='KNOWN' or #job.payload.claims>0 or #job.payload.assets>0 or Store.hasTaskClaims(job.id) then return end
-        local ok,revision=Jobs.current():update(job.id,job.revision,{state='SETTLING'})
+        local ok,revision=Store.mutateJob(job.id,job.revision,job.payload,{state='SETTLING'})
         if not ok then return end
         local j=Jobs.current():get(job.id) j.payload.phase='SETTLED'
-        Jobs.current():update(job.id,revision,{state='CANCELLED',payload=j.payload}) return
+        Store.cancelJob(job.id,revision,j.payload,{state='CANCELLED'}) return
     end
     local c={job=job,token=token} local j=Record.copy(job) j.state='SETTLING'
     local changed,saved,nextToken=Store.replaceCooking(c.job,c.token,j) if not changed then return end
@@ -508,7 +508,7 @@ function S.command(actor,scopeId,jobId,action)
         local p=Record.copy(job.payload)
         p.pauseRequested=true
         p.reason='USER_PAUSE'
-        local ok=Jobs.current():update(job.id,job.revision,{payload=p})
+        local ok=Store.mutateJob(job.id,job.revision,p)
         Signals.changed(job.npcId)
         return ok and 'STOP_REQUESTED' or 'TASK_CHANGED'
 
@@ -519,7 +519,7 @@ function S.command(actor,scopeId,jobId,action)
         if p.reason=='USER_PAUSE' or p.reason=='EVOLVED_PROFILE_CHANGED' or p.reason=='COOKING_PROFILE_CHANGED' or p.reason=='USER_CANCEL' then
             p.reason=nil
         end
-        local ok=Jobs.current():update(job.id,job.revision,{payload=p})
+        local ok=Store.mutateJob(job.id,job.revision,p)
         if ok and job.state=='SUSPENDED' then
             retryJobs[job.id]=0
             S.wake(actor,job.npcId,job.id)
@@ -532,7 +532,7 @@ function S.command(actor,scopeId,jobId,action)
             local p=Record.copy(job.payload)
             p.cancelRequested=true
             p.reason='USER_CANCEL'
-            Jobs.current():update(job.id,job.revision,{payload=p})
+            Store.mutateJob(job.id,job.revision,p)
             runtime:stopJob(job.npcId,job.id,'USER_CANCEL')
             Signals.changed(job.npcId)
             return 'CANCEL_REQUESTED'
@@ -547,7 +547,7 @@ function S.command(actor,scopeId,jobId,action)
             local p=Record.copy(job.payload)
             p.cancelRequested=true
             p.reason='USER_CANCEL'
-            Jobs.current():update(job.id,job.revision,{payload=p})
+            Store.mutateJob(job.id,job.revision,p)
             retryJobs[job.id]=0
             recover(actor,job)
             Signals.changed(job.npcId)
@@ -575,12 +575,12 @@ function S.command(actor,scopeId,jobId,action)
             end
         else
             if #job.payload.claims==0 then
-                local ok,revision=Jobs.current():update(job.id,job.revision,{state='SETTLING'})
+                local ok,revision=Store.mutateJob(job.id,job.revision,job.payload,{state='SETTLING'})
                 if ok then
                     local j=Jobs.current():get(job.id)
                     j.payload.phase='SETTLED'
                     j.payload.reason='USER_CANCEL'
-                    Jobs.current():update(job.id,revision,{state='CANCELLED',payload=j.payload})
+                    Store.cancelJob(job.id,revision,j.payload,{state='CANCELLED'})
                     Signals.changed(job.npcId)
                     return 'ORDER_UPDATED'
                 end

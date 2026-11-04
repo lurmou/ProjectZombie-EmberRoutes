@@ -10,7 +10,12 @@ function Store.claimCooking(job)
 	or saved.revision~=job.revision or saved.payload.phase=='SETTLED' then return nil,'COOKING_JOB_CHANGED' end
     local claimId = ensureEntityClaimId(state.root, saved, saved.id)
     local token,why=state.claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId })
-    if token then state.cookingTokens[saved.id]=token end
+    if token then
+        -- Kernel create also publishes the generic cache. Re-claim rotates the
+        -- token; getToken must not prefer that obsolete generic entry.
+        state.tokens[saved.id]=nil
+        state.cookingTokens[saved.id]=token
+    end
     return token,why
 end
 function Store.transferCooking(job,token,npcId)
@@ -41,35 +46,27 @@ function Store.replaceCooking(job,token,proposed)
     if not Store.validCooking(job,token) or proposed.id~=job.id or proposed.npcId~=job.npcId
 	or proposed.scopeId~=job.scopeId or proposed.revision~=job.revision
 	or not require('EmberRoutesProbe/CookingRecord').valid(proposed) then return false,'COOKING_JOB_CHANGED' end
-    local old={} for _,key in ipairs(token.resources) do old[#old+1]=key end
-    -- Pure coordination, no yield or native effect between replace and publish.
-    -- Conflict rejection leaves both the durable Job and all old owners intact.
-    local ok,reason=state.claims:replace(token,proposed.payload.claims)
-    if not ok then return false,reason end
     local beforeCap,afterCap=job.payload.capacity,proposed.payload.capacity
-    local capacityChanged=(beforeCap and beforeCap.endpointId)~=(afterCap and afterCap.endpointId)
-	or (beforeCap and beforeCap.amount)~=(afterCap and afterCap.amount)
-    if capacityChanged then
-	state.claims:releaseCapacity(token)
-	if afterCap and not state.claims:restoreWork(token,afterCap.endpointId,afterCap.amount) then
-	    assert(state.claims:replace(token,old),'COOKING_CLAIM_ROLLBACK_FAILED')
-	    if beforeCap then assert(state.claims:restoreWork(token,beforeCap.endpointId,beforeCap.amount)) end
-	    return false,'COOKING_CAPACITY_INVALID'
-	end
+    local before,after,add,remove={},{},{},{}
+    for _,key in ipairs(token.resources) do before[key]=true end
+    for _,key in ipairs(proposed.payload.claims) do
+        after[key]=true if not before[key] then add[#add+1]=key end
     end
-    local jobs=require('EmberRoutesProbe/TaskJobs').current()
-    local changed,why=jobs:update(job.id,job.revision,{payload=proposed.payload,effects=proposed.effects,
-	obligations=proposed.obligations,state=proposed.state})
-    if not changed then
-	if capacityChanged then state.claims:releaseCapacity(token) end
-	assert(state.claims:replace(token,old),'COOKING_CLAIM_ROLLBACK_FAILED')
-	if capacityChanged and beforeCap then assert(state.claims:restoreWork(token,beforeCap.endpointId,beforeCap.amount)) end
-	return false,why
+    for _,key in ipairs(token.resources) do if not after[key] then remove[#remove+1]=key end end
+    local workCapacity
+    if beforeCap or afterCap then
+        workCapacity=afterCap and {key=afterCap.endpointId,amount=afterCap.amount} or false
     end
-    local saved=jobs:get(job.id)
-    local claimId = ensureEntityClaimId(state.root, saved, saved.id)
-    local nextToken=assert(state.claims:acquire(job.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId }))
-    state.cookingTokens[job.id]=nextToken
+    local commit=proposed.state=='CANCELLED' and Store.cancelJob or Store.mutateJob
+    local ok,why,evidence=commit(job.id,job.revision,proposed.payload,
+        {state=proposed.state,effects=proposed.effects,obligations=proposed.obligations,
+            addKeys=add,removeKeys=remove,workCapacity=workCapacity})
+    if not ok then return false,why,evidence end
+    local saved=require('EmberRoutesProbe/TaskJobs').current():get(job.id)
+    if saved.state=='DONE' or saved.state=='CANCELLED' then return true,saved,nil end
+    local nextToken=assert(state.claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims,
+        {claimId=saved.claimId}))
+    state.cookingTokens[saved.id]=nextToken
     return true,saved,nextToken
 end
 function Store.availableCooking(job,token,key,free)
@@ -77,11 +74,15 @@ function Store.availableCooking(job,token,key,free)
     return state.claims:availableWork(token,key,free)
 end
 function Store.finishCooking(job,token)
-    if not Store.validCooking(job,token) then return false,'COOKING_JOB_CHANGED' end
+    if token and not Store.validCooking(job,token) then return false,'COOKING_JOB_CHANGED' end
+    Store.data()
     local saved=state.root.taskJobs.byId[job.id]
+    if not saved or saved.npcId~=job.npcId or saved.revision~=job.revision
+        or (saved.state~='DONE' and saved.state~='CANCELLED') then return false,'COOKING_JOB_CHANGED' end
     if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.payload.phase~='SETTLED'
 	or saved.effects~='KNOWN' or #saved.payload.claims>0 then return false,'COOKING_OBLIGATION_RETAINED' end
-    state.claims:release(token) cleanToken(job.id) return true
+    if token then state.claims:release(token) end
+    cleanToken(job.id) return true
 end
 function Store.claimPersonal(job)
     Store.data()

@@ -10,7 +10,7 @@ function M.install()
 	validate=function(j) return record('CookingRecord').valid(j) end,
 	transition=function(a,b) return record('CookingRecord').transition(a,b),'COOKING_TRANSITION_INVALID' end,
 	transferValid=function(a,b) return record('CookingRecord').transferValid(a,b) end,
-	transferReason='COOKING_HANDOFF_CHANGED',tokenBucket='cooking',
+	transferReason='COOKING_HANDOFF_CHANGED',tokenBucket='cooking',capacityMutable=true,
     })
     add('FIELD_WORK',{validate=function(j) return record('FieldRecord').valid(j) end,tokenBucket='field',capacityMutable=true})
     add('ACTIVITY',{validate=function(j) return record('ActivityRecord').valid(j) end,tokenBucket='activity'})

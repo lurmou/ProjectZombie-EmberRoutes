@@ -60,7 +60,7 @@ function B.open(root,jobs)
                 or job.payload.quota+Policy.epsilon<math.max(job.payload.target,supply.minimum)
                 or job.payload.quota>batch.quota+Policy.epsilon then return false,'COOKING_QUOTA_CHANGED' end
         end
-        return jobs:create(job)
+        return require('EmberRoutesProbe/LaborStore').createClaimedJob(job)
     end
     return api
 end

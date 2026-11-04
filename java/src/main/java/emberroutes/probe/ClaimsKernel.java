@@ -111,6 +111,30 @@ final class ClaimsKernel {
 	items.rawset(itemId,amount);c.rawset("amount",n(c.rawget("amount"))-old+n(amount));b.rawset("total",n(b.rawget("total"))-old+n(amount));
 	entries.rawset(token.rawget("taskId"),c);capacity.rawset(key,b);token.rawset("capacityKey",key);return true;
     }
+    static boolean validWorkEntry(KahluaTable self,KahluaTable token,Object key,KahluaTable entry) {
+        return g(entry,"workAmount")!=null && g(entry,"token")==token
+            && g(entry,"items") instanceof KahluaTable items && items.isEmpty()
+            && g(entry,"count") instanceof Number count && count.doubleValue()==0
+            && valid(self,token,"cooking:capacity:"+text(g(token,"taskId")))
+            && eq(key,g(token,"capacityKey"));
+    }
+    /** Stable batch promise in the same bucket as item allocations; Lua restoreWork. */
+    public static String setWorkCapacity(KahluaTable self,KahluaTable token,Object key,Object amount) {
+        if(token==null || !valid(self,token,"cooking:capacity:"+text(g(token,"taskId"))))return "STALE_CLAIM";
+        if(!(key instanceof String s) || s.isEmpty() || !(amount instanceof Number value)
+            || !Double.isFinite(value.doubleValue()) || value.doubleValue()<=0)return "CAPACITY_UNAVAILABLE";
+        if(yes(g(token,"capacityKey")) && !eq(g(token,"capacityKey"),key))return "CAPACITY_TARGET_CHANGED";
+        KahluaTable capacity=t(self,"capacity"),b=t(capacity,key);if(b==null)b=bucket();
+        KahluaTable entries=t(b,"entries"),claim=t(entries,g(token,"taskId"));
+        if(claim!=null && (g(claim,"token")!=token || !(g(claim,"count") instanceof Number count) || count.doubleValue()!=0
+            || !(g(claim,"items") instanceof KahluaTable items) || !items.isEmpty()
+            || g(claim,"workAmount")!=null && !validWorkEntry(self,token,key,claim)))return "CAPACITY_UNAVAILABLE";
+        if(claim==null) {add(b,"count",1);claim=allocation(token);}
+        b.rawset("total",n(g(b,"total"))-n(g(claim,"amount"))+value.doubleValue());
+        claim.rawset("amount",amount);claim.rawset("workAmount",amount);claim.rawset("token",token);
+        entries.rawset(g(token,"taskId"),claim);capacity.rawset(key,b);token.rawset("capacityKey",key);
+        return null;
+    }
     /** Single reservation, matching Lua reserve; creation is not batch-limited. */
     public static String reserve(KahluaTable self,KahluaTable token,Object key,Object itemId,Object amount,Object free) {
         if(!valid(self,token,"item:"+text(itemId)))return "STALE_CLAIM";
