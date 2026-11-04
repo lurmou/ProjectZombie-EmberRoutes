@@ -2,6 +2,7 @@
 -- payload, never a second by-NPC persistent ledger. UI reads detached projections.
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local SelfCareCommit=require 'EmberRoutesProbe/SelfCareCommit'
 local M={}
 local world,store
 local function load()
@@ -85,7 +86,7 @@ function M.retire(id,orderId)
         local ref=other.providerType=='SELF_CARE' and other.payload.resume
         if ref and ref.jobId==id and ref.state=='RESTORE_QUEUED' then
             ref.state='RESTORED'
-            if not store:update(other.id,other.revision,{payload=other.payload}) then return false end
+            if not SelfCareCommit.update(other.id,other.revision,{payload=other.payload}) then return false end
         end
     end
     if not store:removeSettled(id,j.revision) then return false end
