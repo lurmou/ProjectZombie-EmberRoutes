@@ -60,9 +60,19 @@ function EmberRoutesSettlementDashboard:createChildren()
     self.title=require('EmberRoutesProbe/UI/Text').wrapLimited(self.title,
         math.max(h*4,self.width-bar*3),UIFont.Small,1)[1] or self.title
     local regions=assert(Layout.axis({x=0,y=self:titleBarHeight(),width=self.width,height=self.height-self:titleBarHeight()},
-        {{basis=(h+p)*2},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
-    self.pageBounds=regions[2]
-    self.footerBounds=regions[3]
+        {{basis=(h+p)*2},{basis=h+p},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
+    self.pageBounds=regions[3]
+    self.footerBounds=regions[4]
+    local r=regions[2]
+    self.alertChips=require('EmberRoutesProbe/UI/FilterChips'):new(r.x,r.y,r.width,r.height,function(key)
+        local a=self.alertTargets and self.alertTargets[key]
+        if a then self:selectTab(a.tab,a.context) end
+    end)
+    self:addChild(self.alertChips)
+    local Lifecycle=require 'EmberRoutesProbe/UI/PageLifecycle'
+    Lifecycle.mount(self,function(callback) return require('EmberRoutesProbe/WorkOverviewService').watch(self.actor,self.entry.id,callback) end,
+        function(snapshot) if snapshot.reason=='WORLD_RESET' then self:close() return end self:projectAlerts(snapshot) end)
+    self:projectAlerts(require('EmberRoutesProbe/WorkOverviewService').status(self.actor,self.entry.id))
 
     self.tabs=Registry.getTabIds(self.actor,self.entry)
     local rows=assert(Layout.axis(regions[1],{{grow=1},{grow=1}},{direction="column",gap=p/2}))
@@ -125,7 +135,7 @@ function EmberRoutesSettlementDashboard:updateNavigation(id)
         local button,r=self.tabButtons[key],bounds[i]
         button:setX(r.x) button:setY(r.y) button:setWidth(r.width) button:setHeight(r.height)
         button:setVisible(true)
-        local chosen=key==id or key==def.parentTab
+        local chosen=key==id or def.isTab==false and key==def.parentTab
         Theme.styleButton(button,chosen,chosen)
     end
     for key,button in pairs(self.groupButtons) do Theme.styleButton(button,key==group,key==group) end
@@ -138,7 +148,7 @@ function EmberRoutesSettlementDashboard:selectTab(id,context)
     local def=Registry.get(id)
     local visible=Registry.getTabIds(self.actor,self.entry)
     local found=false
-    for _,tab in ipairs(visible) do if tab==(def.parentTab or id) then found=true break end end
+    for _,tab in ipairs(visible) do if tab==(def.isTab==false and def.parentTab or id) then found=true break end end
     if not found then return false,"HIDDEN_TAB" end
     if not self:valid() then self:close() return end
     local page=self.pages[id]
@@ -167,6 +177,7 @@ function EmberRoutesSettlementDashboard:selectTab(id,context)
     end
     self.activeTab=id
     page:setVisible(true)
+    if page.prepareContext then page:prepareContext(context) end
     page:activate()
     if self.disposed or self.activeTab~=id then return false,"UI_SUBSCRIBER_ERROR" end
 
@@ -186,6 +197,20 @@ function EmberRoutesSettlementDashboard:selectTab(id,context)
     return true
 end
 
+function EmberRoutesSettlementDashboard:projectAlerts(snapshot)
+    local counts,targets={},{}
+    for _,alert in ipairs(snapshot.alerts or {}) do
+        counts[alert.kind]=(counts[alert.kind] or 0)+1 targets[alert.kind]=targets[alert.kind] or alert
+    end
+    self.alertTargets=targets
+    local options={}
+    for _,kind in ipairs({'health','foodWater','blocked','waiting'}) do
+        if counts[kind] then options[#options+1]={id=kind,label=getText('IGUI_EmberRoutesProbe_Distributed_'..(kind=='waiting' and 'unassigned' or kind)),count=counts[kind],alert=true} end
+    end
+    if #options==0 then options[1]={id='stable',label=getText('IGUI_EmberRoutesProbe_Distributed_'..(snapshot.reason and 'unavailable' or 'stable'))} end
+    self.alertChips:setOptions(options)
+
+end
 function EmberRoutesSettlementDashboard:setFooter(value)
     self.footerText=require('EmberRoutesProbe/UI/Text').wrapLimited(value,self.footerBounds.width,UIFont.Small,1)[1]
 end
@@ -199,7 +224,7 @@ function EmberRoutesSettlementDashboard:tabClicked(button) self:selectTab(button
 
 function EmberRoutesSettlementDashboard:nextTab(direction)
     local def=Registry.get(self.activeTab)
-    if def and def.parentTab then
+    if def and def.isTab==false and def.parentTab then
         self:selectTab(def.parentTab)
         return
     end
@@ -225,11 +250,16 @@ function EmberRoutesSettlementDashboard:update()
     local now=getTimestampMs()
     if now<self.nextCheck then return end
     self.nextCheck=now+1000
+    if not self.nextOverview or now>=self.nextOverview then
+        self.nextOverview=now+5000
+        self:projectAlerts(require('EmberRoutesProbe/WorkOverviewService').status(self.actor,self.entry.id))
+    end
     if not self:valid() then self:close() end
 end
 
 function EmberRoutesSettlementDashboard:close()
     if self.disposed then return end
+    require('EmberRoutesProbe/UI/PageLifecycle').unmount(self)
     self.disposed=true
     self.activeTab=nil
     if self.publicDialog then self.publicDialog:close() end

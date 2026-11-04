@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+分布式工作 UI：[2026-11-04 实施段与根因待办](reviews/2026-11-04/ui-distributed-work.md)。删除需求/工单页面、工作事实聚合与上下文制作；含基线失败对照及未验证边界。
+
 据点整体 UI：[v0.2 导航、工作分层与基础能力草案](superpowers/specs/2026-11-04-action-dossier-ui-design.md)。含 ProjectRemnants 当前参考、四主入口候选、需求/工单边界及直接复用/扩展/新增清单；待用户审阅，未实施。
 
 领域目录与 Java 桥收敛：[设计](superpowers/specs/2026-11-04-domain-layout-design.md)、[实施计划](superpowers/plans/2026-11-04-domain-layout.md)、[等价与回归证据](reviews/2026-11-04/domain-layout.md)。首批仅搬运执行 10 模块，不改变任务、存档或原件责任。

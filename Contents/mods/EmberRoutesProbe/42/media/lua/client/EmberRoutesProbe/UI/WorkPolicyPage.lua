@@ -94,6 +94,9 @@ function EmberRoutesWorkPolicyPage:createChildren()
 
     self:addChild(self.jobList)
 
+    local split=assert(Layout.axis(self.rightBounds,{{basis=h*7+p},{grow=1}},{direction='column',gap=p}))
+    self.queue=require('EmberRoutesProbe/UI/WorkQueue').new(self,split[1],function(w) return w.category==self.selectedCategory and w.category~='crafting' end)
+    self.rightBounds=split[2]
     -- Right Column: Form Panel
     self.formPanel = ISPanel:new(self.rightBounds.x, self.rightBounds.y, self.rightBounds.width, self.rightBounds.height)
     self.formPanel:initialise()
@@ -107,10 +110,12 @@ end
 function EmberRoutesWorkPolicyPage:populateCategories()
     self.jobList:clear()
     self.categories = Registry.categories()
+    local seen={} for _,cat in ipairs(self.categories) do seen[cat]=true end
+    for _,cat in ipairs({'hauling','crafting'}) do if not seen[cat] then self.categories[#self.categories+1]=cat end end
 
     for _, cat in ipairs(self.categories) do
         local def = Registry.get(cat)
-        local title = def and def.titleKey and getTextOrNull(def.titleKey) or cat
+        local title = def and def.titleKey and getTextOrNull(def.titleKey) or getText('IGUI_EmberRoutesProbe_Public_'..cat)
         self.jobList:addItem(title, cat)
     end
 
@@ -126,11 +131,12 @@ end
 function EmberRoutesWorkPolicyPage:selectCategory(cat)
     self.selectedCategory = cat
     local settlementId = self.entry and self.entry.id
-    self.draft, self.policyError = PolicyService.getDraft(settlementId, cat)
+    if Registry.get(cat) then self.draft, self.policyError = PolicyService.getDraft(settlementId, cat) else self.draft={} self.policyError=nil end
     self.isDirty = false
     self.noticeText = ""
     self.noticeColor = Theme.muted
     self:buildForm(cat)
+    if self.overview then self.queue:set(self.overview) end
 end
 
 ---Rebuild the right-hand policy editor form.
@@ -157,7 +163,17 @@ function EmberRoutesWorkPolicyPage:buildForm(cat)
     end
 
     local def = Registry.get(cat)
-    if not def then return end
+    if not def then
+        if cat=='hauling' or cat=='crafting' then
+            local target=cat=='hauling' and 'logistics' or 'crafting'
+            local button=ISButton:new(self.pad,self.pad,self.formPanel.width-self.pad*2,self.fontHeight+self.pad,
+                getText('IGUI_EmberRoutesProbe_Settlement_tab_'..target),self,function()
+                    if self.active and self.activationScope:isCurrent() then self.owner:selectTab(target) end
+                end)
+            button:initialise() Theme.button(button) self.formPanel:addChild(button)
+        end
+        return
+    end
 
     local h, p = self.fontHeight, self.pad
     local settlementId = self.entry and self.entry.id
@@ -172,13 +188,13 @@ function EmberRoutesWorkPolicyPage:buildForm(cat)
     local headerPanel = ISPanel:new(0, 0, self.formPanel.width, headerH)
     headerPanel:initialise()
     headerPanel.background = false
+    local title = def.titleKey and getTextOrNull(def.titleKey) or cat
+    local desc = def.descKey and getTextOrNull(def.descKey) or ""
     headerPanel.prerender = function(panel)
         ISPanel.prerender(panel)
         Theme.rect(panel, 0, 0, panel.width, panel.height, Theme.panel)
         Theme.rect(panel, 0, 0, panel.width, panel.height, Theme.border, true)
 
-        local title = def.titleKey and getTextOrNull(def.titleKey) or cat
-        local desc = def.descKey and getTextOrNull(def.descKey) or ""
         Theme.text(panel, title, p, p, Theme.gold)
         if desc ~= "" then
             Theme.text(panel, desc, p, p + h + 2, Theme.muted)
@@ -209,9 +225,9 @@ function EmberRoutesWorkPolicyPage:buildForm(cat)
         local labelW = math.floor(rowPanel.width * 0.45)
         local ctrlW = rowPanel.width - labelW - p
 
+        local label = field.label and getTextOrNull(field.label) or field.key
         rowPanel.prerender = function(panel)
             ISPanel.prerender(panel)
-            local label = field.label and getTextOrNull(field.label) or field.key
             Theme.text(panel, label, p, (panel.height - h) / 2, Theme.textColor)
         end
 
@@ -291,12 +307,22 @@ function EmberRoutesWorkPolicyPage:saveCurrent()
     end
 end
 
+function EmberRoutesWorkPolicyPage:resolveContext(context)
+    if context.category and (Registry.get(context.category) or context.category=='hauling' or context.category=='crafting') then return context.category end
+    return nil,'TARGET_NOT_FOUND'
+end
+function EmberRoutesWorkPolicyPage:applyContext(context) self:selectCategory(context.category) return true end
 function EmberRoutesWorkPolicyPage:activate()
-    self.active = true
+    local Service=require 'EmberRoutesProbe/WorkOverviewService'
+    local mounted=require('EmberRoutesProbe/UI/PageLifecycle').mount(self,function(callback) return Service.watch(self.actor,self.entry.id,callback) end,function(snapshot)
+        if snapshot.reason=='WORLD_RESET' then self.owner:close() return end
+        self.overview=snapshot self.queue:set(snapshot)
+    end)
+    if mounted and self.active then self.overview=Service.status(self.actor,self.entry.id) self.queue:set(self.overview) end
 end
 
 function EmberRoutesWorkPolicyPage:deactivate()
-    self.active = false
+    require('EmberRoutesProbe/UI/PageLifecycle').unmount(self)
 end
 
 function EmberRoutesWorkPolicyPage:dispose()

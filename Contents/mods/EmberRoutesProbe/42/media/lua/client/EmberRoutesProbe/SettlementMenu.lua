@@ -75,7 +75,7 @@ function Menu.craftAt(actor,object)
     local Crafting=require "EmberRoutesProbe/CraftingService"
     local surface,reason=Crafting.selectSurface(actor,object)
     if surface then
-        local panel=Dashboard.open(actor,surface.settlementId,"orders")
+        local panel=Dashboard.open(actor,surface.settlementId,"crafting")
         if panel then panel:openPublicOrder({surfaceId=surface.id}) end
     else actor:Say(require("EmberRoutesProbe/CraftingText").reason(reason)) end
 end

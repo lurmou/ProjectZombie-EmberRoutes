@@ -128,7 +128,7 @@ function Details.new(owner,bounds,presentation)
     owner:addChild(self.pinButton)
 
     -- 3 action buttons: Locate, Cart, Create Order
-    local botBtns=assert(Layout.axis(parts[4],{{grow=1.0},{grow=1.0},{grow=1.2}},{gap=p/2}))
+    local botBtns=assert(Layout.axis(parts[4],{{grow=1.0},{grow=1.0},{grow=1.2},{grow=1.2}},{gap=p/2}))
 
     self.locate=ISButton:new(botBtns[1].x,botBtns[1].y,botBtns[1].width,botBtns[1].height,text("locate"),owner,owner.locateSource)
     self.locate:initialise() Theme.enable(self.locate,false)
@@ -155,11 +155,17 @@ function Details.new(owner,bounds,presentation)
     self.maintainStock:initialise() Theme.enable(self.maintainStock,false)
     self.maintainStock.tooltip=text("chooseItem") owner:addChild(self.maintainStock)
 
+    local r=botBtns[4]
+    self.craftButton=ISButton:new(r.x,r.y,r.width,r.height,getText('IGUI_EmberRoutesProbe_Distributed_craft'),owner,function()
+        if self.row and self.row.fullType then owner.owner:selectTab('crafting',{returnTab='warehouse',filterProduct=self.row.fullType}) end
+    end)
+    self.craftButton:initialise() Theme.button(self.craftButton) Theme.enable(self.craftButton,false) owner:addChild(self.craftButton)
     return self
 end
 
 function methods:setItem(row)
     self.row=row
+    Theme.enable(self.craftButton,row and row.fullType~=nil or false)
     local owner=self.owner
     local pinW=self.pinButton and self.pinButton.width or 68
     local width=self.hero.width-self.iconSize-pinW-owner.pad*3

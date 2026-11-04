@@ -41,7 +41,17 @@ function EmberRoutesCraftingOrders:createChildren()
     local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},{{grow=1},{basis=h+p},{basis=h}},
         {direction="column",padding=p,gap=p/2}))
     local columns=assert(Layout.axis(regions[1],{{grow=2},{grow=3}},{gap=p}))
-    self.workerList=Cached.create(self,columns[1],function(_,row) self.store:setState({selection=row.id}) end,Cards.workers())
+    local left=assert(Layout.axis(columns[1],{{grow=1},{basis=h},{grow=1}},{direction='column',gap=p/2}))
+    self.unclaimedLabel=left[2]
+    local r=left[2]
+    self.publicButton=ISButton:new(r.x,r.y,r.width,r.height,getText('IGUI_EmberRoutesProbe_Public_createOrder'),self,function()
+        if self.active and self.activationScope:isCurrent() then self.owner:openPublicOrder() end
+    end)
+    self.publicButton:initialise() Theme.button(self.publicButton) self:addChild(self.publicButton)
+    self.unclaimed=require('EmberRoutesProbe/UI/InfoList').new(self,left[3])
+    self.unclaimed.list:setOnMouseDownFunction(self,function(_,row) self.unclaimedSelection=row and row.value and row.value.monitor
+        self:project(self.store.value,{selection=true}) end)
+    self.workerList=Cached.create(self,left[1],function(_,row) self.unclaimedSelection=nil self.store:setState({selection=row.id}) end,Cards.workers())
     Theme.list(self.workerList) self:addChild(self.workerList)
     self.detailCard=Cards.details(self,columns[2]) self.details=self.detailCard.list
     local actions=assert(Layout.axis(regions[2],{{grow=1},{grow=1},{grow=1}},{gap=p/2}))
@@ -51,21 +61,41 @@ function EmberRoutesCraftingOrders:createChildren()
         button.internal=id button:initialise() Theme.button(button) Tooltip.attach(button,"prerender",self) self:addChild(button) self.buttons[id]=button
     end
 end
+function EmberRoutesCraftingOrders:applyArgs(args)
+    self.contextOrderId=args.orderId
+end
 function EmberRoutesCraftingOrders:activate()
     local mounted=Lifecycle.mount(self,function(callback) return Service.watch(self.actor,self.entry.id,callback) end,function(snapshot)
         if snapshot.reason=="WORLD_RESET" then self.owner:close() return end
         self.store:setState({snapshot=snapshot})
     end)
-    if mounted and self.active then self.store:setState({snapshot=Service.status(self.actor,self.entry.id)}) self:project(self.store.value,{snapshot=true}) end
+    if mounted and self.active then self.store:setState({snapshot=Service.status(self.actor,self.entry.id)}) end
 end
 function EmberRoutesCraftingOrders:project(value,_changes)
     if not self.active then return end
+    local unclaimed={}
+    local selection=value.selection
+    for _,row in ipairs(require('EmberRoutesProbe/OrderMonitorService').status(self.actor,self.entry.id).rows) do
+        if self.contextOrderId and row.orderId==self.contextOrderId then
+            if row.npcId then selection=row.npcId else self.unclaimedSelection=row end
+            self.contextOrderId=nil
+        end
+        if row.kind=='ORDER' and not row.npcId and not row.closed then
+            unclaimed[#unclaimed+1]={text=getText('IGUI_EmberRoutesProbe_Distributed_unclaimed')..' · '..(row.title or row.orderId)..' · '..getText('IGUI_EmberRoutesProbe_Distributed_'..(row.state=='PAUSED' and 'paused' or 'waiting')),monitor=row}
+        end
+    end
+    local retainedSelection
+    for _,line in ipairs(unclaimed) do
+        if self.unclaimedSelection and line.monitor.id==self.unclaimedSelection.id and line.monitor.generation==self.unclaimedSelection.generation then retainedSelection=line.monitor end
+    end
+    self.unclaimedSelection=retainedSelection
+    self.unclaimed:set(unclaimed)
     local chosen=Cached.reconcile(self.workerList,value.snapshot.workers,function(row)
         local order=row.order
         return row.name..":"..tostring(row.busy)..":"..tostring(row.orderBusy)..":"..(order and (tostring(order.id)..":"..tostring(order.state)..":"..tostring(order.phase)..":"..tostring(order.reason)) or "")
     end,function(row) return row.id end,true)
     local selected
-    for i,row in ipairs(value.snapshot.workers) do if row.id==value.selection then selected=row self.workerList.selected=i break end end
+    for i,row in ipairs(value.snapshot.workers) do if row.id==selection then selected=row self.workerList.selected=i break end end
     selected=selected or chosen
     if (selected and selected.id or false)~=value.selection then self.store:setState({selection=selected and selected.id or false}) return end
     ---@type table?
@@ -76,11 +106,25 @@ function EmberRoutesCraftingOrders:project(value,_changes)
     self.buttons.resume:setVisible(not (active and retained))
     Theme.enable(self.buttons.stop,active and retained or false,true)
     Theme.enable(self.buttons.resume,selected and not active and retained and order.resumable or false,true)
-    Theme.enable(self.buttons["return"],selected and not active and retained or false)
-    self.detailCard:set(selected,value.snapshot.surfaces,nil,nil,1)
+    Theme.enable(self.buttons["return"],(self.unclaimedSelection and true) or selected and not active and retained or false)
+    self.buttons['return']:setTitle(self.unclaimedSelection and getText('UI_btn_cancel') or text('button_return'))
+    local detailWorker=selected
+    if self.unclaimedSelection then
+        local r=self.unclaimedSelection
+        detailWorker={name=r.name,busy=false,order={id=r.orderId,recipeName=r.title,state=r.state,phase=r.phase,
+            target=r.target,requested=r.requested,produced=r.produced,delivered=r.delivered,reason=r.reason}}
+    end
+    self.detailCard:set(detailWorker,value.snapshot.surfaces,nil,nil,1)
+
 end
 function EmberRoutesCraftingOrders:command(command)
     local v=self.store.value
+    if command=='return' and self.unclaimedSelection then
+        local row=self.unclaimedSelection
+        local result=require('EmberRoutesProbe/OrderMonitorService').command(self.actor,self.entry.id,row.id,row.generation,'return')
+        self.unclaimedSelection=nil self.notice=Words.reason(result)
+        self.store:setState({snapshot=Service.status(self.actor,self.entry.id)}) return
+    end
     local result=command=="refresh" and "REFRESHED" or Service.command(self.actor,self.entry.id,v.selection,command,v.snapshot.surfaceId)
     self.notice=Words.reason(result) self.store:setState({snapshot=Service.status(self.actor,self.entry.id)})
 end
@@ -96,6 +140,7 @@ function EmberRoutesCraftingOrders:focusContent()
 end
 function EmberRoutesCraftingOrders:prerender()
     ISPanel.prerender(self) if not self.active then return end
+    -- Unclaimed rows carry their section label in the cached text.
     if self.notice then Theme.text(self,self.notice,self.pad,self.height-self.fontHeight,Theme.muted) end
 end
 return EmberRoutesCraftingOrders

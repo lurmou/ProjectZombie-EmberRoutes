@@ -10,6 +10,7 @@ local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
 local Text=require 'EmberRoutesProbe/UI/Text'
 local Public=require 'EmberRoutesProbe/PublicWork'
 local Crafting=require 'EmberRoutesProbe/CraftingService'
+local Badge=require 'EmberRoutesProbe/UI/SemanticBadge'
 local DossierDrawer=require 'EmberRoutesProbe/UI/PersonnelDossierDrawer'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..key,...) end
@@ -49,7 +50,7 @@ function EmberRoutesPersonnelPage:new(owner,bounds)
     o.owner=owner
     o.actor,o.entry=owner.actor,owner.entry
     o.fontHeight,o.pad=owner.fontHeight,owner.pad
-    o.background=false
+    o.background=false o.workFilter='all' o.overview={byNpc={}}
     o.bottomNoticeBounds={x=0,y=bounds.height-o.fontHeight,width=bounds.width,height=o.fontHeight}
     o.store=State.new({workers={},selected=nil,notice='',revision=0})
     return o
@@ -67,6 +68,12 @@ function EmberRoutesPersonnelPage:createChildren()
 
     local top=assert(Layout.axis(regions[1],{{grow=1},{basis=h*6}},{gap=p}))
     self.topInfoBounds=top[1]
+    self.workFilters=require('EmberRoutesProbe/UI/FilterChips'):new(top[1].x,top[1].y,top[1].width,top[1].height,function(key)
+        self.workFilter=key self.store:setState({revision=self.store.value.revision+1})
+    end)
+    local options={}
+    for _,key in ipairs({'all','working','idle','blocked'}) do options[#options+1]={id=key,label=getText('IGUI_EmberRoutesProbe_Distributed_'..key)} end
+    self.workFilters:setOptions(options,self.workFilter) self:addChild(self.workFilters)
 
     self.refreshButton=ISButton:new(top[2].x,top[2].y,top[2].width,top[2].height,getText('IGUI_EmberRoutesProbe_Monitor_refresh'),self,function()
         self:refresh()
@@ -84,6 +91,17 @@ function EmberRoutesPersonnelPage:createChildren()
     self.matrixBounds=mainCols[1]
     self.detailsBounds=mainCols[2]
 
+    self.workCommands={}
+    local commands=assert(Layout.axis(regions[3],{{grow=1},{grow=1},{grow=1},{grow=1}},{gap=p/2}))
+    for i,key in ipairs({'stop','resume','return','stopBody'}) do
+        local r=commands[i]
+        local b=ISButton:new(r.x,r.y,r.width,r.height,getText('IGUI_EmberRoutesProbe_Distributed_'..key),self,function()
+            if not self.active or not self.activationScope:isCurrent() then return end
+            local result=require('EmberRoutesProbe/WorkCommandAdapter').command(self.actor,self.entry.id,self.currentWork and self.currentWork.row,key)
+            self.store:setState({notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)}) self:refresh()
+        end)
+        b:initialise() Theme.button(b) b:setVisible(false) self:addChild(b) self.workCommands[key]=b
+    end
     -- Right column: split into Holographic Colonist Avatar Card and Physiological Inspector list
     local cardH=math.min(math.floor(self.detailsBounds.height*0.35),math.max(76,math.floor(h*4.8)))
     local rightParts=assert(Layout.axis(self.detailsBounds,{{basis=cardH},{basis=h+p},{grow=1}},{direction='column',gap=p/2}))
@@ -118,24 +136,8 @@ function EmberRoutesPersonnelPage:createChildren()
         Theme.text(card,data.roleText or '',textX,p+h,Theme.accent)
 
         local badgeY=p+h*2
-        local badgeH=h+2
-        local curX=textX
-        if data.memberText and data.memberText~='' then
-            local mw=getTextManager():MeasureStringX(UIFont.Small,data.memberText)+8
-            Theme.rect(card,curX,badgeY,mw,badgeH,{r=0.10,g=0.14,b=0.18,a=0.9})
-            Theme.rect(card,curX,badgeY,mw,badgeH,{r=0.25,g=0.35,b=0.45,a=0.9},true)
-            Theme.text(card,data.memberText,curX+4,badgeY+1,{r=0.60,g=0.75,b=0.90,a=1})
-            curX=curX+mw+p/3
-        end
-        if data.activityText and data.activityText~='' then
-            local aw=getTextManager():MeasureStringX(UIFont.Small,data.activityText)+8
-            local actColor=data.statusColor or Theme.status.READY
-            local actBg={r=actColor.r*0.18,g=actColor.g*0.18,b=actColor.b*0.18,a=0.9}
-            local actBorder={r=actColor.r*0.55,g=actColor.g*0.55,b=actColor.b*0.55,a=0.9}
-            Theme.rect(card,curX,badgeY,aw,badgeH,actBg)
-            Theme.rect(card,curX,badgeY,aw,badgeH,actBorder,true)
-            Theme.text(card,data.activityText,curX+4,badgeY+1,actColor)
-        end
+        Badge.draw(card,textX,badgeY,data.memberWidth,h+2,data.memberBadge)
+        Badge.draw(card,textX+data.memberWidth+p/3,badgeY,data.activityWidth,h+2,data.activityBadge)
 
         if data.locationText and data.locationText~='' then
             Theme.text(card,data.locationText,textX,p+h*3+2,Theme.muted)
@@ -160,11 +162,12 @@ function EmberRoutesPersonnelPage:createChildren()
         local fullTitle=pubText(key)
         local lines=Text.wrapLimited(fullTitle,bounds.width-p/2,UIFont.Small,2)
         button.title='' button.tooltip=fullTitle..'\n'..text('priorityHint')
+        local widths={} for i,label in ipairs(lines) do widths[i]=getTextManager():MeasureStringX(UIFont.Small,label) end
         local originalRender=button.render
         button.render=function(btn)
             if originalRender then originalRender(btn) end
             for line,label in ipairs(lines) do
-                local tw=getTextManager():MeasureStringX(UIFont.Small,label)
+                local tw=widths[line]
                 Theme.text(btn,label,(btn.width-tw)/2,(btn.height-#lines*h)/2+(line-1)*h,Theme.textColor)
             end
         end
@@ -178,7 +181,7 @@ function EmberRoutesPersonnelPage:createChildren()
                 local n=value.priorities[key] or 3 local label=n==0 and '-' or tostring(n)
                 cells[#cells+1]={value=n,label=label,width=getTextManager():MeasureStringX(UIFont.Small,label)}
             end
-            return {height=math.floor(h*2.2),name=Text.wrapLimited(value.name,self.colHeaders[1].width-p*2,UIFont.Small,1)[1] or '',cells=cells}
+            return {height=math.floor(h*2.2),work=Text.wrapLimited(value.workLine or '',list.width-p*2,UIFont.Small,1)[1] or '',name=Text.wrapLimited(value.name,self.colHeaders[1].width-p*2,UIFont.Small,1)[1] or '',cells=cells}
         end,
         draw=function(list,y,entry)
             local item=entry.item.value local rowH=entry.height
@@ -187,15 +190,16 @@ function EmberRoutesPersonnelPage:createChildren()
             elseif list.mouseoverselected==entry.index then Theme.rect(list,0,y,list.width,rowH,Theme.hover) end
             local dot=item.busy and Theme.gold or Theme.accent
             Theme.rect(list,p/2,y+rowH/2-3,6,6,dot)
-            Theme.text(list,entry.item.visual.name,p+8,y+(rowH-h)/2,Theme.textColor)
+            Theme.text(list,entry.item.visual.name,p+8,y,Theme.textColor)
+            Theme.text(list,entry.item.visual.work,p/2,y+rowH-h,Theme.muted)
             local mx=list:getMouseX()
             for i,cell in ipairs(entry.item.visual.cells) do
                 local r=self.colHeaders[i+1]
                 local x=r.x-self.headerBounds.x+p/4 local w=r.width-p/2
                 local style=PRIORITY_COLORS[cell.value] or PRIORITY_COLORS[3]
                 local hovered=list.mouseoverselected==entry.index and mx>=x and mx<=x+w
-                Theme.rect(list,x,y+2,w,rowH-4,style.bg) Theme.rect(list,x,y+2,w,rowH-4,hovered and Theme.accent or style.border,true)
-                Theme.text(list,cell.label,x+(w-cell.width)/2,y+(rowH-h)/2,style.text)
+                Theme.rect(list,x,y,w,rowH-h,style.bg) Theme.rect(list,x,y,w,rowH-h,hovered and Theme.accent or style.border,true)
+                Theme.text(list,cell.label,x+(w-cell.width)/2,y+(rowH-h*2)/2,style.text)
             end
             return y+rowH
         end}
@@ -309,7 +313,7 @@ end
 function EmberRoutesPersonnelPage:activate()
     local mounted=Lifecycle.mount(self,function(callback)
         if Crafting.watch then
-            return Crafting.watch(self.actor,self.entry.id,callback)
+            return require('EmberRoutesProbe/WorkOverviewService').watch(self.actor,self.entry.id,callback)
         end
         return function() end
     end,function(snapshot)
@@ -357,6 +361,17 @@ function EmberRoutesPersonnelPage:refresh()
     local status=Crafting.status(self.actor,self.entry.id)
     local rawWorkers=status.workers or {}
     local enriched=require('EmberRoutesProbe/PersonnelService').enrichWorkers(self.actor,self.entry.id,rawWorkers)
+    self.overview=require('EmberRoutesProbe/WorkOverviewService').status(self.actor,self.entry.id)
+    for _,w in ipairs(enriched) do
+        local work=self.overview.byNpc[w.id]
+        local state=work and work.state or 'idle'
+        local title=work and work.title or ''
+        if not work then
+            local idle=require('EmberRoutesProbe/LeisureService').status(w.id)
+            title=idle and idle.reason and (getTextOrNull('IGUI_EmberRoutesProbe_Leisure_'..idle.reason) or '') or ''
+        end
+        w.workLine=title..' · '..getText('IGUI_EmberRoutesProbe_Distributed_'..state)
+    end
     local selected=self.store.value.selected
     if selected then
         local found=false
@@ -373,7 +388,10 @@ end
 
 function EmberRoutesPersonnelPage:project(value)
     if not self.active or self.disposed or not self.avatarCard or not self.matrixList or not self.info then return end
-    local rows=value.workers or {}
+    local rows={}
+    for _,w in ipairs(value.workers or {}) do
+        if require('EmberRoutesProbe/WorkOverviewPresenter').visible(self.overview.byNpc[w.id],self.workFilter) then rows[#rows+1]=w end
+    end
     local noticeW=self.bottomNoticeBounds and self.bottomNoticeBounds.width or (self.width or 400)
     self.noticeLine=Text.wrapLimited(value.notice or '',noticeW,UIFont.Small,1)[1] or ''
     local sel=value.selected
@@ -444,7 +462,15 @@ function EmberRoutesPersonnelPage:project(value)
             end
         end
 
+        activity=sel.workLine or activity
+        local memberBadge=Badge.resolve('READY',memberText)
+        local activityBadge=Badge.resolve(sel.busy and 'RUNNING' or 'READY',activity)
+        memberBadge.fontHeight=h memberBadge.textWidth=getTextManager():MeasureStringX(UIFont.Small,memberBadge.displayText)
+        activityBadge.fontHeight=h activityBadge.textWidth=getTextManager():MeasureStringX(UIFont.Small,activityBadge.displayText)
         self.avatarData={
+            memberBadge=memberBadge,activityBadge=activityBadge,
+            memberWidth=memberBadge.textWidth+8,
+            activityWidth=activityBadge.textWidth+8,
             hasWorker=true,
             texture=sel.profTexture,
             initials=initials,
@@ -478,6 +504,18 @@ function EmberRoutesPersonnelPage:project(value)
     local detail={}
     if sel then
         detail[#detail+1]={text=require('EmberRoutesProbe/MembershipText').summary(sel.membership),color=Theme.muted}
+        local work=self.overview.byNpc[sel.id]
+        detail[#detail+1]={text=sel.workLine or '',color=Theme.accent}
+        if work then
+            local row=work.row
+            if row.targetLocation then local t=row.targetLocation detail[#detail+1]={text=t.x..', '..t.y..', '..t.z,color=Theme.muted} end
+            if row.produced~=nil and row.target then detail[#detail+1]={text=row.produced..' / '..row.target,color=Theme.muted} end
+            if row.delivered~=nil and row.target and row.target>0 then detail[#detail+1]={text=getText('IGUI_EmberRoutesProbe_Monitor_delivered',row.delivered,row.target),color=Theme.muted} end
+            if work.state=='blocked' and (row.reasonText or row.reason) then detail[#detail+1]={text=row.reasonText or row.reason,color=Theme.danger} end
+        end
+        self.currentWork=work
+        local caps=require('EmberRoutesProbe/WorkCommandAdapter').capabilities(work and work.row)
+        for key,button in pairs(self.workCommands or {}) do button:setVisible(caps[key]==true) end
         -- 2a. Health Bar (Compact single line)
         if sel.health~=nil then
             local healthFraction=math.max(0,math.min(1,sel.health/100))
@@ -548,20 +586,6 @@ function EmberRoutesPersonnelPage:project(value)
             }
         end
 
-        -- 2d. Active Job (only if colonist has assigned order)
-        if sel.order then
-            local ord=sel.order
-            local title=ord.title or ord.recipeName or ord.recipeId or text('orderFallback')
-            local progressStr=''
-            if ord.produced~=nil and ord.target~=nil then
-                progressStr=' ('..ord.produced..' / '..ord.target..')'
-            end
-            local ordColor=ord.state=='RUNNING' and Theme.status.READY or (ord.state=='PAUSED' and Theme.gold or Theme.textColor)
-            detail[#detail+1]={text=text('activeJob',title..progressStr),color=ordColor,fullType=ord.product or ord.productFullType}
-            if ord.phase then
-                detail[#detail+1]={text='  '..(getTextOrNull('IGUI_EmberRoutesProbe_Orders_phase_'..ord.phase) or (text('phaseFallback')..': '..ord.phase)),color=Theme.muted}
-            end
-        end
     else
         detail[#detail+1]={text=text('noWorkers'),color=Theme.muted}
     end
@@ -583,7 +607,7 @@ function EmberRoutesPersonnelPage:project(value)
         for _,cat in ipairs(self.workCategories) do
             prioParts[#prioParts+1]=cat..'='..(p[cat] or 0)
         end
-        return w.id..'|'..w.name..'|'..(w.busy and '1' or '0')..'|'..(p.revision or 0)..'|'..table.concat(prioParts,',')
+        return (w.workLine or '')..'|'..w.id..'|'..w.name..'|'..(w.busy and '1' or '0')..'|'..(p.revision or 0)..'|'..table.concat(prioParts,',')
     end
     Cached.reconcile(self.matrixList,rows,signature,function(w) return w.id end,true)
 end
@@ -593,7 +617,7 @@ function EmberRoutesPersonnelPage:prerender()
     local h,p=self.fontHeight,self.pad
 
     -- Top Info
-    Theme.text(self,text('title'),self.topInfoBounds.x,self.topInfoBounds.y,Theme.gold)
+
 
     -- Column 1 header (Worker Name)
     Theme.text(self,text('worker'),self.colHeaders[1].x+p/2,self.colHeaders[1].y+(self.colHeaders[1].height-h)/2,Theme.accent)

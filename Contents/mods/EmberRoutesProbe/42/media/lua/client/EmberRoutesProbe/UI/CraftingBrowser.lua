@@ -95,6 +95,12 @@ function EmberRoutesCraftingBrowser:createChildren()
     self.statusLines={bounds=regions[5],lines={}}
     self.draft=Draft.new(self,self.columns[2])
 end
+function EmberRoutesCraftingBrowser:applyArgs(args)
+    self.filterProduct=args.filterProduct
+    self.recipe=nil self.previewKey=nil
+    self.store:setState({recipeId=false,page=1,search='',preview={state='CHECKING',conditions={},counts={}}})
+    if self.active then self:watchCatalog() end
+end
 function EmberRoutesCraftingBrowser:change(patch) self.store:setState(patch) end
 function EmberRoutesCraftingBrowser:repaint() self:project(self.store.value,{preview=true}) end
 function EmberRoutesCraftingBrowser:watchCatalog()
@@ -102,7 +108,7 @@ function EmberRoutesCraftingBrowser:watchCatalog()
     self.catalogGeneration=(self.catalogGeneration or 0)+1
     local generation=self.catalogGeneration local token=self.activation local v=self.store.value
     self.cancelCatalog=Service.watchCatalog(self.actor,self.entry.id,
-        {search=v.search,category=v.category or nil,unsupported=v.unsupported,page=v.page,size=self.grid.capacity},function(catalog)
+        {search=v.search,category=v.category or nil,unsupported=v.unsupported,page=v.page,size=self.grid.capacity,productType=self.filterProduct},function(catalog)
             if not self.active or self.activation~=token or self.catalogGeneration~=generation then return end
             if catalog.reason=="WORLD_RESET" then self.owner:close() return end
             self.store:setState({catalog=catalog})
@@ -116,7 +122,6 @@ function EmberRoutesCraftingBrowser:activate()
         end)
     if mounted and self.active then
         self:watchCatalog() self.store:setState({snapshot=Service.status(self.actor,self.entry.id)})
-        self:project(self.store.value,{catalog=true,snapshot=true,recipeId=true})
     end
 end
 function EmberRoutesCraftingBrowser:deactivate()
@@ -156,8 +161,11 @@ function EmberRoutesCraftingBrowser:project(value,changes)
     if changes.notice then self.statusLines.lines=Text.wrapLimited(value.notice,self.statusLines.bounds.width,UIFont.Small,1) end
     if changes.search or changes.category or changes.unsupported or changes.page then self:watchCatalog() end
     if changes.catalog then
-        local catalog=value.catalog self.grid:setRows(catalog.rows,value.recipeId)
-        self.grid.empty=text(catalog.loading and "catalogLoading" or "catalogEmpty")
+        local catalog=value.catalog
+        self.pagingText=catalog.page.." / "..catalog.pages.."  ("..(catalog.total or 0)..")"
+        self.pagingWidth=getTextManager():MeasureStringX(UIFont.Small,self.pagingText)
+        self.grid:setRows(catalog.rows,value.recipeId)
+        self.grid.empty=self.filterProduct and not catalog.loading and catalog.total==0 and getText("IGUI_EmberRoutesProbe_Distributed_noRecipe") or text(catalog.loading and "catalogLoading" or "catalogEmpty")
         self.syncing=true self.category:clear() self.category:addOption(text("allCategories")) self.categories={false}
         for _,category in ipairs(catalog.categories) do
             self.categories[#self.categories+1]=category self.category:addOption(getTextOrNull("IGUI_CraftCategory_"..category) or category)
@@ -167,7 +175,7 @@ function EmberRoutesCraftingBrowser:project(value,changes)
         Theme.enable(self.previous,catalog.page>1) Theme.enable(self.next,catalog.page<catalog.pages)
         self.unsupported:setTitle(text(value.unsupported and "includingUnsupported" or "supportedOnly"))
         self.statusLines.lines=Text.wrapLimited(value.notice~="" and value.notice or text(catalog.loading and "catalogLoading" or "executionRecheck"),self.statusLines.bounds.width,UIFont.Small,1)
-        if not value.recipeId and catalog.rows[1] then self:change({recipeId=catalog.rows[1].id}) return end
+        if not self.filterProduct and not value.recipeId and catalog.rows[1] then self:change({recipeId=catalog.rows[1].id}) return end
         if not (changes.recipeId or changes.snapshot or changes.npcId or changes.quantity or changes.surface or changes.preview) then return end
     end
     if changes.recipeId then
@@ -203,7 +211,9 @@ function EmberRoutesCraftingBrowser:command(command,recipeId,surfaceId)
     local v=self.store.value
     local result=Service.command(self.actor,self.entry.id,v.npcId,command,surfaceId or v.surface,recipeId or v.recipeId,v.quantity)
     self:change({notice=Words.reason(result),snapshot=Service.status(self.actor,self.entry.id)})
-    if command=="run" and result=="STARTED" then self.shell:selectView("orders") end
+    if command=="run" and result=="STARTED" then
+        if self.shell.returnContext then self.shell:returnWarehouse() else self.shell:selectView("orders") end
+    end
 end
 function EmberRoutesCraftingBrowser:warehouse(fullType)
     self.owner:selectTab("warehouse")
@@ -214,10 +224,8 @@ function EmberRoutesCraftingBrowser:prerender()
     ISPanel.prerender(self) if not self.active then return end
     self.draft:draw()
     local r=self.paging local c=self.store.value.catalog
-    local pagingText=c.page.." / "..c.pages.."  ("..(c.total or 0)..")"
-    if self._pagingKey~=pagingText then self._pagingKey=pagingText
-        self._pagingW=getTextManager():MeasureStringX(UIFont.Small,pagingText) end
-    local tw=self._pagingW
+    local pagingText=self.pagingText or ''
+    local tw=self.pagingWidth or 0
     local tx=r.x+math.max(0,math.floor((r.width-tw)/2))
     local ty=r.y+math.floor((r.height-self.fontHeight)/2)
     Theme.text(self,pagingText,tx,ty,Theme.muted)

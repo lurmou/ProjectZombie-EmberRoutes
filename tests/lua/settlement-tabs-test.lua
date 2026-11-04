@@ -1,7 +1,8 @@
 package.loaded['ISUI/ISContextMenu']=true
 -- Personnel detail projection has its own backend regression; this suite
 -- exercises page lifecycle/layout and commands against detached display rows.
-package.loaded['EmberRoutesProbe/PersonnelService']={invalidate=function() end,release=function() end,
+package.loaded['EmberRoutesProbe/WorkOverviewService']={status=function() return {works={},byNpc={},problems={},counts={},alerts={}} end,watch=function() return function() end end}
+package.loaded['EmberRoutesProbe/PersonnelService']={enrichWorkers=function(_,_,workers) for _,w in ipairs(workers) do w.priorities={crafting=1,hauling=4} end return workers end,invalidate=function() end,release=function() end,
     details=function() return {knowledge={}} end,rows=function() return {} end}
 ERPriorityOptions={}
 ISContextMenu={get=function() ERPriorityOptions={} return {addOption=function(_,label,target,fn) ERPriorityOptions[#ERPriorityOptions+1]=fn end} end}
@@ -176,7 +177,7 @@ package.loaded['EmberRoutesProbe/CraftingService']={status=function() return cra
  watchCatalog=function(_,_,q,fn)
    catalogCount=catalogCount+1 catalogCallbacks[#catalogCallbacks+1]=fn
    local found={} for _,row in ipairs(recipeRows) do
-    if (not q.category or q.category==row.category) and (q.search=='' or row.name:lower():find(q.search:lower(),1,true)) then found[#found+1]=row end
+    if (not q.productType or q.productType==row.product) and (not q.category or q.category==row.category) and (q.search=='' or row.name:lower():find(q.search:lower(),1,true)) then found[#found+1]=row end
    end
    fn({rows=found,categories={'Carving','Carpentry'},page=1,pages=1,total=#found,loading=false,revision=1})
    return function() catalogCount=catalogCount-1 end

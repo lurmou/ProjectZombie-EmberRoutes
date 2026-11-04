@@ -106,7 +106,7 @@ function Service.readTick()
                 if token.world~=currentWorld() or not Ledger.view(token.actor,token.id) then
                     browsers[token]=nil notify(token,browsers,{rows={},categories={},reason="WORLD_RESET",loading=false,page=1,pages=1})
                 else
-                    local q=token.query local result=catalog.query(q.search,q.category,q.unsupported,q.page,q.size)
+                    local q=token.query local result=catalog.query(q.search,q.category,q.unsupported,q.page,q.size,q.productType)
                     local key=result.revision..":"..result.page
                     if token.key~=key then token.key=key notify(token,browsers,result) end
                 end

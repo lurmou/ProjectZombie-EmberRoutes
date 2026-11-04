@@ -85,10 +85,11 @@ PageRegistry.groups = {
     {id='settlement',titleKey='group_settlement',defaultTab='activities'},
     {id='warehouse',titleKey='tab_warehouse',defaultTab='warehouse'},
     {id='personnel',titleKey='tab_personnel',defaultTab='personnel'},
-    {id='work',titleKey='group_work',defaultTab='demands'}
+    {id='work',titleKey='group_work',defaultTab='crafting'}
 }
 
 function PageRegistry.getGroup(id)
+    for _,group in ipairs(PageRegistry.groups) do if group.id==id then return id end end
     local def=PageRegistry.get(id)
     if def and def.parentTab then return PageRegistry.getGroup(def.parentTab) end
     return def and def.group
@@ -106,7 +107,11 @@ end
 function PageRegistry.validateContext(context)
     if context==nil then return true end
     if type(context)~='table' then return false end
-    local allowed={npcId=true,orderId=true,problemId=true,itemId=true,zoneId=true}
+    if context.returnTab=='warehouse' and type(context.filterProduct)=='string' and context.filterProduct~='' then
+        for key in pairs(context) do if key~='returnTab' and key~='filterProduct' then return false end end
+        return true
+    end
+    local allowed={npcId=true,orderId=true,problemId=true,itemId=true,zoneId=true,category=true,view=true}
     local count=0
     for key,value in pairs(context) do
         if not allowed[key] or (type(value)~='string' and type(value)~='number') or value=='' then return false end
@@ -116,8 +121,6 @@ function PageRegistry.validateContext(context)
 end
 
 -- Default built-in Page Registrations:
-PageRegistry.register({id='demands',group='work',module='DemandPage',isTab=true,titleKey='tab_demands',
-    tooltipKey='tabNavigation',order=15})
 PageRegistry.register({
     id = "warehouse",
     group = "warehouse",
@@ -127,17 +130,6 @@ PageRegistry.register({
     tooltipKey = "tabNavigation",
     order = 10,
     footerText = function() return getText("IGUI_EmberRoutesProbe_Monitor_warehouseFooter") end
-})
-
-PageRegistry.register({
-    id = "orders",
-    group = "work",
-    module = "OrderMonitorPage",
-    isTab = true,
-    titleKey = "tab_orders",
-    tooltipKey = "tabNavigation",
-    order = 20,
-    footerText = nil -- Orders page self-updates its own footer
 })
 
 PageRegistry.register({
@@ -153,8 +145,9 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "policies",
-    group = "work",
+    group = "settlement",
     module = "WorkPolicyPage",
+    parentTab = "settlement",
     isTab = true,
     titleKey = "tab_policies",
     tooltipKey = "tabNavigation",
@@ -186,10 +179,11 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "logistics",
-    group = "work",
+    group = "personnel",
     module = "LogisticsPage",
-    isTab = false, -- Sub-view / child of orders
-    parentTab = "orders",
+    parentTab = "personnel",
+    titleKey = "tab_logistics",
+    isTab = true,
     order = 50,
     footerText = function() return getText("IGUI_EmberRoutesProbe_Monitor_compatFooter") end
 })
@@ -198,8 +192,9 @@ PageRegistry.register({
     id = "crafting",
     group = "work",
     module = "CraftingPage",
-    isTab = false, -- Sub-view / child of orders
-    parentTab = "orders",
+    parentTab = "work",
+    titleKey = "tab_crafting",
+    isTab = true,
     order = 60,
     footerText = function() return getText("IGUI_EmberRoutesProbe_Monitor_compatFooter") end
 })

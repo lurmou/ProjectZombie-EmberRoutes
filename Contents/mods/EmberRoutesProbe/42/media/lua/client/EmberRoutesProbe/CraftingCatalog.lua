@@ -72,7 +72,12 @@ function Catalog.step()
             local category=native:getCategory() or "Other"
             local cooking=require('EmberRoutesProbe/CookingOrders').describe(id,native)
             if cooking then spec=cooking reason=nil end
-            local row={id=id,name=native:getTranslationName(),category=category,
+            local outputTypes={}
+            if facts then for _,output in ipairs(facts.outputs) do
+                if output.resource=='Item' then for _,kind in ipairs(output.choices) do outputTypes[kind]=true end end
+            end end
+            if spec and spec.product then outputTypes[spec.product]=true end
+            local row={outputTypes=outputTypes,id=id,name=native:getTranslationName(),category=category,
                 supported=spec~=nil,reason=reason,surface=spec and spec.surface or false,
                 product=spec and spec.product,yield=spec and spec.yield or 0,cooking=cooking~=nil}
             local searchParts={row.name,id,category,getTextOrNull("IGUI_CraftCategory_"..category) or category}
@@ -101,16 +106,16 @@ end
 function Catalog.recipeIndex()
     ensure() return factsById,factsByType,done
 end
-function Catalog.query(search,category,unsupported,page,size)
+function Catalog.query(search,category,unsupported,page,size,productType)
     ensure() size=math.max(1,math.min(size or 12,24))
     local result,categories,total={},{},0
     search=string.lower(string.sub(search or "",1,160)) page=math.max(1,page or 1)
-    local key=search.."\n"..tostring(category).."\n"..tostring(unsupported)
+    local key=search.."\n"..tostring(category).."\n"..tostring(unsupported).."\n"..tostring(productType)
     if not queryState or queryState.key~=key then queryState={key=key,matches={},position=0} end
     local matches=queryState.matches
     for i=queryState.position+1,math.min(#rows,queryState.position+128) do
         local row=rows[i]
-        if row.supported or unsupported then
+        if (row.supported or unsupported) and (not productType or row.product==productType or row.outputTypes and row.outputTypes[productType]) then
             if (not category or row.category==category) and string.find(row.search,search,1,true) then matches[#matches+1]=row end
         end
         queryState.position=i
@@ -121,7 +126,9 @@ function Catalog.query(search,category,unsupported,page,size)
     table.sort(categories) total=#matches
     local pages=math.max(1,math.ceil(total/size)) page=math.min(page,pages)
     for i=(page-1)*size+1,math.min(total,page*size) do
-        local copy={} for k,v in pairs(matches[i]) do copy[k]=v end result[#result+1]=copy
+        local copy={} for k,v in pairs(matches[i]) do
+            if k=='outputTypes' then local types={} for kind,value in pairs(v) do types[kind]=value end copy[k]=types else copy[k]=v end
+        end result[#result+1]=copy
     end
     return {rows=result,categories=categories,total=total,page=page,pages=pages,revision=revision..":"..queryState.position,
         loading=not done or queryState.position<#rows}
