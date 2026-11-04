@@ -162,3 +162,7 @@ UI 的 `update()` 方法和 Record 的纯构造函数不是 TaskJobs 写入，�
 没有发现仍需猜测才能分类的 Job 写；**全部 kernel 外提交都仍开放，未迁移**。这不等于最终边界审计通过。
 
 本轮只改文档，最终树重跑相同扫描，生产源码相同，调用清单无差异。后续改代码必须重新执行全局边界审计；本次 Phase 0 不能替代迁移后的 Phase 12。
+
+## 2026-11-04 HAUL 单域分类更新
+
+本节仅覆盖 HAUL，原表为 Phase 0 基线，不改写其他域事实。HaulJobs 原160/162行直接 JobStore.update 已删除；当前 prepareRecovery 在 Store.data 发布/既有 pendingHaul 顺序 drain 后，经 Store.mutateJob 提交 STOPPING/SUSPENDED 或既有 UNKNOWN 恢复事实。显式 HaulJobs.cancel 经 Store.cancelJob，finish 仍为 DONE。claimHaulJob 同事实运行时 fence、validHaulJob 只读、reset/adopt 派生缓存、相同终态 draft no-op 均非新提交；HaulJobRecovery 成功索引重建非提交，冲突意图仍由 Phase 1 队列过 kernel。没有未分类的 HAUL 直接 JobStore 提交保留。详见[HAUL walkthrough 与宿主 parity](dec003-haul-migration.md)；真实 Java/实机未验证，其他六域 OPEN。

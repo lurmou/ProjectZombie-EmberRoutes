@@ -43,34 +43,63 @@ local function nextState(from,target)
     if target=='RUNNING' and from=='SUSPENDED' then return 'PREPARING' end
     return target
 end
+-- HAUL entry policy: the command must describe the same reservation as the
+-- draft. Kernel owns execution; this domain check adds no Java business rule.
+local function validCapacity(r,capacity,token)
+    if capacity==nil then return true end
+    local expected,key={},token and token.capacityKey
+    if capacity~=false and type(capacity)~='table' then return false end
+    if capacity~=false then
+        if capacity.releaseItemId then
+            local claims=Store.claimsInstance()
+            local bucket=key and claims.capacity[key]
+            local prior=bucket and bucket.entries[r.id]
+            for id,amount in pairs(prior and prior.items or {}) do
+                if id~=capacity.releaseItemId then expected[id]=amount end
+            end
+        else expected=capacity.items key=capacity.key end
+    end
+    if type(expected)~='table' then return false end
+    local reservation=r.reservation local any=false
+    for id,amount in pairs(expected) do
+        any=true
+        if not reservation or reservation.key~=key or not reservation.items or reservation.items[id]~=amount then return false end
+    end
+    if reservation then
+        if not any then return false end
+        for id,amount in pairs(reservation.items or {}) do if expected[id]~=amount then return false end end
+    end
+    return true
+end
 function M.commit(r,capacity)
     local e=entry(r)
     if not e or e.failed then return false,'HAUL_DRAFT_STALE' end
     if e.job.state=='DONE' or e.job.state=='CANCELLED' then return r.state==e.job.payload.state and r.generation==e.job.payload.generation,'JOB_TERMINAL' end
     local live=Jobs.current():peek(r.id)
-    if not live or live.revision~=e.job.revision then e.failed=true return false,'HAUL_JOB_CHANGED' end
+    if not live or live.revision~=e.job.revision then e.failed=true return false,'STALE_REVISION' end
     r.sequence=r.generation r.claims=Record.activeClaims(r)
     if r.reservation and r.reservation.format==2 then
 	local any=false for _ in pairs(r.reservation.items) do any=true break end
 	if not any then r.reservation=nil end
     end
+    if not validCapacity(r,capacity,Store.getToken(r.id)) then return false,'INVALID_REQUEST','CAPACITY_PAYLOAD_MISMATCH' end
     local target,effects,cleared=desired(r)
     -- Keep each legal public transition and its notification, but reuse the
     -- same execution draft; intermediate envelopes are read-only references.
     for _=1,3 do
 	local state=nextState(e.job.state,target)
 	local token=Store.getToken(r.id)
-	if not token then e.failed=true return false,'HAUL_TOKEN_MISSING' end
+	if not token then e.failed=true return false,'CLAIM_FAILURE','HAUL_TOKEN_MISSING' end
 	local have,want,add,remove={},{},{},{}
 	for _,key in ipairs(token.resources) do have[key]=true end
 	for _,key in ipairs(r.claims) do want[key]=true if not have[key] then add[#add+1]=key end end
 	for _,key in ipairs(token.resources) do if not want[key] then remove[#remove+1]=key end end
-	local ok,why=Store.mutateJob(r.id,e.job.revision,r,{addKeys=add,removeKeys=remove,capacity=capacity,
+	local ok,why,evidence=Store.mutateJob(r.id,e.job.revision,r,{addKeys=add,removeKeys=remove,capacity=capacity,
 	    state=state,effects=effects,obligations=cleared and {} or {business=true}})
 	if not ok then
 	    local current=Jobs.current():peek(r.id)
 	    e.failed=not current or current.revision~=e.job.revision
-	    return false,why
+	    return false,why,evidence
 	end
 	capacity=nil e.job=Jobs.current():peek(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'HAUL_POST_COMMIT_CHANGED' end
@@ -146,23 +175,54 @@ function M.finish(r)
     r.reservation=nil r.state='DONE' r.generation=r.generation+1
     return M.commit(r,false)
 end
+-- Cancellation is a terminal kernel intent, distinct from normal DONE.
+-- Body/order cancellation may pause with originals retained; it cannot call
+-- this boundary until the same asset-free evidence as finish is available.
+function M.cancel(r)
+    local e=entry(r)
+    if not e or e.failed then return false,'HAUL_DRAFT_STALE' end
+    if r.controlUncertain or r.activeAttempt or #Manifest.claimItemIds(r)>0 then return false,'HAUL_OBLIGATION_RETAINED' end
+    local before=r.reservation
+    r.sequence=r.generation r.claims=Record.activeClaims(r) r.reservation=nil
+    local token=Store.getToken(r.id) local remove={}
+    for _,key in ipairs(token and token.resources or {}) do remove[#remove+1]=key end
+    local mutation={removeKeys=remove,effects='KNOWN',obligations={}}
+    if token then mutation.capacity=false end
+    local ok,why,evidence=Store.cancelJob(r.id,e.job.revision,r,mutation)
+    if ok then e.job=Jobs.current():peek(r.id) else
+        r.reservation=before
+        local live=Jobs.current():peek(r.id) e.failed=not live or live.revision~=e.job.revision
+    end
+    return ok,why,evidence
+end
 function M.prepareRecovery()
-    local root=currentWorld() if recovered==root then return end
+    -- Forces publication and the existing ordered cold-recovery drain first.
+    Store.data()
+    local root=currentWorld() if recovered==root then return true end
     local jobs=Jobs.current()
     for id,j in pairs(root.taskJobs.byId) do
-	if j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY'
-	    and j.state~='DONE' and j.state~='CANCELLED' then
-	    local saved=jobs:get(id) local p=saved.payload local unknown=saved.effects=='UNKNOWN' or p.controlUncertain or p.activeAttempt~=nil
-	    p.state='PAUSED' p.reason='LOAD_RECOVERY' p.generation=p.generation+1 p.sequence=p.generation
-	    if unknown then p.controlUncertain=true end
-	    local state=unknown and 'RECONCILE_REQUIRED' or 'SUSPENDED'
-	    if saved.state=='RUNNING' and state=='SUSPENDED' then
-		assert(jobs:update(id,saved.revision,{payload=p,state='STOPPING'}),'HAUL_RECOVERY_STOP_FAILED') saved=jobs:get(id)
-	    end
-	    assert(jobs:update(id,saved.revision,{payload=p,state=state,effects=unknown and 'UNKNOWN' or 'KNOWN'}),'HAUL_RECOVERY_FAILED')
-	end
+        if j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY'
+            and j.state~='DONE' and j.state~='CANCELLED' then
+            local saved=jobs:get(id) local p=saved.payload
+            local unknown=saved.effects=='UNKNOWN' or p.controlUncertain or p.activeAttempt~=nil
+            p.state='PAUSED' p.reason='LOAD_RECOVERY' p.generation=p.generation+1 p.sequence=p.generation
+            if unknown then p.controlUncertain=true end
+            local state=unknown and 'RECONCILE_REQUIRED' or 'SUSPENDED'
+            -- Same-fact recovery changes no resource set or capacity. A failed
+            -- reconstruction may have no token; the Phase 1 kernel explicitly
+            -- permits this payload-only commit, retaining persistent claims.
+            if saved.state=='RUNNING' and state=='SUSPENDED' then
+                local ok,why,evidence=Store.mutateJob(id,saved.revision,p,{state='STOPPING'})
+                if not ok then return false,why,evidence end
+                saved=jobs:get(id)
+            end
+            local ok,why,evidence=Store.mutateJob(id,saved.revision,p,
+                {state=state,effects=unknown and 'UNKNOWN' or 'KNOWN'})
+            if not ok then return false,why,evidence end
+        end
     end
     entries,byNpc={},{} recovered=root
+    return true
 end
 function M.reset() entries,byNpc={},{} end
 return M
