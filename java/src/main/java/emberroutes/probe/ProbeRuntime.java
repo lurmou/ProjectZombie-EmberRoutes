@@ -138,9 +138,6 @@ public final class ProbeRuntime {
     public static se.krka.kahlua.vm.KahluaTable lumberjackScanTrees(zombie.iso.IsoChunk chunk, int maxCount) {
         return CleaningFastScan.scanChunkTrees(chunk, maxCount);
     }
-    public static boolean lumberjackSquareHasTree(zombie.iso.IsoGridSquare square) {
-        return CleaningFastScan.squareHasTree(square);
-    }
     public static String recipeKey(zombie.scripting.entity.components.crafting.CraftRecipe recipe) {
         if (recipe == null || recipe.getModule() == null) return "";
         String name=recipe.getName(), module=recipe.getModule().getName();
@@ -155,7 +152,7 @@ public final class ProbeRuntime {
         }
         return false;
     }
-    public static void log(String text) { System.out.println(BuildInfo.PREFIX+" "+text); }
+    static void log(String text) { System.out.println(BuildInfo.PREFIX+" "+text); }
     private static CarrierRuntime current() {
         if (selected==null) { selected=new CarrierRuntime("legacy"); slots.put("legacy",selected); catalogue.add(selected); }
         return selected;

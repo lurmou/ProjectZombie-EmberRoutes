@@ -50,6 +50,9 @@ Write-Output "$prefix Compiling against pinned local game dependencies"
 & $javacCommand '-J-Duser.language=en' '--release' '17' '-encoding' 'UTF-8' '-cp' $classpath '-d' $classes @sources 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'javac.txt')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Java build failed" }
+& $javaCommand '-ea' '-cp' "$classes;$GameRoot/*" (Join-Path $projectRoot 'tests/java/emberroutes/probe/ProbeBridgeSurfaceTest.java') 2>&1 |
+    Tee-Object -FilePath (Join-Path $logsRoot 'bridge-surface-tests.txt')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Lua bridge surface contract failed" }
 $testSources = @(Get-ChildItem (Join-Path $projectRoot 'java/src/test/java') -Recurse -Filter '*.java' | ForEach-Object FullName)
 & $javacCommand '-J-Duser.language=en' '--release' '17' '-encoding' 'UTF-8' '-cp' $classes '-d' $tests @testSources 2>&1 |
     Tee-Object -FilePath (Join-Path $logsRoot 'test-compile.txt')

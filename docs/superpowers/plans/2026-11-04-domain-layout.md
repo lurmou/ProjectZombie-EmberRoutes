@@ -44,8 +44,8 @@ Files：设计列出的 10 个 Lua 及全部真实引用方、相关测试。
 
 Files：ProbeRuntime.java、tests/java/emberroutes/probe/ProbeBridgeSurfaceTest.java、tools/build-probe.ps1。
 
-- [ ] 增加 metadata 白名单反射测试，先观察两个不应暴露的方法导致失败。
-- [ ] log 改包可见，删除无引用 lumberjackSquareHasTree 桥转发。
-- [ ] 将反射检查加入既有构建流程，重建 0.29.38 并核对包路径及 94 个正式入口。
-- [ ] 一次集中历史回归与 preflight，按风险记录基线失败；文档链接与翻译/版本一致性检查。
-- [ ] 更新 BACKLOG/证据，提交并普通推送 phase-3a-consolidation，保留其他会话改动。
+- [x] 增加 metadata 白名单反射测试，先观察两个不应暴露的方法导致失败。
+- [x] log 改包可见，删除无引用 lumberjackSquareHasTree 桥转发。
+- [x] 将反射检查加入既有构建流程，重建 0.29.38 并核对包路径及 94 个正式入口。
+- [x] 一次集中历史回归与 preflight，按风险记录基线失败；文档链接与翻译/版本一致性检查。
+- [x] 更新 BACKLOG/证据，提交并普通推送 phase-3a-consolidation，保留其他会话改动；推送结果以 Git 远端回执核对。
