@@ -293,17 +293,22 @@ local function seekSit(env,preview,nearby)
     local facility=Facilities.watch(env.entry,Facilities.describe)
     local location=math.floor(env.point.x)..':'..math.floor(env.point.y)..':'..env.point.z
     local stamp=tostring(facility.version)..':'..tostring(env.offer.seatEpoch or 0)..':'..location
-    if env.state.stamp~=stamp and not env.state.iter then env.state.retryAt=nil env.state.stamp=stamp end
+    if env.state.stamp~=stamp and not env.state.iter then
+        env.state.retryAt=nil env.state.stamp=stamp
+        if nearby then env.state.offset=1 end
+    end
     if env.now<(env.state.retryAt or 0) then return nil,true end
     env.offer.blocked=env.offer.blocked or {}
     env.state.blocked=env.offer.blocked
     if not env.state.iter then
         env.state.iter=require('EmberRoutesProbe/ReposeSites').new(env.actor,env.npc,env.id,'REST',env.state.blocked,
             {seatingOnly=true,excludeBeds=true,preferredPoint=env.memory and env.memory.seatPreference,
-                indexedOnly=nearby,maxDistance=nearby and 4 or nil,sameFloor=nearby})
+                indexedOnly=nearby,maxDistance=nearby and 4 or nil,sameFloor=nearby,
+                offset=nearby and env.state.offset or nil})
     end
     local slice=math.min(8,env.budget.scan)
-    local found,done,reason=env.state.iter:step(slice)
+    local found,done,reason,nextOffset=env.state.iter:step(slice)
+    if nearby then env.state.offset=nextOffset or 1 end
     env.budget.scan=env.budget.scan-slice
     if not done then return nil,false,reason end
     env.state.iter=nil
@@ -605,9 +610,16 @@ function Service.candidate(actor,binding,sample,budget,memory)
     if Policy.allowed('FITNESS',s,{hold=true}) and npc:getCurrentState()==IdleState.instance() then
         candidates[#candidates+1]={activity='FITNESS',weight=Policy.weight('FITNESS',s,Config.weights.FITNESS)}
     end
+    local strollOffsets={{2,0},{0,2},{-2,0},{0,-2}}
+    local strollChecked={}
+    local function strollPoint(index)
+        local v=strollOffsets[index]
+        return {x=math.floor(point.x)+v[1]+0.5,y=math.floor(point.y)+v[2]+0.5,z=point.z}
+    end
     if Policy.allowed('STROLL',s,{hold=true}) and budget.scan>0 then
-        local offset=ZombRand(4) local offsets={{2,0},{0,2},{-2,0},{0,-2}}
-        local v=offsets[offset+1] local p={x=math.floor(point.x)+v[1]+0.5,y=math.floor(point.y)+v[2]+0.5,z=point.z}
+        local index=ZombRand(4)+1
+        strollChecked[index]=true
+        local p=strollPoint(index)
         budget.scan=budget.scan-1
         if standable(entry,p,{npc}) then candidates[#candidates+1]={activity='STROLL',point=p,weight=Config.weights.STROLL} end
     end
@@ -686,6 +698,23 @@ function Service.candidate(actor,binding,sample,budget,memory)
         nearby.state.iter=nil
         if c and (candidateRule(entry,point,c,id) or 0)==0 then c=nil end
         if c then c.leisure.moving=true c.targetKey=c.site.key end
+    end
+    -- Fallback-only fresh cardinal points; the normal random point is never
+    -- checked twice in one decision. All ordinary STROLL admission gates apply.
+    if not c and not gathering and Policy.allowed('STROLL',s,{hold=true})
+        and hours>=(env.cooling.STROLL or 0) and hours>=(memory and memory.moveAfter or 0) then
+        for index=1,4 do
+            if not strollChecked[index] then
+                strollChecked[index]=true
+                local p=strollPoint(index)
+                local key='STROLL:'..math.floor(p.x)..':'..math.floor(p.y)..':'..p.z
+                if (zoneRule(entry,p,'STROLL',id) or 0)>0
+                    and (offer.blocked[key] or 0)<=now and standable(entry,p,{npc}) then
+                    c={activity='STROLL',point=p,moving=true,targetKey=key}
+                    break
+                end
+            end
+        end
     end
     if not c then
         Social.withdraw(id)

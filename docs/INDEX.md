@@ -74,3 +74,5 @@ Java优先搬运/配送：[实施计划](superpowers/plans/2026-11-02-java-haul-
 - doclink检查引用是否有效，不能证明内容一致或不存在遗漏；续接仍须核查源码与相关证据。
 
 DEC-003 当前 kernel core 契约与定向验证：[Phase 1（修订范围）](reviews/2026-11-04/dec003-phase1-contract.md)；无领域迁移，Java/实机验证仍未运行。
+
+R1/R2 IDLE 回退与轮转座位窗口：[实施、门禁与验证证据](reviews/2026-11-04/r1r2-segment.md)。

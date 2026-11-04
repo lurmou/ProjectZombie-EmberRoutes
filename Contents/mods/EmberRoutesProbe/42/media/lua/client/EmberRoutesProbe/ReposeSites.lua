@@ -230,7 +230,7 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
     local entry=M.entry(npcId)
     local entryRevision=entry and entry.revision
     local member=M.view(npcId) local revision=member and member.revision
-    local index,best=1,nil
+    local index,best=options and options.indexedOnly and options.offset or 1,nil
     local self={}
     function self:step(budget)
         if not entry or not M.check(npcId,'SELF_CARE',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=entry.id},revision).sharedResources then
@@ -244,6 +244,13 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
         -- Idle fallback inspects cached records only; discovery is still owned
         -- by the shared facility index and ordinary searches.
         local used=options and options.indexedOnly and 0 or Facilities.advance(row,math.floor(budget/2))
+        if options and options.indexedOnly then
+            -- A one-pass window owns no iterator beyond this call. False slots
+            -- count as records; wrap only between passes, never rescan a slot.
+            local count=#row.slots
+            index=count>0 and ((index-1)%count+1) or 1
+            budget=math.min(budget,count-index+1)
+        end
         for _=used+1,budget do
             local record=row.slots[index] index=index+1
             if record==nil then
@@ -302,7 +309,9 @@ function Sites.new(actor,npc,npcId,kind,blocked,options)
                 else Facilities.invalidate(record.x,record.y) end
             end
         end
-        if options and options.indexedOnly then return best,true,'SITE_UNAVAILABLE' end
+        if options and options.indexedOnly then
+            return best,true,'SITE_UNAVAILABLE',index>#row.slots and 1 or index
+        end
         -- Remaining indexed candidates still need a bounded comparison even
         -- when an unrelated chunk is unloaded or observation-limited.
         return nil,false,'SITE_OBSERVING'

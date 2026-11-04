@@ -4,6 +4,8 @@
 
 ## NPC 架构执行记录
 
+2026-11-04 R1/R2：仅普通 IDLE 无候选回退改为 SIT→fresh-point STROLL→OBSERVE；四个既有2格方向各至多一次，保留全部门禁与原执行。ambientSit 数值游标每次实际尝试最多8条，stamp变化重置，60秒重试不被 STROLL/OBSERVE 绕过；普通 SIT iterator 不变。新增定向69+家具26、idle-sit 52+26、p35-sit/social、seated-social 138+26及三份Lua语法/diff检查通过。实机移动/坐姿/寻路、mid-STROLL/mid-sit磁盘重载、性能/社交频率 UNVERIFIED。无实现blocker，不提交/推送，不扩展任何领域迁移。见[分段证据](reviews/2026-11-04/r1r2-segment.md)。
+
 2026-11-04 idle-sit：普通 IDLE 无候选回退先经现有 SIT proof/claims/执行路径尝试同层4格内座位；独立8条缓存记录预算，不推进设施扫描，耗尽即原 ambient OBSERVE。正常 SIT 不带 ambient，沿用冷却/偏好/移动间隔/释放；暂停、cut-2/cut-3及活动路径不变。定向52项加家具夹具26项、变更Lua语法与diff检查通过；实机动画/寻路/mid-sit磁盘重载/性能/社交频率未验证。当时社交仍仅IDLE OBSERVE；本轮一坐一站扩展见下方 seated-social 记录。无实施阻塞，未提交/推送。见[分段证据与预算限制](reviews/2026-11-04/idle-sit-segment.md)。
 
 2026-11-04 seated-social：原 SIT Job/Session 内推进一坐一站对话，不申请第二身体授权、不停启 SIT；站姿沿原 SOCIAL 执行。原配对协议与概率/时序保留，座位声明对话期间不变；未到期继续同 SIT，到期或需求/工作中断沿正常退出释放。坐姿复用台词/效果，因原生兼容性未验证，不调用站姿转向/手势。新增定向138项（含actor断言）加家具26项、原社交/SIT/idle-sit定向回归、6份Lua语法及diff检查通过。动画/原生寻路/真实mid-converse磁盘重载/社交频率/性能均UNVERIFIED；无实施blocker，未提交/推送。下一步为父级核验diff与实机边界，不开启其他领域迁移。见[授权调查与分段证据](reviews/2026-11-04/seated-social-segment.md)。
