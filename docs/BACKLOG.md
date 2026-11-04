@@ -4,7 +4,9 @@
 
 ## NPC 架构执行记录
 
-2026-11-04 idle-sit：普通 IDLE 无候选回退先经现有 SIT proof/claims/执行路径尝试同层4格内座位；独立8条缓存记录预算，不推进设施扫描，耗尽即原 ambient OBSERVE。正常 SIT 不带 ambient，沿用冷却/偏好/移动间隔/释放；暂停、cut-2/cut-3及活动路径不变。定向52项加家具夹具26项、变更Lua语法与diff检查通过；实机动画/寻路/mid-sit磁盘重载/性能/社交频率未验证。社交仍仅IDLE OBSERVE，SIT不满足available，可能降低配对人数与频率，不扩大范围。无实施阻塞，未提交/推送。见[分段证据与预算限制](reviews/2026-11-04/idle-sit-segment.md)。
+2026-11-04 idle-sit：普通 IDLE 无候选回退先经现有 SIT proof/claims/执行路径尝试同层4格内座位；独立8条缓存记录预算，不推进设施扫描，耗尽即原 ambient OBSERVE。正常 SIT 不带 ambient，沿用冷却/偏好/移动间隔/释放；暂停、cut-2/cut-3及活动路径不变。定向52项加家具夹具26项、变更Lua语法与diff检查通过；实机动画/寻路/mid-sit磁盘重载/性能/社交频率未验证。当时社交仍仅IDLE OBSERVE；本轮一坐一站扩展见下方 seated-social 记录。无实施阻塞，未提交/推送。见[分段证据与预算限制](reviews/2026-11-04/idle-sit-segment.md)。
+
+2026-11-04 seated-social：原 SIT Job/Session 内推进一坐一站对话，不申请第二身体授权、不停启 SIT；站姿沿原 SOCIAL 执行。原配对协议与概率/时序保留，座位声明对话期间不变；未到期继续同 SIT，到期或需求/工作中断沿正常退出释放。坐姿复用台词/效果，因原生兼容性未验证，不调用站姿转向/手势。新增定向138项（含actor断言）加家具26项、原社交/SIT/idle-sit定向回归、6份Lua语法及diff检查通过。动画/原生寻路/真实mid-converse磁盘重载/社交频率/性能均UNVERIFIED；无实施blocker，未提交/推送。下一步为父级核验diff与实机边界，不开启其他领域迁移。见[授权调查与分段证据](reviews/2026-11-04/seated-social-segment.md)。
 
 2026-11-02 公共框架Java计算：0.29.26在0.29.25仲裁/失效索引/名册窗口基础上，增加至少4个既有资源的容量提交粗粒度Java入口；同一Claims表、原Lua JobStore提交、领域校验/恢复和小型提交保留。30件宿主复测约6913→5251ms/万次，1件反向，故设有界后端选择；通用JobUpdate/逐项Claims桥及此前目录试验均因成本不利撤回，不宣称全部框架Java化或游戏帧收益。容量失败/回滚/提交后隔离/终态与嵌套通知定向验证，Runtime/Controller尚未迁。只做必要检查，见[提交内核证据](reviews/2026-11-02/java-labor-commit-kernel.md)及[派工证据](reviews/2026-11-02/java-dispatch-kernel.md)。
 

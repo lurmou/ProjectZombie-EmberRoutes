@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+NPC seated-social：[一坐一站实现、身体授权调查与验证](reviews/2026-11-04/seated-social-segment.md)；保持原 SIT Job/Session，实机未验证。
+
 NPC idle-sit：[实现、独立预算与社交取舍](reviews/2026-11-04/idle-sit-segment.md)，当前状态见 BACKLOG；实机未验证。
 
 DEC-003 单一 Java 提交内核：[Phase 0 入口盘点](reviews/2026-11-04/dec003-entry-inventory.md)、[本轮执行与明确开放项](reviews/2026-11-04/dec003-execution.md)。尚未切换生产路径，不是实施完成或 parity 证明；当前状态见 BACKLOG。

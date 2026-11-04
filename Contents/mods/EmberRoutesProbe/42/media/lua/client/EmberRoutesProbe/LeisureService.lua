@@ -148,7 +148,7 @@ local function seekSocial(env)
     local rule=zoneRule(env.entry,env.point,'SOCIAL',env.id)
     if not rule or rule==0 then Social.withdraw(env.id) return nil,true end
     if env.hours>=(env.cooling.SOCIAL or 0) then
-        Social.advertise(env.id,env.entry,env.point,env.now)
+        Social.advertise(env.id,env.entry,env.point,env.now,env.actor)
     end
     local key=Social.pending(env.id)
     local time=getGameTime():getTimeOfDay()
@@ -160,10 +160,25 @@ local function seekSocial(env)
         -- One outcome per eligible partner in each existing discovery round.
         local round=math.floor(env.now/1500)
         if env.state.round~=round then env.state.round=round env.state.rolls={} end
-        key=Social.invite(env.id,env.entry,env.now,function(a,b,aid,bid)
+        key=Social.invite(env.id,env.entry,env.now,function(a,b,aid,bid,seatedA,seatedB)
             local partner=require('EmberRoutesProbe/Driver').bindId(env.actor,bid)
             if not partner then return end
             local allowed={env.npc,partner.handle}
+            if seatedA or seatedB then
+                local seat=seatedA or seatedB
+                local seatedId,standingId=seatedA and aid or bid,seatedA and bid or aid
+                if (zoneRule(env.entry,seat,'SOCIAL',seatedId) or 0)==0 then return end
+                for _,offset in ipairs({{1,0},{0,1},{-1,0},{0,-1}}) do
+                    if env.budget.scan<1 then return end env.budget.scan=env.budget.scan-1
+                    local p={x=seat.x+offset[1],y=seat.y+offset[2],z=seat.z}
+                    local square=standable(env.entry,p,allowed)
+                    local seatSquare=getCell():getGridSquare(math.floor(seat.x),math.floor(seat.y),seat.z)
+                    if square and seatSquare and square:canReachTo(seatSquare) and (zoneRule(env.entry,p,'SOCIAL',standingId) or 0)>0 then
+                        if seatedA then return seat,p else return p,seat end
+                    end
+                end
+                return
+            end
             local target={x=math.floor(b.x)+0.5,y=math.floor(b.y)+0.5,z=b.z}
             for _,offset in ipairs({{1,0},{0,1},{-1,0},{0,-1}}) do
                 local p={x=target.x+offset[1],y=target.y+offset[2],z=target.z}
@@ -192,6 +207,33 @@ local function seekSocial(env)
     end
     return nil,true
 end
+function Service.seatedSocialAllowed(c)
+    local entry=require('EmberRoutesProbe/MembershipService').entry(c.job.npcId,c.payload.settlementId)
+    local s=Service.sample(c.npc,c.sample())
+    return c.valid() and Service.valid(c.actor,c.npc,c.job.npcId,c.payload)
+        and Policy.allowed('SOCIAL',s,{hold=true}) and entry
+        and (zoneRule(entry,{x=c.npc:getX(),y=c.npc:getY(),z=math.floor(c.npc:getZ())},'SOCIAL',c.job.npcId) or 0)>0
+end
+-- Called only by the active SIT leaf, with its existing proof and body retained.
+function Service.seatedSocial(c)
+    load()
+    local id=c.job.npcId local offer=offers[id]
+    if not offer or offer.state~='IDLE' or not offer.untilTime or offer.untilTime<getTimestampMs()
+        or not c.valid() then Social.withdraw(id) return end
+    local seat=Social.seated(id,c.actor)
+    if not seat then Social.withdraw(id) return end
+    local s=Service.sample(c.npc,c.sample())
+    if not Policy.allowed('SOCIAL',s,{hold=true}) then Social.withdraw(id) return end
+    local memory=c.payload.leisureMemory or {cooldowns={}}
+    if getGameTime():getWorldAgeHours()<(memory.decisionAfter or 0) then Social.withdraw(id) return end
+    offer.stateData=offer.stateData or {}
+    offer.stateData.SOCIAL=offer.stateData.SOCIAL or {}
+    local candidate=seekSocial({actor=c.actor,npc=c.npc,id=id,entry=offer.entry,point=seat,
+        hours=getGameTime():getWorldAgeHours(),now=getTimestampMs(),cooling=memory.cooldowns or {},
+        budget=c.budget,state=offer.stateData.SOCIAL})
+    return candidate and candidate.leisure.socialId
+end
+
 
 local function seekReading(env)
     if env.resume and env.budget.scan<1 then return nil,false end
@@ -343,7 +385,7 @@ function Service.review(c,elapsed)
         end
     end
     local socialKey=Social.peekPending and Social.peekPending(id)
-    if socialKey then candidates[#candidates+1]={activity='SOCIAL',moving=true} end
+    if socialKey and kind~='SIT' then candidates[#candidates+1]={activity='SOCIAL',moving=true} end
     if c.budget then
         c.budget.scan=c.budget.scan-(available-budget.scan)
         c.budget.containers=(c.budget.containers or 0)-(availableContainers-budget.containers)

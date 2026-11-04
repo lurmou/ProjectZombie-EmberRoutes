@@ -29,6 +29,12 @@ function R.valid(p)
             or l.point.z~=math.floor(l.point.z) then return false end
     end
     if l.activity=='SOCIAL' and (type(l.socialId)~='string' or #l.socialId<1 or #l.socialId>256) then return false end
+    if l.seatedSocial~=nil then
+        local social=l.seatedSocial
+        if l.activity~='SIT' or type(social)~='table' or type(social.socialId)~='string'
+            or #social.socialId<1 or #social.socialId>256
+            or social.applied~=nil and type(social.applied)~='boolean' then return false end
+    end
     if l.repetitions~=nil and (not finite(l.repetitions) or l.repetitions<0 or l.repetitions~=math.floor(l.repetitions)) then return false end
     for _,field in ipairs({'moving','seated','brief','started','finished','applying','applied','stopped'}) do
         if l[field]~=nil and type(l[field])~='boolean' then return false end
