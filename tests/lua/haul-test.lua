@@ -71,7 +71,7 @@ EmberRoutesProbeJava.stopCarrier = function()
 end
 luautils = { getCorrectSquareForWall = function(_, s) return s end }
 AdjacentFreeTileFinder = { Find = function(s) return square(s.x - 1, s.y, s.z) end }
-local Haul = require "EmberRoutesProbe/Haul"
+local Haul = require "EmberRoutesProbe/Hauling/Haul"
 local realPrint = print
 print = function() end
 local function tick(count)

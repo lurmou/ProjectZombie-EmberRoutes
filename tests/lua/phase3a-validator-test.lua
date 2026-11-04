@@ -2,7 +2,7 @@
 -- Tests defensive structure validation, assetFree compatibility, legacy format support, and Store.validate.
 local Store = require 'EmberRoutesProbe/JobStore'
 local CraftJobRecord = require 'EmberRoutesProbe/CraftJobRecord'
-local HaulJobRecord = require 'EmberRoutesProbe/HaulJobRecord'
+local HaulJobRecord = require 'EmberRoutesProbe/Hauling/HaulJobRecord'
 local ProductionYield = require 'EmberRoutesProbe/ProductionYield'
 
 local function assertEq(actual, expected, msg)

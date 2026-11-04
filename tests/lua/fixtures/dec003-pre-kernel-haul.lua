@@ -4,8 +4,8 @@
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Store=require 'EmberRoutesProbe/LaborStore'
-local Manifest=require 'EmberRoutesProbe/HaulManifest'
-local Record=require 'EmberRoutesProbe/HaulJobRecord'
+local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
+local Record=require 'EmberRoutesProbe/Hauling/HaulJobRecord'
 local M={}
 local world,entries,byNpc,recovered=nil,{},{},nil
 local function currentWorld()

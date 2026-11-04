@@ -56,8 +56,8 @@ function M.canRetire(id,orderId)
 	if r.state=='DONE' and r.format==4 and (r.delivered~=r.produced
             or r.produced<r.target and r.reason~='TARGET_REACHED') then return false end
     elseif r.state~='DONE' then return false
-    elseif r.format==3 and (not require('EmberRoutesProbe/HaulManifest').valid(r)
-        or #require('EmberRoutesProbe/HaulManifest').claimItemIds(r)>0 or r.activeAttempt) then return false end
+    elseif r.format==3 and (not require('EmberRoutesProbe/Hauling/HaulManifest').valid(r)
+        or #require('EmberRoutesProbe/Hauling/HaulManifest').claimItemIds(r)>0 or r.activeAttempt) then return false end
     local runtime=require('EmberRoutesProbe/TaskRuntime').current()
     if not runtime or not runtime:accepting() or runtime:status(j.npcId,id) then return false end
     if world.executionSave and world.executionSave.state=='BLOCKED' then return false end

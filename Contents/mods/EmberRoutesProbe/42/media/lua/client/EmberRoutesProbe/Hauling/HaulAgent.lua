@@ -1,19 +1,19 @@
 -- Autonomous hauling adapter. The existing TaskRuntime remains the sole body owner.
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Manifest=require 'EmberRoutesProbe/HaulManifest'
+local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local View=require 'EmberRoutesProbe/InventoryView'
 local Transfer=require 'EmberRoutesProbe/WorkTransfer'
 local Producers=require 'EmberRoutesProbe/LaborProducers'
 local Driver=require 'EmberRoutesProbe/Driver'
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Routing=require 'EmberRoutesProbe/HaulRouting'
+local Routing=require 'EmberRoutesProbe/Hauling/HaulRouting'
 local Signals=require 'EmberRoutesProbe/LaborSignals'
 local Probe=require 'EmberRoutesProbe/Boot'
 local Log=require 'EmberRoutesProbe/Log'
 local Delivery=require 'EmberRoutesProbe/DeliveryTarget'
 local A={}
-local JobExecution=require 'EmberRoutesProbe/HaulJobs'
+local JobExecution=require 'EmberRoutesProbe/Hauling/HaulJobs'
 function A.new(npcId)
     local api={} local current,pending
     local function record() return Store.record(npcId) end

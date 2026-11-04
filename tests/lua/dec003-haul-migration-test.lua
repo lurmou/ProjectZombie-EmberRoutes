@@ -1,7 +1,7 @@
 -- Lua HOST parity only. Java compilation/bridge/game/performance UNVERIFIED.
 local Jobs=require 'EmberRoutesProbe/JobStore'
 local Claims=require 'EmberRoutesProbe/LaborClaims'
-local Manifest=require 'EmberRoutesProbe/HaulManifest'
+local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
 local function copy(t) if type(t)~='table' then return t end local r={} for k,v in pairs(t) do r[k]=copy(v) end return r end
@@ -22,7 +22,7 @@ local function setup(old)
     package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
     package.loaded['EmberRoutesProbe/LaborStore']=Store
     package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-    package.loaded['EmberRoutesProbe/HaulJobs']=nil
+    package.loaded['EmberRoutesProbe/Hauling/HaulJobs']=nil
     function Store.claimHaulJob(j)
         local t=assert(state.claims:acquire(j.id,j.payload.sequence,j.payload.claims,{claimId=j.claimId}))
         state.tokens[j.id]=t return t
@@ -36,7 +36,7 @@ local function setup(old)
     end
     local Haul
     if old then Haul=dofile('tests/lua/fixtures/dec003-pre-kernel-haul.lua')
-    else Haul=require 'EmberRoutesProbe/HaulJobs' end
+    else Haul=require 'EmberRoutesProbe/Hauling/HaulJobs' end
     local r={id='haul',npcId='npc',format=3,executor='ENTITY',producer='LOGISTICS',settlementId='scope',
         source='source',destination='dest',generation=0,sequence=0,state='RUNNING',items={1,2},plannedCount=2,
         routeRevision=0,attemptSequence=0,delivered=0,withdrawn=0}

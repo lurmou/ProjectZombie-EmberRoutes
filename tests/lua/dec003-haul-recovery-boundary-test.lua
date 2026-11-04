@@ -11,7 +11,7 @@ end
 root.taskJobs.byId.a=job('a',1)
 root.taskJobs.byId.b=job('b',2)
 Registry.data=function() return root end
-local Recovery=require 'EmberRoutesProbe/HaulJobRecovery'
+local Recovery=require 'EmberRoutesProbe/Hauling/HaulJobRecovery'
 local pending={}
 local Claims=require 'EmberRoutesProbe/LaborClaims'
 Recovery.restore({current=root,rebuilt=Claims.new(),hasConflict=function() return true end,

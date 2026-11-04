@@ -6,7 +6,7 @@ local Store=require 'EmberRoutesProbe/LaborStore'
 local Craft=require 'EmberRoutesProbe/CraftProbe'
 local Companion=require 'EmberRoutesProbe/Companion'
 local Actions=require 'EmberRoutesProbe/Actions'
-local Haul=require 'EmberRoutesProbe/Haul'
+local Haul=require 'EmberRoutesProbe/Hauling/Haul'
 local Log=require 'EmberRoutesProbe/Log'
 local Save={}
 local active,loaded
@@ -46,7 +46,7 @@ function Save.load()
     if Probe.resetStock then Probe.resetStock() end
     -- Normalize legacy records and rebuild every original-ID/capacity claim
     -- BEFORE the runtime may admit any observation or recovery candidate.
-    assert(require('EmberRoutesProbe/HaulJobs').prepareRecovery(), 'HAUL_RECOVERY_FAILED')
+    assert(require('EmberRoutesProbe/Hauling/HaulJobs').prepareRecovery(), 'HAUL_RECOVERY_FAILED')
     Craft.prepareRecovery()
     Store.data()
     require('EmberRoutesProbe/FieldWork').prepareRecovery()

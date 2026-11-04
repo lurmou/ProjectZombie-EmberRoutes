@@ -4,7 +4,7 @@
 -- marking, format=1 records, live-payload publication) was removed with its
 -- menus; it is not a supported work path.
 local Store=require "EmberRoutesProbe/LaborStore"
-local HaulAgent=require 'EmberRoutesProbe/HaulAgent'
+local HaulAgent=require 'EmberRoutesProbe/Hauling/HaulAgent'
 local Factory={}
 function Factory.new(npcId)
     local routed=HaulAgent.new(npcId)

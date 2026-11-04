@@ -113,7 +113,7 @@ end,find=function(containers,id)
     for index,c in ipairs(containers) do for _,v in ipairs(c.items) do if v.id==id then return v,index end end end
     return nil,nil,'ITEM_MISSING'
 end}
-package.loaded['EmberRoutesProbe/HaulRouting']={}
+package.loaded['EmberRoutesProbe/Hauling/HaulRouting']={}
 local Target=require 'EmberRoutesProbe/DeliveryTarget'
 local Flow=require 'EmberRoutesProbe/DeliveryFlow'
 local c={job=job,npc=npc,actor=actor,token={},generation=1,body={stop=function() return true end,

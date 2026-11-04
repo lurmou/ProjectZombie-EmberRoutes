@@ -35,10 +35,10 @@ function M.install()
 	validate=function(j)
 	    local p=j.payload
 	    if p.format~=3 then return false end
-	    return record('HaulJobRecord').valid(j)
+	    return record('Hauling/HaulJobRecord').valid(j)
 	end,
 	transition=function(a,b)
-	    return a.payload.format~=3 or record('HaulJobRecord').transition(a,b),'HAUL_TRANSITION_INVALID'
+	    return a.payload.format~=3 or record('Hauling/HaulJobRecord').transition(a,b),'HAUL_TRANSITION_INVALID'
 	end,
 	capacityMutable=true,
     })

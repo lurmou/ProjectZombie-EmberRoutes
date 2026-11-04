@@ -185,12 +185,12 @@ local unresolved={id=Registry.id(),npcId=f.b.id,format=3,kind='EXPLICIT_TRANSFER
     producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',source=Registry.metadata(source,source.container).id,
     destination=Registry.metadata(tools,tools.container).id,items={unresolvedItem:getID()},
     state='PAUSED',reason='CREATED',phase='COLLECT',generation=0,routeRevision=0,attemptSequence=0,plannedCount=1,delivered=0}
-unresolved.manifest=require('EmberRoutesProbe/HaulManifest').create(unresolved)
-assert(require('EmberRoutesProbe/HaulJobs').claim(unresolved))
+unresolved.manifest=require('EmberRoutesProbe/Hauling/HaulManifest').create(unresolved)
+assert(require('EmberRoutesProbe/Hauling/HaulJobs').claim(unresolved))
 local authority=require('EmberRoutesProbe/TaskJobs').current()
 local unknownJob=authority:get(unresolved.id)
 assert(authority:update(unknownJob.id,unknownJob.revision,{effects='UNKNOWN',state='RECONCILE_REQUIRED'}))
-require('EmberRoutesProbe/HaulJobs').prepareRecovery()
+require('EmberRoutesProbe/Hauling/HaulJobs').prepareRecovery()
 unknownJob=authority:get(unresolved.id)
 check(unknownJob.effects=='UNKNOWN' and unknownJob.state=='RECONCILE_REQUIRED' and unknownJob.payload.controlUncertain,
     'cold recovery preserves authority UNKNOWN even when activeAttempt is absent')
@@ -201,7 +201,7 @@ local saved={id=Registry.id(),npcId=npc.id,format=2,kind='EXPLICIT_TRANSFER',sco
     producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',source=Registry.metadata(source,source.container).id,
     destination=Registry.metadata(tools,tools.container).id,items={reloadHeld:getID(),reloadDone:getID()},
     state='PAUSED',reason='USER',phase='DELIVER',generation=0,routeRevision=1,attemptSequence=1,plannedCount=2,manualPaused=true}
-saved.manifest=require('EmberRoutesProbe/HaulManifest').create(saved,{[reloadHeld:getID()]=2,[reloadDone:getID()]=3})
+saved.manifest=require('EmberRoutesProbe/Hauling/HaulManifest').create(saved,{[reloadHeld:getID()]=2,[reloadDone:getID()]=3})
 saved.delivered=1 assert(Store.claim(saved)) assert(Store.publish(saved))
 local root=Registry.data() local restored={}
 for k,v in pairs(root) do restored[k]=v end

@@ -2,7 +2,7 @@ local Probe = require "EmberRoutesProbe/Boot"
 local Log = require "EmberRoutesProbe/Log"
 local Actions = require "EmberRoutesProbe/Actions"
 local Batch = require "EmberRoutesProbe/Batch"
-local Rules = require "EmberRoutesProbe/HaulRules"
+local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Diagnostic=require 'EmberRoutesProbe/TaskDiagnostic'
 local Driver=require 'EmberRoutesProbe/Driver'
 require "TimedActions/ISInventoryTransferAction"

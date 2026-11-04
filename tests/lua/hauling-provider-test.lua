@@ -57,7 +57,7 @@ local mockDirectory = {
     end
 }
 
-local HaulingProvider = require 'EmberRoutesProbe/HaulingProvider'
+local HaulingProvider = require 'EmberRoutesProbe/Hauling/HaulingProvider'
 assert(package.loaded['EmberRoutesProbe/PublicWork'] == nil, "provider must load without its coordinator")
 
 -- Test 1: Provider contract definition

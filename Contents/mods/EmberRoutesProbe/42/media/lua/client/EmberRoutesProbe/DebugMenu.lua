@@ -1,7 +1,7 @@
 require "DebugUIs/DebugContextMenu"
 local Commands=require "EmberRoutesProbe/NpcCommands"
 local Actions=require "EmberRoutesProbe/Actions"
-local Haul=require "EmberRoutesProbe/Haul"
+local Haul=require "EmberRoutesProbe/Hauling/Haul"
 local Persistence=require "EmberRoutesProbe/Persistence"
 local SettlementMenu=require "EmberRoutesProbe/SettlementMenu"
 local Craft=require "EmberRoutesProbe/CraftProbe"

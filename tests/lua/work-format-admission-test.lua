@@ -91,7 +91,7 @@ package.loaded['EmberRoutesProbe/LaborStore']={data=recovered}
 package.loaded['EmberRoutesProbe/CraftProbe']={prepareRecovery=recovered}
 package.loaded['EmberRoutesProbe/Companion']={}
 package.loaded['EmberRoutesProbe/Actions']={}
-package.loaded['EmberRoutesProbe/Haul']={}
+package.loaded['EmberRoutesProbe/Hauling/Haul']={}
 package.loaded['EmberRoutesProbe/TaskPersistence']=nil
 local Save=require 'EmberRoutesProbe/TaskPersistence'
 world={format=1,taskJobs={format=77,byId={}}}

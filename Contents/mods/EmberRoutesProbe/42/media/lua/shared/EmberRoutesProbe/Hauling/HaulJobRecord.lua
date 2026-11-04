@@ -49,7 +49,7 @@ function R.valid(job)
     local p = job.payload
     if p.executor~=nil then
 	if p.executor~='ENTITY' or p.id~=job.id or p.npcId~=job.npcId
-	    or not require('EmberRoutesProbe/HaulManifest').valid(p) or p.sequence~=p.generation then return false end
+	    or not require('EmberRoutesProbe/Hauling/HaulManifest').valid(p) or p.sequence~=p.generation then return false end
     end
 
     -- 2. Format & scalar types

@@ -24,7 +24,7 @@ stub('TaskJobs',{current=function() return jobs end})
 stub('LaborStore',S)
 stub('TaskRuntime',{current=function() return {
     accepting=function() return true end,status=function() return nil end} end})
-stub('HaulManifest',{valid=function() return true end,claimItemIds=function() return {} end})
+stub('Hauling/HaulManifest',{valid=function() return true end,claimItemIds=function() return {} end})
 stub('TaskResume',{pending=function() return true end})
 for _,name in ipairs({'SelfCareCommit','BusinessJobs'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
 require 'EmberRoutesProbe/LaborDomainAdapters'.install(S,st,identity,clean,function() return true end)

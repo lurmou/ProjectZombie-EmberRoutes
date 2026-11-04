@@ -1,6 +1,6 @@
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Filter=require "EmberRoutesProbe/StorageFilter"
-local Rules=require "EmberRoutesProbe/HaulRules"
+local Rules=require "EmberRoutesProbe/Hauling/HaulRules"
 local Gate=require "EmberRoutesProbe/RuntimeGate"
 local Config={presets={
     "food","food.meals","food.perishable","food.stable",

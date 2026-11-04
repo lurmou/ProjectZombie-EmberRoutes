@@ -8,7 +8,7 @@ package.loaded['EmberRoutesProbe/Boot']=Probe
 package.loaded['EmberRoutesProbe/Actions']={isBusy=function() return false end,
     cleanupForHaul=function(body,cap) assert(body==npc and cap.current()) return true end}
 package.loaded['EmberRoutesProbe/Companion']={}
-package.loaded['EmberRoutesProbe/Haul']={}
+package.loaded['EmberRoutesProbe/Hauling/Haul']={}
 Probe.cleanupHaul=function(body,cap) assert(body==npc and cap.current()) return true end
 function isClient() return false end function isServer() return false end
 local root={}

@@ -16,7 +16,7 @@ package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
 local Store={data=function() rebuilt=true return root.labor end,
     record=function(id) return root.labor and root.labor[id] end}
 package.loaded['EmberRoutesProbe/LaborStore']=Store
-package.loaded['EmberRoutesProbe/HaulJobs']={prepareRecovery=function() Store.data() end}
+package.loaded['EmberRoutesProbe/Hauling/HaulJobs']={prepareRecovery=function() Store.data() end}
 local Craft={prepareRecovery=function() Store.data() end,record=function(id) return root.craft and root.craft[id] end}
 package.loaded['EmberRoutesProbe/CraftProbe']=Craft
 local Companion={exportState=function() return {id='a',jobId='follow-job',mode='FOLLOW',hasHome=true,homeX=2,homeY=3,homeZ=0} end}
@@ -28,7 +28,7 @@ local Actions={cleanupForHaul=function(expected,body)
     oldCapability=body return not cleanupFails
 end}
 local Haul={fixtures={},cleanup=function(expected,body) return expected==npc and body.current() end}
-package.loaded['EmberRoutesProbe/Actions']=Actions package.loaded['EmberRoutesProbe/Haul']=Haul
+package.loaded['EmberRoutesProbe/Actions']=Actions package.loaded['EmberRoutesProbe/Hauling/Haul']=Haul
 Probe.beforeStockSave=function() paused=true end
 Probe.afterStockSave=function() paused=false resumes=resumes+1 end
 Probe.resetStock=function() paused=false end

@@ -1,5 +1,5 @@
 -- Per-instance adapters for the same native action validated by the haul probe.
-local Rules = require "EmberRoutesProbe/HaulRules"
+local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Driver = require "EmberRoutesProbe/Driver"
 local Producers = require "EmberRoutesProbe/LaborProducers"
 require "TimedActions/ISInventoryTransferAction"

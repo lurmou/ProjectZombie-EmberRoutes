@@ -1,7 +1,7 @@
 local Registry=require "EmberRoutesProbe/ContainerRegistry"
 local Claims=require "EmberRoutesProbe/LaborClaims"
 local CraftRetirement=require "EmberRoutesProbe/CraftLegacyRecovery"
-local Manifest=require 'EmberRoutesProbe/HaulManifest'
+local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Evidence=require 'EmberRoutesProbe/QuarantineEvidence'
 local Store={}
 local root,claims,tokens
@@ -375,7 +375,7 @@ end
 function Store.haulRecoveryDiagnosis() return domainState.haulRecoveryFailures end
 function Store.record(npcId)
     Store.data()
-    return require('EmberRoutesProbe/HaulJobs').record(npcId)
+    return require('EmberRoutesProbe/Hauling/HaulJobs').record(npcId)
 end
 -- One UI summary per current NPC, scoped to this world session; no item handles.
 function Store.recent(npcId)
@@ -581,20 +581,20 @@ local function scopeAllowed(jobId,scopeId)
     return not store:scopeBlocked(job and job.scopeId or scopeId or 'local-world',jobId)
 end
 function Store.claim(record)
-    if record.format==3 then return require('EmberRoutesProbe/HaulJobs').claim(record) end
+    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').claim(record) end
     return nil,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.settleHaulLines(record,token,generation,settlements)
-    if record.format==3 then return require('EmberRoutesProbe/HaulJobs').settle(record,token,generation,settlements) end
+    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').settle(record,token,generation,settlements) end
     return false,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.publish(record)
-    if record.format==3 then return require('EmberRoutesProbe/HaulJobs').commit(record) end
+    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').commit(record) end
     return false,'TASK_FORMAT_UNSUPPORTED'
 end
 function Store.valid(record,generation,token)
     if not scopeAllowed(record.id,record.settlementId) then return false end
-    if record.format==3 then return require('EmberRoutesProbe/HaulJobs').valid(record,generation,token) end
+    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').valid(record,generation,token) end
     return false
 end
 function Store.pause(record)
@@ -604,8 +604,8 @@ function Store.capacity(token,itemId,key,amount,free)
     Store.data()
     local j=token and root.taskJobs.byId[token.taskId]
     if j and j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY' then
-	local r=require('EmberRoutesProbe/HaulJobs').record(j.npcId)
-	return require('EmberRoutesProbe/HaulJobs').capacity(r,key,{[itemId]=amount},free)
+	local r=require('EmberRoutesProbe/Hauling/HaulJobs').record(j.npcId)
+	return require('EmberRoutesProbe/Hauling/HaulJobs').capacity(r,key,{[itemId]=amount},free)
     end
     return claims:reserve(token,key,itemId,amount,free)
 end
@@ -613,8 +613,8 @@ function Store.releaseCapacity(token,itemId)
     Store.data()
     local j=token and root.taskJobs.byId[token.taskId]
     if j and j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY' then
-	local r=require('EmberRoutesProbe/HaulJobs').record(j.npcId)
-	return require('EmberRoutesProbe/HaulJobs').releaseCapacity(r,itemId)
+	local r=require('EmberRoutesProbe/Hauling/HaulJobs').record(j.npcId)
+	return require('EmberRoutesProbe/Hauling/HaulJobs').releaseCapacity(r,itemId)
     end
     if not token then return end
     claims:releaseCapacity(token,itemId)
@@ -623,7 +623,7 @@ function Store.availableCapacity(key,free) Store.data() return claims:available(
 function Store.availableFor(token,key,itemId,free) Store.data() return claims:availableFor(token,key,itemId,free) end
 function Store.finish(record)
     if record.format==3 then
-	local ok,why=require('EmberRoutesProbe/HaulJobs').finish(record)
+	local ok,why=require('EmberRoutesProbe/Hauling/HaulJobs').finish(record)
 	if ok and record.producer=='LOGISTICS' and record.delivered==#record.items then recent[record.npcId]={id=record.id,settlementId=record.settlementId,sourceMode=record.sourceMode,delivered=record.delivered,total=#record.items} end
 	return ok,why
     end

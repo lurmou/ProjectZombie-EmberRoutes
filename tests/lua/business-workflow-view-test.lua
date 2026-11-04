@@ -1,6 +1,6 @@
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
 local Craft=require 'EmberRoutesProbe/CraftWorkflowView'
-local Haul=require 'EmberRoutesProbe/HaulWorkflowView'
+local Haul=require 'EmberRoutesProbe/Hauling/HaulWorkflowView'
 local function step(row,key) for _,s in ipairs(row.workflow.steps) do if s.key==key then return s end end end
 local row={closed=false}
 local p={phase='CRAFTING',target=3,produced=0,materials={{id=1}},tools={{id=2}},outputs={},generation=1}

@@ -227,7 +227,7 @@ local function sampleRequest(actor,command)
         tick=function() end,finished=function() return true end,pause=function() end,
         evidence=function(c)
             local evidence=Samples.evidence(c.npc,c.binding.id)
-            local Haul=require 'EmberRoutesProbe/Haul'
+            local Haul=require 'EmberRoutesProbe/Hauling/Haul'
             for _,module in ipairs({Actions,Haul}) do
                 if module.fixtureEvidence then
                     local other=module.fixtureEvidence(c.npc)

@@ -1,12 +1,12 @@
 -- Delivery-specific leaves, hosted by HaulAgent's single execution lifecycle.
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Manifest=require 'EmberRoutesProbe/HaulManifest'
+local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local View=require 'EmberRoutesProbe/InventoryView'
 local Transfer=require 'EmberRoutesProbe/WorkTransfer'
 local Producers=require 'EmberRoutesProbe/LaborProducers'
 local Target=require 'EmberRoutesProbe/DeliveryTarget'
-local Routing=require 'EmberRoutesProbe/HaulRouting'
+local Routing=require 'EmberRoutesProbe/Hauling/HaulRouting'
 local F={}
 local function nextSource(r)
     for _,line in ipairs(r.manifest) do if line.custodyState=='UNCOLLECTED' then return line.sourceId end end

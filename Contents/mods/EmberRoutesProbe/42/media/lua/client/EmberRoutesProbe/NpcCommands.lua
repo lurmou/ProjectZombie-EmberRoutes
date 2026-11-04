@@ -1,6 +1,6 @@
 local Probe=require "EmberRoutesProbe/Boot"
 local Work=require "EmberRoutesProbe/Work"
-local Haul=require "EmberRoutesProbe/Haul"
+local Haul=require "EmberRoutesProbe/Hauling/Haul"
 local Actions=require "EmberRoutesProbe/Actions"
 local Runtime=require 'EmberRoutesProbe/TaskRuntime'
 local Diagnostic=require 'EmberRoutesProbe/TaskDiagnostic'

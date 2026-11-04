@@ -18,7 +18,7 @@ function M.restore(context)
 			else
 			    local isValid = false
 			    if job.payload.format == 3 then
-				isValid = require('EmberRoutesProbe/HaulJobRecord').valid(job)
+				isValid = require('EmberRoutesProbe/Hauling/HaulJobRecord').valid(job)
 			    elseif job.payload.format == 1 then
 				local p = job.payload
 				isValid = type(p) == 'table' and type(p.items) == 'table' and type(p.source) == 'string' and type(p.destination) == 'string'

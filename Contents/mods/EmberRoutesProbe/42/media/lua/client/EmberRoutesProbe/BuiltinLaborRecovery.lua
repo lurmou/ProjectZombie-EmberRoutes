@@ -10,7 +10,7 @@ function M.install()
     R.register('ACTIVITY',require('EmberRoutesProbe/ActivityJobRecovery').restore)
     R.register('FIELD_WORK',require('EmberRoutesProbe/FieldJobRecovery').restore)
     R.register('CRAFT',require('EmberRoutesProbe/CraftJobRecovery').restore)
-    R.register('HAUL',require('EmberRoutesProbe/HaulJobRecovery').restore)
+    R.register('HAUL',require('EmberRoutesProbe/Hauling/HaulJobRecovery').restore)
     installed=true
 end
 return M

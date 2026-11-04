@@ -1,4 +1,4 @@
-local Rules = require "EmberRoutesProbe/HaulRules"
+local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Policy = require "EmberRoutesProbe/InventoryPolicy"
 local Filter = require "EmberRoutesProbe/StorageFilter"
 local Log = require "EmberRoutesProbe/Log"

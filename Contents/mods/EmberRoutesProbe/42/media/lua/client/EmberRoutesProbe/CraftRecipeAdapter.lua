@@ -1,5 +1,5 @@
 -- Shared native crafting-surface proximity guard.
-local Rules=require "EmberRoutesProbe/HaulRules"
+local Rules=require "EmberRoutesProbe/Hauling/HaulRules"
 local Adapter={}
 function Adapter.atBench(character,object)
     local square=object and object:getSquare()
