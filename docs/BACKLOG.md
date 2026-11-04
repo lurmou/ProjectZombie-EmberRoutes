@@ -4,7 +4,7 @@
 
 ## NPC 架构执行记录
 
-2026-11-04 需求/工单视觉设计：按用户“末世行动档案/高级感”要求审计现有组件，提出需求现场简报、工单行动档案组合；首批公共增量拟为 ItemSlot 1 个 Widget，扩展 Theme/Layout/CardPanel/SemanticBadge，并修复 Avatar3DView 绘制中取图。两种可交互草图已写入本会话展示目录，语法检查通过；浏览器入口初始化失败，渲染/实时调整未验收。当前为[设计草案](superpowers/specs/2026-11-04-action-dossier-ui-design.md)，待用户选择/确认，未改运行代码。此前多目标搬运、清洁五项与专业医疗仍保持原开放项。
+2026-11-04 整体 UI 设计 v0.2：用户反馈整体混乱后，只读核对 ProjectRemnants 当前界面的三入口、成员就地分工/按工种显示设置，以及根 JAR 分配桥。修订为“据点/仓储/人员/工作”四主入口候选，需求/工单/规程保留工作中的独立视图；明确设置唯一归属、带上下文跳转及多工种/多人展示。新增框架限 ItemSlot 与既有 Theme/Layout/导航/缓存的扩展；手动指派仍待独立业务设计。旧局部草图不代表整体方案确认，浏览器渲染/实时调整仍未验收。见[设计草案](superpowers/specs/2026-11-04-action-dossier-ui-design.md)，待用户审阅，未改运行代码。此前多目标搬运、清洁五项与专业医疗仍保持原开放项。
 
 2026-11-04 首批领域分级：搬运执行 client 8/shared 2 模块迁至 Hauling，调用与动态契约路径同步更新，无根级转发；42 份源码/测试仅路径变化的等价检查通过，创建/结清/暂停/恢复语义不变。Java 桥 log 收为包可见、无引用树格转发删除，94 个正式入口反射白名单检查加入构建。0.29.38 已原位重建，完整 preflight 退出 0（LuaLS 0 error/675 warning，未逐条审查）；全量 Kahlua 139/210 通过、71 失败，失败集合与上一候选完全相同；release-check 仍有既有两处 print 错误。实机未验证，不把目录治理当成混装多目标搬运、清洁五项或高级视觉完成。见[设计](superpowers/specs/2026-11-04-domain-layout-design.md)、[计划](superpowers/plans/2026-11-04-domain-layout.md)及[实际证据](reviews/2026-11-04/domain-layout.md)。
 
