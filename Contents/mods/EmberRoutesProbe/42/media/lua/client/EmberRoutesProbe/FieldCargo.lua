@@ -59,8 +59,7 @@ local function original(c,a)
     if held and held:getFullType()==a.fullType then return held end
 end
 local function releaseCapacity(c)
-    Store.releaseCapacity(c.token)
-    return c.change(function(j) j.payload.capacity=nil end)
+    return c.change(function(j) j.payload.capacity=nil end,false)
 end
 local function transfer(c,item,from,to,endpoint,pickup,destination)
     local function valid()
@@ -162,10 +161,12 @@ function C.step(c,def)
         if not done then return 'Running' end
         if not endpoint then c.reason='FIELD_STORAGE_UNAVAILABLE' return 'Failure' end
         local amount=item:getUnequippedWeight()
-        if not Store.reserveField(c.job,c.token,endpoint.id,item:getID(),amount,endpoint.container:getFreeCapacity(c.npc)) then
+        local free=endpoint.container:getFreeCapacity(c.npc)
+        if not Store.reserveField(c.job,c.token,endpoint.id,item:getID(),amount,free) then
             c.reason='FIELD_CAPACITY_UNAVAILABLE' return 'Failure'
         end
-        if not c.change(function(j) j.payload.capacity={key=endpoint.id,itemId=item:getID(),amount=amount} end) then
+        if not c.change(function(j) j.payload.capacity={key=endpoint.id,itemId=item:getID(),amount=amount} end,
+            {key=endpoint.id,items={[item:getID()]=amount},free=free}) then
             Store.releaseCapacity(c.token) return 'Failure'
         end
         c.endpoint=endpoint

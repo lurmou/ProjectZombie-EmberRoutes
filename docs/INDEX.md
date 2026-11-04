@@ -78,3 +78,5 @@ DEC-003 当前 kernel core 契约与定向验证：[Phase 1（修订范围）](r
 R1/R2 IDLE 回退与轮转座位窗口：[实施、门禁与验证证据](reviews/2026-11-04/r1r2-segment.md)。
 
 DEC-003 CRAFT/Production 迁移 2/7：[七项决定、引用漂移、宿主 parity 与开放项](reviews/2026-11-04/dec003-craft-migration.md)；父任务待复核，Java/实机未验证。
+
+DEC-003 FIELD_WORK 迁移 3/7：[逐入口证据、宿主 parity、预发布恢复硬停止与开放项](reviews/2026-11-04/dec003-fieldwork-migration.md)；运行时链已转换，分段仍 OPEN，Java/实机未验证。

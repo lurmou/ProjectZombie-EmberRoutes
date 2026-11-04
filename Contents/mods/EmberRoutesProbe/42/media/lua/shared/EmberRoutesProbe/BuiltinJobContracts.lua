@@ -12,7 +12,7 @@ function M.install()
 	transferValid=function(a,b) return record('CookingRecord').transferValid(a,b) end,
 	transferReason='COOKING_HANDOFF_CHANGED',tokenBucket='cooking',
     })
-    add('FIELD_WORK',{validate=function(j) return record('FieldRecord').valid(j) end,tokenBucket='field'})
+    add('FIELD_WORK',{validate=function(j) return record('FieldRecord').valid(j) end,tokenBucket='field',capacityMutable=true})
     add('ACTIVITY',{validate=function(j) return record('ActivityRecord').valid(j) end,tokenBucket='activity'})
     -- JobStore historically validates only the SELF_CARE envelope; its domain
     -- adapter validates SelfCareRecord at execution/recovery. Keep that contract.

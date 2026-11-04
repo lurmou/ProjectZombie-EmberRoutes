@@ -55,8 +55,8 @@ function F.prepareRecovery()
             local unknown=j.effects~='KNOWN' or a and a.state=='PREPARED' and a.dispatched
             local p=Jobs.current():get(id).payload p.reason='LOAD_RECOVERY'
             if unknown and p.attempt then p.attempt.state='UNKNOWN' end
-            assert(Jobs.current():update(id,j.revision,{state=unknown and 'RECONCILE_REQUIRED' or 'SUSPENDED',
-                effects=unknown and 'UNKNOWN' or 'KNOWN',payload=p}))
+            assert(Store.mutateJob(id,j.revision,p,{state=unknown and 'RECONCILE_REQUIRED' or 'SUSPENDED',
+                effects=unknown and 'UNKNOWN' or 'KNOWN'}))
         end
     end
     return true
@@ -79,7 +79,10 @@ function F.advance(env)
                         local proposed=Jobs.current():get(id) proposed.state='SETTLING' proposed.payload=p proposed.obligations={}
                         if token then
                             local changed,saved=Store.replaceField(j,token,proposed)
-                            if changed then Jobs.current():update(id,saved.revision,{state='CANCELLED'}) j=Jobs.current():peek(id) end
+                            if changed then
+                                assert(Store.cancelJob(id,saved.revision,saved.payload,{state='CANCELLED'}))
+                                j=Jobs.current():peek(id)
+                            end
                         end
                     end
                 end
@@ -134,7 +137,7 @@ function F.provider(def)
             payload={format=1,category=def.category,offerKey=selected.key,target=target,
                 phase=target.toolSupply and 'PREPARE' or 'WORK',sequence=0,claims=keys,assets={},
                 toolSupply=target.toolSupply}}
-        local ok,err=Jobs.current():create(j)
+        local ok,err=Store.createClaimedJob(j)
         if not ok then
             rollbackCustodies()
             return err
@@ -151,10 +154,12 @@ function F.provider(def)
         if not token then
             rollbackCustodies()
             local saved=Jobs.current():get(jobId)
-            saved.payload.claims={} saved.payload.phase='SETTLED' saved.payload.toolSupply=nil
-            assert(Jobs.current():update(jobId,saved.revision,{state='SETTLING',payload=saved.payload,obligations={}}))
+            local proposed=Jobs.current():get(jobId)
+            proposed.payload.claims={} proposed.payload.phase='SETTLED' proposed.payload.toolSupply=nil
+            proposed.state='SETTLING' proposed.obligations={}
+            assert(Store.replaceField(saved,Store.getToken(jobId),proposed))
             saved=Jobs.current():get(jobId)
-            assert(Jobs.current():update(jobId,saved.revision,{state='CANCELLED'}))
+            assert(Store.cancelJob(jobId,saved.revision,saved.payload,{state='CANCELLED'}))
             return 'FIELD_RESOURCE_RESERVED'
         end
         local accepted=submit(env.actor,Jobs.current():get(jobId))

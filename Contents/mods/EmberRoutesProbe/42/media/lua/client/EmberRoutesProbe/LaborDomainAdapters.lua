@@ -121,16 +121,22 @@ function Store.validField(job,token,key)
     return saved and saved.providerType=='FIELD_WORK' and saved.revision==job.revision
 	and state.fieldTokens[job.id]==token and token~=nil and (not key or state.claims:valid(token,key)) or false
 end
-function Store.replaceField(job,token,proposed)
-    if not Store.validField(job,token) or not require('EmberRoutesProbe/FieldRecord').valid(proposed) then return false,'FIELD_JOB_CHANGED' end
-    local old=job.payload.claims
-    local ok,why=state.claims:replace(token,proposed.payload.claims)
-    if not ok then return false,why end
-    local jobs=require('EmberRoutesProbe/TaskJobs').current()
-    ok,why=jobs:update(job.id,job.revision,{state=proposed.state,effects=proposed.effects,
-	obligations=proposed.obligations,payload=proposed.payload})
-    if not ok then assert(state.claims:replace(token,old),'FIELD_CLAIM_ROLLBACK_FAILED') return false,why end
-    return true,jobs:get(job.id)
+function Store.replaceField(job,token,proposed,capacity)
+    if not Store.validField(job,token)
+        or not require('EmberRoutesProbe/FieldRecord').valid(proposed) then
+        return false,'FIELD_JOB_CHANGED' end
+    local before,after,add,remove={},{},{},{}
+    for _,key in ipairs(token.resources) do before[key]=true end
+    for _,key in ipairs(proposed.payload.claims) do
+        after[key]=true if not before[key] then add[#add+1]=key end
+    end
+    for _,key in ipairs(token.resources) do if not after[key] then remove[#remove+1]=key end end
+    local mutation={state=proposed.state,effects=proposed.effects,obligations=proposed.obligations,
+        addKeys=add,removeKeys=remove,capacity=capacity}
+    local commit=proposed.state=='CANCELLED' and Store.cancelJob or Store.mutateJob
+    local ok,why,evidence=commit(job.id,job.revision,proposed.payload,mutation)
+    if not ok then return false,why,evidence end
+    return true,require('EmberRoutesProbe/TaskJobs').current():get(job.id)
 end
 function Store.reserveField(job,token,key,itemId,amount,free)
     if not Store.validField(job,token) then return false,'FIELD_JOB_CHANGED' end
