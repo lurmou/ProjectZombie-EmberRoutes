@@ -1,3 +1,4 @@
+local Commit=require 'EmberRoutesProbe/SelfCareCommit'
 -- Personal candidates use the same Runtime as work/follow, never Public Orders.
 local Probe=require 'EmberRoutesProbe/Boot'
 local Registry=require 'EmberRoutesProbe/ContainerRegistry'
@@ -29,7 +30,9 @@ local function personal(id,create)
     for _,job in ipairs(Jobs.current():forNpc(id,'SELF_CARE')) do if job.providerType=='SELF_CARE' then return job end end
     if not create then return end
     local job=Record.create(Registry.id(),id)
-    if Jobs.current():create(job) then return Jobs.current():get(job.id) end
+    if Store.createClaimedJob(job) then return Jobs.current():get(job.id) end
+    -- A failed/ambiguous create must never allocate a second personal identity.
+    return personal(id,false)
 end
 local function personalView(id)
     local store=Jobs.current()
@@ -94,7 +97,7 @@ local function idle(job,row,reason)
     local token=Store.claimPersonal(job)
     if not token then row.reason='PERSONAL_CLAIM_CONFLICT' return end
     local p=job.payload p.step='IDLE' p.reason=reason
-    if not Jobs.current():update(job.id,job.revision,{payload=p,obligations={}}) then return end
+    if not Commit.update(job.id,job.revision,{payload=p,obligations={}}) then return end
     if not Store.finishPersonal(job,token) then row.reason='PERSONAL_RELEASE_FAILED' end
 end
 local function settle(actor,binding,job,row)
@@ -314,7 +317,7 @@ local function advance(actor,binding,row,now)
                 p.claims={use('LifeZoneVisits').tileKey(p.leisure.point)}
             end
             if candidate.site then p.site=candidate.site p.claims=candidate.claims end
-            local updated,why=Jobs.current():update(job.id,job.revision,{payload=p})
+            local updated,why=Commit.update(job.id,job.revision,{payload=p})
             if not updated then
                 use('LeisureService').failed(id,candidate.targetKey,why or 'PERSONAL_RECORD_REJECTED')
                 row.retryAt=now+1500 return
@@ -326,9 +329,9 @@ local function advance(actor,binding,row,now)
             if not row.handle then
                 use('LeisureService').failed(id,candidate.targetKey,row.reason or 'LEISURE_SUBMIT_REJECTED')
                 row.retryAt=now+1500
-                if token then Store.finishPersonal(job,token) end
+                if token and not Store.finishPersonal(job,token) then error('PERSONAL_RELEASE_FAILED') end
                 local live=Jobs.current():get(job.id)
-                Jobs.current():update(live.id,live.revision,{payload=before})
+                if not Commit.update(live.id,live.revision,{payload=before}) then error('PERSONAL_ROLLBACK_FAILED') end
                 use('SocialCoordinator').withdraw(id)
             end
             return
@@ -387,11 +390,11 @@ local function advance(actor,binding,row,now)
         if floorSite then
             p.floorSite=floorSite p.settlementId=floorSite.settlementId p.claims={use('FloorSleep').key(floorSite)}
         end
-        if not Jobs.current():update(job.id,job.revision,{payload=p}) then return end
+        if not Commit.update(job.id,job.revision,{payload=p}) then return end
         job=Jobs.current():get(job.id)
         local token=Store.claimPersonal(job)
         if not token then
-            if not Jobs.current():update(job.id,job.revision,{payload=before}) then error('PERSONAL_ROLLBACK_FAILED') end
+            if not Commit.update(job.id,job.revision,{payload=before}) then error('PERSONAL_ROLLBACK_FAILED') end
             row.retryAt=now+1000 return
         end
                 local prepared=Resume.prepare(actor,id,job.id)
@@ -402,7 +405,7 @@ local function advance(actor,binding,row,now)
             local live=Jobs.current():get(job.id)
             if not Store.finishPersonal(live,token) then error('PERSONAL_RELEASE_FAILED') end
             live=Jobs.current():get(job.id)
-            if not Jobs.current():update(live.id,live.revision,{payload=before}) then error('PERSONAL_ROLLBACK_FAILED') end
+            if not Commit.update(live.id,live.revision,{payload=before}) then error('PERSONAL_ROLLBACK_FAILED') end
         end
         return
     end
@@ -435,17 +438,17 @@ local function advance(actor,binding,row,now)
     end
     p.claims={'item:'..candidate.id}
     local obligations=p.sourceId and {RETURN_ORIGINALS={sourceId=p.sourceId,itemId=p.itemId}} or {}
-    if not Jobs.current():update(job.id,job.revision,{payload=p,obligations=obligations}) then return end
+    if not Commit.update(job.id,job.revision,{payload=p,obligations=obligations}) then return end
     job=Jobs.current():get(job.id)
     local token=Store.claimPersonal(job)
     local function rollback(reason)
         local live=Jobs.current():get(job.id)
         if token then
-            if not Jobs.current():update(live.id,live.revision,{obligations={}})
+            if not Commit.update(live.id,live.revision,{obligations={}})
                 or not Store.finishPersonal(job,token) then error('PERSONAL_ROLLBACK_FAILED') end
             live=Jobs.current():get(job.id)
         end
-        if not Jobs.current():update(live.id,live.revision,{payload=before.payload,obligations=before.obligations}) then
+        if not Commit.update(live.id,live.revision,{payload=before.payload,obligations=before.obligations}) then
             error('PERSONAL_ROLLBACK_FAILED')
         end
         row.reason=reason row.retryAt=now+3000
@@ -511,11 +514,11 @@ function Service.prepareRecovery(receipt)
                 and not saved.payload.leisure.applying then
                 local live=Jobs.current():get(saved.id) local p=live.payload
                 p.step='STOP_CONFIRMED' p.leisure.stopped=true
-                if not Jobs.current():update(live.id,live.revision,{payload=p}) then error('LEISURE_RECOVERY_FAILED') end
+                if not Commit.update(live.id,live.revision,{payload=p}) then error('LEISURE_RECOVERY_FAILED') end
             elseif saved.payload.step=='ACTING' then
                 -- No stopped/persisted fact means the native call may have run.
                 local live=Jobs.current():get(saved.id) local p=live.payload p.step='RECONCILE_REQUIRED'
-                if not Jobs.current():update(live.id,live.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'}) then
+                if not Commit.update(live.id,live.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'}) then
                     error('PERSONAL_RECOVERY_FAILED')
                 end
             end

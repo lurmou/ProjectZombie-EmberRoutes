@@ -467,7 +467,7 @@ function S.retire(limit)
                     else
                         local p=Record.copy(other.payload)
                         p.resume.state=other.npcId==j.npcId and 'RESTORED' or 'INVALIDATED'
-                        if not Jobs.current():update(other.id,other.revision,{payload=p}) then can=false end
+                        if not require('EmberRoutesProbe/SelfCareCommit').update(other.id,other.revision,{payload=p}) then can=false end
                     end
                 end
             end

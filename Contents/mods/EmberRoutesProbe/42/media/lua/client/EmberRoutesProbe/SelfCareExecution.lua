@@ -1,3 +1,4 @@
+local Commit=require 'EmberRoutesProbe/SelfCareCommit'
 -- One personal attempt under TaskRuntime. The BT is transient; only original-ID
 -- custody, observed effects and the predecessor relation survive save/reload.
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
@@ -70,7 +71,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         -- Explicit player commands may invalidate the predecessor between native
         -- callbacks. Never overwrite that fact from a captured payload.
         c.payload.resume=live.payload.resume
-        return Jobs.current():update(job.id,live.revision,{payload=c.payload,effects=c.effects,obligations=c.obligations})
+        return Commit.update(job.id,live.revision,{payload=c.payload,effects=c.effects,obligations=c.obligations})
     end
     -- The safety closure crosses into native zombie proximity per call; engine
     -- isValid and per-tick validation would otherwise scan every frame. Safety
@@ -156,11 +157,11 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         end
         local live=Jobs.current():get(job.id)
         if live.state=='RUNNING' then
-            if not Jobs.current():update(live.id,live.revision,{state='STOPPING'}) then return false end
+            if not Commit.update(live.id,live.revision,{state='STOPPING'}) then return false end
             live=Jobs.current():get(job.id)
         end
         local state=c.effects=='UNKNOWN' and 'RECONCILE_REQUIRED' or 'SUSPENDED'
-        if live.state~=state and not Jobs.current():update(live.id,live.revision,{state=state}) then return false end
+        if live.state~=state and not Commit.update(live.id,live.revision,{state=state}) then return false end
         if c.payload.activityRef and c.payload.activityRef.dutyId then
             local status=c.result=='Success' and 'SUCCEEDED' or c.result=='Failure' and 'FAILED' or 'CANCELLED'
             local l=c.payload.leisure local r=c.payload.reading
@@ -200,10 +201,10 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         if not c.token then return false,'PERSONAL_CLAIM_CONFLICT','UNCHANGED' end
         local live=Jobs.current():get(job.id)
         if live.state=='SUSPENDED' then
-            if not Jobs.current():update(live.id,live.revision,{state='PREPARING'}) then return false,'JOB_CHANGED','UNCHANGED' end
+            if not Commit.update(live.id,live.revision,{state='PREPARING'}) then return false,'JOB_CHANGED','UNCHANGED' end
             live=Jobs.current():get(job.id)
         end
-        if not Jobs.current():update(live.id,live.revision,{state='RUNNING'}) then return false,'JOB_CHANGED','UNCHANGED' end
+        if not Commit.update(live.id,live.revision,{state='RUNNING'}) then return false,'JOB_CHANGED','UNCHANGED' end
         c.payload.step=settle and 'SETTLING' or 'ACTING'
         if c.payload.kind=='STUDY' then c.payload.reliefOnly=reliefOnly==true end
         if not c.persist() then return false,'PERSONAL_RECORD_CHANGED','UNCHANGED' end

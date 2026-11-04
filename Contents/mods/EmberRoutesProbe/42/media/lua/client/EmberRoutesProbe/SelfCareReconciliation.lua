@@ -1,3 +1,4 @@
+local Commit=require 'EmberRoutesProbe/SelfCareCommit'
 -- Evidence-only exit for a detached UNKNOWN personal attempt. The service owns
 -- this cursor and its retry cadence; native execution stays in the settle path.
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
@@ -84,7 +85,7 @@ function M.run(binding,job,row,budget,runtime)
     if not live or live.revision~=job.revision then return false,'PERSONAL_JOB_CHANGED' end
     local token=Store.claimPersonal(live)
     if not token then return false,'PERSONAL_CLAIM_CONFLICT' end
-    if not Jobs.current():update(job.id,job.revision,{payload=p,obligations=obligations,effects='KNOWN',state='SUSPENDED'}) then
+    if not Commit.update(job.id,job.revision,{payload=p,obligations=obligations,effects='KNOWN',state='SUSPENDED'}) then
         return false,'PERSONAL_JOB_CHANGED'
     end
     if p.step=='IDLE' and not Store.finishPersonal(Jobs.current():get(job.id),token) then return false,'PERSONAL_RELEASE_FAILED' end

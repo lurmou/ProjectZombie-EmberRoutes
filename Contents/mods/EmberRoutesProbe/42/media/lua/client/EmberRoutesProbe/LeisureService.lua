@@ -438,7 +438,7 @@ function Service.consumeResume(id,memory)
     if job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint then
         local p=job.payload
         p.leisureMemory.resumeHint=nil
-        if not jobs:update(job.id,job.revision,{payload=p}) then return false end
+        if not require('EmberRoutesProbe/SelfCareCommit').update(job.id,job.revision,{payload=p}) then return false end
     end
     if memory then memory.resumeHint=nil end
     return true

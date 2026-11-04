@@ -220,7 +220,7 @@ function Store.settleDeadPersonal(job,bodyStopped)
         local p=saved.payload p.reason='NPC_DIED'
         if p.kind then p.step='RECONCILE_REQUIRED' end
         assert(Record.valid(saved),'PERSONAL_RECORD_INVALID')
-        return jobs:update(saved.id,saved.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'})
+        return require('EmberRoutesProbe/SelfCareCommit').update(saved.id,saved.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'})
     end
     local proposed=jobs:get(saved.id)
     Record.death(proposed)
@@ -228,7 +228,7 @@ function Store.settleDeadPersonal(job,bodyStopped)
     if proposed.state=='SUSPENDED' and saved.state~='SUSPENDED'
         and saved.state~='PREPARING' and saved.state~='STOPPING' and saved.state~='SETTLING'
         and saved.state~='RECONCILE_REQUIRED' then return false end
-    local ok=jobs:update(saved.id,saved.revision,{payload=proposed.payload,
+    local ok=require('EmberRoutesProbe/SelfCareCommit').update(saved.id,saved.revision,{payload=proposed.payload,
         effects=proposed.effects,state=proposed.state})
     if not ok then return false end
     if not retained then
@@ -244,7 +244,7 @@ function Store.finishPersonal(job,token)
     for _ in pairs(saved.obligations) do return false,'PERSONAL_OBLIGATION_RETAINED' end
     local jobs=require('EmberRoutesProbe/TaskJobs').current()
     local payload=jobs:get(job.id).payload payload.claims={}
-    local ok,reason=jobs:update(job.id,saved.revision,{payload=payload})
+    local ok,reason=require('EmberRoutesProbe/SelfCareCommit').update(job.id,saved.revision,{payload=payload})
     if not ok then return false,reason end
     state.claims:release(token) cleanToken(job.id) return true
 end
@@ -253,18 +253,22 @@ end
 function Store.releasePersonalSeats(job,token)
     if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
     local saved=state.root.taskJobs.byId[job.id]
-    local keep={} local present={}
-    for _,key in ipairs(saved.payload.claims) do keep[#keep+1]=key present[key]=true end
+    local present={}
+    for _,key in ipairs(saved.payload.claims) do present[key]=true end
     for _,key in ipairs(token.resources) do
 	if not present[key] and string.sub(key,1,7)~='repose:' then return false,'ITEM_CLAIM_RETAINED' end
     end
-    return state.claims:replace(token,keep)
+    -- c.persist already applied the claim delta in its transaction.
+    for _,key in ipairs(token.resources) do if not present[key] then return false,'PERSONAL_CLAIM_SET_CHANGED' end end
+    return true
 end
 function Store.extendPersonal(job,token)
     if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
-    -- Publish native outputs before extending the in-memory claim. A conflict
-    -- retains the durable declaration for reconciliation, never deletes output.
-    return state.claims:extend(token,state.root.taskJobs.byId[job.id].payload.claims)
+    -- Every caller first persists; additions now belong to that transaction.
+    for _,key in ipairs(state.root.taskJobs.byId[job.id].payload.claims) do
+        if not state.claims:valid(token,key) then return false,'PERSONAL_CLAIM_SET_CHANGED' end
+    end
+    return true
 end
 function Store.claimHaulJob(job)
     Store.data()

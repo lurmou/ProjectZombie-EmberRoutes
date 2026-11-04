@@ -44,6 +44,7 @@ function Store.data()
     if current~=root then
         local rebuilt,newTokens=Claims.new(),{}
         local pendingHaul={}
+        local pendingPersonal={}
         current.quarantineResources = current.quarantineResources or {}
 
         -- Pass 1: Pre-scan claims across ALL providers to detect overlapping collisions
@@ -293,7 +294,7 @@ function Store.data()
 	-- every declared local (including expired scopes) in a 200-slot table.
 	-- This synchronous phase preserves scan order and shared claim authority.
 	require('EmberRoutesProbe/BuiltinLaborRecovery').install()
-	require('EmberRoutesProbe/LaborRecovery').restore({pendingHaul=pendingHaul,current=current,rebuilt=rebuilt,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,rebuiltPersonal=rebuiltPersonal,rebuiltCooking=rebuiltCooking,rebuiltActivity=rebuiltActivity,rebuiltField=rebuiltField,rebuiltCraft=rebuiltCraft,rebuiltHaul=rebuiltHaul,newTokens=newTokens})
+	require('EmberRoutesProbe/LaborRecovery').restore({pendingPersonal=pendingPersonal,pendingHaul=pendingHaul,current=current,rebuilt=rebuilt,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,rebuiltPersonal=rebuiltPersonal,rebuiltCooking=rebuiltCooking,rebuiltActivity=rebuiltActivity,rebuiltField=rebuiltField,rebuiltCraft=rebuiltCraft,rebuiltHaul=rebuiltHaul,newTokens=newTokens})
 
         local rebuiltCustody = {}
         local custodyByNpc,custodyByItem={},{}
@@ -341,6 +342,19 @@ function Store.data()
         recent={}
         -- Invocation-local ordered cold-recovery work, NOT a persistent recovery
         -- queue. Root and all token caches are published before any kernel call.
+        -- SELF_CARE's cold proposals are invocation-local, not saved receipts.
+        -- A rejected published commit stops recovery; reload the saved world.
+        for _,intent in ipairs(pendingPersonal) do
+            local ok,why,evidence=require('EmberRoutesProbe/SelfCareCommit').update(
+                intent.id,intent.revision,intent.patch)
+            if not ok then error('PERSONAL_COLD_RECOVERY_FAILED:'..tostring(why)..':'..tostring(evidence)) end
+            if intent.release then
+                local token=Store.getToken(intent.id)
+                if token then claims:release(token) end
+                tokens[intent.id]=nil personalTokens[intent.id]=nil
+                claims.tokensByTaskId[intent.id]=nil
+            end
+        end
         domainState.haulRecoveryFailures={}
         for _,intent in ipairs(pendingHaul) do
             local job=require('EmberRoutesProbe/TaskJobs').current():get(intent.id)
