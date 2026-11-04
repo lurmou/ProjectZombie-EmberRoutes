@@ -172,8 +172,10 @@ function Store.settleActivityWedged(job)
     if not (saved.state=='RECONCILE_REQUIRED' or saved.effects=='UNKNOWN') then return false end
     for _ in pairs(saved.obligations) do return false end
     local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={} p.stopped=true
-    if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,
-        {payload=p,state='SETTLING',effects='KNOWN'}) then return false end
+    local commitToken=Store.getToken(job.id)
+    local ok,why,evidence=Store.mutateJob(job.id,saved.revision,p,
+        {state='SETTLING',effects='KNOWN',removeKeys=commitToken and commitToken.resources or {}})
+    if not ok then return false,why,evidence end
     local token=state.activityTokens[job.id]
     if token then state.claims:release(token) cleanToken(job.id) end
     return true
@@ -190,7 +192,8 @@ function Store.finishActivity(job,token)
     if saved.effects~='KNOWN' then return false,'ACTIVITY_EFFECT_UNKNOWN' end
     for _ in pairs(saved.obligations) do return false,'ACTIVITY_OBLIGATION_RETAINED' end
     local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={}
-    if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,{payload=p}) then return false,'JOB_CHANGED' end
+    local ok,why,evidence=Store.mutateJob(job.id,saved.revision,p,{removeKeys=token.resources})
+    if not ok then return false,why,evidence end
     state.claims:release(token) cleanToken(job.id) return true
 end
 function Store.validPersonal(job,token,key)

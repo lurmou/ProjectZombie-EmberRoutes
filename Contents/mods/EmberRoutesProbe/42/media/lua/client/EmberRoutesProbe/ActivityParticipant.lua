@@ -38,14 +38,22 @@ function P.prepare(event)
     for id,member in pairs(event.roster) do
         if not member.jobId and not member.withdrawn then
             local job=Record.create(Registry.id(),id,event)
-            local ok,why=api:create(job) if not ok then return false,why end
+            local ok,why=Assets.createClaimedJob(job) if not ok then return false,why end
             member.jobId=job.id member.participationHours=0
         end
     end
     Store.touch(event) return true
 end
 local function update(job,p,state,effects)
-    return Jobs.current():update(job.id,job.revision,{payload=p,state=state or job.state,effects=effects or job.effects})
+    local before,after,add,remove={},{},{},{}
+    for _,key in ipairs(job.payload.claims) do before[key]=true end
+    for _,key in ipairs(p.claims) do
+        after[key]=true if not before[key] then add[#add+1]=key end
+    end
+    for _,key in ipairs(job.payload.claims) do if not after[key] then remove[#remove+1]=key end end
+    local commit=state=='CANCELLED' and Assets.cancelJob or Assets.mutateJob
+    return commit(job.id,job.revision,p,
+        {state=state or job.state,effects=effects or job.effects,addKeys=add,removeKeys=remove})
 end
 local function releasePlacement(job,proof)
     if #job.payload.claims==0 then return true end

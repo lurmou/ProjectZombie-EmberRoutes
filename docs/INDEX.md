@@ -84,3 +84,5 @@ DEC-003 FIELD_WORK 迁移 3/7：[逐入口证据、宿主 parity、预发布恢�
 DEC-003 COOKING 迁移 4/7：[逐入口证据、48项宿主 parity 与硬停止项](reviews/2026-11-04/dec003-cooking-migration.md)；仅无 work-capacity 链已迁移，容量/transfer/recovery 等开放，Java/实机未验证。
 
 DEC-003 工作容量：[Java 扩展、断言迁移与回归停止证据](reviews/2026-11-04/dec003-kernel-workcapacity.md)；COOKING 回归要求 legacy 路径而失败，未启用容量 contract，未完成。
+
+DEC-003 ACTIVITY 迁移 5/7：[运行时迁移、六项歧义、宿主验证与开放项](reviews/2026-11-04/dec003-activity-migration.md)；预发布恢复/shared identity 仍 OPEN，Java/实机未验证。
