@@ -3,8 +3,10 @@ local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 getText=function(key,...) return key end
 getTextOrNull=function() return nil end
 getItemNameFromFullType=function(id) return id end
+getTextManager=function() return {MeasureStringX=function(_,_,value) return #value*7 end} end
 local color={r=1,g=1,b=1,a=1}
 package.loaded['EmberRoutesProbe/UI/CachedList']={}
+package.loaded['EmberRoutesProbe/UI/CardPanel']={draw=function() end}
 package.loaded['EmberRoutesProbe/UI/Theme']={muted=color,textColor=color,gold=color,accent=color,status={ERROR=color}}
 package.loaded['EmberRoutesProbe/UI/Text']={wrapLimited=function(value) return {value} end}
 package.loaded['EmberRoutesProbe/UI/StatusVisual']={colors={done=color,paused=color,blocked=color}}
@@ -54,5 +56,26 @@ view=projector.project({bind=function() end},fieldJob)
 check(view.stages[1].status=='UNCERTAIN','unknown work cannot be painted completed')
 UIFont={Small='small'}
 local visual=Cards.rows().prepare({emberPad=4,emberFontHeight=12,width=450},view)
-check(visual.nodeStates[1]~='done' and visual.nodeStates[2]~='done','cached graphical rail also respects explicit uncertainty and unexecuted steps')
+check(visual.badge.id=='RECONCILE' and visual.fraction==0,'navigation card preserves uncertainty and only meters confirmed delivered cargo')
+local need={id='need',kind='DEMAND',compact=true,title='Cleaning',stateText='Processing',summaryText='Routine / Home / Processing',
+    children={{name='Worker',phase='WORK',bucket='active',assets={},stages={{labelKey='Wipe blood',progress='target 1'}},stageIndex=1}},assets={}}
+card:set(need,false)
+local hasState,hasTarget=false,false
+for _,line in ipairs(detail) do
+    hasState=hasState or line.text=='Processing'
+    hasTarget=hasTarget or line.text and line.text:find('target 1',1,true)~=nil
+end
+check(not hasState and not hasTarget,'need detail does not repeat its state or expose per-target step counters by default')
+local delivery={kind='DELIVERY',title='Delivery',name='Worker',state='RUNNING',bucket='active',target=3,requested=3,
+    delivered=2,cargoHeld=1,reason='RUNNING',carrierAvailable=true,source={x=1,y=2,z=1},destination={x=3,y=4,z=0},
+    assets={{kind='cargo',fullType='Base.Newspaper',delivered=true},{kind='cargo',fullType='Base.Newspaper',delivered=true},
+        {kind='cargo',fullType='Base.Newspaper',custodyState='CARRIED',held=true}}}
+local blocks=Cards.detailRows(delivery,false)
+check(blocks[1].isCardRow and blocks[1].meters[1].fraction==2/3,'overview uses real delivered count as its meter')
+local items,transit=0,false
+for _,block in ipairs(blocks) do if block.isAssetRow then
+    items=items+1 transit=transit or block.status=='TRANSIT'
+end end
+check(items==2 and transit,'materials are grouped by real custody, and carried cargo is transit rather than prepared crafting material')
+check(#Cards.detailRows(delivery,true)>#blocks,'route and recovery information is available only in expanded details')
 print('PASS '..checks..' monitor presentation fact checks; native UI NOT RUN')

@@ -19,12 +19,21 @@ local function finish(row,entry,handlers)
     row.urgency=row.urgency or 'normal'
     row.affected=row.affected or entry.name or entry.id
     row.handling=#row.children>0
-    for _,child in ipairs(row.children) do if child.uncertain then row.uncertain=true break end end
-    row.bucket=row.uncertain and 'attention' or row.handling and 'active' or row.blocked and 'attention' or 'waiting'
-    row.state=row.bucket row.stateText=text(row.handling and 'handling' or 'unhandled')
-    local blocker=row.blocker and reason(row.blocker) or text('none')
+    local active=false
+    for _,child in ipairs(row.children) do
+        if child.uncertain then row.uncertain=true end
+        if child.bucket=='active' then active=true end
+    end
+    -- This is the admission result for additional work, not a reason to say
+    -- that the already-running cleaner is blocked.
+    if active and row.blocker=='FIELD_WORKER_BUSY' then row.blocker=nil row.blocked=false end
+    if row.blocker=='FIELD_WORKER_BUSY' then row.blocked=false end
+    row.bucket=row.uncertain and 'attention' or active and 'active' or row.blocked and 'attention' or 'waiting'
+    row.state=row.bucket row.stateText=text(row.uncertain and 'review' or active and 'processing'
+        or row.handling and 'assignedWaiting' or 'unhandled')
     row.summaryText=text('summary',text('urgency_'..row.urgency),row.affected,row.stateText)
-    row.demandReason=text('blocker',blocker)
+    row.detailContext=text('context',text('urgency_'..row.urgency),row.affected)
+    row.demandReason=row.blocker and text('blocker',reason(row.blocker)) or nil
     return row
 end
 function D.status(actor,scope)
@@ -36,12 +45,17 @@ function D.status(actor,scope)
         if not seen[row.id] then seen[row.id]=true rows[#rows+1]=finish(row,entry,handlers) end
     end
     local cleaning={}
+    local runtime=require('EmberRoutesProbe/TaskRuntime').current()
+    local probe=require 'EmberRoutesProbe/Boot'
+    local context={runtime=runtime,bind=function(id)
+        return probe.ready and probe.hasJava() and require('EmberRoutesProbe/Driver').bindId(actor,id) or nil
+    end}
     for _,job in pairs(jobs) do
         if job.scopeId==scope and job.providerType=='FIELD_WORK' and job.payload.category=='cleaning'
-            and job.state~='DONE' and job.state~='CANCELLED' then
-            local p=job.payload
-            cleaning[#cleaning+1]={id=job.id,name=require('EmberRoutesProbe/DisplayNames').name(job.npcId),
-                phase=p.phase,reasonText=reason(p.reason),assets={},uncertain=job.effects~='KNOWN'}
+            and not ((job.state=='DONE' or job.state=='CANCELLED') and job.effects=='KNOWN') then
+            local child=require('EmberRoutesProbe/FieldWorkMonitor').project(context,job)
+            if child.bucket=='active' and not child.uncertain then child.reasonText=nil end
+            cleaning[#cleaning+1]=child
         end
     end
     table.sort(cleaning,function(a,b) return a.id<b.id end)
@@ -49,11 +63,12 @@ function D.status(actor,scope)
         append({id=fact.id,title=getText('IGUI_EmberRoutesProbe_Public_cleaning'),
             blocker=fact.state~='READY' and fact.reason or nil,blocked=fact.state=='BLOCKED',
             generation=fact.generation,observationRevision=fact.observationRevision,
-            demandSummary=fact.demandSummary,blockerLabels=fact.blockerLabels},cleaning)
+            demandSummary=text('cleaningCount',tostring(fact.observedCount)),blockerLabels=fact.blockerLabels,
+            coverageText=text('cleaningCoverage',tostring(fact.staleCount or 0))},cleaning)
     end
     if #cleaning>0 and not seen['DEMAND:cleaning:'..scope] then
         append({id='DEMAND:cleaning:'..scope,title=getText('IGUI_EmberRoutesProbe_Public_cleaning'),
-            demandSummary=text('executionObserved')},cleaning)
+            demandSummary=text('cleaningUnderway')},cleaning)
     end
     if require('EmberRoutesProbe/Boot').publicDispatch then
         local public=require 'EmberRoutesProbe/PublicWork'
@@ -65,7 +80,8 @@ function D.status(actor,scope)
                 local handlers={} local o=rule.activeOrder and byId[rule.activeOrder]
                 if o and o.state~='DONE' and o.state~='CANCELLED' then
                     handlers[1]={id=o.id,name=o.name or getItemNameFromFullType(rule.product),
-                        phase=o.state,reasonText=reason(o.reason),assets={}}
+                        phase=o.state,reasonText=reason(o.reason),assets={},
+                        bucket=o.state=='RUNNING' and 'active' or 'waiting',uncertain=o.state=='RECONCILE_REQUIRED'}
                 end
                 local reason=rule.reason
                 if reason=='ORDER_CREATED' or reason=='MANUAL_ORDER_ACTIVE' then reason=nil end

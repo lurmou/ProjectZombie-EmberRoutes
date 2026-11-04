@@ -34,7 +34,7 @@ end
 
 function Cards.signature(row)
     local fields={}
-    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','allocationSummary','allocationDetails','allocated','settled','remaining','observationRevision','feasibilityRevision','compact','demandReason'}) do
+    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','allocationSummary','allocationDetails','allocated','settled','remaining','observationRevision','feasibilityRevision','compact','demandReason','coverageText'}) do
         fields[#fields+1]=tostring(row[key])
     end
     for _,asset in ipairs(row.assets or {}) do
@@ -270,6 +270,7 @@ end
 
 
 function Cards.assetStatus(row,asset)
+    if asset.kind=='cargo' and asset.custodyState=='CARRIED' then return 'TRANSIT' end
     if asset.custodyState=='TRANSIT' then return 'TRANSIT' end
     if asset.custodyState=='UNCOLLECTED' then return 'WAITING' end
     if asset.custodyState=='WITHDRAWN' then return 'WITHDRAWN' end
@@ -301,293 +302,154 @@ function Cards.assetStatus(row,asset)
     return 'WAITING'
 end
 
-local icons=require('EmberRoutesProbe/UI/ItemPresentation').new()
-
 function Cards.rows()
+    local CardPanel=require 'EmberRoutesProbe/UI/CardPanel'
+    local Badge=require 'EmberRoutesProbe/UI/SemanticBadge'
+    local icons=require('EmberRoutesProbe/UI/ItemPresentation').new()
     return {emptyColor=Theme.muted,prepare=function(list,row)
         local p,h=list.emberPad,list.emberFontHeight
-        local iconSize=h*2 local width=math.max(1,list.width-p*4-iconSize)
-        local kind=row.product or (row.assets and row.assets[1] and row.assets[1].fullType)
-        local curPhase=Cards.phaseIndex(row)
-        local curProg=Cards.stageProgress(row,curPhase)
-        local blockerText=nil
-        if (row.bucket=='attention' or row.reason=='ITEM_MISSING') and row.assets then
-            for _,asset in ipairs(row.assets) do
-                local st=Cards.assetStatus(row,asset)
-                if st=='MISSING' and asset.fullType then
-                    local resolve=_G.getItemNameFromFullType
-                    local rawName=type(resolve)=='function' and resolve(asset.fullType) or asset.fullType
-                    local itemName=Text.wrapLimited(rawName,math.max(40,width-140),UIFont.Small,1)[1] or rawName
-                    blockerText='▲ '..getText('IGUI_EmberRoutesProbe_shortage')..': '..itemName
-                    break
-                end
-            end
-        end
-        local names=Cards.stageNames(row)
-        local stageName=names[curPhase] or ''
-        local activeLabel=curPhase==0 and Cards.reason(row.state) or stageName..(curProg~='' and (' '..curProg) or '')
-        local labelWidth=math.max(1,list.width-(p*2+iconSize)-math.min(130,list.width-(p*2+iconSize)-p*2)-p*1.5)
-        activeLabel=Text.wrapLimited(activeLabel,labelWidth,UIFont.Small,1)[1] or ''
-        local lines={Cards.title(row),row.summaryText or row.name or ''}
-        for i=1,2 do lines[i]=Text.wrapLimited(lines[i],width,UIFont.Small,1)[1] or '' end
-        local nodeStates={}
-        for i=1,#names do nodeStates[i]=stepState(row,i,curPhase) end
-        return {
-            lines=lines,
-            curPhase=curPhase,
-            nodeCount=#names,
-            nodeStates=nodeStates,
-            activeLabel=activeLabel,
-            blockerText=blockerText,
-            height=h*(row.compact and 2 or 3)+p*2,
-            compact=row.compact,
-            state=state(row),
-            icon=icons:icon(kind),
-            iconSize=iconSize
-        }
+        local key=row.uncertain and 'RECONCILE' or row.closed and 'COMPLETED'
+            or row.bucket=='active' and 'PROCESSING' or row.bucket=='paused' and 'PAUSED' or 'WAITING'
+        local badge=Badge.resolve(key,row.stateText or text('filter_'..(row.bucket or 'waiting')))
+        badge.fontHeight=h badge.textWidth=getTextManager():MeasureStringX(UIFont.Small,badge.displayText)
+        local width=list.width-p*2
+        local badgeW=math.min(width-p*2,badge.textWidth+p*2)
+        local icon=icons:icon(row.product)
+        local offset=icon and h*2+p or 0
+        local title=Text.wrapLimited(Cards.title(row),math.max(1,width-p*2-offset),UIFont.Small,2)
+        local subtitle=Text.wrapLimited(row.kind=='DEMAND' and (row.detailContext or row.summaryText or '')
+            or row.name or text('unassigned'),math.max(1,width-p*2-offset),UIFont.Small,1)[1] or ''
+        local badgeY=p+#title*h+h+p/2
+        local fraction=row.target and row.target>0 and math.min(1,(row.delivered or 0)/row.target) or nil
+        return {height=badgeY+h+p*3,title=title,subtitle=subtitle,badge=badge,badgeW=badgeW,badgeY=badgeY,
+            icon=icon,offset=offset,width=width,p=p,h=h,fraction=fraction,
+            frame={statusColor=badge.color},selectedFrame={statusColor=badge.color,selected=true}}
     end,draw=function(list,y,entry)
-        local v=entry.item.visual local h,p=list.emberFontHeight,list.emberPad
-        if y+list:getYScroll()+v.height<=0 or y+list:getYScroll()>=list.height then return y+v.height end
-        if list.selected==entry.index then Theme.rect(list,0,y,list.width,v.height,Theme.selected)
-        elseif list.mouseoverselected==entry.index then Theme.rect(list,0,y,list.width,v.height,Theme.hover) end
-        local color=Visual.colors[v.state] or Theme.accent
-        if v.icon then list:drawTextureScaledAspect(v.icon,p,y+p/2,v.iconSize,v.iconSize,1,1,1,1) end
-        Visual.mark(list,p+v.iconSize/3,y+p/2+v.iconSize,h/2,v.state,color)
-        local x=p*2+v.iconSize
-        Theme.text(list,v.lines[1],x,y+p/2,Theme.textColor)
-        Theme.text(list,v.lines[2],x,y+p/2+h,Theme.muted)
-
-        if v.compact then return y+v.height end
-        local railX=x
-        local railY=y+p/2+2*h+math.floor(h/2)
-        local totalRailW=math.min(130,list.width-x-p*2)
-        local nodeCount=v.nodeCount or 4
-        local nodeSpacing=math.floor(totalRailW/math.max(1,nodeCount-1))
-        local curPhase=v.curPhase or 1
-
-        for seg=1,nodeCount-1 do
-            local x1=railX+(seg-1)*nodeSpacing
-            local x2=railX+seg*nodeSpacing
-            local segDone=v.nodeStates[seg]=='done' and v.nodeStates[seg+1]=='done'
-            local segColor=segDone and COLOR_DONE or COLOR_ARROW
-            local lineH=segDone and 2 or 1
-            Theme.rect(list,x1,railY-math.floor(lineH/2),x2-x1,lineH,segColor)
-        end
-
-        local nowMs=getTimestampMs()
-        local pulseA=0.65+0.35*math.sin(nowMs*0.006)
-        for i=1,nodeCount do
-            local nx=railX+(i-1)*nodeSpacing
-            if v.nodeStates[i]=='done' then
-                Theme.rect(list,nx-3,railY-3,6,6,COLOR_DONE)
-            elseif v.nodeStates[i]=='active' then
-                local isAttention=(entry.item.value.bucket=='attention')
-                local actR=(isAttention and 1.0 or COLOR_ACTIVE.r)
-                local actG=(isAttention and 0.42 or COLOR_ACTIVE.g)
-                local actB=(isAttention and 0.38 or COLOR_ACTIVE.b)
-                list:drawRect(nx-4,railY-4,8,8,pulseA,actR,actG,actB)
-                Theme.rect(list,nx-4,railY-4,8,8,Theme.textColor,true)
-            else
-                Theme.rect(list,nx-2,railY-2,5,5,COLOR_WAIT,true)
-            end
-        end
-
-        local textAfterRail=railX+totalRailW+p/2
-        if v.blockerText then
-            Theme.text(list,v.blockerText,textAfterRail,y+p/2+2*h,Theme.status.ERROR)
-        elseif curPhase<=nodeCount then
-            local isAttention=(entry.item.value.bucket=='attention')
-            local lblCol=isAttention and Theme.status.ERROR or Theme.gold
-            Theme.text(list,v.activeLabel,textAfterRail,y+p/2+2*h,lblCol)
-        else
-            Theme.text(list,(getTextOrNull('IGUI_EmberRoutesProbe_Order_done') or 'IGUI_EmberRoutesProbe_Order_done'),textAfterRail,y+p/2+2*h,COLOR_DONE)
-        end
-
-        local row=entry.item.value
-        if (row.target or 0)>0 then Visual.meter(list,x,y+v.height-p,math.max(1,list.width-x-p),math.max(2,p/3),
-            math.min(1,(row.delivered or 0)/row.target),color) end
-        return y+v.height
+        local v=entry.item.visual local p,h=v.p,v.h
+        if y+list:getYScroll()+entry.height<=0 or y+list:getYScroll()>=list.height then return y+entry.height end
+        CardPanel.draw(list,p,y+p/2,v.width,entry.height-p,list.selected==entry.index and v.selectedFrame or v.frame)
+        if v.icon then list:drawTextureScaledAspect(v.icon,p*2,y+p,h*2,h*2,1,1,1,1) end
+        for i,line in ipairs(v.title) do Theme.text(list,line,p*2+v.offset,y+p+(i-1)*h,Theme.textColor) end
+        Theme.text(list,v.subtitle,p*2+v.offset,y+p+#v.title*h,Theme.muted)
+        Badge.draw(list,p*2,y+v.badgeY,v.badgeW,h+p,v.badge)
+        if v.fraction then Visual.meter(list,p*2,y+entry.height-p*1.3,math.max(1,v.width-p*2),math.max(3,p/2),v.fraction,v.badge.color) end
+        return y+entry.height
     end}
 end
 
-function Cards.details(owner,bounds)
-    local card={}
-    local info=require('EmberRoutesProbe/UI/InfoList').new(owner,bounds) card.list=info.list
-    function card:set(row,expanded)
-        local lines={}
-        local function add(value,color,fullType)
-            if value~=nil and value~='' then
-                lines[#lines+1]={text=tostring(value),color=color or Theme.textColor,fullType=fullType}
-            end
-        end
-        if row and row.compact then
-            add(Cards.title(row),Theme.gold)
-            add(row.stateText,Visual.colors[state(row)] or Theme.accent)
-            add(row.summaryText)
-            add(row.demandSummary,Theme.muted)
-            if row.demandReason~=row.summaryText then add(row.demandReason,Theme.muted) end
-            for _,label in ipairs(row.blockerLabels or {}) do add(label,Theme.muted) end
-            for _,child in ipairs(row.children or {}) do
-                local stage=child.stages and child.stages[child.stageIndex or 1]
-                add((child.name or text('unassigned'))..' · '..(stage and getText(stage.labelKey) or Cards.reason(child.phase))
-                    ..(stage and stage.progress and (' '..stage.progress) or ''),Theme.accent)
-                if child.reasonText then add(child.reasonText,child.uncertain and Theme.status.ERROR or Theme.muted) end
-                if child.uncertain then add(text('reconcile'),Theme.status.ERROR) end
-                if child.carrierAvailable==false then add(text('carrierMissing'),Theme.status.ERROR) end
-                if expanded then
-                    if child.targetLocation then local t=child.targetLocation add(text('targetLocation',t.x,t.y,t.z),Theme.muted) end
-                    for _,step in ipairs(child.stages or {}) do
-                        add(getText(step.labelKey)..' ['..text('step_'..(step.status or 'PLANNED'))..']',Theme.muted)
-                    end
-                    for _,asset in ipairs(child.assets or {}) do
-                        lines[#lines+1]={isAssetRow=true,fullType=asset.fullType,
-                            name=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName or text('unknownItem'),
-                            status=Cards.assetStatus(child,asset),statusText=asset.statusText,count=1}
-                    end
-                end
-            end
-            for _,asset in ipairs(row.assets or {}) do
-                if expanded or asset.exceptional then
-                    lines[#lines+1]={isAssetRow=true,fullType=asset.fullType,
-                        name=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName or text('unknownItem'),
-                        status=Cards.assetStatus(row,asset),statusText=asset.statusText,count=1}
-                    if asset.exceptional then add(asset.reasonText,Theme.status.ERROR) end
-                end
-            end
-            info:set(lines)
-            return
-        end
-        if not row then add(text('selectOrder'),Theme.muted)
-        else
-            add(Cards.title(row),Theme.gold)
-
-            local curPhase=Cards.phaseIndex(row)
-            local names=Cards.stageNames(row)
-            local stageName=names[curPhase] or ''
-            local curProg=Cards.stageProgress(row,curPhase)
-            local stageDesc=stageName~='' and (stageName..(curProg~='' and (' '..curProg) or '')) or ''
-            local stateText=row.stateText or Cards.reason(row.state)
-            local badge='['..stateText..']'..(stageDesc~='' and (' · '..text('stage',stageDesc)) or '')
-            add(badge,Visual.colors[state(row)] or Theme.accent)
-
-            local workerName=row.name and row.name~='' and row.name or text('unassigned')
-            local bMode=tostring(row.bodyMode or '')
-            local activity=(bMode~='' and getTextOrNull('IGUI_EmberRoutesProbe_Monitor_body_'..bMode)) or Cards.reason(bMode)
-            local workerLine=text('worker',workerName)
-            if activity and activity~='' and activity~=Cards.reason(row.phase) then
-                workerLine=workerLine..' ('..activity..')'
-            end
-            add(workerLine,Theme.textColor)
-
-            if row.membership then add(require('EmberRoutesProbe/MembershipText').summary(row.membership),Theme.muted) end
-            if not row.carrierAvailable then add(text('carrierMissing'),Theme.muted) end
-            if row.target and row.target>0 then
-                if row.produced~=nil then add(text('produced',row.produced,row.target)) end
-                add(text('delivered',row.delivered,row.target),Theme.accent)
-                if row.requested~=row.target then add(text('rounded',row.requested,row.target),Theme.muted) end
-            end
-            if row.allocationSummary then add(row.allocationSummary,Theme.muted) end
-            if row.cargoSummary then add(row.cargoSummary,Theme.accent) end
-            if row.noteKey then add(getText(row.noteKey),Theme.muted) end
-            if row.deliverySummary then add(row.deliverySummary,Theme.muted) end
-            if row.demandSummary then add(row.demandSummary,Theme.muted) end
-            if row.responsibilitySummary then add(row.responsibilitySummary,Theme.status.ERROR) end
-            if row.targetLocation then
-                local target=row.targetLocation
-                add(text('targetLocation',target.x,target.y,target.z),Theme.muted)
-            end
-
-            if row.reason and row.reason~='' and row.reason~='WAITING_CLAIM' then
-                local reasonLabel=row.reasonText or Cards.reason(row.reason)
-                local isAttention=(row.bucket=='attention' or row.state=='SUSPENDED')
-                add(text('reason',reasonLabel),isAttention and (Visual.colors.blocked or Theme.status.ERROR) or Theme.accent)
-                if isAttention and not row.readOnly then
-                    local adviceKey=row.state=='SUSPENDED' and 'advice_suspended' or 'advice_blocked'
-                    add('▲ '..text(adviceKey),Theme.gold)
-                end
-            end
-            for _,label in ipairs(row.blockerLabels or {}) do add('- '..label,Theme.muted) end
-            if row.workflow and row.workflow.steps then
-                add(text('steps'),Theme.gold)
-                for _,step in ipairs(row.workflow.steps) do
-                    local status=step.status or 'PLANNED'
-                    add(getText(step.labelKey)..' ['..text('step_'..status)..']'
-                        ..(step.progress and (' '..step.progress) or ''),
-                        status=='UNCERTAIN' and Theme.status.ERROR or status=='COMPLETED' and COLOR_DONE or Theme.muted)
-                end
-            end
-            if row.uncertain then add(text('reconcile'),Theme.accent) end
-            if row.cargoSummary then add(row.cargoSummary,Theme.muted) end
-
-            if type(row.source)=='table' and row.source.x then add(text('source',row.source.x,row.source.y,row.source.z),Theme.muted) end
-            if type(row.destination)=='table' and row.destination.x then add(text('destination',row.destination.x,row.destination.y,row.destination.z),Theme.muted) end
-
-            local nodes=row.nodes or {}
-            if #nodes>0 then
-                add(text('chain'),Theme.accent)
-                local curIndex=row.chainIndex or 1
-                for i,node in ipairs(nodes) do
-                    local status=(i<curIndex) and 'STORED'
-                        or (i==curIndex) and (row.bucket=='attention' and 'MISSING' or 'PROCESSING')
-                        or 'TRANSIT'
-                    local rawName=node.name or node.product or '?'
-                    if node.product then
-                        local resolve=_G.getItemNameFromFullType
-                        rawName=(type(resolve)=='function' and resolve(node.product)) or node.product
-                    end
-                    local stepTitle=text('node',i,rawName,node.requested or '?')
-                    if i==row.chainIndex then stepTitle=stepTitle..' · '..text('currentStep') end
-                    lines[#lines+1]={
-                        isAssetRow=true,
-                        fullType=node.product,
-                        name=stepTitle,
-                        status=status,
-                        count=node.requested or 1,
-                        isNode=true
-                    }
-                end
-            end
-
-            for _,line in ipairs(row.allocationLines or {}) do add(line,Theme.muted) end
-            local assets=row.assets or {}
-            if #assets>0 then
-                add(text('originals',#assets),Theme.accent)
-                local grouped,keys={},{}
-                for _,asset in ipairs(assets) do
-                    local status=Cards.assetStatus(row,asset)
-                    local key=(asset.fullType or asset.displayName or '?')..':'..(asset.kind or '')..':'..status
-                    if not grouped[key] then
-                        grouped[key]={asset=asset,status=status,count=0}
-                        keys[#keys+1]=key
-                    end
-                    grouped[key].count=grouped[key].count+1
-                end
-                table.sort(keys)
-                local maxDisplay=math.min(#keys,64)
-                for i=1,maxDisplay do
-                    local group=grouped[keys[i]]
-                    local asset=group.asset
-                    local rawName=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName or text('unknownItem')
-                    lines[#lines+1]={
-                        isAssetRow=true,
-                        fullType=asset.fullType,
-                        name=rawName,
-                        status=group.status,statusText=asset.statusText,
-                        count=group.count,
-                        credited=asset.delivered,
-                        kind=asset.kind
-                    }
-                end
-                if #keys>64 then
-                    add('... '..text('moreAssets',#keys-64),Theme.muted)
-                end
-            end
-
-            if (row.kind=='HAUL' or row.kind=='DELIVERY') and not row.closed then add(text('haulRecovery'),Theme.muted) end
-        end
-        info:set(lines)
+-- Pure display rows. InfoList owns card/badge/meter layout and native scrolling.
+function Cards.detailRows(row,expanded)
+    local rows={}
+    local function tone(r)
+        return r.uncertain and 'RECONCILE' or r.closed and (r.state=='CANCELLED' and 'PAUSED' or 'COMPLETED')
+            or r.state=='STOPPING' and 'STOPPING' or r.bucket=='active' and 'PROCESSING'
+            or r.bucket=='paused' and 'PAUSED' or 'WAITING'
     end
-    return card
+    local function card(title,lines,status,statusText,meters)
+        rows[#rows+1]={isCardRow=true,title=title,lines=lines or {},status=status,statusText=statusText,meters=meters}
+    end
+    local function action(r)
+        local step=r.stages and r.stages[r.stageIndex or 1]
+        if step then return getText(step.labelKey) end
+        local index=Cards.phaseIndex(r)
+        return Cards.stageNames(r)[index]
+    end
+    local function notice(r)
+        if r.uncertain then return text('reconcile') end
+        if r.responsibilitySummary then return r.responsibilitySummary end
+        if r.demandReason then return r.demandReason end
+        if r.bucket=='active' or r.closed then return end
+        local code=r.reason
+        if code and code~='' and code~='WAITING_CLAIM' and code~='RUNNING' then
+            local label=r.reasonText or Cards.reason(code)
+            return label==code and text('detail_conditions') or label
+        end
+    end
+    if not row then card(text('selectOrder')) return rows end
+    local overview={}
+    if row.kind=='DEMAND' then
+        overview[#overview+1]=row.detailContext
+        overview[#overview+1]=row.demandSummary
+    elseif row.compact then overview[#overview+1]=row.summaryText end
+    local meters={}
+    if row.target and row.target>0 then
+        if row.produced~=nil then
+            meters[#meters+1]={text=text('detail_produced'),value=tostring(row.produced)..' / '..tostring(row.target),fraction=math.min(1,row.produced/row.target)}
+        end
+        meters[#meters+1]={text=text('detail_delivered'),value=tostring(row.delivered or 0)..' / '..tostring(row.target),fraction=math.min(1,(row.delivered or 0)/row.target)}
+    end
+    card(Cards.title(row),overview,tone(row),row.stateText or text('filter_'..(row.bucket or 'waiting')),meters)
+    rows[#rows].hero=true
+    local alert=notice(row)
+    if alert then card(text('detail_attention'),{alert},row.uncertain and 'RECONCILE' or 'WAITING') end
+    local children=row.children or {}
+    if #children>0 then
+        for _,child in ipairs(children) do
+            local lines={action(child) or Cards.reason(child.phase)}
+            local why=notice(child) if why and why~=alert then lines[#lines+1]=why end
+            if child.carrierAvailable==false then lines[#lines+1]=text('carrierMissing') end
+            card(child.name or text('unassigned'),lines,(#children>1 or child.uncertain) and tone(child) or nil)
+        end
+    elseif row.kind~='DEMAND' and row.name then
+        local lines={action(row)}
+        if row.cargoHeld and row.cargoHeld>0 then lines[#lines+1]=text('detail_carrying',row.cargoHeld) end
+        if row.carrierAvailable==false then lines[#lines+1]=text('carrierMissing') end
+        card(text('worker',row.name),lines)
+    end
+    local grouped,keys={},{}
+    local function assets(r)
+        for _,asset in ipairs(r.assets or {}) do
+            local status=Cards.assetStatus(r,asset)
+            local key=(asset.fullType or asset.displayName or '?')..':'..(asset.kind or '')..':'..status
+            local group=grouped[key]
+            if not group then group={asset=asset,status=status,count=0} grouped[key]=group keys[#keys+1]=key end
+            group.count=group.count+1
+        end
+    end
+    assets(row) for _,child in ipairs(children) do assets(child) end
+    local alerts={RECONCILE=true,MISSING=true,DISCREPANCY=true}
+    table.sort(keys,function(a,b)
+        local aa,bb=alerts[grouped[a].status]==true,alerts[grouped[b].status]==true
+        if aa~=bb then return aa end return a<b
+    end)
+    if #keys>0 then
+        rows[#rows+1]={text=text('detail_items'),color=Theme.muted}
+        local limit=expanded and 64 or 6
+        for i=1,math.min(limit,#keys) do
+            local g=grouped[keys[i]] local a=g.asset
+            rows[#rows+1]={isAssetRow=true,fullType=a.fullType,
+                name=a.fullType and getItemNameFromFullType(a.fullType) or a.displayName or text('unknownItem'),
+                status=g.status,statusText=a.statusText or a.kind=='cargo' and g.status=='STORED' and text('detail_delivered')
+                    or a.kind=='cargo' and g.status=='WITHDRAWN' and text('detail_held') or nil,count=g.count,kind=a.kind}
+        end
+        if #keys>limit then card(text('moreAssets',#keys-limit)) end
+    end
+    if expanded then
+        for _,r in ipairs(#children>0 and children or {row}) do
+            for _,step in ipairs(r.stages or r.workflow and r.workflow.steps or {}) do
+                local status=step.status or 'PLANNED'
+                card(getText(step.labelKey),step.progress and {step.progress} or {},
+                    status=='COMPLETED' and 'COMPLETED' or status=='UNCERTAIN' and 'RECONCILE'
+                    or status=='ACTIVE' and 'PROCESSING' or status=='STOPPING' and 'STOPPING' or 'WAITING',text('step_'..status))
+            end
+        end
+        local notes={}
+        if row.membership then notes[#notes+1]=require('EmberRoutesProbe/MembershipText').summary(row.membership) end
+        if row.coverageText then notes[#notes+1]=row.coverageText end
+        if row.noteKey then notes[#notes+1]=getText(row.noteKey) end
+        if type(row.source)=='table' and row.source.x then notes[#notes+1]=text('source',row.source.x,row.source.y,row.source.z) end
+        if type(row.destination)=='table' and row.destination.x then notes[#notes+1]=text('destination',row.destination.x,row.destination.y,row.destination.z) end
+        if row.targetLocation then local t=row.targetLocation notes[#notes+1]=text('targetLocation',t.x,t.y,t.z) end
+        if row.requested and row.target and row.requested~=row.target then notes[#notes+1]=text('rounded',row.requested,row.target) end
+        if row.allocationSummary then notes[#notes+1]=row.allocationSummary end
+        for _,node in ipairs(row.nodes or {}) do notes[#notes+1]=text('node',#notes+1,node.name or node.product,node.requested or 0) end
+        if (row.kind=='HAUL' or row.kind=='DELIVERY') and not row.closed then notes[#notes+1]=text('haulRecovery') end
+        if #notes>0 then card(text('detail_more'),notes) end
+    end
+    return rows
 end
-
+function Cards.details(owner,bounds)
+    local info=require('EmberRoutesProbe/UI/InfoList').new(owner,bounds)
+    return {list=info.list,set=function(_,row,expanded) info:set(Cards.detailRows(row,expanded)) end}
+end
 return Cards

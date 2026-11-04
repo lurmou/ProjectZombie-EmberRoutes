@@ -90,3 +90,13 @@ local enriched3=Service.enrichWorkers(nil,'home',rawWorkers)
 if enriched3[1].craftSkill~=10 then error('craftSkill should be 10 after invalidate, got: '..tostring(enriched3[1].craftSkill)) end
 
 print('PASS PersonnelService enrichWorkers and cache lifecycle test')
+local profession='IGUI_MissingProfession'
+mockNpc.getDescriptor=function() return {isFemale=function() return false end,getCharacterProfession=function() return 'test' end} end
+CharacterProfessionDefinition={getCharacterProfessionDefinition=function() return {getUIName=function() return profession end,getTexture=function() end} end}
+getTextOrNull=function(key) if key=='IGUI_TestProfession' then return 'Carpenter' end end
+rawWorkers[1].profTitle='IGUI_MissingProfession'
+Service.invalidate('worker1')
+assert(Service.enrichWorkers(nil,'home',rawWorkers)[1].profTitle==nil,'unresolved profession key never reaches UI, including raw-worker fallback')
+profession='IGUI_TestProfession' Service.invalidate('worker1')
+assert(Service.enrichWorkers(nil,'home',rawWorkers)[1].profTitle=='Carpenter','native profession UI key is translated before display')
+print('PASS profession translation/fallback boundary')

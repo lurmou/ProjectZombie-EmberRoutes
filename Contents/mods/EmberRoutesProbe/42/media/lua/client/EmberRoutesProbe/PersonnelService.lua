@@ -6,6 +6,12 @@ local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Service={}
 local world,cache=nil,{}
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..key,...) end
+local function professionTitle(value)
+    if type(value)~='string' then return end
+    value=(getTextOrNull and getTextOrNull(value)) or value
+    if value:match('^IGUI_') or value:match('^UI_') then return end
+    return value
+end
 local function load()
     local root=Registry.data() if root~=world then world,cache=root,{} end
 end
@@ -104,7 +110,7 @@ local function readAvatarInfo(handle)
             end)
         end
     end
-    return isFemale,profTitle,profTexture
+    return isFemale,professionTitle(profTitle),profTexture
 end
 
 local function getStatVal(char,sel,statName,statEnum)
@@ -319,7 +325,7 @@ function Service.enrichWorkers(actor,scope,rawWorkers)
             haulSkill=staticVal.haulSkill or (w and w.haulSkill),
             cookSkill=staticVal.cookSkill or (w and w.cookSkill),
             isFemale=staticVal.isFemale or (w and w.isFemale),
-            profTitle=staticVal.profTitle or (w and w.profTitle),
+            profTitle=staticVal.profTitle or professionTitle(w and w.profTitle),
             profTexture=staticVal.profTexture or (w and w.profTexture),
             activity=w.activity,
             membership=w.membership,

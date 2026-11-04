@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+需求/工单展示整理：[0.29.37 展示事实、组件复用与验证边界](reviews/2026-11-04/monitor-presentation.md)。清洁只在需求页，展开技术细节；不代表视觉与原生玩法验收完成。
+
 需求与工单分离、个人医疗：[实施计划](superpowers/plans/2026-11-04-demand-medical.md)、[0.29.36参考核对、集成及验证差额](reviews/2026-11-04/demand-medical.md)。基础需求只读汇总；个人包扎沿现有唯一Session和原件责任；专业医疗与实机验收尚未完成。
 
 NPC seated-social：[一坐一站实现、身体授权调查与验证](reviews/2026-11-04/seated-social-segment.md)；保持原 SIT Job/Session，实机未验证。

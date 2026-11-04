@@ -39,6 +39,11 @@ local PRIORITY_COLORS={
 ---@field active boolean?
 ---@field disposed boolean?
 EmberRoutesPersonnelPage=ISPanel:derive('EmberRoutesPersonnelPage')
+function EmberRoutesPersonnelPage.floorLabel(z)
+    local floor=math.floor(z+0.5)
+    return floor==0 and getText('IGUI_EmberRoutesProbe_Settlement_floorGround')
+        or ((floor+1)..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel'))
+end
 
 ---@param owner EmberRoutesSettlementDashboard
 ---@param bounds table
@@ -398,7 +403,7 @@ function EmberRoutesPersonnelPage:project(value)
                 local dx=hx-ax
                 local dy=hy-ay
                 local dist=math.floor(math.sqrt(dx*dx+dy*dy))
-                local floorStr=(hz==0) and getText("IGUI_EmberRoutesProbe_Settlement_floorGround") or ((hz+1)..getText("IGUI_EmberRoutesProbe_Settlement_floorLevel"))
+                local floorStr=EmberRoutesPersonnelPage.floorLabel(hz)
                 local dir=''
                 if math.abs(dx)>1 or math.abs(dy)>1 then
                     local deg=math.atan2(dy,dx)*180/math.pi

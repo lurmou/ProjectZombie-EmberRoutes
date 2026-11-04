@@ -13,6 +13,7 @@ local FilterChips=require 'EmberRoutesProbe/UI/FilterChips'
 local Cards=require 'EmberRoutesProbe/UI/OrderMonitorCards'
 local text=Cards.text
 local filters={'open','active','waiting','paused','attention','closed'}
+local filterGlyphs={active='●',waiting='▲',paused='❚❚',attention='◆',closed='✔'}
 
 ---@class EmberRoutesOrderMonitorPage:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
@@ -45,6 +46,7 @@ function EmberRoutesOrderMonitorPage:new(owner,bounds)
     o.fontHeight,o.pad=owner.fontHeight,owner.pad
     o.background=false
     o.buttons={}
+    o.filters=filters
     o.store=State.new({snapshot={rows={}},selection=false,filter='open',detailMode=false,expanded=false})
     return o
 end
@@ -66,10 +68,12 @@ function EmberRoutesOrderMonitorPage:createChildren()
         self.store:setState({filter=id})
     end)
     local defaultChips={}
-    for _,key in ipairs(filters) do
-        defaultChips[#defaultChips+1]={id=key,label=text('filter_'..key)}
+    for _,key in ipairs(self.filters) do
+        defaultChips[#defaultChips+1]={id=key,label=self.demandMode
+            and getText('IGUI_EmberRoutesProbe_Demand_filter_'..key) or text('filter_'..key)}
     end
     self.filterChips:setOptions(defaultChips,'open')
+    self.filterChips.variant='underline'
     self:addChild(self.filterChips)
 
     local function button(key,label,r,fn,isPrimary)
@@ -99,7 +103,7 @@ function EmberRoutesOrderMonitorPage:createChildren()
     -- Middle Area: Order List & Detail Panel
     self.narrow=regions[2].width<h*40
     local columns=self.narrow and {regions[2],regions[2]}
-        or assert(Layout.axis(regions[2],{{grow=2},{grow=3}},{gap=p}))
+        or assert(Layout.axis(regions[2],{{grow=1},{grow=2}},{gap=p}))
     self.orderList=Cached.create(self,columns[1],function(_,row)
         self.store:setState({selection=row.id})
     end,Cards.rows())
@@ -123,7 +127,7 @@ function EmberRoutesOrderMonitorPage:createChildren()
 end
 
 function EmberRoutesOrderMonitorPage:filterChanged(combo)
-    self.store:setState({filter=filters[combo.selected] or 'open'})
+    self.store:setState({filter=self.filters[combo.selected] or 'open'})
 end
 
 function EmberRoutesOrderMonitorPage:activate()
@@ -150,14 +154,14 @@ function EmberRoutesOrderMonitorPage:project(value)
         end
     end
     if self.filterChips then
-        local chipOptions = {
-            {id='open', label=text('filter_open'), count=counts.open},
-            {id='active', label=text('filter_active'), count=counts.active, glyph='●'},
-            {id='waiting', label=text('filter_waiting'), count=counts.waiting, glyph='▲'},
-            {id='paused', label=text('filter_paused'), count=counts.paused, glyph='❚❚'},
-            {id='attention', label=text('filter_attention'), count=counts.attention, glyph='◆', alert=(counts.attention > 0)},
-            {id='closed', label=text('filter_closed'), count=counts.closed, glyph='✔'},
-        }
+        local chipOptions={}
+        for _,key in ipairs(self.filters) do
+            if key=='open' or key==value.filter or counts[key]>0 then
+            chipOptions[#chipOptions+1]={id=key,label=self.demandMode
+                and getText('IGUI_EmberRoutesProbe_Demand_filter_'..key) or text('filter_'..key),
+                count=counts[key],glyph=filterGlyphs[key],alert=key=='attention' and counts.attention>0}
+            end
+        end
         self.filterChips:setOptions(chipOptions, value.filter)
     end
 
@@ -175,7 +179,7 @@ function EmberRoutesOrderMonitorPage:project(value)
     self.details:set(selected,value.expanded)
     local compact=selected and selected.compact==true
     for _,key in ipairs({'stop','resume','return'}) do self.buttons[key]:setVisible(selected~=nil and not selected.readOnly) end
-    self.buttons.expand:setVisible(compact==true)
+    self.buttons.expand:setVisible(selected~=nil)
     self.buttons.expand:setTitle(text(value.expanded and 'collapse' or 'expand'))
     self.orderList:setVisible(not self.narrow or not value.detailMode)
     self.details.list:setVisible(not self.narrow or value.detailMode)

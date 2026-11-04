@@ -132,10 +132,18 @@ class KahluaLaborTest {
         g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g.setFont(new java.awt.Font("Microsoft YaHei",java.awt.Font.PLAIN,18));
         var metrics=g.getFontMetrics();
-        env.rawset("_measure",(JavaFunction)(f,n)->{f.push((double)metrics.stringWidth((String)f.get(0)));return 1;});
+        var smallFont=g.getFont();
+        var mediumFont=smallFont.deriveFont(java.awt.Font.BOLD,26f);
+        var largeFont=smallFont.deriveFont(java.awt.Font.BOLD,32f);
+        java.util.function.Function<Object,java.awt.Font> fontFor=value->
+            value instanceof Number number && number.intValue()==2 ? mediumFont
+            : value instanceof Number number && number.intValue()==3 ? largeFont : smallFont;
+        env.rawset("_fontHeight",(JavaFunction)(f,n)->{f.push((double)g.getFontMetrics(fontFor.apply(n>0?f.get(0):null)).getHeight());return 1;});
+        env.rawset("_measure",(JavaFunction)(f,n)->{f.push((double)g.getFontMetrics(fontFor.apply(n>1?f.get(1):null)).stringWidth((String)f.get(0)));return 1;});
         env.rawset("_text",(JavaFunction)(f,n)->{
             g.setColor(new java.awt.Color((float)number(f.get(3)),(float)number(f.get(4)),(float)number(f.get(5))));
-            g.drawString((String)f.get(0),(int)number(f.get(1)),(int)number(f.get(2))+metrics.getAscent());return 0;
+            g.setFont(fontFor.apply(n>6?f.get(6):null));
+            g.drawString((String)f.get(0),(int)number(f.get(1)),(int)number(f.get(2))+g.getFontMetrics().getAscent());return 0;
         });
         env.rawset("_rect",(JavaFunction)(f,n)->{
             g.setColor(new java.awt.Color((float)number(f.get(5)),(float)number(f.get(6)),(float)number(f.get(7)),(float)number(f.get(4))));
@@ -147,13 +155,13 @@ class KahluaLaborTest {
         });
         env.rawset("previewTab",tab); env.rawset("previewFontHeight",(double)metrics.getHeight());
         String source="""
-            getTextManager=function() return {getFontHeight=function() return previewFontHeight end,
-                MeasureStringX=function(_,font,value) return _measure(value) end} end
+            getTextManager=function() return {getFontHeight=function(_,font) return _fontHeight(font) end,
+                MeasureStringX=function(_,font,value) return _measure(value,font) end} end
             PREVIEW=ERSettlementPreview(previewTab,previewFontHeight)
             local function paint(panel)
                 if panel.visible==false then return end
                 local ax,ay=panel:getAbsoluteX(),panel:getAbsoluteY()
-                function panel:drawText(value,x,y,r,g,b) _text(value,x+ax,y+ay,r,g,b) end
+                function panel:drawText(value,x,y,r,g,b,a,font) _text(value,x+ax,y+ay,r,g,b,font) end
                 function panel:drawTextCentre(value,x,y,r,g,b) self:drawText(value,x-_measure(value)/2,y,r,g,b) end
                 function panel:drawRect(x,y,w,h,a,r,g,b) _rect(x+ax,y+ay,w,h,a,r,g,b,false) end
                 function panel:drawRectBorder(x,y,w,h,a,r,g,b) _rect(x+ax,y+ay,w,h,a,r,g,b,true) end

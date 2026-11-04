@@ -185,10 +185,9 @@ function SemanticBadge.draw(owner, x, y, width, height, descriptor)
     Theme.rect(owner, x, y, width, height, d.border, true)
 
     -- Glyph & Label
-    local h = getTextManager():getFontHeight(UIFont.Small)
-    local tm = getTextManager()
+    local h = d.fontHeight or getTextManager():getFontHeight(UIFont.Small)
     local fullText = d.displayText or d.label
-    local tw = tm:MeasureStringX(UIFont.Small, fullText)
+    local tw = d.textWidth or getTextManager():MeasureStringX(UIFont.Small, fullText)
     local tx = x + math.max(2, math.floor((width - tw) / 2))
     local ty = y + math.floor((height - h) / 2)
 

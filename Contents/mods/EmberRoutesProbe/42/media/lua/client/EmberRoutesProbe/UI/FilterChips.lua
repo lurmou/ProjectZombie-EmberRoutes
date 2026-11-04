@@ -7,6 +7,8 @@
 
 require "ISUI/ISPanel"
 local Theme = require "EmberRoutesProbe/UI/Theme"
+local quietBorder={r=0.20,g=0.25,b=0.30,a=0.6}
+local quietBadge={r=0.08,g=0.10,b=0.12,a=0.8}
 
 ---@class EmberRoutesFilterChips:ISPanel
 ---@field fontHeight number
@@ -166,13 +168,18 @@ function FilterChips:prerender()
 
         -- Background capsule
         local bg = isSelected and Theme.selected or (isHovered and Theme.hover or Theme.control)
-        local border = isSelected and Theme.accent or (isHovered and Theme.border or {r=0.20, g=0.25, b=0.30, a=0.6})
-        Theme.rect(self, chip.x, chip.y, chip.width, chip.height, bg)
-        Theme.rect(self, chip.x, chip.y, chip.width, chip.height, border, true)
+        local border = isSelected and Theme.accent or (isHovered and Theme.border or quietBorder)
+        if self.variant=='underline' then
+            if isHovered then Theme.rect(self,chip.x,chip.y,chip.width,chip.height,Theme.hover) end
+        else
+            Theme.rect(self, chip.x, chip.y, chip.width, chip.height, bg)
+            Theme.rect(self, chip.x, chip.y, chip.width, chip.height, border, true)
+        end
 
         -- Accent left indicator for selected chip
         if isSelected then
-            Theme.rect(self, chip.x, chip.y, math.max(2, math.floor(p/3)), chip.height, Theme.accent)
+            if self.variant=='underline' then Theme.rect(self,chip.x,chip.y+chip.height-2,chip.width,2,Theme.accent)
+            else Theme.rect(self, chip.x, chip.y, math.max(2, math.floor(p/3)), chip.height, Theme.accent) end
         end
 
         local textCol = isSelected and Theme.textColor or (isHovered and Theme.textColor or Theme.muted)
@@ -196,11 +203,13 @@ function FilterChips:prerender()
             local badgeH = h - 2
             local badgeW = chip.countW + 6
             local badgeY = chip.textY + 1
-            local badgeBg = chip.alert and Theme.status.ERROR or (isSelected and Theme.panel or {r=0.08, g=0.10, b=0.12, a=0.8})
+            local badgeBg = chip.alert and Theme.status.ERROR or (isSelected and Theme.panel or quietBadge)
             local badgeTextCol = chip.alert and Theme.textColor or (isSelected and Theme.accent or Theme.muted)
 
-            Theme.rect(self, drawX, badgeY, badgeW, badgeH, badgeBg)
-            Theme.rect(self, drawX, badgeY, badgeW, badgeH, border, true)
+            if self.variant~='underline' then
+                Theme.rect(self, drawX, badgeY, badgeW, badgeH, badgeBg)
+                Theme.rect(self, drawX, badgeY, badgeW, badgeH, border, true)
+            end
             Theme.text(self, chip.countStr, drawX + 3, badgeY - 1, badgeTextCol)
         end
     end

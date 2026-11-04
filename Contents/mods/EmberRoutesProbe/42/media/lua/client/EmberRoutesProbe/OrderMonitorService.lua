@@ -198,7 +198,7 @@ function Service.status(actor,id)
         return Probe.ready and Probe.hasJava() and Driver.bindId(actor,npcId) or nil
     end}
     for _,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do
-        if j.scopeId==id then
+        if j.scopeId==id and not (j.providerType=='FIELD_WORK' and j.payload.category=='cleaning') then
             local row=Monitors.project(context,j)
             if row then result.rows[#result.rows+1]=row end
         end
@@ -218,7 +218,6 @@ function Service.status(actor,id)
         end
     end
     for _,row in ipairs(require('EmberRoutesProbe/ToolCustodyMonitor').rows(id,context)) do result.rows[#result.rows+1]=row end
-    result.rows=require('EmberRoutesProbe/CleaningMonitorView').project(result.rows,id)
     table.sort(result.rows,function(a,b) if a.closed~=b.closed then return not a.closed end return a.id<b.id end)
     return result
 end

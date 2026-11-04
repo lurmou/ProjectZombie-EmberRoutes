@@ -67,7 +67,7 @@ function ISModalDialog:new(x,y,w,h,message,yesno,target,callback)
     local o=Base.new(self,x,y,w,h) o.text=message o.target=target o.onclick=callback return o
 end
 for _,name in ipairs({'ISPanel','ISCollapsableWindow','ISButton','ISScrollingListBox','ISTextEntryBox','ISComboBox','ISModalDialog'}) do package.loaded['ISUI/'..name]=true end
-UIFont={Small=1} Keyboard={KEY_UP=1,KEY_DOWN=2,KEY_ESCAPE=3,KEY_LEFT=4,KEY_RIGHT=5,KEY_TAB=6,KEY_RETURN=7,KEY_PRIOR=8,KEY_NEXT=9}
+UIFont={Small=1,Medium=2,Large=3} Keyboard={KEY_UP=1,KEY_DOWN=2,KEY_ESCAPE=3,KEY_LEFT=4,KEY_RIGHT=5,KEY_TAB=6,KEY_RETURN=7,KEY_PRIOR=8,KEY_NEXT=9}
 Joypad={AButton=1,BButton=2,XButton=3,YButton=4,LBumper=5,RBumper=6,LStickButton=7,RStickButton=8}
 local sw,sh,fh=1920,1080,20
 function getCore() return {getScreenWidth=function() return sw end,getScreenHeight=function() return sh end} end
@@ -147,7 +147,7 @@ local monitorCount,monitorCallbacks,monitorCommands=0,{},{}
 local monitorRow={id='CRAFT:monitor-job',jobId='monitor-job',npcId='worker',generation=3,kind='CRAFT',name='Worker',title='Saw logs',
  state='PAUSED',phase='CRAFTING',bucket='paused',bodyMode='FOLLOW',target=3,requested=3,produced=0,delivered=0,
  assets={{id=11,kind='tools'}},nodes={},carrierAvailable=true,canResume=true,canCancel=true}
-local monitorSnapshot={rows={monitorRow}}
+local monitorSnapshot={rows=ERMonitorPreviewRows and ERMonitorPreviewRows() or {monitorRow}}
 package.loaded['EmberRoutesProbe/OrderMonitorService']={status=function() return monitorSnapshot end,
  watch=function(_,_,fn) monitorCount=monitorCount+1 monitorCallbacks[#monitorCallbacks+1]=fn return function() monitorCount=monitorCount-1 end end,
  command=function(_,_,id,generation,action) monitorCommands[#monitorCommands+1]={id=id,generation=generation,action=action} return 'QUEUED' end}
@@ -193,12 +193,12 @@ package.loaded['EmberRoutesProbe/CraftingService']={status=function() return cra
  end}
 local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'
 local demandCount,demandCallbacks=0,{}
-if ERDemandPageOnly then
+if ERDemandPageOnly or ERDemandPreviewRows then
     package.loaded['EmberRoutesProbe/DemandMonitorService']={
         status=function() error('synchronous watch already projects the initial snapshot') end,
         watch=function(_,_,fn)
             demandCount=demandCount+1 demandCallbacks[#demandCallbacks+1]=fn
-            fn({rows={{id='DEMAND:cleaning:home',kind='DEMAND',title='Cleaning',compact=true,readOnly=true,
+            fn({rows=ERDemandPreviewRows and ERDemandPreviewRows() or {{id='DEMAND:cleaning:home',kind='DEMAND',title='Cleaning',compact=true,readOnly=true,
                 bucket='waiting',state='waiting',summaryText='Normal · Home · Unhandled',assets={},children={}}}})
             return function() demandCount=demandCount-1 end
         end}
@@ -210,7 +210,7 @@ if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
         sw,sh,fh=screenWidth or 1280,screenHeight or 900,height
         local window=Dashboard.open(actor,entry.id)
         window.x,window.y=0,0
-        if ERMonitorPreviewOnly then window:selectTab('orders') return window end
+        if ERMonitorPreviewOnly then window:selectTab(tab=='demands' and 'demands' or 'orders') return window end
         local page=window.pages.warehouse local samples={}
         for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do
             page.itemNames[id]=ERTestTranslations and ERTestTranslations['TEST_ItemName_'..id] or id
@@ -248,6 +248,19 @@ if ERDemandPageOnly then
     check(demandCount==1 and wareCount==0 and #needs.orderList.items==1,'demand tab owns its single synchronous watch projection')
     check(not needs.buttons.create.visible and not needs.buttons.resume.enable and not needs.buttons.stop.enable,
         'facts expose no production or execution commands')
+    check(#needs.filterChips.options==2 and needs.filterChips.options[2].id=='waiting',
+        'Needs hides empty filters and never adds paused/completed categories')
+    local getManager=getTextManager
+    getTextManager=function() error('draw must use prepared card/badge/item text, not measure fonts') end
+    for _,list in ipairs({needs.details.list,monitor.details.list}) do
+        local y=0 for _,entry in ipairs(list.items) do y=list:doDrawItem(y,entry) end
+    end
+    getTextManager=getManager
+    local Person=require 'EmberRoutesProbe/UI/PersonnelPage'
+    check(Person.floorLabel(.49)==getText('IGUI_EmberRoutesProbe_Settlement_floorGround')
+        and Person.floorLabel(.5)=='2'..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel')
+        and Person.floorLabel(1.88300006389618)=='3'..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel'),
+        'stair height is rounded for display only')
     local snapshot=needs.store.value.snapshot
     shell:selectTab('orders') demandCallbacks[1]({rows={}})
     check(demandCount==0 and needs.store.value.snapshot==snapshot,'deactivation rejects late demand callback')

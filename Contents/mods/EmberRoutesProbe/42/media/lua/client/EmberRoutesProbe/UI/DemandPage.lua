@@ -4,6 +4,7 @@ local Demand=require 'EmberRoutesProbe/DemandMonitorService'
 EmberRoutesDemandPage=Base:derive('EmberRoutesDemandPage')
 function EmberRoutesDemandPage:new(owner,bounds)
     local page=Base.new(self,owner,bounds) page.service=Demand page.demandMode=true
+    page.filters={'open','active','waiting','attention'}
     return page
 end
 function EmberRoutesDemandPage:createChildren()

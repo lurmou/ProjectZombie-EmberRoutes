@@ -7,6 +7,7 @@
 
 require "ISUI/ISPanel"
 local Theme = require "EmberRoutesProbe/UI/Theme"
+local hoverBorder={r=0.35,g=0.45,b=0.55,a=0.9}
 
 ---@class EmberRoutesCardPanel:ISPanel
 ---@field fontHeight number
@@ -37,11 +38,17 @@ function CardPanel.draw(owner, x, y, width, height, opts)
     local isHover = opts.hover or false
 
     -- 1. Card Background & Border
-    local bg = isSelected and Theme.selected or (isHover and Theme.hover or Theme.panel)
-    local border = isSelected and Theme.accent or (isHover and {r = 0.35, g = 0.45, b = 0.55, a = 0.9} or Theme.border)
+    local bg = isSelected and Theme.selected or (isHover and Theme.hover or opts.backgroundColor or Theme.panel)
+    local border = isSelected and Theme.accent or (isHover and hoverBorder or Theme.border)
 
     Theme.rect(owner, x, y, width, height, bg)
-    Theme.rect(owner, x, y, width, height, border, true)
+    if opts.frameStyle=='briefing' then
+        local edge=math.min(14,width/4,height/4)
+        Theme.rect(owner,x,y,edge,1,border) Theme.rect(owner,x,y,1,edge,border)
+        Theme.rect(owner,x+width-edge,y,edge,1,border) Theme.rect(owner,x+width-1,y,1,edge,border)
+        Theme.rect(owner,x,y+height-1,edge,1,border) Theme.rect(owner,x,y+height-edge,1,edge,border)
+        Theme.rect(owner,x+width-edge,y+height-1,edge,1,border) Theme.rect(owner,x+width-1,y+height-edge,1,edge,border)
+    else Theme.rect(owner, x, y, width, height, border, true) end
 
     -- 2. Left Accent Indicator (2~3px)
     local indicatorCol = opts.statusColor or (isSelected and Theme.accent or nil)

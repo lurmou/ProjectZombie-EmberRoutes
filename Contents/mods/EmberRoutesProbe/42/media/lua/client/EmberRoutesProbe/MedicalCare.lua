@@ -53,7 +53,7 @@ function M.demands(scope)
                 or not handling and 'MEDICAL_WAITING' or nil,
             demandSummary=getText('IGUI_EmberRoutesProbe_Medical_'..(stale and 'unobserved' or s and s.bleeding and 'bleeding' or 'needsCare')),
             children=handling and {{id=job.id,name=require('EmberRoutesProbe/DisplayNames').name(id),phase='MEDICAL_'..m.phase,
-                uncertain=retained,assets={}}} or {}}
+                bucket=job.state=='RUNNING' and 'active' or 'waiting',uncertain=retained,assets={}}} or {}}
         end
     end end
     return rows

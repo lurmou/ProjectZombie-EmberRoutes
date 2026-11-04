@@ -139,4 +139,10 @@ local duty
 for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='TOOL_CUSTODY' then duty=r end end
 check(duty and duty.readOnly and duty.bucket=='attention' and duty.assets[1].id==99,'orphan tool responsibility remains visible without ordinary Job')
 check(Service.command({},'s',duty.id,duty.generation,'return')=='TASK_READ_ONLY','view cannot cancel or erase original tool responsibility')
+root.taskJobs={byId={clean={id='clean',providerType='FIELD_WORK',scopeId='s',state='RUNNING',effects='KNOWN',
+    npcId='a',revision=1,payload={category='cleaning',phase='WORK',assets={},target={kind='STAIN',x=1,y=2,z=0}}}}}
+for _,r in ipairs(Service.status({},'s').rows) do
+    check(r.kind~='CLEANING_OVERVIEW' and r.workCategory~='cleaning','automatic cleaning belongs only to Needs')
+end
+check(root.taskJobs.byId.clean.state=='RUNNING','presentation separation cannot change the actual cleaning job')
 print('PASS '..checks..' order monitor projection/command checks; no engine/inventory run')
