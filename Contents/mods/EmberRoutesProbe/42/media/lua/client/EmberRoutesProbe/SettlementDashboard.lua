@@ -43,6 +43,8 @@ function EmberRoutesSettlementDashboard:new(actor,entry,tabId)
     o.backgroundColor,o.borderColor=Theme.window,Theme.border
     o.pages={}
     o.tabButtons={}
+    o.groupButtons={}
+    o.groupMemory={}
     o.nextCheck=0
     o.initialTab=tabId or "warehouse"
     o.tabs=Registry.getTabIds(actor,entry)
@@ -58,23 +60,35 @@ function EmberRoutesSettlementDashboard:createChildren()
     self.title=require('EmberRoutesProbe/UI/Text').wrapLimited(self.title,
         math.max(h*4,self.width-bar*3),UIFont.Small,1)[1] or self.title
     local regions=assert(Layout.axis({x=0,y=self:titleBarHeight(),width=self.width,height=self.height-self:titleBarHeight()},
-        {{basis=h+p},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
+        {{basis=(h+p)*2},{grow=1},{basis=h}},{direction="column",padding=p,gap=p/2}))
     self.pageBounds=regions[2]
     self.footerBounds=regions[3]
 
     self.tabs=Registry.getTabIds(self.actor,self.entry)
+    local rows=assert(Layout.axis(regions[1],{{grow=1},{grow=1}},{direction="column",gap=p/2}))
+    self.tabRow=rows[2]
     local tracks={}
-    for _ in ipairs(self.tabs) do tracks[#tracks+1]={grow=1} end
-    local top=assert(Layout.axis(regions[1],tracks,{gap=p/2}))
-    for i,id in ipairs(self.tabs) do
+    for _ in ipairs(Registry.groups) do tracks[#tracks+1]={grow=1} end
+    local top=assert(Layout.axis(rows[1],tracks,{gap=p/2}))
+    for i,group in ipairs(Registry.groups) do
         local r=top[i]
+        local button=ISButton:new(r.x,r.y,r.width,r.height,text(group.titleKey),self,EmberRoutesSettlementDashboard.groupClicked)
+        button.internal=group.id
+        button:initialise()
+        Theme.styleButton(button,false,false)
+        button.tooltip=text("tabNavigation")
+        Tooltip.attach(button,"prerender")
+        self:addChild(button)
+        self.groupButtons[group.id]=button
+    end
+    -- Keep one owned button per registered tab; only the current group's row is visible.
+    for _,id in ipairs(self.tabs) do
         local def=Registry.get(id)
-        local titleKey=def and def.titleKey or ("tab_"..id)
-        local button=ISButton:new(r.x,r.y,r.width,r.height,text(titleKey),self,EmberRoutesSettlementDashboard.tabClicked)
+        local button=ISButton:new(0,0,1,1,text(def.titleKey),self,EmberRoutesSettlementDashboard.tabClicked)
         button.internal=id
         button:initialise()
-        Theme.styleButton(button,false,id==self.initialTab)
-        button.tooltip=text(def and def.tooltipKey or "tabNavigation")
+        button:setVisible(false)
+        button.tooltip=text(def.tooltipKey or "tabNavigation")
         Tooltip.attach(button,"prerender")
         self:addChild(button)
         self.tabButtons[id]=button
@@ -88,20 +102,63 @@ function EmberRoutesSettlementDashboard:valid()
         and Ledger.authorized(self.actor) and Ledger.view(self.actor,self.entry.id)~=nil
 end
 
-function EmberRoutesSettlementDashboard:selectTab(id)
+function EmberRoutesSettlementDashboard:selectGroup(id)
+    for _,group in ipairs(Registry.groups) do
+        if group.id==id then return self:selectTab(self.groupMemory[id] or group.defaultTab) end
+    end
+    return false,"UNKNOWN_GROUP"
+end
+
+function EmberRoutesSettlementDashboard:groupClicked(button) self:selectGroup(button.internal) end
+
+function EmberRoutesSettlementDashboard:updateNavigation(id)
+    local group=Registry.getGroup(id)
+    self.activeGroup=group
+    self.groupMemory[group]=id
+    local tabs=Registry.getGroupTabIds(group,self.actor,self.entry)
+    local tracks={}
+    for _ in ipairs(tabs) do tracks[#tracks+1]={grow=1} end
+    local bounds=assert(Layout.axis(self.tabRow,tracks,{gap=self.pad/2}))
+    for key,button in pairs(self.tabButtons) do button:setVisible(false) end
+    local def=Registry.get(id)
+    for i,key in ipairs(tabs) do
+        local button,r=self.tabButtons[key],bounds[i]
+        button:setX(r.x) button:setY(r.y) button:setWidth(r.width) button:setHeight(r.height)
+        button:setVisible(true)
+        local chosen=key==id or key==def.parentTab
+        Theme.styleButton(button,chosen,chosen)
+    end
+    for key,button in pairs(self.groupButtons) do Theme.styleButton(button,key==group,key==group) end
+end
+
+function EmberRoutesSettlementDashboard:selectTab(id,context)
     local module=Registry.getModule(id)
-    if not module then return end
+    if not module then return false,"UNKNOWN_TAB" end
+    if not Registry.validateContext(context) then return false,"INVALID_CONTEXT" end
+    local def=Registry.get(id)
+    local visible=Registry.getTabIds(self.actor,self.entry)
+    local found=false
+    for _,tab in ipairs(visible) do if tab==(def.parentTab or id) then found=true break end end
+    if not found then return false,"HIDDEN_TAB" end
     if not self:valid() then self:close() return end
+    local page=self.pages[id]
+    if context then
+        local class=require("EmberRoutesProbe/UI/"..module)
+        if not class.resolveContext then return false,"CONTEXT_UNSUPPORTED" end
+        local target,reason=class.resolveContext(page or setmetatable({actor=self.actor,entry=self.entry},{__index=class}),context)
+        if not target then return false,reason end
+    end
     if id==self.activeTab then
-        if self.pages[id] and self.pages[id].focusContent then self.pages[id]:focusContent() end
-        return
+        if context and not page:applyContext(context) then return false,"TARGET_NOT_FOUND" end
+        if page and page.focusContent then page:focusContent() end
+        return true
     end
     if self.publicDialog then self.publicDialog:close() end
     if self.priorityDialog then self.priorityDialog:close() end
+    local previousId=self.activeTab
     local previous=self.activeTab and self.pages[self.activeTab]
     self.activeTab=nil
     if previous then previous:deactivate() previous:setVisible(false) end
-    local page=self.pages[id]
     if not page then
         page=require("EmberRoutesProbe/UI/"..module):new(self,self.pageBounds)
         page:initialise()
@@ -111,14 +168,14 @@ function EmberRoutesSettlementDashboard:selectTab(id)
     self.activeTab=id
     page:setVisible(true)
     page:activate()
-    if self.disposed or self.activeTab~=id then return end
+    if self.disposed or self.activeTab~=id then return false,"UI_SUBSCRIBER_ERROR" end
 
-    local def=Registry.get(id)
-    local parentTab=def and def.parentTab
-    for key,button in pairs(self.tabButtons) do
-        local chosen=(key==id) or (parentTab and key==parentTab)
-        Theme.styleButton(button,chosen,chosen)
+    if context and not page:applyContext(context) then
+        page:deactivate() page:setVisible(false) self.activeTab=nil
+        if previousId then self:selectTab(previousId) end
+        return false,"TARGET_NOT_FOUND"
     end
+    self:updateNavigation(id)
 
     local footer=Registry.getFooter(id,page)
     if footer then
@@ -126,6 +183,7 @@ function EmberRoutesSettlementDashboard:selectTab(id)
     end
 
     if page.focusContent then page:focusContent() end
+    return true
 end
 
 function EmberRoutesSettlementDashboard:setFooter(value)
@@ -145,7 +203,7 @@ function EmberRoutesSettlementDashboard:nextTab(direction)
         self:selectTab(def.parentTab)
         return
     end
-    local tabs=self.tabs or Registry.getTabIds(self.actor,self.entry)
+    local tabs=Registry.getGroupTabIds(self.activeGroup,self.actor,self.entry)
     local index=1
     for i,id in ipairs(tabs) do if id==self.activeTab then index=i break end end
     self:selectTab(tabs[(index-1+direction+#tabs)%#tabs+1])
@@ -189,6 +247,7 @@ function EmberRoutesSettlementDashboard:close()
     for _,button in pairs(self.tabButtons) do
         Tooltip.clear(button)
     end
+    for _,button in pairs(self.groupButtons) do Tooltip.clear(button) end
     -- Final safety net for dashboard-owned widgets and dialogs.
     Tooltip.unregisterOwner(self)
     ISCollapsableWindow.close(self)
@@ -209,14 +268,15 @@ function EmberRoutesSettlementDashboard:openPriorities()
     self:selectTab('personnel')
 end
 
-function EmberRoutesSettlementDashboard.open(actor,id,tabId)
+function EmberRoutesSettlementDashboard.open(actor,id,tabId,context)
     if opened and not opened:valid() then opened:close() end
     if not Ledger.authorized(actor) then return nil,"DRIVER_UNAVAILABLE" end
     local entry,reason=Ledger.view(actor,id)
     if not entry then return nil,reason end
     if opened and opened.actor==actor and opened.entry.id==id and opened:valid() then
         local panel=opened
-        panel:selectTab(tabId or "warehouse")
+        local ok,navReason=panel:selectTab(tabId or panel.activeTab or "warehouse",context)
+        if not ok then return nil,navReason end
         if panel.disposed then return nil,"UI_SUBSCRIBER_ERROR" end
         panel:bringToTop()
         return panel
@@ -227,7 +287,8 @@ function EmberRoutesSettlementDashboard.open(actor,id,tabId)
     opened=panel
     panel:initialise()
     panel:addToUIManager()
-    panel:selectTab(panel.initialTab)
+    local ok,navReason=panel:selectTab(panel.initialTab,context)
+    if not ok then panel:close() Metrics.finish("ui.open",measured) return nil,navReason end
     Metrics.finish("ui.open",measured)
     if panel.disposed then return nil,"UI_SUBSCRIBER_ERROR" end
     return panel

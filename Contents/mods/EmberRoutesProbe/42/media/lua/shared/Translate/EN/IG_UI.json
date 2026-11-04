@@ -1,4 +1,6 @@
 {
+  "IGUI_EmberRoutesProbe_Settlement_group_settlement": "Settlement",
+  "IGUI_EmberRoutesProbe_Settlement_group_work": "Work",
   "IGUI_EmberRoutesProbe_ActionInjured": "NPC health is below 95; action test cannot continue. Restore health before retrying.",
   "IGUI_EmberRoutesProbe_ActionResult": "Action test:",
   "IGUI_EmberRoutesProbe_Action_cancel": "Cancel action / suite",

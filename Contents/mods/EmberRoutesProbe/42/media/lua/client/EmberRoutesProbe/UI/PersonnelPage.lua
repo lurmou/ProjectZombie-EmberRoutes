@@ -299,6 +299,28 @@ function EmberRoutesPersonnelPage:batchCycle(category)
     end
 end
 
+function EmberRoutesPersonnelPage:resolveContext(context)
+    if not context.npcId then return nil,"CONTEXT_UNSUPPORTED" end
+    for _,worker in ipairs(Crafting.status(self.actor,self.entry.id).workers or {}) do
+        if worker.id==context.npcId then return worker.id end
+    end
+    return nil,"TARGET_NOT_FOUND"
+end
+
+function EmberRoutesPersonnelPage:applyContext(context)
+    if not self.active then return false end
+    for _,worker in ipairs(self.store.value.workers or {}) do
+        if worker.id==context.npcId then
+            self.store:setState({selected=worker})
+            for i,entry in ipairs(self.matrixList.items) do
+                if entry.item.value.id==worker.id then self.matrixList.selected=i self.matrixList:ensureVisible(i) break end
+            end
+            return true
+        end
+    end
+    return false
+end
+
 function EmberRoutesPersonnelPage:activate()
     local mounted=Lifecycle.mount(self,function(callback)
         if Crafting.watch then

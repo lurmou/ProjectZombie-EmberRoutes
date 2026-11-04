@@ -12,6 +12,7 @@ local PageRegistry = {
 ---@field titleKey string?
 ---@field tooltipKey string?
 ---@field order number?
+---@field group string
 ---@field parentTab string?
 ---@field footerText (string|fun(page:any):string)?
 ---@field visible (fun(actor:any, entry:any):boolean)?
@@ -79,11 +80,47 @@ function PageRegistry.getFooter(id, page)
     return nil
 end
 
+-- isTab denotes a group-local page button; child views retain parentTab.
+PageRegistry.groups = {
+    {id='settlement',titleKey='group_settlement',defaultTab='activities'},
+    {id='warehouse',titleKey='tab_warehouse',defaultTab='warehouse'},
+    {id='personnel',titleKey='tab_personnel',defaultTab='personnel'},
+    {id='work',titleKey='group_work',defaultTab='demands'}
+}
+
+function PageRegistry.getGroup(id)
+    local def=PageRegistry.get(id)
+    if def and def.parentTab then return PageRegistry.getGroup(def.parentTab) end
+    return def and def.group
+end
+
+function PageRegistry.getGroupTabIds(group,actor,entry)
+    local result={}
+    for _,id in ipairs(PageRegistry.getTabIds(actor,entry)) do
+        if PageRegistry.getGroup(id)==group then result[#result+1]=id end
+    end
+    return result
+end
+
+-- Navigation accepts stable identifiers only, never entities or command parameters.
+function PageRegistry.validateContext(context)
+    if context==nil then return true end
+    if type(context)~='table' then return false end
+    local allowed={npcId=true,orderId=true,problemId=true,itemId=true,zoneId=true}
+    local count=0
+    for key,value in pairs(context) do
+        if not allowed[key] or (type(value)~='string' and type(value)~='number') or value=='' then return false end
+        count=count+1
+    end
+    return count==1
+end
+
 -- Default built-in Page Registrations:
-PageRegistry.register({id='demands',module='DemandPage',isTab=true,titleKey='tab_demands',
+PageRegistry.register({id='demands',group='work',module='DemandPage',isTab=true,titleKey='tab_demands',
     tooltipKey='tabNavigation',order=15})
 PageRegistry.register({
     id = "warehouse",
+    group = "warehouse",
     module = "WarehousePage",
     isTab = true,
     titleKey = "tab_warehouse",
@@ -94,6 +131,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "orders",
+    group = "work",
     module = "OrderMonitorPage",
     isTab = true,
     titleKey = "tab_orders",
@@ -104,6 +142,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "personnel",
+    group = "personnel",
     module = "PersonnelPage",
     isTab = true,
     titleKey = "tab_personnel",
@@ -114,6 +153,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "policies",
+    group = "work",
     module = "WorkPolicyPage",
     isTab = true,
     titleKey = "tab_policies",
@@ -124,6 +164,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "activities",
+    group = "settlement",
     module = "ActivityPage",
     isTab = true,
     titleKey = "tab_activities",
@@ -134,6 +175,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "defense",
+    group = "settlement",
     module = "DefensePage",
     isTab = true,
     titleKey = "tab_defense",
@@ -144,6 +186,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "logistics",
+    group = "work",
     module = "LogisticsPage",
     isTab = false, -- Sub-view / child of orders
     parentTab = "orders",
@@ -153,6 +196,7 @@ PageRegistry.register({
 
 PageRegistry.register({
     id = "crafting",
+    group = "work",
     module = "CraftingPage",
     isTab = false, -- Sub-view / child of orders
     parentTab = "orders",

@@ -130,6 +130,32 @@ function EmberRoutesOrderMonitorPage:filterChanged(combo)
     self.store:setState({filter=self.filters[combo.selected] or 'open'})
 end
 
+local function contextRow(rows,context,demandMode)
+    for _,row in ipairs(rows or {}) do
+        if (demandMode and context.problemId and row.id==context.problemId)
+            or (not demandMode and context.orderId and row.orderId==context.orderId) then return row end
+    end
+end
+
+function EmberRoutesOrderMonitorPage:resolveContext(context)
+    -- DemandPage inherits this adapter, but uses its independent read-only service.
+    local demandMode=self.demandMode or self.Type=='EmberRoutesDemandPage'
+    local service=self.service or (demandMode and require 'EmberRoutesProbe/DemandMonitorService') or Service
+    local row=contextRow(service.status(self.actor,self.entry.id).rows,context,demandMode)
+    return row and row.id, row and nil or "TARGET_NOT_FOUND"
+end
+
+function EmberRoutesOrderMonitorPage:applyContext(context)
+    if not self.active then return false end
+    local row=contextRow(self.store.value.snapshot.rows,context,self.demandMode)
+    if not row then return false end
+    self.store:setState({selection=row.id,filter=row.closed and 'closed' or 'open'})
+    for i,entry in ipairs(self.orderList.items) do
+        if entry.item.value.id==row.id then self.orderList:ensureVisible(i) break end
+    end
+    return true
+end
+
 function EmberRoutesOrderMonitorPage:activate()
     local received=false
     local mounted=Lifecycle.mount(self,function(callback) return (self.service or Service).watch(self.actor,self.entry.id,callback) end,function(snapshot)

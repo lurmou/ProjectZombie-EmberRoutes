@@ -1,4 +1,6 @@
 {
+  "IGUI_EmberRoutesProbe_Settlement_group_settlement": "据点",
+  "IGUI_EmberRoutesProbe_Settlement_group_work": "工作",
   "IGUI_EmberRoutesProbe_ActionInjured": "NPC健康低于95，动作测试不能继续。请恢复健康后重试。",
   "IGUI_EmberRoutesProbe_ActionResult": "动作测试：",
   "IGUI_EmberRoutesProbe_Action_cancel": "取消当前动作/测试",

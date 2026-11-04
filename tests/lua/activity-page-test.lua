@@ -25,6 +25,10 @@ function Base:instantiate() if self.native then return end self.native=true self
 function Base:addChild(c) c.parent=self c:instantiate() self.children[#self.children+1]=c end
 function Base:addToUIManager() self:instantiate() self.added=true end
 function Base:removeFromUIManager() self.added=false end
+function Base:setX(v) self.x=v end
+function Base:setY(v) self.y=v end
+function Base:setWidth(v) self.width=v end
+function Base:setHeight(v) self.height=v end
 function Base:setVisible(v) self.visible=v end
 function Base:setEnable(v) self.enable=v end
 function Base:setEnabled(v) self.enabled=v end
@@ -133,7 +137,7 @@ package.loaded['EmberRoutesProbe/WarehouseMetrics']={
 
 local Registry=require 'EmberRoutesProbe/UI/PageRegistry'
 local def=Registry.get('activities')
-check(def~=nil and def.isTab==true and def.module=='ActivityPage','PageRegistry registers activities as a first-class tab')
+check(def~=nil and def.isTab==true and def.module=='ActivityPage' and def.group=='settlement','activities is a settlement-local tab with its existing page')
 check(def.order==38,'activities tab is correctly ordered between policies and defense')
 
 local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'

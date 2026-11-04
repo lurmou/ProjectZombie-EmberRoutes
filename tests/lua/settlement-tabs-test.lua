@@ -133,7 +133,7 @@ package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return packa
 package.loaded['EmberRoutesProbe/CraftingService']={
     status=function() return {workers={{id='worker',name='Worker',busy=false,order=nil}},surfaces={{id='surface',x=1,y=2,z=0}}} end
 }
-dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/client/ISUI/ISTickBox.lua')
+dofile((os.getenv('ER_PZ_ROOT') or 'D:/Software/GameApp/steam/steamapps/common/ProjectZomboid')..'/media/lua/client/ISUI/ISTickBox.lua')
 package.loaded['ISUI/ISTickBox']=true
 local rows={}
 for i=1,135 do rows[i]={fullType=string.format('Base.Item%03d',i),node='other',count=i,sources={{id='source',x=1,y=2,z=0,count=i}}} end
