@@ -93,6 +93,22 @@ function FilterChips:setOptions(options, selectedId)
     local numChips = #rawChips
     if numChips == 0 then return end
 
+    if self.variant=='dossier' then
+        local Text=require 'EmberRoutesProbe/UI/Text'
+        local cols=self.width>=h*12 and 2 or 1
+        local rows=math.ceil(numChips/cols)
+        local cellW=math.max(1,(self.width-gap*(cols-1))/cols)
+        local cellH=self.height/rows
+        for i,c in ipairs(rawChips) do
+            c.glyph='' c.glyphW=0
+            c.label=Text.wrapLimited(c.label,math.max(1,cellW-c.countW-p*3),UIFont.Small,1)[1] or ''
+            c.labelW=tm:MeasureStringX(UIFont.Small,c.label)
+            c.x=((i-1)%cols)*(cellW+gap) c.y=math.floor((i-1)/cols)*cellH
+            c.width=cellW c.height=cellH c.textY=c.y+math.max(0,(cellH-h)/2)
+            self.chips[i]=c
+        end
+        return
+    end
     -- 2. Responsive fit
     local availableW = self.width
     local totalGaps = (numChips - 1) * gap
@@ -125,7 +141,7 @@ end
 function FilterChips:chipAt(x, y)
     if y < 0 or y > self.height then return nil end
     for i, chip in ipairs(self.chips) do
-        if x >= chip.x and x <= chip.x + chip.width then
+        if x >= chip.x and x <= chip.x + chip.width and (self.variant~='dossier' or y>=chip.y and y<chip.y+chip.height) then
             return i, chip
         end
     end
@@ -166,11 +182,12 @@ function FilterChips:prerender()
         local isSelected = (chip.id == self.selectedId)
         local isHovered = (i == self.hoveredIndex)
 
+        local dossier=self.variant=='dossier'
         -- Background capsule
         local bg = isSelected and Theme.selected or (isHovered and Theme.hover or Theme.control)
         local border = isSelected and Theme.accent or (isHovered and Theme.border or quietBorder)
-        if self.variant=='underline' then
-            if isHovered then Theme.rect(self,chip.x,chip.y,chip.width,chip.height,Theme.hover) end
+        if self.variant=='underline' or dossier then
+            if isHovered then Theme.rect(self,chip.x,chip.y,chip.width,chip.height,dossier and Theme.dossier.panel or Theme.hover) end
         else
             Theme.rect(self, chip.x, chip.y, chip.width, chip.height, bg)
             Theme.rect(self, chip.x, chip.y, chip.width, chip.height, border, true)
@@ -178,11 +195,11 @@ function FilterChips:prerender()
 
         -- Accent left indicator for selected chip
         if isSelected then
-            if self.variant=='underline' then Theme.rect(self,chip.x,chip.y+chip.height-2,chip.width,2,Theme.accent)
+            if self.variant=='underline' or dossier then Theme.rect(self,chip.x,chip.y+chip.height-2,chip.width,2,dossier and Theme.dossier.gold or Theme.accent)
             else Theme.rect(self, chip.x, chip.y, math.max(2, math.floor(p/3)), chip.height, Theme.accent) end
         end
 
-        local textCol = isSelected and Theme.textColor or (isHovered and Theme.textColor or Theme.muted)
+        local textCol = dossier and (isSelected and Theme.dossier.text or Theme.dossier.muted) or isSelected and Theme.textColor or (isHovered and Theme.textColor or Theme.muted)
         local showCount = chip.countStr ~= nil and (chip.width >= chip.labelW + chip.glyphW + chip.countW + 18)
         local contentW = chip.labelW + chip.glyphW + (showCount and (chip.countW + 10) or 0)
         local drawX = chip.x + math.max(4, math.floor((chip.width - contentW) / 2))
@@ -204,9 +221,9 @@ function FilterChips:prerender()
             local badgeW = chip.countW + 6
             local badgeY = chip.textY + 1
             local badgeBg = chip.alert and Theme.status.ERROR or (isSelected and Theme.panel or quietBadge)
-            local badgeTextCol = chip.alert and Theme.textColor or (isSelected and Theme.accent or Theme.muted)
+            local badgeTextCol = dossier and (chip.alert and Theme.dossier.alert or Theme.dossier.muted) or chip.alert and Theme.textColor or (isSelected and Theme.accent or Theme.muted)
 
-            if self.variant~='underline' then
+            if self.variant~='underline' and not dossier then
                 Theme.rect(self, drawX, badgeY, badgeW, badgeH, badgeBg)
                 Theme.rect(self, drawX, badgeY, badgeW, badgeH, border, true)
             end

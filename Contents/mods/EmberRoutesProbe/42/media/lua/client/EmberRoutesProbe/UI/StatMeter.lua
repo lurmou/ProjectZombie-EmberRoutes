@@ -66,7 +66,7 @@ function StatMeter.draw(owner, x, y, width, height, fraction, opts)
     local col = resolveColor(mode, f, opts.color)
 
     -- 1. Dark Trough
-    Theme.rect(owner, x, y, width, height, COLOR_TROUGH)
+    Theme.rect(owner, x, y, width, height, opts.trough or COLOR_TROUGH)
 
     -- 2. Fill Bar
     local fillW = math.max(0, math.floor(width * f))
@@ -95,7 +95,7 @@ function StatMeter.draw(owner, x, y, width, height, fraction, opts)
     end
 
     -- 5. Border Frame
-    Theme.rect(owner, x, y, width, height, COLOR_BORDER, true)
+    if not opts.plain then Theme.rect(owner, x, y, width, height, COLOR_BORDER, true) end
 
     -- 6. Label Overlay
     local text = opts.label

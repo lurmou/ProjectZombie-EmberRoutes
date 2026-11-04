@@ -1,4 +1,8 @@
-local Theme={}
+local Theme={
+    -- Legacy avatar palette is registered once; moving it out of drawing preserves its appearance.
+    avatarSurface={r=.04,g=.06,b=.08,a=.95},avatarHead={r=.28,g=.35,b=.42,a=.85},
+    avatarBody={r=.18,g=.25,b=.32,a=.85},avatarEdge={r=1,g=1,b=1,a=.9},avatarInk={r=1,g=1,b=1,a=1}
+}
 
 local function text(key, fallback)
     local value = getTextOrNull and getTextOrNull("IGUI_EmberRoutesProbe_"..key)
@@ -52,6 +56,14 @@ local PRESETS={
     }
 }
 
+-- Dossier roles stay restrained under both presets; other pages retain their palette.
+local DOSSIER={
+    background={r=.045,g=.055,b=.06,a=.97},panel={r=.065,g=.08,b=.085,a=.94},
+    control={r=.11,g=.13,b=.14,a=1},separator={r=.30,g=.34,b=.36,a=.35},
+    gold={r=.81,g=.72,b=.46,a=1},alert={r=1,g=.50,b=.40,a=1},
+    text={r=.91,g=.93,b=.91,a=1},muted={r=.59,g=.66,b=.68,a=1},
+    active={r=.46,g=.60,b=.49,a=1}
+}
 local currentPreset="classic"
 local listeners={}
 
@@ -75,6 +87,9 @@ function Theme.applyPreset(id)
             end
         end
     end
+    Theme.dossier={}
+    for role,color in pairs(DOSSIER) do Theme.dossier[role]=copyColor(color) end
+    Theme.revision=(Theme.revision or 0)+1
     for _,callback in ipairs(listeners) do
         pcall(callback,preset)
     end
@@ -83,6 +98,28 @@ end
 -- Initialize default to AE2 Modern
 Theme.applyPreset("classic")
 
+function Theme.watch(callback)
+    listeners[#listeners+1]=callback
+    local live=true
+    return function()
+        if not live then return end
+        live=false
+        for i=#listeners,1,-1 do if listeners[i]==callback then table.remove(listeners,i) break end end
+    end
+end
+function Theme.dossierList(list)
+    list.backgroundColor=copyColor(Theme.dossier.background)
+    list.borderColor=copyColor(Theme.dossier.separator)
+    list.drawBorder=false
+end
+function Theme.dossierButton(button,primary)
+    button.backgroundColor=copyColor(Theme.dossier.control)
+    button.backgroundColorMouseOver=copyColor(Theme.dossier.panel)
+    button.borderColor=copyColor(Theme.dossier.separator)
+    button.textColor=copyColor(primary and Theme.dossier.text or Theme.dossier.muted)
+    button.displayBackground=primary==true
+    button.isBorderVisible=false
+end
 function Theme.getLabel() return Theme.presetLabel or text("Theme_classic") end
 
 function Theme.toggle()

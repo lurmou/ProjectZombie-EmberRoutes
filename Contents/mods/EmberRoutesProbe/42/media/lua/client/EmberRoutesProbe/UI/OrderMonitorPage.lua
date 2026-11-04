@@ -57,23 +57,20 @@ function EmberRoutesOrderMonitorPage:createChildren()
     ISPanel.createChildren(self)
     local h,p=self.fontHeight,self.pad
 
-    -- Clean vertical 4-part layout (Top Bar -> Work Area -> Bottom Actions -> Notice)
+    -- No toolbar above the dossier: filters and secondary actions belong to the index.
     local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},
-        {{basis=h+p},{grow=1},{basis=h+p},{basis=h*1.5+p}},
+        {{grow=1},{basis=h+p},{basis=h*1.5+p}},
         {direction='column',padding=p,gap=p/2}))
-
-    -- Top bar: Filter chips + [Create Order] button + [Details] + [Refresh]
-    local top=assert(Layout.axis(regions[1],{{grow=1},{basis=h*7},{basis=h*4},{basis=h*4}},{gap=p/2}))
+    local split=Layout.split(regions[1],h,p)
+    self.narrow=split.compact
+    local columns={split.index,split.main}
+    local index=assert(Layout.axis(columns[1],{{basis=h*4+p},{grow=1},{basis=h+p},{basis=h+p}},
+        {direction='column',gap=p/2}))
+    local top={index[1],index[3],index[4],index[4]}
     self.filterChips=FilterChips:new(top[1].x,top[1].y,top[1].width,top[1].height,function(id)
         self.store:setState({filter=id})
     end)
-    local defaultChips={}
-    for _,key in ipairs(self.filters) do
-        defaultChips[#defaultChips+1]={id=key,label=self.demandMode
-            and getText('IGUI_EmberRoutesProbe_Demand_filter_'..key) or text('filter_'..key)}
-    end
-    self.filterChips:setOptions(defaultChips,'open')
-    self.filterChips.variant='underline'
+    self.filterChips.variant='dossier'
     self:addChild(self.filterChips)
 
     local function button(key,label,r,fn,isPrimary)
@@ -91,7 +88,7 @@ function EmberRoutesOrderMonitorPage:createChildren()
         self.owner:openPublicOrder()
     end,true)
 
-    button('details',text('details'),top[3],function()
+    button('details',text('details'),{x=columns[2].x,y=regions[2].y,width=h*6,height=h+p},function()
         self.store:setState({detailMode=not self.store.value.detailMode})
         self:focusContent()
     end)
@@ -100,14 +97,11 @@ function EmberRoutesOrderMonitorPage:createChildren()
         self:refresh()
     end)
 
-    -- Middle Area: Order List & Detail Panel
-    self.narrow=regions[2].width<h*40
-    local columns=self.narrow and {regions[2],regions[2]}
-        or assert(Layout.axis(regions[2],{{grow=1},{grow=2}},{gap=p}))
-    self.orderList=Cached.create(self,columns[1],function(_,row)
+    self.indexControls={self.filterChips,self.buttons.create,self.buttons.refresh}
+    self.orderList=Cached.create(self,index[2],function(_,row)
         self.store:setState({selection=row.id})
     end,Cards.rows())
-    Theme.list(self.orderList)
+    Theme.dossierList(self.orderList)
     self.orderList.emberEmptyLines=require('EmberRoutesProbe/UI/Text').wrap(text('empty'),columns[1].width-p*2,UIFont.Small)
     self:addChild(self.orderList)
 
@@ -115,15 +109,18 @@ function EmberRoutesOrderMonitorPage:createChildren()
     self.buttons.details:setVisible(self.narrow)
 
     -- Bottom Actions: Stop / Resume / Return (Cancel)
-    local actions=assert(Layout.axis(regions[3],{{grow=1},{grow=1},{grow=2}},{gap=p/2}))
-    for i,key in ipairs({'stop','resume','return'}) do
-        button(key,text('button_'..key),actions[i],function() self:command(key) end,key=='resume')
+    local actions=assert(Layout.axis({x=columns[2].x,y=regions[2].y,width=columns[2].width,height=regions[2].height},
+        {{grow=1},{grow=1},{grow=1},{grow=1}},{gap=p/2}))
+    self.buttons.details:setX(actions[1].x)
+    self.buttons.details:setWidth(actions[1].width)
+    for _,key in ipairs({'stop','resume','return'}) do
+        button(key,text('button_'..key),actions[key=='return' and 3 or 2],function() self:command(key) end,key=='resume')
     end
 
-    button('expand',text('expand'),actions[1],function()
+    button('expand',text('expand'),actions[4],function()
         self.store:setState({expanded=not self.store.value.expanded})
     end)
-    self.noticeBounds=regions[4]
+    self.noticeBounds=regions[3]
 end
 
 function EmberRoutesOrderMonitorPage:filterChanged(combo)
@@ -157,13 +154,53 @@ function EmberRoutesOrderMonitorPage:applyContext(context)
 end
 
 function EmberRoutesOrderMonitorPage:activate()
+    if self.active or self.disposed then return end
+    self.portraits={}
+    self.portraitRetryAt=0
     local received=false
     local mounted=Lifecycle.mount(self,function(callback) return (self.service or Service).watch(self.actor,self.entry.id,callback) end,function(snapshot)
         received=true
         if snapshot.reason=='WORLD_RESET' then self.owner:close() return end
         self.store:setState({snapshot=snapshot})
     end)
-    if mounted and self.active and not received then self:refresh() end
+    if mounted and self.active then
+        local scope=self.activationScope
+        scope:watch(Theme.watch,function()
+            self:project(self.store.value)
+        end)
+        local Personnel=require 'EmberRoutesProbe/PersonnelService'
+        local dirty=scope:wrapCallback(function(id)
+            if self.portraits[id] then
+                self.portraits[id]=Personnel.portrait(self.actor,self.entry.id,id,true,self)
+                self.details:set(self.selected,self.store.value.expanded)
+            end
+        end)
+        if Personnel.watchPortrait then scope:watch(Personnel.watchPortrait,dirty) end
+        scope:defer(function()
+            for id in pairs(self.portraits) do if Personnel.releasePortrait then Personnel.releasePortrait(id,self) end end
+            self.portraits={}
+            self.details:set(nil,false)
+        end)
+        if not received then self:refresh() end
+    end
+end
+
+-- Only failed selected portraits retry, at most once per second while visible.
+function EmberRoutesOrderMonitorPage:update()
+    ISPanel.update(self)
+    if not self.active or self.narrow and not self.store.value.detailMode then return end
+    local now=getTimestampMs and getTimestampMs() or 0
+    if now<(self.portraitRetryAt or 0) then return end
+    self.portraitRetryAt=now+1000
+    local Personnel=require 'EmberRoutesProbe/PersonnelService'
+    local changed=false
+    for id,snapshot in pairs(self.portraits or {}) do
+        if not snapshot.texture and Personnel.portrait then
+            local nextSnapshot=Personnel.portrait(self.actor,self.entry.id,id,false,self)
+            if nextSnapshot~=snapshot then self.portraits[id]=nextSnapshot changed=true end
+        end
+    end
+    if changed and self.activationScope:isCurrent() then self.details:set(self.selected,self.store.value.expanded) end
 end
 
 function EmberRoutesOrderMonitorPage:refresh()
@@ -195,16 +232,36 @@ function EmberRoutesOrderMonitorPage:project(value)
     for _,row in ipairs(value.snapshot.rows) do
         if value.filter=='open' and not row.closed or row.bucket==value.filter then rows[#rows+1]=row end
     end
-    local chosen=Cached.reconcile(self.orderList,rows,Cards.signature,function(row) return row.id end,true)
+    local chosen=Cached.reconcile(self.orderList,rows,Cards.signature,function(row) return row.id end,true,Theme.revision)
     local selected
     for i,row in ipairs(rows) do if row.id==value.selection then selected=row self.orderList.selected=i break end end
     selected=selected or chosen
     if type(selected)~='table' then selected=nil end
     if (selected and selected.id or false)~=value.selection then self.store:setState({selection=selected and selected.id or false,expanded=false}) return end
     self.selected=selected
+    local Personnel=require 'EmberRoutesProbe/PersonnelService'
+    local nextPortraits={}
+    local portraitCount=0
+    for _,r in ipairs(selected and (#(selected.children or {})>0 and selected.children or {selected}) or {}) do
+        if r.npcId and Personnel.portrait and portraitCount<16 and (not self.narrow or value.detailMode)
+            and (value.expanded or #(selected.children or {})<=1) then
+            portraitCount=portraitCount+1
+            nextPortraits[r.npcId]=Personnel.portrait(self.actor,self.entry.id,r.npcId,false,self)
+        end
+    end
+    for id in pairs(self.portraits or {}) do
+        if not nextPortraits[id] and Personnel.releasePortrait then Personnel.releasePortrait(id,self) end
+    end
+    self.portraits=nextPortraits
     self.details:set(selected,value.expanded)
-    local compact=selected and selected.compact==true
-    for _,key in ipairs({'stop','resume','return'}) do self.buttons[key]:setVisible(selected~=nil and not selected.readOnly) end
+    for _,key in ipairs({'stop','resume','return'}) do
+        local allowed=selected and not selected.readOnly and
+            ((key=='stop' and selected.canPause==true and not selected.canResume)
+            or (key=='resume' and selected.canResume==true) or (key=='return' and selected.canCancel==true))
+        self.buttons[key]:setVisible(allowed==true and (key~='return' or value.expanded))
+    end
+    for _,control in ipairs(self.indexControls) do control:setVisible(not self.narrow or not value.detailMode) end
+    self.buttons.create:setVisible(not self.demandMode and (not self.narrow or not value.detailMode))
     self.buttons.expand:setVisible(selected~=nil)
     self.buttons.expand:setTitle(text(value.expanded and 'collapse' or 'expand'))
     self.orderList:setVisible(not self.narrow or not value.detailMode)
@@ -214,6 +271,9 @@ function EmberRoutesOrderMonitorPage:project(value)
     Theme.enable(self.buttons.stop,selected and selected.canPause or false)
     Theme.enable(self.buttons.resume,selected and selected.canResume or false,true)
     Theme.enable(self.buttons['return'],selected and selected.canCancel or false)
+    for _,button in pairs(self.buttons) do Theme.dossierButton(button,button==self.buttons.resume or button==self.buttons.stop) end
+    Theme.dossierList(self.orderList)
+    Theme.dossierList(self.details.list)
     self.noticeLines=require('EmberRoutesProbe/UI/Text').wrapLimited(self.notice or Cards.reason(value.snapshot.reason) or '',
         self.noticeBounds.width,UIFont.Small,2)
     if self.owner.setFooter then self.owner:setFooter(self.demandMode

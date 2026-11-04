@@ -33,7 +33,7 @@ function Cards.title(row)
 end
 
 function Cards.signature(row)
-    local fields={}
+    local fields={tostring(Theme.revision)}
     for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','allocationSummary','allocationDetails','allocated','settled','remaining','observationRevision','feasibilityRevision','compact','demandReason','coverageText'}) do
         fields[#fields+1]=tostring(row[key])
     end
@@ -306,11 +306,13 @@ function Cards.rows()
     local CardPanel=require 'EmberRoutesProbe/UI/CardPanel'
     local Badge=require 'EmberRoutesProbe/UI/SemanticBadge'
     local icons=require('EmberRoutesProbe/UI/ItemPresentation').new()
-    return {emptyColor=Theme.muted,prepare=function(list,row)
+    return {emptyColor=Theme.dossier.muted,prepare=function(list,row)
         local p,h=list.emberPad,list.emberFontHeight
         local key=row.uncertain and 'RECONCILE' or row.closed and 'COMPLETED'
             or row.bucket=='active' and 'PROCESSING' or row.bucket=='paused' and 'PAUSED' or 'WAITING'
         local badge=Badge.resolve(key,row.stateText or text('filter_'..(row.bucket or 'waiting')))
+        badge.color=row.uncertain and Theme.dossier.alert or row.bucket=='attention' and Theme.dossier.alert or Theme.dossier.muted
+        badge.backgroundColor=Theme.dossier.background
         badge.fontHeight=h badge.textWidth=getTextManager():MeasureStringX(UIFont.Small,badge.displayText)
         local width=list.width-p*2
         local badgeW=math.min(width-p*2,badge.textWidth+p*2)
@@ -323,16 +325,15 @@ function Cards.rows()
         local fraction=row.target and row.target>0 and math.min(1,(row.delivered or 0)/row.target) or nil
         return {height=badgeY+h+p*3,title=title,subtitle=subtitle,badge=badge,badgeW=badgeW,badgeY=badgeY,
             icon=icon,offset=offset,width=width,p=p,h=h,fraction=fraction,
-            frame={statusColor=badge.color},selectedFrame={statusColor=badge.color,selected=true}}
+            frame={frameStyle='plain',backgroundColor=Theme.dossier.background,borderColor=Theme.dossier.separator},selectedFrame={frameStyle='plain',backgroundColor=Theme.dossier.panel,borderColor=Theme.dossier.separator,statusColor=Theme.dossier.gold}}
     end,draw=function(list,y,entry)
         local v=entry.item.visual local p,h=v.p,v.h
         if y+list:getYScroll()+entry.height<=0 or y+list:getYScroll()>=list.height then return y+entry.height end
         CardPanel.draw(list,p,y+p/2,v.width,entry.height-p,list.selected==entry.index and v.selectedFrame or v.frame)
         if v.icon then list:drawTextureScaledAspect(v.icon,p*2,y+p,h*2,h*2,1,1,1,1) end
-        for i,line in ipairs(v.title) do Theme.text(list,line,p*2+v.offset,y+p+(i-1)*h,Theme.textColor) end
-        Theme.text(list,v.subtitle,p*2+v.offset,y+p+#v.title*h,Theme.muted)
-        Badge.draw(list,p*2,y+v.badgeY,v.badgeW,h+p,v.badge)
-        if v.fraction then Visual.meter(list,p*2,y+entry.height-p*1.3,math.max(1,v.width-p*2),math.max(3,p/2),v.fraction,v.badge.color) end
+        for i,line in ipairs(v.title) do Theme.text(list,line,p*2+v.offset,y+p+(i-1)*h,Theme.dossier.text) end
+        Theme.text(list,v.subtitle,p*2+v.offset,y+p+#v.title*h,Theme.dossier.muted)
+        Theme.text(list,v.badge.displayText,p*2,y+v.badgeY,v.badge.color)
         return y+entry.height
     end}
 end
@@ -346,7 +347,7 @@ function Cards.detailRows(row,expanded)
             or r.bucket=='paused' and 'PAUSED' or 'WAITING'
     end
     local function card(title,lines,status,statusText,meters)
-        rows[#rows+1]={isCardRow=true,title=title,lines=lines or {},status=status,statusText=statusText,meters=meters}
+        rows[#rows+1]={isCardRow=true,dossier=true,title=title,lines=lines or {},status=status,statusText=statusText,meters=meters}
     end
     local function action(r)
         local step=r.stages and r.stages[r.stageIndex or 1]
@@ -356,9 +357,8 @@ function Cards.detailRows(row,expanded)
     end
     local function notice(r)
         if r.uncertain then return text('reconcile') end
-        if r.responsibilitySummary then return r.responsibilitySummary end
-        if r.demandReason then return r.demandReason end
-        if r.bucket=='active' or r.closed then return end
+        if r.blocked and r.demandReason then return r.demandReason end
+        if r.bucket=='active' or r.bucket=='paused' or r.closed then return end
         local code=r.reason
         if code and code~='' and code~='WAITING_CLAIM' and code~='RUNNING' then
             local label=r.reasonText or Cards.reason(code)
@@ -369,32 +369,57 @@ function Cards.detailRows(row,expanded)
     local overview={}
     if row.kind=='DEMAND' then
         overview[#overview+1]=row.detailContext
-        overview[#overview+1]=row.demandSummary
-    elseif row.compact then overview[#overview+1]=row.summaryText end
+    end
     local meters={}
-    if row.target and row.target>0 then
+    if row.kind=='DEMAND' and row.demandSummary then
+        meters[#meters+1]={text='',value=row.demandSummary}
+    elseif row.target and row.target>0 then
         if row.produced~=nil then
             meters[#meters+1]={text=text('detail_produced'),value=tostring(row.produced)..' / '..tostring(row.target),fraction=math.min(1,row.produced/row.target)}
         end
         meters[#meters+1]={text=text('detail_delivered'),value=tostring(row.delivered or 0)..' / '..tostring(row.target),fraction=math.min(1,(row.delivered or 0)/row.target)}
+    elseif row.kind~='DEMAND' then
+        if row.produced~=nil then meters[#meters+1]={text=text('detail_produced'),value=tostring(row.produced)} end
+        if row.delivered~=nil then meters[#meters+1]={text=text('detail_delivered'),value=tostring(row.delivered)} end
     end
     card(Cards.title(row),overview,tone(row),row.stateText or text('filter_'..(row.bucket or 'waiting')),meters)
     rows[#rows].hero=true
     local alert=notice(row)
-    if alert then card(text('detail_attention'),{alert},row.uncertain and 'RECONCILE' or 'WAITING') end
     local children=row.children or {}
-    if #children>0 then
+    if #children>1 and not expanded then
+        local names={}
+        for _,child in ipairs(children) do names[#names+1]=child.name or text('unassigned') end
+        card(text('handlers',#children),{table.concat(names,' · ')})
+    elseif #children>0 then
         for _,child in ipairs(children) do
-            local lines={action(child) or Cards.reason(child.phase)}
-            local why=notice(child) if why and why~=alert then lines[#lines+1]=why end
-            if child.carrierAvailable==false then lines[#lines+1]=text('carrierMissing') end
-            card(child.name or text('unassigned'),lines,(#children>1 or child.uncertain) and tone(child) or nil)
+            card(child.name or text('unassigned'),{action(child) or Cards.reason(child.phase)})
+            rows[#rows].npcId=child.npcId
         end
     elseif row.kind~='DEMAND' and row.name then
-        local lines={action(row)}
-        if row.cargoHeld and row.cargoHeld>0 then lines[#lines+1]=text('detail_carrying',row.cargoHeld) end
-        if row.carrierAvailable==false then lines[#lines+1]=text('carrierMissing') end
-        card(text('worker',row.name),lines)
+        card(row.name,{action(row)})
+        rows[#rows].npcId=row.npcId
+    else
+        card(text('unassigned'))
+    end
+    -- Blockers follow the handler, never a normal-state placeholder.
+    if alert then
+        card(text('detail_attention'),{alert},row.uncertain and 'RECONCILE' or 'WAITING')
+        rows[#rows].alert=true
+    end
+    for _,child in ipairs(children) do
+        local why=notice(child)
+        if why and why~=alert then
+            card(text('detail_attention'),{why},child.uncertain and 'RECONCILE' or 'WAITING')
+            rows[#rows].alert=true
+        end
+    end
+    local carrierMissing=row.carrierAvailable==false
+    for _,child in ipairs(children) do
+        if child.carrierAvailable==false then carrierMissing=true end
+    end
+    if carrierMissing then
+        card(text('detail_attention'),{text('carrierMissing')},'WAITING')
+        rows[#rows].alert=true
     end
     local grouped,keys={},{}
     local function assets(r)
@@ -413,11 +438,11 @@ function Cards.detailRows(row,expanded)
         if aa~=bb then return aa end return a<b
     end)
     if #keys>0 then
-        rows[#rows+1]={text=text('detail_items'),color=Theme.muted}
+        rows[#rows+1]={text=text('detail_items'),color=Theme.dossier.muted}
         local limit=expanded and 64 or 6
         for i=1,math.min(limit,#keys) do
             local g=grouped[keys[i]] local a=g.asset
-            rows[#rows+1]={isAssetRow=true,fullType=a.fullType,
+            rows[#rows+1]={isAssetRow=true,dossier=true,fullType=a.fullType,
                 name=a.fullType and getItemNameFromFullType(a.fullType) or a.displayName or text('unknownItem'),
                 status=g.status,statusText=a.statusText or a.kind=='cargo' and g.status=='STORED' and text('detail_delivered')
                     or a.kind=='cargo' and g.status=='WITHDRAWN' and text('detail_held') or nil,count=g.count,kind=a.kind}
@@ -434,7 +459,12 @@ function Cards.detailRows(row,expanded)
             end
         end
         local notes={}
+        if row.cargoHeld and row.cargoHeld>0 then notes[#notes+1]=text('detail_carrying',row.cargoHeld) end
+        if row.compact and row.kind~='DEMAND' and row.summaryText then notes[#notes+1]=row.summaryText end
         if row.membership then notes[#notes+1]=require('EmberRoutesProbe/MembershipText').summary(row.membership) end
+        if row.bucket=='paused' and row.reason then notes[#notes+1]=row.reasonText or Cards.reason(row.reason) end
+        if row.responsibilitySummary then notes[#notes+1]=row.responsibilitySummary end
+        if row.demandReason and not row.blocked then notes[#notes+1]=row.demandReason end
         if row.coverageText then notes[#notes+1]=row.coverageText end
         if row.noteKey then notes[#notes+1]=getText(row.noteKey) end
         if type(row.source)=='table' and row.source.x then notes[#notes+1]=text('source',row.source.x,row.source.y,row.source.z) end
@@ -449,7 +479,9 @@ function Cards.detailRows(row,expanded)
     return rows
 end
 function Cards.details(owner,bounds)
-    local info=require('EmberRoutesProbe/UI/InfoList').new(owner,bounds)
-    return {list=info.list,set=function(_,row,expanded) info:set(Cards.detailRows(row,expanded)) end}
+    local info=require('EmberRoutesProbe/UI/InfoList').new(owner,bounds,{dossier=true})
+    return {list=info.list,set=function(_,row,expanded) local rows=Cards.detailRows(row,expanded)
+        for _,r in ipairs(rows) do r.portrait=r.npcId and owner.portraits and owner.portraits[r.npcId] end
+        info:set(rows) end}
 end
 return Cards

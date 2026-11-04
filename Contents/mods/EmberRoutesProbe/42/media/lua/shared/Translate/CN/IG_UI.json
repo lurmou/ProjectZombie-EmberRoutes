@@ -1,4 +1,5 @@
 {
+    "IGUI_EmberRoutesProbe_Monitor_handlers": "%1 人处理中",
   "IGUI_EmberRoutesProbe_Settlement_group_settlement": "据点",
   "IGUI_EmberRoutesProbe_Settlement_group_work": "工作",
   "IGUI_EmberRoutesProbe_ActionInjured": "NPC健康低于95，动作测试不能继续。请恢复健康后重试。",

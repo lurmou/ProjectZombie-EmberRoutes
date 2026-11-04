@@ -16,10 +16,6 @@ local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..
 local function pubText(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
 local function tr(key,fallback) local v=getTextOrNull(key) return v or fallback or key end
 
--- Single live avatar view reference, so clothing/equip events can invalidate its cache.
-local g_emberAvatarView = nil
-local g_emberPortraitEvents = false
-
 local PRIORITY_COLORS={
     [0]={bg={r=0.18,g=0.20,b=0.22,a=0.8},border={r=0.35,g=0.35,b=0.40,a=0.9},text={r=0.50,g=0.55,b=0.60,a=1.0}},
     [1]={bg={r=0.35,g=0.28,b=0.10,a=0.9},border={r=1.00,g=0.78,b=0.25,a=1.0},text={r=1.00,g=0.85,b=0.30,a=1.0}},
@@ -106,17 +102,6 @@ function EmberRoutesPersonnelPage:createChildren()
     local boxX,boxY=p,p
     self.avatar3D=Avatar3DView:new(boxX,boxY,boxSize,boxSize)
     self.avatarCard:addChild(self.avatar3D)
-    g_emberAvatarView = self.avatar3D
-    if not g_emberPortraitEvents and Events then
-        g_emberPortraitEvents = true
-        local function invalidateSelPortrait(character)
-            if g_emberAvatarView and character then g_emberAvatarView:invalidatePortrait() end
-        end
-        if Events.OnClothingUpdated and Events.OnClothingUpdated.Add then Events.OnClothingUpdated.Add(invalidateSelPortrait) end
-        if Events.OnEquipPrimary and Events.OnEquipPrimary.Add then Events.OnEquipPrimary.Add(invalidateSelPortrait) end
-        if Events.OnEquipSecondary and Events.OnEquipSecondary.Add then Events.OnEquipSecondary.Add(invalidateSelPortrait) end
-    end
-
     self.avatarCard.prerender=function(card)
         ISPanel.prerender(card)
         Theme.rect(card,0,0,card.width,card.height,Theme.panel)
@@ -332,6 +317,22 @@ function EmberRoutesPersonnelPage:activate()
         self:refresh()
     end)
     if mounted and self.active then
+        local scope=self.activationScope
+        self.avatar3D.activationScope=scope
+        local changed=scope:wrapCallback(function(character)
+            if character and character==self.avatar3D.character then self.avatar3D:invalidatePortrait() end
+        end)
+        for _,key in ipairs({'OnClothingUpdated','OnEquipPrimary','OnEquipSecondary'}) do
+            local event=Events and Events[key]
+            if event and event.Add and event.Remove then
+                event.Add(changed)
+                scope:defer(function() event.Remove(changed) end)
+            end
+        end
+        scope:defer(function()
+            self.avatar3D:setCharacter(nil,nil)
+            self.avatar3D.activationScope=nil
+        end)
         self:refresh()
     end
 end

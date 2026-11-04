@@ -5,6 +5,7 @@ local Driver=require 'EmberRoutesProbe/Driver'
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Service={}
 local world,cache=nil,{}
+local portraits,portraitListeners={},{}
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..key,...) end
 local function professionTitle(value)
     if type(value)~='string' then return end
@@ -13,9 +14,41 @@ local function professionTitle(value)
     return value
 end
 local function load()
-    local root=Registry.data() if root~=world then world,cache=root,{} end
+    local root=Registry.data() if root~=world then world,cache=root,{} portraits={} end
 end
-function Service.invalidate(id) load() cache[id]=nil end
+-- Only selected, visible consumers own portraits. Shared engine textures are never destroyed.
+local portraitClock=0
+local function notifyPortrait(id)
+    if portraits[id] then portraits[id].dirty=true end
+    for _,callback in ipairs(portraitListeners) do callback(id) end
+end
+function Service.watchPortrait(callback)
+    portraitListeners[#portraitListeners+1]=callback
+    local function changed(character)
+        local ids={}
+        for id,row in pairs(portraits) do if row.character==character then ids[#ids+1]=id end end
+        for _,id in ipairs(ids) do notifyPortrait(id) end
+    end
+    local events={}
+    for _,key in ipairs({'OnClothingUpdated','OnEquipPrimary','OnEquipSecondary'}) do
+        local event=Events and Events[key]
+        if event and event.Add and event.Remove then event.Add(changed) events[#events+1]=event end
+    end
+    local live=true
+    return function()
+        if not live then return end live=false
+        for _,event in ipairs(events) do event.Remove(changed) end
+        for i=#portraitListeners,1,-1 do if portraitListeners[i]==callback then table.remove(portraitListeners,i) break end end
+    end
+end
+function Service.releasePortrait(id,owner)
+    local row=portraits[id]
+    if not row then return end
+    row.owners[owner or Service]=nil
+    local held=false for _ in pairs(row.owners) do held=true break end
+    if not held then portraits[id]=nil end
+end
+function Service.invalidate(id) load() cache[id]=nil notifyPortrait(id) end
 function Service.release(id) if id then cache[id]=nil end end
 require('EmberRoutesProbe/Boot').invalidatePersonnel=Service.invalidate
 local function resolveParentCategory(parent)
@@ -199,6 +232,38 @@ local function static(npc)
     value.profTitle=profTitle
     value.profTexture=profTexture
     return value
+end
+function Service.portrait(actor,scope,id,force,owner)
+    load()
+    if not require('EmberRoutesProbe/SettlementLedger').view(actor,scope) then return end
+    local binding=Driver.bindId(actor,id)
+    if not binding or not Driver.valid(binding) then return end
+    local now=getTimestampMs and getTimestampMs() or 0
+    local row=portraits[id]
+    if row and row.character~=binding.handle then portraits[id]=nil row=nil end
+    if not row then
+        local count,oldest,oldTime=0,nil,math.huge
+        for key,value in pairs(portraits) do
+            count=count+1
+            if value.touched<oldTime then oldest,oldTime=key,value.touched end
+        end
+        if count>=16 then portraits[oldest]=nil end
+        local _,_,icon=readAvatarInfo(binding.handle)
+        row={character=binding.handle,owners={},snapshot={icon=icon},retryAt=0}
+        portraits[id]=row
+    end
+    row.owners[owner or Service]=true
+    portraitClock=portraitClock+1 row.touched=portraitClock
+    if row.dirty or not row.snapshot.texture and now>=row.retryAt then
+        row.dirty=false
+        local texture
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.getPortraitTexture then
+            texture=EmberRoutesProbeJava.getPortraitTexture(binding.handle)
+        end
+        row.snapshot={texture=texture,icon=row.snapshot.icon}
+        row.retryAt=now+1000
+    end
+    return row.snapshot
 end
 function Service.details(actor,scope,id,force)
     load()

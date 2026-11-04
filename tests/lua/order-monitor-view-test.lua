@@ -7,7 +7,7 @@ getTextManager=function() return {MeasureStringX=function(_,_,value) return #val
 local color={r=1,g=1,b=1,a=1}
 package.loaded['EmberRoutesProbe/UI/CachedList']={}
 package.loaded['EmberRoutesProbe/UI/CardPanel']={draw=function() end}
-package.loaded['EmberRoutesProbe/UI/Theme']={muted=color,textColor=color,gold=color,accent=color,status={ERROR=color}}
+package.loaded['EmberRoutesProbe/UI/Theme']={muted=color,textColor=color,gold=color,accent=color,status={ERROR=color},dossier={background=color,panel=color,separator=color,gold=color,active=color,alert=color,muted=color}}
 package.loaded['EmberRoutesProbe/UI/Text']={wrapLimited=function(value) return {value} end}
 package.loaded['EmberRoutesProbe/UI/StatusVisual']={colors={done=color,paused=color,blocked=color}}
 package.loaded['EmberRoutesProbe/UI/ItemPresentation']={new=function() return {icon=function() end} end}

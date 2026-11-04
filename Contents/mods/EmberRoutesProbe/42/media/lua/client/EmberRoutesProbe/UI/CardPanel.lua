@@ -39,7 +39,7 @@ function CardPanel.draw(owner, x, y, width, height, opts)
 
     -- 1. Card Background & Border
     local bg = isSelected and Theme.selected or (isHover and Theme.hover or opts.backgroundColor or Theme.panel)
-    local border = isSelected and Theme.accent or (isHover and hoverBorder or Theme.border)
+    local border = opts.borderColor or (isSelected and Theme.accent or (isHover and hoverBorder or Theme.border))
 
     Theme.rect(owner, x, y, width, height, bg)
     if opts.frameStyle=='briefing' then
@@ -48,6 +48,8 @@ function CardPanel.draw(owner, x, y, width, height, opts)
         Theme.rect(owner,x+width-edge,y,edge,1,border) Theme.rect(owner,x+width-1,y,1,edge,border)
         Theme.rect(owner,x,y+height-1,edge,1,border) Theme.rect(owner,x,y+height-edge,1,edge,border)
         Theme.rect(owner,x+width-edge,y+height-1,edge,1,border) Theme.rect(owner,x+width-1,y+height-edge,1,edge,border)
+    elseif opts.frameStyle=='plain' then
+        Theme.rect(owner,x,y+height-1,width,1,border)
     else Theme.rect(owner, x, y, width, height, border, true) end
 
     -- 2. Left Accent Indicator (2~3px)

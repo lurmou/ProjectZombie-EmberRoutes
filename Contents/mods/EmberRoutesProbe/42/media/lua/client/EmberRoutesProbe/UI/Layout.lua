@@ -21,4 +21,16 @@ function Layout.axis(bounds,tracks,style)
     end
     return result
 end
+-- Bounded dossier index; compact retains the existing list/detail toggle.
+function Layout.split(bounds,h,gap)
+    gap=gap or 0
+    local width=math.max(0,bounds.width)
+    if width<14*h+28*h+gap then
+        return {index={x=bounds.x,y=bounds.y,width=width,height=bounds.height},
+            main={x=bounds.x,y=bounds.y,width=width,height=bounds.height},compact=true}
+    end
+    local index=math.min(22*h,math.max(14*h,width*0.24),width-gap-28*h)
+    return {index={x=bounds.x,y=bounds.y,width=index,height=bounds.height},
+        main={x=bounds.x+index+gap,y=bounds.y,width=width-index-gap,height=bounds.height},compact=false}
+end
 return Layout

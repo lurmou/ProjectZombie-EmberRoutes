@@ -150,7 +150,8 @@ function Cached.fill(list,rows,caption)
 end
 -- Reuse native entries by stable key; count-only changes do not clear/reflow the list.
 ---@param list EmberRoutesCachedList
-function Cached.reconcile(list,rows,caption,key,preserveAnchor)
+function Cached.reconcile(list,rows,caption,key,preserveAnchor,cacheRevision)
+    local revisionChanged=cacheRevision~=list.emberPreparedRevision
     local old=list.items
     local selected=old[list.selected or 0]
     local selectedKey=selected and key(selected.item.value)
@@ -165,8 +166,8 @@ function Cached.reconcile(list,rows,caption,key,preserveAnchor)
         local id=key(value)
         local entry=entries[id]
         local label
-        if not entry or entry.item.value~=value then label=caption(value) end
-        if not entry or (label and entry.text~=label) then
+        if revisionChanged or not entry or entry.item.value~=value then label=caption(value) end
+        if revisionChanged or not entry or (label and entry.text~=label) then
             local visual
             if list.emberStyle then visual=list.emberStyle.prepare(list,value,label)
             else
@@ -204,6 +205,7 @@ function Cached.reconcile(list,rows,caption,key,preserveAnchor)
         if list.smoothScrollY then list.smoothScrollY=clamped end
         if list.smoothScrollTargetY then list.smoothScrollTargetY=clamped end
     end
+    list.emberPreparedRevision=cacheRevision
     local current=list.items[list.selected]
     return current and current.item.value or false
 end

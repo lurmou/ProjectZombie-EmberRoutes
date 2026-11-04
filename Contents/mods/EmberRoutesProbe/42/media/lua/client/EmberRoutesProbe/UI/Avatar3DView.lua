@@ -92,13 +92,16 @@ function Avatar3DView:setCharacter(character, desc, fallbackOpts)
         self.portraitTexture = nil
         self.portraitCharacter = character
         self.portraitRefreshAt = 0
+        self:fetchPortrait()
     end
 end
 
----Force the next prerender to re-bake the portrait (call after clothing/equip change).
+---Invalidate and refresh outside drawing; activation-scoped callers only.
+---Force the next update to re-bake the portrait (call after clothing/equip change).
 function Avatar3DView:invalidatePortrait()
     if self.portraitCharacter then
         self.portraitRefreshAt = 0
+        self:fetchPortrait()
     end
 end
 
@@ -122,11 +125,35 @@ function Avatar3DView:fetchPortrait()
     end)
     if ok and tex then
         self.portraitTexture = tex
-        self.portraitRefreshAt = now + 1000
+        self.portraitRefreshAt = math.huge
     else
         -- Brief back-off; the caller's fallback (profession icon / initials) shows meanwhile.
         self.portraitRefreshAt = now + 100
     end
+end
+
+function Avatar3DView:setPortrait(snapshot)
+    self.character,self.survivorDesc,self.portraitCharacter=nil,nil,nil
+    self.portraitTexture=snapshot and snapshot.texture
+    self.fallbackTexture=snapshot and snapshot.icon
+    self.fallbackInitials=snapshot and snapshot.name
+    self.initialsW=self.fallbackInitials and getTextManager():MeasureStringX(UIFont.Small,self.fallbackInitials) or 0
+end
+
+-- A detached service snapshot; never fetches or measures from draw.
+function Avatar3DView.drawSnapshot(owner,snapshot,x,y,size)
+    if snapshot.texture then
+        owner:setStencilRect(x,y,size,size)
+        owner:drawTextureScaledAspect(snapshot.texture,x+(size-size*PORTRAIT_TEXTURE_ZOOM)/2,
+            y+size*PORTRAIT_TEXTURE_Y_OFFSET,size*PORTRAIT_TEXTURE_ZOOM,size*PORTRAIT_TEXTURE_ZOOM,1,1,1,1)
+        owner:clearStencilRect()
+    elseif snapshot.icon then owner:drawTextureScaledAspect(snapshot.icon,x,y,size,size,1,1,1,1)
+    else Theme.rect(owner,x,y,size,size,Theme.dossier.panel) end
+end
+
+function Avatar3DView:update()
+    ISPanel.update(self)
+    if self.activationScope and self.activationScope:isCurrent() and self.character and not self.portraitTexture and self:isVisible() then self:fetchPortrait() end
 end
 
 function Avatar3DView:prerender()
@@ -134,11 +161,10 @@ function Avatar3DView:prerender()
     local p = self.pad
 
     -- 1. Dark survival frame with subtle border
-    Theme.rect(self, 0, 0, self.width, self.height, {r = 0.04, g = 0.06, b = 0.08, a = 0.95})
+    Theme.rect(self, 0, 0, self.width, self.height, Theme.avatarSurface)
     Theme.rect(self, 0, 0, self.width, self.height, Theme.border, true)
 
-    -- 2. Ensure the cached portrait is fresh, then draw it (or fall back).
-    self:fetchPortrait()
+    -- 2. Draw the prepared portrait (or fallback), without native queries.
 
     local hasPortrait = self.portraitTexture ~= nil
     if hasPortrait then
@@ -162,11 +188,11 @@ function Avatar3DView:prerender()
             -- Clean silhouette
             local headR = math.max(6, math.floor(self.height * 0.18))
             local headY = math.floor(self.height * 0.15)
-            Theme.rect(self, cx - headR, headY, headR * 2, headR * 2, {r = 0.28, g = 0.35, b = 0.42, a = 0.85})
+            Theme.rect(self, cx - headR, headY, headR * 2, headR * 2, Theme.avatarHead)
             local bodyW = math.max(12, math.floor(self.width * 0.55))
             local bodyH = math.max(8, math.floor(self.height * 0.35))
             local bodyY = headY + headR * 2 + 2
-            Theme.rect(self, cx - math.floor(bodyW / 2), bodyY, bodyW, bodyH, {r = 0.18, g = 0.25, b = 0.32, a = 0.85})
+            Theme.rect(self, cx - math.floor(bodyW / 2), bodyY, bodyW, bodyH, Theme.avatarBody)
 
             if self.fallbackInitials and self.fallbackInitials ~= "" then
                 local tw = self.initialsW or 0
@@ -182,8 +208,8 @@ function Avatar3DView:prerender()
         local bx = self.width - badgeSize - 3
         local by = 3
         Theme.rect(self, bx, by, badgeSize, badgeSize, Theme.status.ERROR)
-        Theme.rect(self, bx, by, badgeSize, badgeSize, {r = 1, g = 1, b = 1, a = 0.9}, true)
-        Theme.text(self, "+", bx + 3, by - 1, {r = 1, g = 1, b = 1, a = 1})
+        Theme.rect(self, bx, by, badgeSize, badgeSize, Theme.avatarEdge, true)
+        Theme.text(self, "+", bx + 3, by - 1, Theme.avatarInk)
     end
 end
 

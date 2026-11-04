@@ -6,7 +6,10 @@ local SemanticBadge=require 'EmberRoutesProbe/UI/SemanticBadge'
 local CardPanel=require 'EmberRoutesProbe/UI/CardPanel'
 local progressStyle={mode='progress'}
 local Info={}
-function Info.new(owner,bounds)
+function Info.new(owner,bounds,options)
+    local dossier=options and options.dossier
+    local Slot=dossier and require 'EmberRoutesProbe/UI/ItemSlot'
+    local Avatar=dossier and require 'EmberRoutesProbe/UI/Avatar3DView'
     local icons=require('EmberRoutesProbe/UI/ItemPresentation').new()
     local style={emptyColor=Theme.muted,prepare=function(list,row)
         if row.isCardRow then
@@ -14,7 +17,7 @@ function Info.new(owner,bounds)
             local width=math.max(1,list.width-p*2)
             local titleFont=row.hero and (UIFont.Medium or UIFont.Small) or UIFont.Small
             local titleFontH=getTextManager():getFontHeight(titleFont)
-            local badge=row.status and SemanticBadge.resolve(row.status,row.statusText)
+            local badge=not dossier and row.status and SemanticBadge.resolve(row.status,row.statusText)
             local badgeW=0
             if badge then
                 badge.fontHeight=h
@@ -23,32 +26,60 @@ function Info.new(owner,bounds)
                 badgeW=badge.textWidth+p*2
             end
             local below=badge and width-p*3-badgeW<h*6
-            local title=Text.wrap(row.title or '',math.max(1,width-p*2-(below and 0 or badgeW+p)),titleFont)
+            local title=Text.wrap(row.title or '',math.max(1,width-p*2-(row.portrait and h*3+p or 0)-(below and 0 or badgeW+p)),titleFont)
             local titleH=math.max(titleFontH,#title*titleFontH)
             local badgeY=below and p+titleH+p/2 or p
             local top=below and badgeY+h+p*1.5 or p+math.max(titleH,badge and h+p or 0)+p/2
             local lines={}
+            local lineStart=top
             for _,line in ipairs(row.lines or {}) do
                 local value=type(line)=='table' and line.text or line
                 local color=type(line)=='table' and line.color or Theme.muted
                 if value and value~='' then
-                    for _,part in ipairs(Text.wrap(value,math.max(1,width-p*2),UIFont.Small)) do
-                        lines[#lines+1]={text=part,y=top,color=color or Theme.muted} top=top+h
+                    for _,part in ipairs(Text.wrap(value,math.max(1,width-p*2-(row.portrait and h*3+p or 0)),UIFont.Small)) do
+                        lines[#lines+1]={text=part,y=top,color=dossier and Theme.dossier.muted or color or Theme.muted} top=top+h
                     end
                 end
             end
+            if dossier then top=lineStart end
             local meters={}
             for _,meter in ipairs(row.meters or {}) do
-                local valueW=meter.value and getTextManager():MeasureStringX(titleFont,meter.value) or 0
+                local values=meter.value and (dossier and Text.wrap(meter.value,math.max(1,width-p*2),titleFont) or {meter.value}) or {}
+                local valueW=0
+                for _,value in ipairs(values) do valueW=math.max(valueW,getTextManager():MeasureStringX(titleFont,value)) end
                 local label=Text.wrap(meter.text or '',math.max(1,width-p*3-valueW),UIFont.Small)
-                local labelH=math.max(#label*h,titleFontH)
-                meters[#meters+1]={lines=label,y=top+p/2,fraction=meter.fraction,value=meter.value,valueW=valueW,labelH=labelH}
+                local labelH=math.max(#label*h,math.max(1,#values)*titleFontH)
+                meters[#meters+1]={lines=label,y=top+p/2,fraction=meter.fraction,value=meter.value,values=values,valueW=valueW,labelH=labelH}
                 top=top+p/2+labelH+h/2+p/2
             end
-            return {isCardRow=true,width=width,height=top+p*1.5,title=title,lines=lines,meters=meters,
-                badge=badge,badgeW=badgeW,badgeY=badgeY,frame={statusColor=badge and badge.color,
+            if dossier then
+                local offset=top-lineStart
+                for _,line in ipairs(lines) do line.y=line.y+offset end
+                top=top+#lines*h
+            end
+            local portrait=row.portrait
+            local portraitSize=portrait and h*3 or 0
+            if portrait then top=math.max(top,portraitSize+p*2) end
+            local frame=dossier and {frameStyle=row.hero and 'briefing' or 'plain',
+                backgroundColor=row.hero and Theme.dossier.control or Theme.dossier.background,
+                borderColor=Theme.dossier.separator,statusColor=row.alert and Theme.dossier.alert or nil}
+            return {portrait=portrait,portraitSize=portraitSize,alert=row.alert,dossier=dossier,isCardRow=true,width=width,height=top+p*1.5,title=title,lines=lines,meters=meters,
+                badge=badge,badgeW=badgeW,badgeY=badgeY,frame=frame or {statusColor=badge and badge.color,
                     frameStyle=row.hero and 'briefing' or nil,backgroundColor=row.hero and Theme.control or nil},p=p,h=h,
                 titleFont=titleFont,titleFontH=titleFontH}
+        end
+        if row.isSlotRow and dossier then
+            local h,p=owner.fontHeight,owner.pad
+            local cols=list.width>=h*24 and 2 or 1
+            local cellW=math.max(1,(list.width-p*(cols+1))/cols)
+            local cellH=h*3+p
+            local slots={}
+            for i,asset in ipairs(row.slots) do
+                slots[i]=Slot.prepare({icon=icons:icon(asset.fullType),name=asset.name,
+                    countText='× '..tostring(asset.count or 1),status=asset.status},
+                    {x=p+((i-1)%cols)*(cellW+p),y=math.floor((i-1)/cols)*cellH,width=cellW,height=cellH},Theme.revision)
+            end
+            return {slots=slots,height=math.ceil(#slots/cols)*cellH}
         end
         if row.isAssetRow then
             local icon=icons:icon(row.fullType)
@@ -87,20 +118,27 @@ function Info.new(owner,bounds)
     end,draw=function(list,y,entry)
         local v=entry.item.visual local row=entry.item.value
         if y+list:getYScroll()+entry.height<=0 or y+list:getYScroll()>=list.height then return y+entry.height end
+        if v.slots then
+            -- Cached local coordinates share the list's native row transform.
+            for _,slot in ipairs(v.slots) do list:drawItemSlot(y,slot) end
+            return y+entry.height
+        end
         if v.isCardRow then
             local x,p,h=owner.pad,v.p,v.h
+            local textX=x+p+(v.portrait and v.portraitSize+p or 0)
             CardPanel.draw(list,x,y+p/2,v.width,entry.height-p,v.frame)
-            for i,line in ipairs(v.title) do local color=Theme.textColor
-                list:drawText(line,x+p,y+p+(i-1)*v.titleFontH,color.r,color.g,color.b,color.a or 1,v.titleFont)
+            for i,line in ipairs(v.title) do local color=v.dossier and (v.alert and Theme.dossier.alert or Theme.dossier.text) or Theme.textColor
+                list:drawText(line,textX,y+p+(i-1)*v.titleFontH,color.r,color.g,color.b,color.a or 1,v.titleFont)
             end
+            if v.portrait then Avatar.drawSnapshot(list,v.portrait,x+p,y+p,v.portraitSize) end
             if v.badge then SemanticBadge.draw(list,x+v.width-v.badgeW-p,y+v.badgeY,v.badgeW,h+p,v.badge) end
-            for _,line in ipairs(v.lines) do Theme.text(list,line.text,x+p,y+line.y,line.color) end
+            for _,line in ipairs(v.lines) do Theme.text(list,line.text,textX,y+line.y,line.color) end
             for _,meter in ipairs(v.meters) do
-                for i,line in ipairs(meter.lines) do Theme.text(list,line,x+p,y+meter.y+(i-1)*h,Theme.textColor) end
-                if meter.value then local color=Theme.gold
-                    list:drawText(meter.value,x+v.width-p-meter.valueW,y+meter.y,color.r,color.g,color.b,color.a or 1,v.titleFont)
+                for i,line in ipairs(meter.lines) do Theme.text(list,line,x+p,y+meter.y+(i-1)*h,v.dossier and Theme.dossier.muted or Theme.textColor) end
+                if meter.value then local color=v.dossier and Theme.dossier.gold or Theme.gold
+                    for i,value in ipairs(meter.values) do list:drawText(value,x+v.width-p-meter.valueW,y+meter.y+(i-1)*v.titleFontH,color.r,color.g,color.b,color.a or 1,v.titleFont) end
                 end
-                StatMeter.draw(list,x+p,y+meter.y+meter.labelH+p/3,math.max(1,v.width-p*2),h/3,meter.fraction,progressStyle)
+                if meter.fraction~=nil then StatMeter.draw(list,x+p,y+meter.y+meter.labelH+p/3,math.max(1,v.width-p*2),h/3,meter.fraction,v.dossier and list.dossierMeter or progressStyle) end
             end
             return y+entry.height
         end
@@ -168,12 +206,29 @@ function Info.new(owner,bounds)
         return y+entry.height
     end}
     local list=Cached.create(owner,bounds,nil,style) Theme.list(list) owner:addChild(list)
+    if dossier then
+        Theme.dossierList(list)
+        list.dossierMeter={mode='progress',color=Theme.dossier.active,plain=true,trough=Theme.dossier.panel}
+        function list:drawItemSlot(y,cache) Slot.draw(self,cache,y) end
+    end
     local api={list=list}
     function api:set(rows)
+        if dossier then list.dossierMeter={mode='progress',color=Theme.dossier.active,plain=true,trough=Theme.dossier.panel} end
+        if dossier then
+            local packed,group={},nil
+            for _,row in ipairs(rows) do
+                if row.isAssetRow then
+                    if not group then group={isSlotRow=true,slots={}} packed[#packed+1]=group end
+                    group.slots[#group.slots+1]=row
+                else group=nil packed[#packed+1]=row end
+            end
+            rows=packed
+        end
         for i,row in ipairs(rows) do row.key=i end
         Cached.reconcile(list,rows,function(row)
-            local parts={row.title or '',row.statusText or '',row.status or '',tostring(row.hero)}
+            local parts={row.title or '',row.statusText or '',row.status or '',tostring(row.hero),tostring(row.portrait),tostring(Theme.revision)}
             for _,line in ipairs(row.lines or {}) do parts[#parts+1]=type(line)=='table' and line.text or line end
+            for _,asset in ipairs(row.slots or {}) do parts[#parts+1]=tostring(asset.fullType)..tostring(asset.name)..tostring(asset.status)..tostring(asset.count) end
             for _,meter in ipairs(row.meters or {}) do parts[#parts+1]=meter.text parts[#parts+1]=tostring(meter.fraction) parts[#parts+1]=meter.value or '' end
             return table.concat(parts,'|')..(row.text or '')..tostring(row.color)..tostring(row.fraction)
                 ..tostring(row.fullType)..tostring(row.compact)..tostring(row.meterLabel)
