@@ -15,6 +15,7 @@ function Policy.satisfied(kind,sample)
 end
 function Policy.choose(sample,previous,context,offers)
     if not context or context.safe~=true then return nil,'SAFETY_UNKNOWN_OR_UNSAFE' end
+    if sample.medical and sample.medical.needsCare and offers.MEDICAL then return 'MEDICAL' end
     local best,score
     for _,r in ipairs(rules) do
         local v=sample[r.field]

@@ -65,11 +65,10 @@ function Actions.read(c,item)
                 started=false,effects='KNOWN'}
             save()
             action=ISReadABook:new(c.npc,item)
-            if c.payload.study.leisure then
-                -- The NPC owns native reading effects, never the player's media/map UI.
-                action.displayPrintMedia=function() end
-                action.revealPrintMediaLocationsOnMap=function() end
-            end
+            -- All NPC reading (including assigned study) owns character
+            -- effects, never the player's media window or shared world map.
+            action.displayPrintMedia=function() end
+            action.revealPrintMediaLocationsOnMap=function() end
             local nativeStart,nativeUpdate,nativeValid=action.start,action.update,action.isValid
             local nativeStop,nativePerform,nativeComplete=action.stop,action.perform,action.complete
             action.useProgressBar,action.forceProgressBar=false,false

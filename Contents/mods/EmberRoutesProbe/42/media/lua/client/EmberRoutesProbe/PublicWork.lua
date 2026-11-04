@@ -556,7 +556,8 @@ local function eligible(actor,npcId,scope)
     local existing=business().crafts()[npcId]
     if existing and not existing.released then return end
     local npc=binding.handle
-    if not probing and not returningInterruptible and not npc:getCharacterActions():isEmpty() or npc:getBodyDamage():getOverallBodyHealth()<95 then return end
+    if not probing and not returningInterruptible and not npc:getCharacterActions():isEmpty()
+        or not require('EmberRoutesProbe/HealthAssessment').canWork(npc) then return end
     Members=Members or require 'EmberRoutesProbe/MembershipService'
     local M=Members
     local eligible=M.check(npcId,'WORK',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=scope})

@@ -22,6 +22,17 @@ function C.new(actor,job,binding,def,root)
             if j.payload.attempt then j.payload.attempt.state='UNKNOWN' end
         end)
     end
+    if job.payload.target.kind=='CORPSE'
+        and not require('EmberRoutesProbe/FieldOperations').reconcileCorpse(c) then return nil end
+    -- Confirmed corpse delivery has no further world interaction. Retire its
+    -- old obligation under recovery authority, even if ordinary work is barred
+    -- outside the settlement or a later command/zone change disables new labour.
+    local p=c.job.payload local a=p.attempt
+    if p.target.kind=='CORPSE' and c.job.effects=='KNOWN' and p.workDone==true and not p.holding
+        and not p.capacity and not p.toolSupply and #p.assets==0
+        and a and (a.state=='APPLIED' or a.state=='ABORTED') then
+        c.finalizeOnly=true c.recoveryOnly=true
+    end
     local function recoveryRequested()
         local member=Members.view(job.npcId)
         local command=member and member.pending
@@ -41,7 +52,7 @@ function C.new(actor,job,binding,def,root)
     end
     function c.valid()
         if not c.same() or c.stopping or c.npc:isDead() or actor:isDead() then return false end
-        local recovery=c.job.payload.phase~='WORK'
+        local recovery=c.finalizeOnly or c.job.payload.phase~='WORK'
         if not recovery and require('EmberRoutesProbe/ActivityAttendance').blocksOrdinary(job.npcId) then return false end
         local entry,_,memberRevision=Members.entry(job.npcId,job.scopeId)
         if not entry then return false end
@@ -53,7 +64,7 @@ function C.new(actor,job,binding,def,root)
         if cached and cached.target==c.job.payload.target and cached.recovery==recovery
             and cached.member==memberRevision and cached.entry==entry.revision
             and cached.policy==policyRevision and cached.zones==zoneRevision and now<cached.untilAt then return cached.allowed end
-        local purpose=c.recoveryOnly and recovery and recoveryRequested() and 'RECOVERY' or 'FIELD_WORK'
+        local purpose=(c.finalizeOnly or c.recoveryOnly and recovery and recoveryRequested()) and 'RECOVERY' or 'FIELD_WORK'
         local m=Members.check(job.npcId,purpose,
             {x=c.npc:getX(),y=c.npc:getY(),z=c.npc:getZ(),scopeId=job.scopeId})
         local allowed=m.allowed==true and (recovery or not def.valid or def.valid(c))
@@ -74,6 +85,10 @@ function C.new(actor,job,binding,def,root)
         end
         local result=EmberRoutesProbeJava.motionResult(c.npc)
         if result=='MOVING' and getTimestampMs()-c.path.at<185000 then return 'Running' end
+        if result=='REACHED' and math.abs(c.npc:getZ()-square:getZ())<=0.2
+            and (c.npc:getX()-(square:getX()+0.5))^2+(c.npc:getY()-(square:getY()+0.5))^2<=0.25 then
+            c.path=nil return 'Success'
+        end
         c.reason='FIELD_PATH_'..tostring(result) return 'Failure'
     end
     return c

@@ -2,6 +2,7 @@
 local checks=0
 local function check(v,label) checks=checks+1 assert(v,label) end
 local root={} local time=1000 local accepted=true local nextId=0
+dofile('tests/lua/membership-fixture.lua')(function() return {id='home',revision=1} end,{'a'})
 function instanceof(item,kind) return kind=='Food' and item.amount~=nil end
 getTimestampMs=function() return time end
 local function list(values)
@@ -12,6 +13,7 @@ end
 local function container()
     local values={} local c={values=values}
     c.getItems=function() return list(values) end
+    c.contains=function(_,item) return list(values):contains(item) end
     c.hasRoomFor=function() return true end
     return c
 end
@@ -74,6 +76,7 @@ ISEatFoodAction={new=function(_,who,item,fraction)
         stop=function() item.amount=math.max(0,item.amount-partial) removeQueued() end}
 end}
 EmberRoutesProbeJava={carrierActive=function() return true end}
+if ERLaborTestBridge then for name,method in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[name]=method end end
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
 local Record=require 'EmberRoutesProbe/SelfCareRecord'
 local Store=require 'EmberRoutesProbe/LaborStore'
@@ -85,12 +88,13 @@ local controller={inspect=function() return {state='STOPPING',npcId='a',jobId='c
     bodySnapshot=function() return {available=true,nativeStopped=true} end,stopBody=function() return true end}
 local jobs=Jobs.current() Store.data()
 assert(jobs:create(Record.create('care','a')))
-local function begin(item,borrow,fraction)
+local function begin(item,borrow,fraction,medical)
     live,retained=true,true accepted=true
     local job=jobs:get('care')
-    local p=assert(Record.begin(job,'EAT',job.payload.resume))
+    local p=assert(Record.begin(job,medical and 'MEDICAL' or 'EAT',job.payload.resume))
     p.step='STOP_CONFIRMED' p.claims={'item:'..item.id} p.itemId=item.id p.fraction=fraction or 0.25
     if borrow then p.sourceId='pantry' end
+    if medical then assert(require('EmberRoutesProbe/MedicalCare').begin(p,{medical=medical},item)) end
     local obligations=borrow and {RETURN_ORIGINALS={itemId=item.id,sourceId='pantry'}} or {}
     assert(jobs:update(job.id,job.revision,{payload=p,obligations=obligations}))
     job=jobs:get('care') assert(Store.claimPersonal(job))
@@ -117,6 +121,20 @@ local function stop(spec)
     assert(adapter.persistEffects(fact))
     assert(adapter.persistEffects(fact),'effect persistence must be idempotent if native release needs another observation')
     retained=false return fact
+end
+if ERMedicalLoopOnly then
+    ERMedicalLoopOnly({check=check,npc=npc,main=main,source=source,food=food,move=move,begin=begin,
+        tick=tick,native=native,stop=stop,body=body,jobs=jobs,Store=Store,Record=Record,
+        Execute=Execute,queued=function() return queued end,removeQueued=removeQueued,
+        budget=function() return budget end,controller=controller,
+        accepted=function(value) accepted=value end,
+        recover=function(saved,items)
+            live,retained=true,true
+            local recovery,c=Execute.new({}, {id='a',handle=npc},saved,nil,function() return budget end,true,items)
+            assert(recovery.start(body)) return recovery,c
+        end})
+    print('PASS '..checks..' medical custody/execution/recovery checks; native bodies mocked')
+    return
 end
 local bread=food(1,source)
 local spec,c=begin(bread,true)

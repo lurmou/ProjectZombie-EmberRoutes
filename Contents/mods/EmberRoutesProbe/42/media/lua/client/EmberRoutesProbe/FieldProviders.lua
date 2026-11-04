@@ -110,7 +110,19 @@ function M.get(category)
         local entry=c.entry
         if not entry then return false end
         -- Radius bounds discovery; an already accepted stain does not move with its worker.
-        if category=='cleaning' then return require('EmberRoutesProbe/SettlementGeometry').inside(entry,c.job.payload.target.x,c.job.payload.target.y) end
+        if category=='cleaning' then
+            local p=c.job.payload local t=p.target
+            if require('EmberRoutesProbe/SettlementGeometry').inside(entry,t.x,t.y) then return true end
+            -- Actual corpse delivery changes target coordinates to the dump site.
+            -- Finishing that proven delivery must not fail the source-area guard.
+            if t.kind=='CORPSE' and p.workDone==true and not p.holding then
+                local Zones=require 'EmberRoutesProbe/SettlementZones'
+                local zone=Zones.get(Discovery.policy(category,c.job.scopeId).corpseZoneId)
+                return zone and zone.enabled and zone.settlementId==c.job.scopeId
+                    and Zones.contains(zone,t.x,t.y,t.z) or false
+            end
+            return false
+        end
         return Discovery.allowed(category,entry,c.job.payload.target,c.npc)
     end
     function def.discover(env)

@@ -50,7 +50,7 @@ function M.project(context,job)
     for _,a in ipairs(p.assets) do if a.custody=='GROUND' then ground=true break end end
     if ground or p.phase=='COLLECT' then add('Collect','COLLECT',collected==#assets,collected..'/'..#assets) end
     if #assets>0 then add('Deliver','DELIVER',delivered==#assets,delivered..'/'..#assets) end
-    return {id='FIELD_WORK:'..job.id,jobId=job.id,kind='FIELD_WORK',npcId=job.npcId,generation=job.revision,
+    return {id='FIELD_WORK:'..job.id,jobId=job.id,kind='FIELD_WORK',workCategory=p.category,npcId=job.npcId,generation=job.revision,
         title=getText('IGUI_EmberRoutesProbe_Public_'..p.category),
         name=require('EmberRoutesProbe/DisplayNames').name(job.npcId,binding and binding.handle),
         state=stopping and 'STOPPING' or job.state,phase=p.phase,reason=p.reason,reasonText=reasonText(p.reason,uncertain),

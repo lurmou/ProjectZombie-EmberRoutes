@@ -192,6 +192,17 @@ package.loaded['EmberRoutesProbe/CraftingService']={status=function() return cra
   craftCommands[#craftCommands+1]={settlement=settlement,npc=npc,command=command,surface=surface,recipeId=recipeId,quantity=quantity} return 'STARTED'
  end}
 local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'
+local demandCount,demandCallbacks=0,{}
+if ERDemandPageOnly then
+    package.loaded['EmberRoutesProbe/DemandMonitorService']={
+        status=function() error('synchronous watch already projects the initial snapshot') end,
+        watch=function(_,_,fn)
+            demandCount=demandCount+1 demandCallbacks[#demandCallbacks+1]=fn
+            fn({rows={{id='DEMAND:cleaning:home',kind='DEMAND',title='Cleaning',compact=true,readOnly=true,
+                bucket='waiting',state='waiting',summaryText='Normal · Home · Unhandled',assets={},children={}}}})
+            return function() demandCount=demandCount-1 end
+        end}
+end
 local Logistics=require 'EmberRoutesProbe/LogisticsDashboard'
 -- Reuse only the native-host fixture for focused delivery visual inspection.
 if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
@@ -232,6 +243,19 @@ shell:selectTab('warehouse')
 local oldMonitor=monitor.store.value.snapshot
 monitorCallbacks[1]({rows={}})
 check(monitorCount==0 and monitor.store.value.snapshot==oldMonitor,'hidden monitor releases interest and rejects late callbacks')
+if ERDemandPageOnly then
+    shell:selectTab('demands') local needs=shell.pages.demands
+    check(demandCount==1 and wareCount==0 and #needs.orderList.items==1,'demand tab owns its single synchronous watch projection')
+    check(not needs.buttons.create.visible and not needs.buttons.resume.enable and not needs.buttons.stop.enable,
+        'facts expose no production or execution commands')
+    local snapshot=needs.store.value.snapshot
+    shell:selectTab('orders') demandCallbacks[1]({rows={}})
+    check(demandCount==0 and needs.store.value.snapshot==snapshot,'deactivation rejects late demand callback')
+    check(monitorCount==1 and #monitor.orderList.items==1,'order tab keeps independent execution state')
+    shell:close()
+    check(monitorCount==0 and demandCount==0,'dashboard close releases both page interests')
+    print('PASS '..checks..' demand/order page lifecycle checks; native UI mocked') return
+end
 if ERTestTranslations then
     check(shell.tabButtons.warehouse.title==getText('IGUI_EmberRoutesProbe_Settlement_tab_warehouse'),'real language tab label')
     check(not shell.title:find('IGUI_',1,true),'management title translated')

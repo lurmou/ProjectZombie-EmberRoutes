@@ -310,4 +310,5 @@ end
 function S.setReturnPoint(actor,scope,point,expected)
     return Ledger.setReturnPoint(actor,scope,point,expected)
 end
+function S.ensureReturnPoint(actor,scope) return Ledger.ensureReturnPoint(actor,scope) end
 return S

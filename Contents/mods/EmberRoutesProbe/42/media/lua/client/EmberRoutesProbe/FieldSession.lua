@@ -54,6 +54,9 @@ function S.spec(c,def,cooldowns)
             npc=c.npc,npcId=job.npcId,jobId=job.id,same=c.same,
             pause=function(reason)
                 c.stopping=true c.reason=c.reason or reason
+                require('EmberRoutesProbe/Log').write('FIELD_SESSION','STOP job='..c.job.id..' reason='..tostring(c.reason)
+                    ..' phase='..c.job.payload.phase..' workDone='..tostring(c.job.payload.workDone)
+                    ..' holding='..tostring(c.job.payload.holding)..' mask='..tostring(c.body.snapshot().nativeMask))
                 if reason=='MEMBERSHIP_COMMAND' or reason=='REPLACED' then
                     local retained=c.job.payload.holding==true
                     for _,asset in ipairs(c.job.payload.assets) do if asset.custody~='DELIVERED' then retained=true end end

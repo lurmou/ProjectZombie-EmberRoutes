@@ -17,6 +17,8 @@
 
 ## 按任务选择
 
+需求与工单分离、个人医疗：[实施计划](superpowers/plans/2026-11-04-demand-medical.md)、[0.29.36参考核对、集成及验证差额](reviews/2026-11-04/demand-medical.md)。基础需求只读汇总；个人包扎沿现有唯一Session和原件责任；专业医疗与实机验收尚未完成。
+
 NPC seated-social：[一坐一站实现、身体授权调查与验证](reviews/2026-11-04/seated-social-segment.md)；保持原 SIT Job/Session，实机未验证。
 
 NPC idle-sit：[实现、独立预算与社交取舍](reviews/2026-11-04/idle-sit-segment.md)，当前状态见 BACKLOG；实机未验证。

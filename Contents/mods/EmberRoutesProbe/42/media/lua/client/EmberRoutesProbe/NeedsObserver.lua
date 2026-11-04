@@ -22,6 +22,7 @@ function Observer.sample(npc,id,now)
             if facts.onFire==true or type(facts.attacking)=='number' and facts.attacking>0
                 or facts.spottedThreat==true then sample.safety='UNSAFE' return sample end
             if facts.spottedThreat==nil then sample.safety='UNKNOWN' return sample end
+            sample.externalSafe=true
             local current=facts.health
             if type(current)~='number' or current~=current then return nil,'NEED_UNAVAILABLE' end
             local previous=health[id]
@@ -52,6 +53,7 @@ function Observer.sample(npc,id,now)
             sample.safety='UNSAFE' return sample
         end
     end
+    sample.externalSafe=true
     local current=npc:getBodyDamage():getOverallBodyHealth()
     local previous=health[id]
     local untilTime=previous and previous.untilTime or 0

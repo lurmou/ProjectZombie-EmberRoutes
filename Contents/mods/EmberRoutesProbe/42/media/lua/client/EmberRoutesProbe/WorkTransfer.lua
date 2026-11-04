@@ -12,11 +12,12 @@ function Transfer.reachable(npc, endpoint)
         square:getX()+0.5, square:getY()+0.5, square:getZ()) and current:canReachTo(square)
 end
 
-function Transfer.prepareMove(context,endpoint)
+function Transfer.prepareMove(context,endpoint,excluded)
     local square=luautils.getCorrectSquareForWall(context.npc,endpoint.object:getSquare())
     if not square then return nil,'CONTAINER_UNAVAILABLE' end
-    local excluded={}
+    excluded=excluded or {}
     for _=1,8 do
+        if #excluded>=8 then break end
         local candidate=AdjacentFreeTileFinder.Find(square,context.npc,excluded)
         if not candidate then break end
         local cell=getCell()
@@ -37,24 +38,38 @@ local function preparedValid(endpoint,p)
 end
 function Transfer.move(context, endpoint,prepared)
     local requested = false
+    local excluded,point,attempts={},nil,0
+    local function request(candidate)
+        if attempts>=8 then return 'FAILED','NO_REACHABLE_ADJACENT_TILE' end
+        local why
+        if not preparedValid(endpoint,candidate) then candidate,why=Transfer.prepareMove(context,endpoint,excluded) end
+        if not candidate then return 'FAILED',why end
+        point=candidate attempts=attempts+1
+        local result=Driver.move({handle=context.npc,id=context.job.npcId},context.actor,
+            {x=point.x,y=point.y,z=point.z},context.body)
+        if not string.find(result,'^MOVE_REQUESTED') then return 'FAILED',result end
+        requested=true
+    end
     return {
         timeout=185000,
         start = function()
             if Transfer.reachable(context.npc, endpoint) then return end
-            local point,why=prepared
-            if not preparedValid(endpoint,point) then point,why=Transfer.prepareMove(context,endpoint) end
-            if not point then return 'FAILED',why end
-            local result = Driver.move({handle=context.npc,id=context.job.npcId},context.actor,
-                {x=point.x,y=point.y,z=point.z},context.body)
-            if not string.find(result, "^MOVE_REQUESTED") then return "FAILED", result end
-            requested = true
+            return request(prepared)
         end,
         poll = function()
             if not requested then return "PASSED" end
             local result = EmberRoutesProbeJava.motionResult(context.npc)
             if result == "MOVING" then return "WAIT" end
-            if result ~= "REACHED" or not Transfer.reachable(context.npc, endpoint) then return "FAILED", "PATH_" .. result end
-            return "PASSED"
+            if result=='REACHED' and Transfer.reachable(context.npc,endpoint) then return 'PASSED' end
+            -- A locally free neighbour can still be unreachable from the worker.
+            -- Keep the same owner; let vanilla choose another, excluding failed tiles.
+            if result=='FAILED' or result=='PATH_ENDED' or result=='REACHED' then
+                excluded[#excluded+1]=point.square
+                local state,why=request()
+                if state=='FAILED' then return state,why end
+                return 'WAIT'
+            end
+            return 'FAILED','PATH_'..result
         end,
     }
 end

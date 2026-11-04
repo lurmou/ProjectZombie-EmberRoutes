@@ -138,7 +138,7 @@ local function advance(ctx)
         or not require('EmberRoutesProbe/MembershipService').check(npcId,'WORK',
             {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ(),scopeId=ctx.id}).allowed
         or not binding.handle:getCharacterActions():isEmpty()
-        or binding.handle:getBodyDamage():getOverallBodyHealth()<95 then ctx.plan=nil ctx.reason="WAITING_WORKER" return end
+        or not require('EmberRoutesProbe/HealthAssessment').canWork(binding.handle) then ctx.plan=nil ctx.reason="WAITING_WORKER" return end
     local record=Work.record(npcId)
     if record and record.state~="DONE" then
         ctx.plan=nil
@@ -233,12 +233,15 @@ function Service.recover()
         if r and r.producer=='LOGISTICS' and r.state=='PAUSED' and not r.controlUncertain and not r.manualPaused
             and not Work.busy(id) and (not rt or not rt:owns(id)) then
             local reason=r.reason or ''
-	    local system=(r.format==2 or r.format==3) and (reason=='ROUTING_WAIT' or reason=='SAVE' or reason=='LOAD_RECOVERY')
+	    local system=(r.format==2 or r.format==3) and (reason=='ROUTING_WAIT' or reason=='SAVE' or reason=='LOAD_RECOVERY'
+                or reason=='HEALTH_NEEDS_CARE' or reason=='HEALTH_NEEDS_DOCTOR' or reason=='HEALTH_UNAVAILABLE'
+                or reason=='DRIVER_UNAVAILABLE') -- Older low-health pauses used this generic reason.
                 or r.format==1 and (reason=='SAVE' or reason=='LOAD_RECOVERY' or reason=='NATIVE_TRANSFER_STOPPED'
                     or string.find(reason,'^FILTER_REJECTED') or replanReasons[reason])
             local entry=Ledger.get(r.settlementId) local b=system and entry and Driver.bindId(actor,id)
             local wait=recoveryWait[id]
-            if b and (not wait or wait.job~=r.id or now>=wait.due or wake.changed(wait.watch))
+            if b and require('EmberRoutesProbe/HealthAssessment').canWork(b.handle)
+                and (not wait or wait.job~=r.id or now>=wait.due or wake.changed(wait.watch))
                 and require('EmberRoutesProbe/MembershipService').check(id,'WORK',
                     {x=b.handle:getX(),y=b.handle:getY(),z=b.handle:getZ(),scopeId=entry.id}).allowed then
                 local ctx=contexts[entry.id]

@@ -133,6 +133,13 @@ local function advance(id,actor,runtime,now)
     if member.context=='SETTLEMENT' and now<(row.idleAt or 0) then return end
     local entry,why=S.entry(id) if not entry then S.note(id,why) return end
     if not actor or actor:isDead() then return end
+    local returnPointReason
+    if not entry.returnPoint then
+        local initialized,reason=S.ensureReturnPoint(actor,entry.id)
+        if not initialized then returnPointReason=reason end
+        entry=S.entry(id)
+        if not entry then return end
+    end
     local binding=Driver.bindId(actor,id) if not binding then S.note(id,'TARGET_UNLOADED') return end
     local n=binding.handle local inside=Policy.inside(entry,{x=n:getX(),y=n:getY()})
     if not runtime:owns(id) and #M.obligations(id)>0 then
@@ -148,6 +155,7 @@ local function advance(id,actor,runtime,now)
     end
     if inside and member.context=='SETTLEMENT' then row.idleAt=now+Config.memberIdleMs end
     if inside or runtime:owns(id) or now<(row.retryAt or 0) then return end
+    if not entry.returnPoint then S.note(id,returnPointReason or 'RETURN_POINT_INITIALIZING') return end
     row.retryAt=now+5000
     row.returning,why=use('MembershipReturn').start(actor,binding,member)
     S.note(id,why)

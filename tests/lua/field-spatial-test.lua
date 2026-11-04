@@ -1,5 +1,5 @@
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
-local entry={id='s',revision=1,factionId='f',areas={{x=0,y=0,w=10,h=10},{x=20,y=0,w=10,h=10}}}
+local entry={id='s',revision=1,factionId='f',areas={{x=0,y=0,w=8,h=8},{x=24,y=0,w=8,h=8}}}
 local root={entries={s=entry}}
 local zones={z={id='z',settlementId='s',enabled=true,revision=1,areas={{x=100,y=100,z=2,w=5,h=5}}}}
 package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root end,get=function() return entry end}
@@ -16,7 +16,10 @@ check(S.inside(entry,'z',101,101,2),'offsite explicit zone accepted')
 check(not S.inside(entry,'z',101,101,0),'explicit zone retains floor')
 check(not S.inside(entry,'missing',1,1,0),'missing explicit zone never falls back')
 for i=0,8 do S.chunk(entry,nil,'cleaning',i*300) end
-check(seen['0:0'] and seen['2:0'] and not seen['1:0'],'union traversal scans both components without a gap chunk')
+check(seen['0:0'] and seen['3:0'] and not seen['1:0'] and not seen['2:0'],'8-square union traversal scans both components without gap chunks')
+entry.areas={{x=10911,y=10036,w=3,h=6}} entry.revision=2 seen={}
+for i=9,17 do S.chunk(entry,nil,'cleaning',i*300) end
+check(seen['1363:1254'] and seen['1364:1255'] and not seen['1091:1003'],'world coordinates scan actual B42 chunks across boundaries')
 local policy={spoilageStrategy='EXPIRE_SOON_FIRST',kitchenZoneId='z'}
 package.loaded['EmberRoutesProbe/JobPolicyService']={get=function() return policy end}
 instanceof=function(i,kind) return kind=='Food' and i.food end

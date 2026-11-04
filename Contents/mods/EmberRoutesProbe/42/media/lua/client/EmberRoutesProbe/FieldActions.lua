@@ -1,7 +1,7 @@
 -- Per-instance native adapter, patterned after CookingActions. No private queue.
 local A={}
 function A.new(c,h)
-    local action,stopped,performed,committing
+    local action,stopped,performed,committing,effectDeadline
     local a=c.job.payload.attempt
     if a and (a.state=='UNKNOWN' or a.state=='PREPARED' and a.dispatched) then return nil,'FIELD_ATTEMPT_RECONCILE_REQUIRED' end
     local sequence=c.job.payload.sequence+1
@@ -104,6 +104,16 @@ function A.new(c,h)
             if not c.body.add(action) then node.settle() return 'Failure' end
         end
         if committing or ISTimedActionQueue.hasAction(action) then return 'Running' end
+        -- Some native actions request an animation effect in start(); their
+        -- queue completion precedes the physical result. Keep this same attempt.
+        if h.waitForEffectMs and not stopped and state()~='APPLIED' then
+            effectDeadline=effectDeadline or getTimestampMs()+h.waitForEffectMs
+            if not classify(true,false) then return 'Failure' end
+            if state()=='PREPARED' then
+                if getTimestampMs()<effectDeadline then return 'Running' end
+                c.unknown('FIELD_CORPSE_RELEASE_UNCONFIRMED') return 'Failure'
+            end
+        end
         if not node.settle() then return 'Failure' end
         return state()=='APPLIED' and 'Success' or 'Failure'
     end

@@ -21,6 +21,9 @@ function Execution.reconcile(job,npc,items)
     end
     if p.activityRef and p.activityRef.dutyId then return false,'ACTIVITY_DUTY_UNCONFIRMED' end
     if not Custody.observe(c) or c.effects~='KNOWN' then return false,'TRANSFER_UNCONFIRMED' end
+    if p.medical and require('EmberRoutesProbe/MedicalActions').observe(c,items[p.itemId])~='KNOWN' then
+        return false,'MEDICAL_EFFECT_UNCONFIRMED'
+    end
     if p.consumption then
         if Actions.reconcile(c,items[p.consumption.itemId],p.consumption)~='KNOWN' then return false,'CONSUMPTION_UNCONFIRMED' end
         p.consumption.effects='KNOWN' p.consumption.stopped=true
@@ -36,8 +39,11 @@ function Execution.reconcile(job,npc,items)
     -- than treating a stopped book session as proof of its survival effects.
     if p.relief then
         local r=p.relief
-        local rc={npc=npc,items=items,payload={kind=r.kind,itemId=r.itemId,
+        local rc={npc=npc,items=items,payload={kind=r.kind,itemId=r.itemId,medical=r.medical,
             attemptId=p.attemptId..':relief:'..r.sequence},sameAttempt=c.sameAttempt}
+        if r.medical and require('EmberRoutesProbe/MedicalActions').observe(rc,items[r.itemId])~='KNOWN' then
+            return false,'MEDICAL_EFFECT_UNCONFIRMED'
+        end
         if r.fact then
             if Actions.reconcile(rc,items[r.fact.itemId],r.fact)~='KNOWN' then return false,'RELIEF_CONSUMPTION_UNCONFIRMED' end
             r.fact.effects='KNOWN' r.fact.stopped=true
@@ -223,10 +229,14 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
             leaves[#leaves+1]=Custody.take(c,candidate)
             if c.payload.kind=='STUDY' then
                 leaves[#leaves+1]=require('EmberRoutesProbe/StudySeat').new(c,candidate.item)
+            elseif c.payload.kind=='MEDICAL' then
+                leaves[#leaves+1]=require('EmberRoutesProbe/MedicalActions').new(c,candidate.item)
             else leaves[#leaves+1]=Actions.consumption(c,c.payload.kind,candidate.item,c.payload.fraction or 0.25) end
         end
         if settle and c.payload.kind=='STUDY' then
             leaves[#leaves+1]=require('EmberRoutesProbe/StudySeat').exit(c)
+            leaves[#leaves+1]=require('EmberRoutesProbe/StudyRelief').new(c)
+        elseif settle and c.payload.kind~='MEDICAL' then
             leaves[#leaves+1]=require('EmberRoutesProbe/StudyRelief').new(c)
         end
         if not reliefOnly then leaves[#leaves+1]=Custody.returns(c) end
@@ -266,10 +276,18 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
                 return true
             end,
             effects=function()
+                if c.payload.medical and require('EmberRoutesProbe/MedicalActions').observe(c,c.items[c.payload.itemId])~='KNOWN' then
+                    c.effects='UNKNOWN'
+                end
                 local fact=c.payload.consumption local item=c.items[c.payload.itemId]
                 local reading=c.payload.reading
                 if reading and (reading.effects~='KNOWN' or not (reading.completed or reading.stopped)) then c.effects='UNKNOWN' end
                 local relief=c.payload.relief
+                if relief and relief.medical then
+                    local rc={npc=c.npc,items=c.items,payload={kind='MEDICAL',itemId=relief.itemId,medical=relief.medical,
+                        attemptId=c.payload.attemptId..':relief:'..relief.sequence}}
+                    if require('EmberRoutesProbe/MedicalActions').observe(rc,c.items[relief.itemId])~='KNOWN' then c.effects='UNKNOWN' end
+                end
                 if relief and (relief.fact and (relief.fact.effects~='KNOWN'
                     or relief.fact.started and not (relief.fact.completed or relief.fact.stopped))
                     or relief.repose and (relief.repose.effects~='KNOWN'

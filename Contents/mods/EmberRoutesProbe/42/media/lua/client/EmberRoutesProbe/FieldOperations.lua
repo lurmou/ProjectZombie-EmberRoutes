@@ -19,6 +19,7 @@ local Native=require 'EmberRoutesProbe/FieldActions'
 local Record=require 'EmberRoutesProbe/FieldRecord'
 local Store=require 'EmberRoutesProbe/LaborStore'
 local ToolReq=require 'EmberRoutesProbe/ToolRequirements'
+local Log=require 'EmberRoutesProbe/Log'
 local O={}
 local function canUse(npc,item,jobId)
     if not item or (item.isBroken and item:isBroken()) then return false end
@@ -70,6 +71,7 @@ local function toolNode(c,item,secondary)
             end})
     end
     local twoHands=not secondary and item.isTwoHandWeapon and item:isTwoHandWeapon() or false
+    if c.job.payload.target.kind=='TREE' and c.npc:getSecondaryHandItem() then twoHands=false end
     return Native.new(c,{kind='EQUIP',create=function() return ISEquipWeaponAction:new(c.npc,item,50,not secondary,twoHands) end,
         observe=function(ok,finished)
             local hand=secondary and c.npc:getSecondaryHandItem() or c.npc:getPrimaryHandItem()
@@ -78,12 +80,19 @@ local function toolNode(c,item,secondary)
 end
 local function readyTools(c,tools)
     if c.job.payload.target.kind=='WATER' then
-        if tools[1]:getContainer()==c.npc:getInventory() then return true end
+        if tools[1]:getContainer()==c.npc:getInventory() and c.npc:getPrimaryHandItem()==tools[1] then return true end
         c.node=toolNode(c,tools[1],false) return false
     end
+    -- Vanilla doCleanBlood: a two-hand mop/broom occupies both hands;
+    -- the cleaner stays in inventory and is supplied to ISCleanBlood.
+    local twoHands=c.job.payload.target.kind=='STAIN' and instanceof(tools[1],'HandWeapon')
+        and tools[1]:isTwoHandWeapon()
     for i,item in ipairs(tools) do
+        local equip=not twoHands or i==1
         local hand=i==2 and c.npc:getSecondaryHandItem() or c.npc:getPrimaryHandItem()
-        if item:getContainer()~=c.npc:getInventory() or hand~=item then c.node=toolNode(c,item,i==2) return false end
+        if item:getContainer()~=c.npc:getInventory() or equip and (hand~=item or twoHands and c.npc:getSecondaryHandItem()~=item) then
+            c.node=toolNode(c,item,i==2) return false
+        end
     end
     return true
 end
@@ -113,10 +122,33 @@ function O.settleCorpse(c)
     if c.npc:isDraggingCorpse() then return true end
     local b,sq=O.dropped(c)
     if not b then return c.unknown('FIELD_CORPSE_IDENTITY_UNCONFIRMED') end
+    local Zones=require 'EmberRoutesProbe/SettlementZones'
+    local zone=Zones.get(Discovery.policy('cleaning',c.job.scopeId).corpseZoneId)
+    local delivered=zone and zone.enabled and zone.settlementId==c.job.scopeId
+        and Zones.contains(zone,sq:getX(),sq:getY(),sq:getZ())
     return c.change(function(j)
         j.payload.holding=nil j.payload.target.x=sq:getX() j.payload.target.y=sq:getY() j.payload.target.z=sq:getZ()
         j.payload.target.itemId=b:getItem():getID()
+        j.payload.workDone=delivered or nil
     end)
+end
+-- Current-format recovery uses world evidence, never a missing session or timeout.
+function O.reconcileCorpse(c)
+    local p=c.job.payload local a=p.attempt
+    if p.target.kind~='CORPSE' or c.job.effects~='KNOWN' or c.npc:isDraggingCorpse()
+        or not a or a.kind~='DROP_CORPSE' or a.state~='ABORTED' and a.state~='APPLIED' then return true end
+    if p.workDone and not p.holding and a.state=='APPLIED' then return true end
+    local b=Discovery.object(p.target)
+    if not b or Spatial.identity(b)~=p.target.identity then return true end
+    local sq=b:getSquare() local Zones=require 'EmberRoutesProbe/SettlementZones'
+    local zone=Zones.get(Discovery.policy('cleaning',c.job.scopeId).corpseZoneId)
+    if not sq or not zone or not zone.enabled or zone.settlementId~=c.job.scopeId
+        or not Zones.contains(zone,sq:getX(),sq:getY(),sq:getZ()) then return true end
+    local saved=c.change(function(j)
+        j.payload.holding=nil j.payload.workDone=true j.payload.attempt.state='APPLIED'
+    end)
+    if saved then Log.write('FIELD_CORPSE','RECOVER_DELIVERY job='..c.job.id..' original='..p.target.identity) end
+    return saved
 end
 local function corpse(c,t)
     if c.job.payload.holding then
@@ -127,12 +159,15 @@ local function corpse(c,t)
         local a=(zone.areas or {})[1] if not a then return 'Failure' end
         local dest=Spatial.square({x=a.x,y=a.y,z=a.z or 0})
         local own=c.npc:getCurrentSquare()
-        local inside=own and require('EmberRoutesProbe/SettlementZones').contains(zone,own:getX(),own:getY(),own:getZ())
-        local state=c.move(dest,inside) if state~='Success' then return state end
+        local arrived=dest and own==dest and (c.npc:getX()-(a.x+0.5))^2+(c.npc:getY()-(a.y+0.5))^2<=0.16
+        local state=c.move(dest,arrived) if state~='Success' then return state end
         local native=c.body.snapshot()
         if not native.nativeStopped and native.nativeMask~=4096 then c.body.stop() return 'Running' end
-        c.node=Native.new(c,{kind='DROP_CORPSE',startEffect=true,
-            create=function() return ISDropCorpseAction:new(c.npc,dest) end,
+        c.node=Native.new(c,{kind='DROP_CORPSE',startEffect=true,waitForEffectMs=5000,
+            create=function()
+                Log.write('FIELD_CORPSE','DROP_REQUEST job='..c.job.id..' npc='..c.npc:getX()..','..c.npc:getY())
+                return ISDropCorpseAction:new(c.npc,dest)
+            end,
             observe=function(ok,finished)
                 if c.npc:isDraggingCorpse() then return true,false,not finished end
                 local b,sq=O.dropped(c)
@@ -143,6 +178,8 @@ local function corpse(c,t)
                     j.payload.target.x=sq:getX() j.payload.target.y=sq:getY() j.payload.target.z=sq:getZ()
                     j.payload.target.itemId=b:getItem():getID()
                 end)
+                if saved then Log.write('FIELD_CORPSE','DROP_OBSERVED job='..c.job.id..' original='..t.identity
+                    ..' square='..sq:getX()..','..sq:getY()..','..sq:getZ()..' delivered='..tostring(delivered)) end
                 return saved,delivered
             end})
         return c.node and 'Running' or 'Failure'
@@ -150,8 +187,25 @@ local function corpse(c,t)
     if c.npc:isDraggingCorpse() then c.reason='FIELD_NPC_ALREADY_DRAGGING_CORPSE' return 'Failure' end
     local b=Discovery.object(t)
     if not b or Spatial.identity(b)~=t.identity then c.reason='FIELD_CORPSE_MOVED' return 'Failure' end
-    local state=stopAt(c,b:getSquare()) if state~='Success' then return state end
-    for _,item in ipairs({c.npc:getPrimaryHandItem(),c.npc:getSecondaryHandItem()}) do
+    if not c.corpseApproach or c.corpseApproach.body~=b then
+        local ok,result=c.body.move(c.actor,{corpse=b})
+        if not ok or result~='MOVE_REQUESTED_CORPSE' then
+            c.reason=result=='CORPSE_NO_APPROACH' and 'FIELD_NO_APPROACH' or tostring(result) return 'Failure'
+        end
+        c.corpseApproach={body=b} return 'Running'
+    end
+    if not c.corpseApproach.reached then
+        local result=EmberRoutesProbeJava.motionResult(c.npc)
+        if result=='MOVING' then return 'Running' end
+        if result~='REACHED' then c.reason='FIELD_PATH_'..tostring(result) return 'Failure' end
+        if not c.npc:getSquare():canReachTo(b:getSquare()) then c.reason='FIELD_NO_APPROACH' return 'Failure' end
+        c.corpseApproach.reached=true
+    end
+    local primary,secondary=c.npc:getPrimaryHandItem(),c.npc:getSecondaryHandItem()
+    local hands={}
+    if primary then hands[#hands+1]=primary end
+    if secondary and secondary~=primary then hands[#hands+1]=secondary end
+    for _,item in ipairs(hands) do
         if item then
             local owner=Store.owner(item:getID()) if owner and owner.taskId~=c.job.id then return 'Failure' end
             c.node=Native.new(c,{kind='UNEQUIP',create=function() return ISUnequipAction:new(c.npc,item,50) end,
@@ -160,6 +214,11 @@ local function corpse(c,t)
         end
     end
     c.node=Native.new(c,{kind='GRAB_CORPSE',create=function() return ISGrabCorpseAction:new(c.npc,b) end,
+        before=function()
+            Log.write('FIELD_CORPSE','GRAB_EFFECT job='..c.job.id..' original='..t.identity
+                ..' direction='..tostring(c.npc:getDir())..' turning='..tostring(c.npc:shouldBeTurning()))
+            return true
+        end,
         observe=function(ok,finished)
             local dragging=c.npc:isDraggingCorpse()
             local targetStillWorld=b:getStaticMovingObjectIndex()>=0
@@ -177,8 +236,9 @@ local function work(c,t,tools)
     if t.kind~='STAIN' and t.kind~='FORAGE' and (not o or Spatial.identity(o)~=t.identity) then
         c.reason='FIELD_TARGET_REPLACED' return 'Failure'
     end
+    if t.kind=='WATER' and not readyTools(c,tools) then return c.node and 'Running' or 'Failure' end
     local state=stopAt(c,square,t.kind=='WATER' or t.kind=='HARVEST' or t.kind=='CLEAR') if state~='Success' then return state end
-    if not readyTools(c,tools) then return c.node and 'Running' or 'Failure' end
+    if t.kind~='WATER' and not readyTools(c,tools) then return c.node and 'Running' or 'Failure' end
     local before,ground,water
     local h={kind=t.kind,valid=function()
         if not Spatial.reachable(c.npc,square) then return false end
@@ -229,7 +289,7 @@ local function work(c,t,tools)
         end
     elseif t.kind=='CLEAR' then
         local plant=Discovery.plant(t)
-        h.create=function() return ISShovelAction:new(c.npc,tools[1],plant,100) end
+        h.create=function() return ISShovelAction:new(c.npc,tools[1],plant,40) end
         h.observe=function(ok,finished) return ok,not plant:getObject() or plant:getObject():getObjectIndex()<0,not finished end
     elseif t.kind=='FORAGE' then
         local fs=_G.forageSystem local zone=fs.getForageZoneAt(t.x,t.y) local raw=zone and zone.forageIcons[t.iconId]

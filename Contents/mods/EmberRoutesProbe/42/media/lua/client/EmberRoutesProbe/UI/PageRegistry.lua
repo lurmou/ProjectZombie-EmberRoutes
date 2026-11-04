@@ -80,6 +80,8 @@ function PageRegistry.getFooter(id, page)
 end
 
 -- Default built-in Page Registrations:
+PageRegistry.register({id='demands',module='DemandPage',isTab=true,titleKey='tab_demands',
+    tooltipKey='tabNavigation',order=15})
 PageRegistry.register({
     id = "warehouse",
     module = "WarehousePage",

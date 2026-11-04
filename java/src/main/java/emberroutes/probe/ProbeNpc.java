@@ -84,7 +84,9 @@ public final class ProbeNpc extends IsoPlayer {
             | (isCurrentState(zombie.ai.states.FitnessState.instance()) || getFitness().getCurrentExe()!=null ? 512 : 0)
             | (isCurrentState(zombie.ai.states.PlayerEmoteState.instance()) ? 1024 : 0)
             | (furnitureExit.exiting() || isSittingOnFurniture() || isSitOnGround() || isOnBed() || isCurrentState(zombie.ai.states.PlayerOnBedState.instance()) || getSitOnFurnitureObject()!=null
-                || isCurrentState(zombie.ai.states.PlayerGetUpState.instance()) ? 2048 : 0);
+                || isCurrentState(zombie.ai.states.PlayerGetUpState.instance()) ? 2048 : 0)
+            | (isDraggingCorpse() || isPerformingGrappleAnimation()
+                || isCurrentState(zombie.ai.states.PlayerDraggingCorpse.instance()) ? 4096 : 0);
     }
     boolean beginRepose(String kind) {
         return beginRepose(kind,null,"floor");
@@ -552,6 +554,21 @@ public final class ProbeNpc extends IsoPlayer {
                 + " target=" + x + "," + y + "," + z + " distance=" + movement.distance(getX(), getY(), getZ()));
     }
 
+    String moveToCorpse(zombie.iso.objects.IsoDeadBody corpse) {
+        if (failed || retiring || !attached || corpse==null || corpse.getSquare()==null
+                || corpse.getStaticMovingObjectIndex()<0 || isDraggingCorpse()) return "CORPSE_UNAVAILABLE";
+        stopProbe();
+        requestedFurniture=null; reachedFurniture=null;
+        moveStartX=getX(); moveStartY=getY();
+        var path=getPathFindBehavior2();
+        path.pathToGrabCorpse(corpse);
+        if (path.getIsCancelled() || path.isGoalNone()) return "CORPSE_NO_APPROACH";
+        // Head/legs are sub-tile native goals, not the corpse square's centre.
+        movement.beginNative(corpse.getX(),corpse.getY(),corpse.getZ(),System.nanoTime(),180_000_000_000L);
+        moveResult="MOVING"; pathResult="REQUESTED";
+        return "MOVE_REQUESTED_CORPSE";
+    }
+
     String moveToFurniture(zombie.iso.IsoObject object,double maxPathLength) {
         return moveToFurniture(object,maxPathLength,false);
     }
@@ -702,7 +719,9 @@ public final class ProbeNpc extends IsoPlayer {
             // Furniture transitions use authored root motion after the native
             // approach has ended. Discarding it leaves the model beside the
             // chair. Never run this alongside the path follower.
-            nativeFurnitureMotion=!movement.active() && (isSitOnGround() || isCurrentState(zombie.ai.states.PlayerGetUpState.instance())
+            nativeFurnitureMotion=!movement.active() && (isDraggingCorpse() || isPerformingGrappleAnimation()
+                    || isCurrentState(zombie.ai.states.PlayerDraggingCorpse.instance())
+                    || isSitOnGround() || isCurrentState(zombie.ai.states.PlayerGetUpState.instance())
                     || (furnitureExit.active() && (furnitureNativePose() || furnitureRootTrack()))
                     || getSitOnFurnitureObject()!=null && furnitureNativePose());
             if (nativeFurnitureMotion) {
@@ -739,7 +758,8 @@ public final class ProbeNpc extends IsoPlayer {
         }
         pathResult = result.name();
         if (result == PathFindBehavior2.BehaviorResult.Working) {
-            if (path.pathNextIsSet) faceLocationF(path.pathNextX, path.pathNextY);
+            // Native update() owns facing, including its isAnimatingBackwards()
+            // branch. Facing the waypoint again would turn BwdDrag into pushing.
             boolean walking = getPath2() != null && path.shouldBeMoving();
             getECSComponent(AIComponent.class).getHumanControlVars().justMoved = walking;
             setMoving(walking);

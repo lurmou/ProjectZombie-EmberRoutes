@@ -226,6 +226,7 @@ function Service.details(actor,scope,id,force)
     end
     local Probe=require 'EmberRoutesProbe/Boot'
     result.leisure=personal and personal.payload.step~='IDLE' and personal.payload.leisure and personal.payload.leisure.activity
+    result.tools=require('EmberRoutesProbe/ToolCustodyMonitor').assets(id,binding.handle)
     result.studyReason=Probe.studyStatus and Probe.studyStatus(id)
     return result
 end
@@ -249,6 +250,15 @@ function Service.rows(value,mode,page)
         return rows
     end
 
+    if #(value.tools or {})>0 then
+        rows[#rows+1]={text=getText('IGUI_EmberRoutesProbe_Monitor_personnelTools',#value.tools),color=Theme.accent}
+        for _,asset in ipairs(value.tools) do
+            rows[#rows+1]={isAssetRow=true,fullType=asset.fullType,
+                name=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName,
+                status=asset.custodyState,statusText=asset.statusText,count=1}
+            if asset.exceptional then rows[#rows+1]={text=asset.reasonText,color=Theme.status.ERROR} end
+        end
+    end
     -- Mental warning only if severe
     if value.mood and (value.mood.UNHAPPINESS or 0)>=80 and (value.mood.STRESS or 0)>=0.8 then
         rows[#rows+1]={text=text('mentalWarning'),color=Theme.status.ERROR}

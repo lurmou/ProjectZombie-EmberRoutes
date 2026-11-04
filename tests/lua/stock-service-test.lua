@@ -1,5 +1,6 @@
 -- Integration test for StockService: scheduling, non-preemption, early settle, and overlap checks.
 local checks=0
+package.loaded['EmberRoutesProbe/HealthAssessment']={canWork=function() return true end}
 local function check(cond,msg)
     checks=checks+1
     assert(cond,msg or ("Assertion failed at check #"..checks))

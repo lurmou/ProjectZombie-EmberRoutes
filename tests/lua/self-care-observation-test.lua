@@ -27,6 +27,7 @@ local objects={} local container={getItems=function() return list(objects) end}
 npc.getInventory=function() return container end
 local function food(id)
     return {type='Food',getID=function() return id end,getFullType=function() return 'Base.Apple' end,getIsCraftingConsumed=function() return false end,
+        getOpeningRecipe=function() end,getScriptItem=function() return {isCantEat=function() return false end} end,
         getBaseHunger=function() return -0.3 end,getHungChange=function() return -0.3 end,getHungerChange=function() return -0.3 end,
         isRotten=function() return false end,isBurnt=function() return false end,isPoison=function() return false end,getPoisonPower=function() return 0 end,isTainted=function() return false end,isCooked=function() return false end,isCookable=function() return false end,isFrozen=function() return false end,isSpice=function() return false end,
         isbDangerousUncooked=function() return false end,getRequireInHandOrInventory=function() return nil end,

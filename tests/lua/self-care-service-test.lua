@@ -31,7 +31,7 @@ local runtime={accepting=function() return true end,owns=function(_,id) return s
 package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
 package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) return {id=id,handle=npcs[id]} end}
 package.loaded['EmberRoutesProbe/NeedsObserver']={sample=function(_,id,time)
-    return {hunger=hunger,thirst=0,fatigue=0,endurance=1,safe=safe,observedAt=time}
+    return {hunger=hunger,thirst=0,fatigue=0,endurance=1,safe=safe,externalSafe=safe,observedAt=time}
 end}
 package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='FOLLOW'} end}
 local ownOnly
@@ -45,12 +45,19 @@ package.loaded['EmberRoutesProbe/SelfCareExecution']={new=function(_,binding,job
     local s={npcId=binding.id,jobId=job.id,kind='SELF_CARE'} contexts[#contexts+1]=s return s
 end}
 EmberRoutesProbeJava={workerCount=function() return 2 end,workerIdAt=function(i) return i==0 and 'a' or 'b' end}
+if ERLaborTestBridge then for name,method in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[name]=method end end
 local withdrawn,pendingChecks=0,0
 package.loaded['EmberRoutesProbe/SocialCoordinator']={withdraw=function(id)
     withdrawn=withdrawn+1
 end,pending=function() pendingChecks=pendingChecks+1 return 'pending-pair' end}
 local Service=require 'EmberRoutesProbe/SelfCare'
 local Jobs=require 'EmberRoutesProbe/TaskJobs'
+if ERMedicalServiceOnly then
+    ERMedicalServiceOnly({check=check,Service=Service,Jobs=Jobs,npcs=npcs,submitted=submitted,status=status,item=item,
+        advance=function(time) now=time Service.tick() end,
+        offered=function(v) offered=v end,accept=function() rejected=false end})
+    print('PASS '..checks..' medical service admission checks; body runtime mocked') return
+end
 Service.install() Service.tick()
 local job=Jobs.current():forNpc('a')[1]
 check(job and job.payload.step=='IDLE' and not job.payload.resume and not Store.owner(9),

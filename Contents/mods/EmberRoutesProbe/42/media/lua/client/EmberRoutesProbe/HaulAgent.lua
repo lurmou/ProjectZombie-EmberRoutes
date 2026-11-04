@@ -36,10 +36,11 @@ function A.new(npcId)
         return false
     end
     local function valid(c)
-        return current==c and not c.stopping and not isClient() and not isServer() and Probe.ready
+        local authorized=current==c and not c.stopping and not isClient() and not isServer() and Probe.ready
             and Store.valid(c.job,c.generation,c.token) and (not c.body or c.body.current())
             and (c.job.producer=='DELIVERY' or not c.actor:isDead()) and EmberRoutesProbeJava.carrierPresent(c.npc)
-            and c.npc:getBodyDamage():getOverallBodyHealth()>=95
+        if not authorized then return false,'DRIVER_UNAVAILABLE' end
+        return require('EmberRoutesProbe/HealthAssessment').canWork(c.npc)
     end
     local function knownTransfer(c,s)
         local r=c.job local a=s.attempt
@@ -145,6 +146,8 @@ function A.new(npcId)
         end
         local b=binding(actor) if not b then return 'CARRIER_UNAVAILABLE' end
         local npc=b.handle
+        local healthy,healthReason=require('EmberRoutesProbe/HealthAssessment').canWork(npc)
+        if not healthy then return healthReason end
         local ok,why=upgrade(r,npc) if not ok then return why end
         if not npc:getCharacterActions():isEmpty() then return 'NATIVE_ACTION_BUSY' end
         if #Manifest.claimItemIds(r)==0 and not r.returnForNextBatch and not body then
@@ -219,6 +222,8 @@ function A.new(npcId)
         if api.busy() or awaitingGrant() then return 'BUSY' end
         local r=record() if not r then return 'NO_TASK' end if r.state=='DONE' then return 'DONE' end
         if nonPreemptive==false then r.manualPaused=nil end
+        if r.producer~='DELIVERY' and r.routingWait and r.routingWait.reason=='PATH_BACKOFF' and r.pathBackoff
+            and getTimestampMs()<(r.pathBackoff[r.source] or 0) then return 'ROUTING_WAIT' end
         return launch(actor,r,nil,nonPreemptive)
     end
     function api.hasCargo(actor)
@@ -339,6 +344,10 @@ function A.new(npcId)
         end
         if r.deliveryOnly then withdraw(c) end
         if not r.deliveryOnly and uncollected then
+            if source and getTimestampMs()<(c.backoff[source.id] or 0) then
+                r.routingWait={reason='PATH_BACKOFF'}
+                return nil,'ROUTING_WAIT'
+            end
             local target=Registry.resolve(r.destination,'put',r.scopeId)
             c.source,c.destination=source,target
             if source and target and Routing.accept(c,target,uncollected.item)
@@ -412,10 +421,24 @@ function A.new(npcId)
         end
         return 'ROUTING_WAIT'
     end
+    local function moveFailed(c,now,cause)
+        if not c.moveEndpoint then return end
+        local count,oldest,earliest=0,nil,math.huge
+        for id,deadline in pairs(c.backoff) do
+            if deadline<=now then c.backoff[id]=nil
+            else count=count+1 if deadline<earliest then oldest,earliest=id,deadline end end
+        end
+        if count>=90 and oldest then c.backoff[oldest]=nil end
+        c.backoff[c.moveEndpoint.id]=now+15000
+        c.job.routingWait={reason='PATH_BACKOFF'}
+        Log.write('HAUL_ROUTE','WAIT job='..c.job.id..' endpoint='..c.moveEndpoint.id
+            ..' cause='..tostring(cause)..' retryAt='..tostring(now+15000))
+    end
     local function tick()
         local c=current if not c then return end
         local now=getTimestampMs() if now<c.nextTick then return end c.nextTick=now+100
-        if not valid(c) then api.pause('DRIVER_UNAVAILABLE') return end
+        local usable,unavailable=valid(c)
+        if not usable then api.pause(unavailable) return end
         if c.job.producer=='DELIVERY' then
             local ok,why=Delivery.observe(c)
             if not ok then api.pause(why) return end
@@ -437,20 +460,12 @@ function A.new(npcId)
             end
             c.step,c.started=step,now
             local state,reason=step.start()
-            if state=='FAILED' then api.pause(pauseReason(c)) return end
+            if state=='FAILED' then moveFailed(c,now,reason) api.pause(pauseReason(c)) return end
         end
         local state,why=c.step.poll()
         if state=='PASSED' then c.step=nil c.moveEndpoint=nil c.moveRule=nil
 	elseif state=='FAILED' or now-(c.step.progressAt and c.step.progressAt() or c.started)>=(c.step.timeout or 60000) then
-            if c.moveEndpoint then
-                local count,oldest,earliest=0,nil,math.huge
-                for id,deadline in pairs(c.backoff) do
-                    if deadline<=now then c.backoff[id]=nil
-                    else count=count+1 if deadline<earliest then oldest,earliest=id,deadline end end
-                end
-                if count>=90 and oldest then c.backoff[oldest]=nil end
-                c.backoff[c.moveEndpoint.id]=now+15000
-            end
+            moveFailed(c,now,why or 'MOVE_TIMEOUT')
             api.pause(pauseReason(c))
         end
     end

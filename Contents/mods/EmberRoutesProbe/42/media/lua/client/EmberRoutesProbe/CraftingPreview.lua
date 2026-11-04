@@ -51,7 +51,8 @@ function Preview.new(actor,id,npcId,recipeId,quantity,surfaceId,preferences)
             self.binding=binding
             self.isSettlementPreview=isSettlementPreview
             if not isSettlementPreview then
-                if npc:isDead() or npc:getBodyDamage():getOverallBodyHealth()<95 then condition("INJURED") end
+                local healthy,reason=require('EmberRoutesProbe/HealthAssessment').canWork(npc)
+                if not healthy then condition(reason) end
                 if not npc:isRecipeKnown(spec.recipe,true) then condition("NPC_RECIPE_UNKNOWN") end
             end
             if not actor:isRecipeKnown(spec.recipe,true) then condition("PLAYER_RECIPE_UNKNOWN") end

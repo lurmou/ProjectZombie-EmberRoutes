@@ -87,7 +87,10 @@ local function submit(actor,binding,job,candidate,row,settle,items,reliefOnly,in
     local runtime=Runtime.current()
     if not runtime or not runtime:accepting() then return end
     local spec=use('SelfCareExecution').new(actor,binding,job,candidate,function() return budget end,settle,items,function()
-        return row.sample and row.sample.safe and getTimestampMs()-row.sample.observedAt<=2000
+        return row.sample and (row.sample.safe or row.sample.externalSafe and (job.payload.kind=='MEDICAL'
+            or settle and row.sample.medical and row.sample.medical.needsCare
+            or job.payload.relief and job.payload.relief.kind=='MEDICAL' and not job.payload.relief.finished))
+            and getTimestampMs()-row.sample.observedAt<=2000
             and not binding.handle:isOnFire() and binding.handle:getSurroundingAttackingZombies(false)==0
     end,reliefOnly,interruptCompanion)
     local handle,reason=runtime:submit(spec)
@@ -102,6 +105,10 @@ local function idle(job,row,reason)
 end
 local function settle(actor,binding,job,row)
     local p=job.payload
+    if p.medical and p.medical.effects=='UNKNOWN' then
+        p.step='RECONCILE_REQUIRED'
+        Commit.update(job.id,job.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'}) return
+    end
     if p.step=='RECONCILE_REQUIRED' or job.effects~='KNOWN' then return end
     if p.resume and p.resume.state=='REQUESTED' then row.reason='PREDECESSOR_STOP_PENDING' return end
     if (p.step=='REQUESTED' or p.step=='STOP_CONFIRMED') and p.kind~='STUDY'
@@ -124,15 +131,16 @@ local function settle(actor,binding,job,row)
     -- Recovery is not a new study candidate. In particular pending transfer MUST be able to return a borrowed original.
     local reliefOnly=p.kind=='STUDY' and member and member.context=='FOLLOW' and not member.pending
     if reliefOnly then
-        local need=Policy.choose(row.sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true})
+        local need=Policy.choose(row.sample,nil,{safe=true},{MEDICAL=true,EAT=true,DRINK=true,REST=true})
         if not need or getTimestampMs()<(row.reliefRetryAt or 0) then return end
     end
     row.recovery=row.recovery or {index=1,items={}}
     local recovery=row.recovery local ids={}
     local consumed=p.consumption and p.consumption.effects=='KNOWN' and p.consumption.after
         and p.consumption.after<=.0001
-    if not consumed then ids[#ids+1]=p.itemId end
+    if not consumed and not require('EmberRoutesProbe/MedicalRecord').consumed(p) then ids[#ids+1]=p.itemId end
     for _,id in ipairs(p.consumption and p.consumption.outputs or {}) do ids[#ids+1]=id end
+    for _,id in ipairs(p.medical and p.medical.outputs or {}) do ids[#ids+1]=id end
     local id=ids[recovery.index]
     if not id then
         row.recovery=nil
@@ -168,6 +176,7 @@ local function observe(actor,binding,row,now)
     if now<(row.observeAt or 0) then return end
     row.observeAt=now+1000
     row.sample,row.reason=Observer.sample(binding.handle,binding.id,now)
+    if row.sample then use('MedicalCare').observe(binding.handle,binding.id,row.sample,now) end
 end
 local function advance(actor,binding,row,now)
     local id=binding.id local runtime=Runtime.current()
@@ -199,7 +208,11 @@ local function advance(actor,binding,row,now)
     end
     observe(actor,binding,row,now)
     local sample=row.sample
-    if not sample or not sample.safe or now-sample.observedAt>2000 then
+    local activePersonal=personalView(id)
+    local medicalSafe=sample and sample.externalSafe and sample.medical and (sample.medical.needsCare
+        or activePersonal and (activePersonal.payload.kind=='MEDICAL' and activePersonal.payload.step~='IDLE'
+            or activePersonal.payload.relief and activePersonal.payload.relief.kind=='MEDICAL' and not activePersonal.payload.relief.finished))
+    if not sample or not (sample.safe or medicalSafe) or now-sample.observedAt>2000 then
         use('SocialCoordinator').withdraw(id)
         local job=personal(id,false)
         if job and job.payload.step=='IDLE' then use('LeisureService').consumeResume(id,job.payload.leisureMemory) end
@@ -208,12 +221,16 @@ local function advance(actor,binding,row,now)
     end
     local gathering=use('ActivityService').context(id)
     if gathering then
-        if forcedSleep or Policy.choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true}) then
+        if forcedSleep or Policy.choose(sample,nil,{safe=true},{MEDICAL=true,EAT=true,DRINK=true,REST=true,SLEEP=true}) then
             use('ActivityService').leave(id,'ACTIVITY_NEEDS_CARE') gathering=nil
         else use('ActivityAttendance').request(actor,binding,gathering) end
     end
     if row.handle then
         local active=personal(id,false)
+        if medicalSafe and sample.medical.needsCare and active and active.payload.step=='ACTING'
+            and active.payload.kind~='MEDICAL' then
+            runtime:stopJob(id,active.id,'MEDICAL_NEEDED') return
+        end
         if active and active.payload.kind=='LEISURE' then
             local need=Policy.choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true})
             if need or forcedSleep or not use('LeisureService').valid(actor,binding.handle,id,active.payload) then
@@ -259,13 +276,13 @@ local function advance(actor,binding,row,now)
     local eligibility=use('MembershipService').check(id,'SELF_CARE',
         {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ()})
     local ownOnly=not eligibility.sharedResources
-    local offers={EAT=true,DRINK=true,REST=repose,SLEEP=repose and (forcedSleep or (not ownOnly
+    local offers={MEDICAL=sample.externalSafe==true,EAT=sample.safe,DRINK=sample.safe,REST=sample.safe and repose,SLEEP=sample.safe and repose and (forcedSleep or (not ownOnly
         and sample.hunger<0.5 and sample.thirst<0.5))}
     for blocked,deadline in pairs(row.unavailable or {}) do if now<deadline then offers[blocked]=false end end
     local kind=Policy.choose(sample,job and job.payload.lastKind,{safe=true},offers)
     -- A player sleep order overrides the fatigue threshold only; safety,
     -- backoff windows and the bed requirement below still gate it.
-    if forcedSleep and offers.SLEEP then kind='SLEEP' end
+    if forcedSleep and offers.SLEEP and kind~='MEDICAL' then kind='SLEEP' end
     if kind then use('SocialCoordinator').withdraw(id) end
     if kind and job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint then
         if not use('LeisureService').consumeResume(id,job.payload.leisureMemory) then return end
@@ -419,15 +436,22 @@ local function advance(actor,binding,row,now)
     if not studyCandidate then candidate,done,reason=row.scan:step(slice) budget.scan=budget.scan-slice end
     if not done then return end row.scan=nil
     if not candidate or not Resources.revalidate(candidate,kind) then
-        row.reason=reason row.unavailable=row.unavailable or {} row.unavailable[kind]=now+5000 return
+        row.reason=reason or 'CANDIDATE_CHANGED'
+        if kind=='MEDICAL' then
+            use('MedicalCare').blocker(id,reason or 'MEDICAL_SUPPLY_MISSING')
+        end
+        row.unavailable=row.unavailable or {} row.unavailable[kind]=now+5000 return
     end
+    if kind=='MEDICAL' then use('MedicalCare').blocker(id,nil) end
     job=job or personal(id,true) if not job then row.reason='PERSONAL_JOB_LIMIT' return end
     local before=job
     local p,why=Record.begin(job,kind,job.payload.resume)
     if not p then row.reason=why return end
     p.itemId=candidate.id p.sourceId=candidate.endpoint and candidate.endpoint.id
     p.settlementId=candidate.entry and candidate.entry.id
-    if kind=='STUDY' then
+    if kind=='MEDICAL' then
+        if not use('MedicalCare').begin(p,sample,candidate.item) then return end
+    elseif kind=='STUDY' then
         p.activityRef=candidate.activityRef
         p.study=candidate.study p.membershipRevision=candidate.membershipRevision row.studyReviewAt=now+30000
         p.settlementRevision=candidate.settlementRevision

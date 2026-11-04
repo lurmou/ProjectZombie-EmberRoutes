@@ -12,6 +12,10 @@ local function npc(id) return {id=id,getX=function() return 1 end,getY=function(
 local manual={}
 local handles={alice=npc('alice'),bob=npc('bob')}
 local studyTargets={}
+-- Scheduling fixture supplies a healthy worker capability; medical facts have
+-- their own native-observation integration suite.
+local healthy=true
+package.loaded['EmberRoutesProbe/HealthAssessment']={canWork=function() return healthy,'HEALTH_NEEDS_CARE' end}
 package.loaded['EmberRoutesProbe/Boot']={ready=true,runtimeReady=true,hasJava=function() return true end,
     idleStudy=function(id,_,target) if target then studyTargets[id]=target end end}
 package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'id-'..serial end}
@@ -312,10 +316,9 @@ check(#calls==0,'posting rejects existing candidates outside the posted zone')
 postedScenario(1) postedPoint={x=1,y=1,z=0} membershipRows.alice.context='WAIT' tick() tick()
 check(#calls==0,'posting never bypasses membership context eligibility')
 postedScenario(1)
-local oldHealth=handles.alice.getBodyDamage
-handles.alice.getBodyDamage=function() return {getOverallBodyHealth=function() return 94 end} end
+healthy=false -- explicit untreated injury, not the retired 95-total-health rule
 tick() tick() check(#calls==0,'posting never bypasses existing health guard')
-handles.alice.getBodyDamage=oldHealth
+healthy=true
 postedScenario(1)
 local jobs=package.loaded['EmberRoutesProbe/BusinessJobs'] local oldCrafts=jobs.crafts
 jobs.crafts=function() return {alice={released=false}} end

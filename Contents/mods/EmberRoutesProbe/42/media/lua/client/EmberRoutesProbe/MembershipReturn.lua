@@ -14,7 +14,8 @@ function R.start(actor,binding,member)
     if not square:isFree(false) then return nil,'RETURN_POINT_BLOCKED' end
     local runtime=require('EmberRoutesProbe/TaskRuntime').current()
     local world=Registry.data() local jobId=Registry.id() local body,done,arrived,reason
-    local deadline=getTimestampMs()+35000
+    -- The sole movement driver owns its bounded timeout; do not stop a
+    -- progressing return with a second, shorter wall-clock deadline.
     local function same()
         local row=S.view(binding.id) local e=S.entry(binding.id)
         return Registry.data()==world and row and not row.pending and row.revision==member.revision
@@ -34,7 +35,7 @@ function R.start(actor,binding,member)
                 arrived=Policy.inside(entry,{x=n:getX(),y=n:getY()}) and math.abs(n:getZ()-p.z)<0.5
                     and (n:getX()-p.x)^2+(n:getY()-p.y)^2<=4
                 reason=arrived and nil or 'RETURN_NOT_REACHED' done=true
-            elseif motion~='MOVING' or getTimestampMs()>=deadline then done=true reason='RETURN_UNREACHABLE' end
+            elseif motion~='MOVING' then done=true reason='RETURN_UNREACHABLE' end
         end,
         finished=function() return done==true end,
         stopAdapter=function(controller,ticket)

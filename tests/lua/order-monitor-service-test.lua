@@ -74,8 +74,7 @@ public.rules=function() return {{id='s:Base.Log',product='Base.Log',enabled=true
 function getItemNameFromFullType(fullType) return fullType end
 local suppressed
 for _,r in ipairs(Service.status({},'s').rows) do if r.id=='RULE:s:Base.Log' then suppressed=r end end
-check(suppressed and suppressed.readOnly and suppressed.reason=='MANUAL_ORDER_ACTIVE' and not suppressed.canCancel,
-    'suppressed policy is visible on the existing monitor without an invented editable order')
+check(not suppressed,'stock policy facts are shown in Needs and do not invent an Order row')
 public.rules=function() return {} end
 check(Service.command({},'s','ORDER:public-one','ORDER:2','stop')=='ORDER_UPDATED' and publicRevision==2,'unclaimed pause reaches Order authority without choosing an NPC')
 pending.jobId=craft.id craft.orderId=pending.id craft.settlementId='s' craft.state='PAUSED' craft.released=false craft.generation=2

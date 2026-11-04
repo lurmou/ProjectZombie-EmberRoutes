@@ -7,6 +7,12 @@ function Resources.eligible(item,kind)
     local data=item.getModData and item:getModData()
     if data and (data.EmberRoutesHaulFixture or data.EmberRoutesPersistenceSample or data.EmberRoutesProbeFixture) then return false end
     if kind=='EAT' then
+        -- The player menu runs an opening recipe before consumption. This
+        -- adapter has no opening transaction; never bypass that prerequisite.
+        local script=item.getScriptItem and item:getScriptItem()
+        if not script or script:isCantEat() or not item.getOpeningRecipe then return false end
+        local opening=item:getOpeningRecipe()
+        if opening and opening~='' then return false end
         if not instanceof(item,'Food') or not item.getBaseHunger or item:getBaseHunger()>=0
             or item:getHungChange()>=-0.001 or item:isRotten() or item:isPoison() or item:getPoisonPower()>0
             or item:isbDangerousUncooked() and not item:isCooked() then return false end
@@ -16,8 +22,11 @@ function Resources.eligible(item,kind)
         if required and required:size()>0 then return false end -- No implicit ignition/tool consumption.
         return true
     elseif kind=='DRINK' then
+        if not item.isSealed or item:isSealed() then return false end
         local fluid=item:getFluidContainer()
         return fluid and Fluid and Fluid.Water and fluid:isPureFluid(Fluid.Water) and fluid:getAmount()>0.001 or false
+    elseif kind=='MEDICAL' then
+        return require('EmberRoutesProbe/MedicalCare').eligible(item)
     elseif kind=='STUDY' then
         return require('EmberRoutesProbe/LibraryIndex').eligible(item)
     end

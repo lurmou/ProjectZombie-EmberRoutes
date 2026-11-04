@@ -194,7 +194,7 @@ function Service.status(actor,id)
             result.rows[#result.rows+1]=row
         end
     end
-    local context={actor=actor,scopeId=id,runtime=runtime,bind=function(npcId)
+    local context={actor=actor,scopeId=id,runtime=runtime,displayBudget=displayBudget,bind=function(npcId)
         return Probe.ready and Probe.hasJava() and Driver.bindId(actor,npcId) or nil
     end}
     for _,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do
@@ -217,30 +217,19 @@ function Service.status(actor,id)
             end
         end
     end
-    if Probe.publicDispatch then
-        for _,r in ipairs(require('EmberRoutesProbe/PublicWork').rules(id)) do
-            if r.reason and not r.activeOrder and r.enabled then
-                result.rows[#result.rows+1]={id='RULE:'..r.id,kind='ORDER',title=getItemNameFromFullType(r.product),
-                    product=r.product,state='WAITING',reason=r.reason,generation='RULE:'..r.revision,
-                    bucket='waiting',closed=false,readOnly=true,carrierAvailable=true,
-                    requested=r.batch,target=r.batch,delivered=0,nodes={},assets={},
-                    canPause=false,canResume=false,canCancel=false}
-            end
-        end
-    end
-    for _,row in ipairs(require('EmberRoutesProbe/FieldDemand').rows(id)) do result.rows[#result.rows+1]=row end
-    for _,row in ipairs(require('EmberRoutesProbe/ToolCustodyMonitor').rows(id)) do result.rows[#result.rows+1]=row end
+    for _,row in ipairs(require('EmberRoutesProbe/ToolCustodyMonitor').rows(id,context)) do result.rows[#result.rows+1]=row end
+    result.rows=require('EmberRoutesProbe/CleaningMonitorView').project(result.rows,id)
     table.sort(result.rows,function(a,b) if a.closed~=b.closed then return not a.closed end return a.id<b.id end)
     return result
 end
-function Service.watch(actor,id,callback)
+function Service.watch(actor,id,callback,projector)
     local root=Registry.data()
     local releaseJobs=require('EmberRoutesProbe/TaskJobs').watch(function(scope,jobId,revision,providerType)
         if scope==id and Monitors.has(providerType) then Crafting.invalidateStatus() end
     end)
     local releaseView=Crafting.watch(actor,id,function(snapshot)
         if root~=Registry.data() or snapshot.reason=='WORLD_RESET' then callback({rows={},reason='WORLD_RESET'})
-        else callback(Service.status(actor,id)) end
+        else callback((projector or Service.status)(actor,id)) end
     end)
     return function() releaseJobs() releaseView() end
 end

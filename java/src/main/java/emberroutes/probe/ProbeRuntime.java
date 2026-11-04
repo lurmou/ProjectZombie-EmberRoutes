@@ -299,6 +299,16 @@ public final class ProbeRuntime {
         try { return enter ? npc.beginRepose(kind) : npc.endRepose(); }
         finally { controlCalls.remove(id); }
     }
+    public static String moveCorpseWithControl(IsoPlayer body,String key,zombie.iso.objects.IsoDeadBody corpse) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !carrierPresent(body) || !(body instanceof ProbeNpc npc)
+                || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
+        try {
+            if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
+            if (npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            return npc.moveToCorpse(corpse);
+        } finally { controlCalls.remove(id); }
+    }
     public static String moveBedWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object,se.krka.kahlua.vm.KahluaTable locations) {
         String id=carrierId(body);
         if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body) || object==null || locations==null

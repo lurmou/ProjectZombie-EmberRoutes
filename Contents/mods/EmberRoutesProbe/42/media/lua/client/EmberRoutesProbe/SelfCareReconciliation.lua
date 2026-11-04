@@ -45,13 +45,18 @@ function M.run(binding,job,row,budget,runtime)
     if not scan or scan.revision~=job.revision then
         scan={revision=job.revision,ids={},seen={},items={},index=1}
         local function add(id)
+            if id==p.itemId and require('EmberRoutesProbe/MedicalRecord').consumed(p) then return end
+            if p.relief and p.relief.medical and id==p.relief.itemId
+                and require('EmberRoutesProbe/MedicalRecord').consumed({medical=p.relief.medical}) then return end
             if id and not scan.seen[id] then scan.seen[id]=true scan.ids[#scan.ids+1]=id end
         end
         add(p.itemId) add(p.transfer and p.transfer.itemId)
         for _,id in ipairs(p.consumption and p.consumption.outputs or {}) do add(id) end
+        for _,id in ipairs(p.medical and p.medical.outputs or {}) do add(id) end
         if p.relief then
             add(p.relief.itemId)
             for _,id in ipairs(p.relief.fact and p.relief.fact.outputs or {}) do add(id) end
+            for _,id in ipairs(p.relief.medical and p.relief.medical.outputs or {}) do add(id) end
         end
         for _,key in ipairs(p.claims) do
             local id=string.match(key,'^item:(%d+)$')

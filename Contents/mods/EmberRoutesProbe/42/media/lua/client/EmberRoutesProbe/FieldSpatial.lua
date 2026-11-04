@@ -3,6 +3,8 @@ local Geometry=require 'EmberRoutesProbe/SettlementGeometry'
 local Zones=require 'EmberRoutesProbe/SettlementZones'
 local Ledger=require 'EmberRoutesProbe/SettlementLedger'
 local S={}
+-- Installed B42 baseline uses 8-square chunks (also used by SettlementFacilities).
+local CHUNK_SIZE=8
 local world,scans,window,spent=nil,{},0,0
 function S.area(entry,zoneId)
     if zoneId and zoneId~='' then
@@ -34,8 +36,8 @@ function S.chunk(entry,zoneId,category,now)
     for _=1,8 do
         local r=areas[c.index]
         if not r then c.index=1 c.x=nil c.y=nil c.seen={} return nil end
-        local minX,maxX=math.floor(r.x/10),math.floor((r.x+r.w-1)/10)
-        local minY,maxY=math.floor(r.y/10),math.floor((r.y+r.h-1)/10)
+        local minX,maxX=math.floor(r.x/CHUNK_SIZE),math.floor((r.x+r.w-1)/CHUNK_SIZE)
+        local minY,maxY=math.floor(r.y/CHUNK_SIZE),math.floor((r.y+r.h-1)/CHUNK_SIZE)
         local x,y=c.x or minX,c.y or minY
         c.x=x+1 c.y=y
         if c.x>maxX then c.x=minX c.y=y+1 end

@@ -118,6 +118,8 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix Dispatch kernel test compilation faile
 if ($LASTEXITCODE -ne 0) { throw "$prefix Dispatch kernel contract tests failed" }
 & $javaCommand '-cp' "$classes;$GameRoot/*" (Join-Path $projectRoot 'tests/java/KahluaLaborTest.java') '--java-labor' 'labor-capacity-commit-test.lua'
 if ($LASTEXITCODE -ne 0) { throw "$prefix Labor capacity commit contract tests failed" }
+& $javaCommand '-cp' "$classes;$GameRoot/*" (Join-Path $projectRoot 'tests/java/KahluaLaborTest.java') '--java-labor' 'dec003-java-kernel-test.lua'
+if ($LASTEXITCODE -ne 0) { throw "$prefix Phase 1 Java kernel contract tests failed" }
 $manifestPath = Join-Path $staging 'MANIFEST.MF'
 [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 $builtJar = Join-Path $staging 'EmberRoutesProbe.jar'

@@ -34,11 +34,11 @@ end
 
 function Cards.signature(row)
     local fields={}
-    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','allocationSummary','allocationDetails','allocated','settled','remaining','observationRevision','feasibilityRevision'}) do
+    for _,key in ipairs({'id','name','title','state','stateText','phase','reason','reasonText','summaryText','demandSummary','generation','produced','delivered','target','bodyMode','bucket','carrierAvailable','cargoHeld','cargoSummary','deliverySummary','allocationSummary','allocationDetails','allocated','settled','remaining','observationRevision','feasibilityRevision','compact','demandReason'}) do
         fields[#fields+1]=tostring(row[key])
     end
     for _,asset in ipairs(row.assets or {}) do
-        for _,key in ipairs({'id','kind','fullType','custody','custodyState','held','delivered','destinationId'}) do
+        for _,key in ipairs({'id','kind','fullType','custody','custodyState','held','delivered','destinationId','displayName','statusText','reasonText','sequence'}) do
             fields[#fields+1]=tostring(asset[key])
         end
     end
@@ -47,6 +47,7 @@ function Cards.signature(row)
     for _,step in ipairs(row.stages or {}) do
         for _,key in ipairs({'key','labelKey','status','progress'}) do fields[#fields+1]=tostring(step[key]) end
     end
+    for _,child in ipairs(row.children or {}) do fields[#fields+1]=Cards.signature(child) end
     local member=row.membership
     if member then
         for _,key in ipairs({'revision','context','settlementId','settlementName','reason','bedId','bedReason','postingReason','postingRevision'}) do fields[#fields+1]=tostring(member[key]) end
@@ -269,6 +270,7 @@ end
 
 
 function Cards.assetStatus(row,asset)
+    if asset.custodyState=='TRANSIT' then return 'TRANSIT' end
     if asset.custodyState=='UNCOLLECTED' then return 'WAITING' end
     if asset.custodyState=='WITHDRAWN' then return 'WITHDRAWN' end
     if asset.custodyState=='RECONCILE' then return 'RECONCILE' end
@@ -337,7 +339,8 @@ function Cards.rows()
             nodeStates=nodeStates,
             activeLabel=activeLabel,
             blockerText=blockerText,
-            height=h*3+p*2,
+            height=h*(row.compact and 2 or 3)+p*2,
+            compact=row.compact,
             state=state(row),
             icon=icons:icon(kind),
             iconSize=iconSize
@@ -354,6 +357,7 @@ function Cards.rows()
         Theme.text(list,v.lines[1],x,y+p/2,Theme.textColor)
         Theme.text(list,v.lines[2],x,y+p/2+h,Theme.muted)
 
+        if v.compact then return y+v.height end
         local railX=x
         local railY=y+p/2+2*h+math.floor(h/2)
         local totalRailW=math.min(130,list.width-x-p*2)
@@ -409,12 +413,49 @@ end
 function Cards.details(owner,bounds)
     local card={}
     local info=require('EmberRoutesProbe/UI/InfoList').new(owner,bounds) card.list=info.list
-    function card:set(row)
+    function card:set(row,expanded)
         local lines={}
         local function add(value,color,fullType)
             if value~=nil and value~='' then
                 lines[#lines+1]={text=tostring(value),color=color or Theme.textColor,fullType=fullType}
             end
+        end
+        if row and row.compact then
+            add(Cards.title(row),Theme.gold)
+            add(row.stateText,Visual.colors[state(row)] or Theme.accent)
+            add(row.summaryText)
+            add(row.demandSummary,Theme.muted)
+            if row.demandReason~=row.summaryText then add(row.demandReason,Theme.muted) end
+            for _,label in ipairs(row.blockerLabels or {}) do add(label,Theme.muted) end
+            for _,child in ipairs(row.children or {}) do
+                local stage=child.stages and child.stages[child.stageIndex or 1]
+                add((child.name or text('unassigned'))..' · '..(stage and getText(stage.labelKey) or Cards.reason(child.phase))
+                    ..(stage and stage.progress and (' '..stage.progress) or ''),Theme.accent)
+                if child.reasonText then add(child.reasonText,child.uncertain and Theme.status.ERROR or Theme.muted) end
+                if child.uncertain then add(text('reconcile'),Theme.status.ERROR) end
+                if child.carrierAvailable==false then add(text('carrierMissing'),Theme.status.ERROR) end
+                if expanded then
+                    if child.targetLocation then local t=child.targetLocation add(text('targetLocation',t.x,t.y,t.z),Theme.muted) end
+                    for _,step in ipairs(child.stages or {}) do
+                        add(getText(step.labelKey)..' ['..text('step_'..(step.status or 'PLANNED'))..']',Theme.muted)
+                    end
+                    for _,asset in ipairs(child.assets or {}) do
+                        lines[#lines+1]={isAssetRow=true,fullType=asset.fullType,
+                            name=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName or text('unknownItem'),
+                            status=Cards.assetStatus(child,asset),statusText=asset.statusText,count=1}
+                    end
+                end
+            end
+            for _,asset in ipairs(row.assets or {}) do
+                if expanded or asset.exceptional then
+                    lines[#lines+1]={isAssetRow=true,fullType=asset.fullType,
+                        name=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName or text('unknownItem'),
+                        status=Cards.assetStatus(row,asset),statusText=asset.statusText,count=1}
+                    if asset.exceptional then add(asset.reasonText,Theme.status.ERROR) end
+                end
+            end
+            info:set(lines)
+            return
         end
         if not row then add(text('selectOrder'),Theme.muted)
         else
@@ -514,7 +555,7 @@ function Cards.details(owner,bounds)
                 local grouped,keys={},{}
                 for _,asset in ipairs(assets) do
                     local status=Cards.assetStatus(row,asset)
-                    local key=(asset.fullType or '?')..':'..(asset.kind or '')..':'..status
+                    local key=(asset.fullType or asset.displayName or '?')..':'..(asset.kind or '')..':'..status
                     if not grouped[key] then
                         grouped[key]={asset=asset,status=status,count=0}
                         keys[#keys+1]=key
@@ -526,12 +567,12 @@ function Cards.details(owner,bounds)
                 for i=1,maxDisplay do
                     local group=grouped[keys[i]]
                     local asset=group.asset
-                    local rawName=asset.fullType and getItemNameFromFullType(asset.fullType) or text('unknownItem')
+                    local rawName=asset.fullType and getItemNameFromFullType(asset.fullType) or asset.displayName or text('unknownItem')
                     lines[#lines+1]={
                         isAssetRow=true,
                         fullType=asset.fullType,
                         name=rawName,
-                        status=group.status,
+                        status=group.status,statusText=asset.statusText,
                         count=group.count,
                         credited=asset.delivered,
                         kind=asset.kind

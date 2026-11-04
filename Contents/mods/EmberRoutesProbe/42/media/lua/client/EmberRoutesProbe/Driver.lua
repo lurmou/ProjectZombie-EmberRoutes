@@ -49,6 +49,10 @@ function Driver.acquireControl(binding,jobId,generation)
 end
 function Driver.moveControlled(control,actor,point)
     if not control or not Driver.valid(control.binding) then return 'STALE_NPC' end
+    if point.corpse then
+        if not EmberRoutesProbeJava.moveCorpseWithControl then return 'CORPSE_CONTROL_UNAVAILABLE' end
+        return EmberRoutesProbeJava.moveCorpseWithControl(control.binding.handle,control.key,point.corpse)
+    end
     if point.bed then
         return EmberRoutesProbeJava.moveBedWithControl(control.binding.handle,control.key,point.bed,point.locations)
     end

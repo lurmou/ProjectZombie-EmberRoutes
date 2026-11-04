@@ -106,6 +106,7 @@ function Custody.returns(c)
         if not c.payload.sourceId then return 'Success' end
         local ids={c.payload.itemId}
         for _,id in ipairs(c.payload.consumption and c.payload.consumption.outputs or {}) do ids[#ids+1]=id end
+        for _,id in ipairs(c.payload.medical and c.payload.medical.outputs or {}) do ids[#ids+1]=id end
         index=index or 1
         while index<=#ids do
             -- Each original inspection is charged, including missing/depleted IDs.
@@ -115,6 +116,7 @@ function Custody.returns(c)
             local container=item and item:getContainer()
             local consumed=ids[index]==c.payload.itemId and c.payload.consumption
                 and c.payload.consumption.effects=='KNOWN' and c.payload.consumption.after<=0.0001
+                or ids[index]==c.payload.itemId and require('EmberRoutesProbe/MedicalRecord').consumed(c.payload)
             local endpoint
             local key=tostring(ids[index])
             local destination=c.payload.destinations and c.payload.destinations[key] or c.payload.sourceId

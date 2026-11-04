@@ -89,6 +89,52 @@ function Ledger.setReturnPoint(actor,id,point,expected)
     live.returnPoint={x=point.x,y=point.y,z=point.z,revision=(live.returnPoint and live.returnPoint.revision or 0)+1}
     notify(data,live) return true
 end
+local returnWorld,returnSearches
+-- One shared settlement target. Search state is disposable and bounded; no NPC
+-- receives a private home and no unobserved/blocked coordinate is persisted.
+function Ledger.ensureReturnPoint(actor,id)
+    local entry,why=Ledger.view(actor,id)
+    if not entry then return false,why end
+    if entry.returnPoint then return true,'RETURN_POINT_SET' end
+    local data=Ledger.data()
+    if returnWorld~=data then returnWorld,returnSearches=data,{} end
+    local scan=returnSearches[id]
+    if not scan or scan.revision~=entry.revision then
+        scan={revision=entry.revision,area=0,offsets={},nextAt=0} returnSearches[id]=scan
+    end
+    local now=type(getTimestampMs)=='function' and getTimestampMs() or 0
+    if now<scan.nextAt then return false,'RETURN_POINT_INITIALIZING' end
+    scan.nextAt=now+1000
+    local cell=type(getCell)=='function' and getCell()
+    if not cell then return false,'TARGET_UNLOADED' end
+    local function candidate(x,y,z)
+        if not Geometry.inside(entry,x,y) then return false end
+        local square=cell:getGridSquare(x,y,z)
+        if not square or not square.TreatAsSolidFloor or not square:TreatAsSolidFloor()
+            or not square.isFree or not square:isFree(false) then return false end
+        local ok,reason=Ledger.setReturnPoint(actor,id,{x=x+0.5,y=y+0.5,z=z},entry.revision)
+        if ok then returnSearches[id]=nil end
+        return ok,reason
+    end
+    -- Prefer the creator's observed floor when it lies in the settlement.
+    if actor.getX and actor.getY and actor.getZ
+        and candidate(math.floor(actor:getX()),math.floor(actor:getY()),math.floor(actor:getZ())) then
+        return true,'RETURN_POINT_SET'
+    end
+    -- Try each area's centre first, then advance through its actual ground
+    -- squares. Round-robin areas avoids an unloaded rectangle starving others.
+    for _,a in ipairs(entry.areas) do
+        if candidate(a.x+math.floor(a.w/2),a.y+math.floor(a.h/2),0) then return true,'RETURN_POINT_SET' end
+    end
+    for _=1,64-#entry.areas do
+        scan.area=scan.area%#entry.areas+1
+        local a=entry.areas[scan.area] local offset=scan.offsets[scan.area] or 0
+        local x,y=a.x+offset%a.w,a.y+math.floor(offset/a.w)
+        scan.offsets[scan.area]=(offset+1)%(a.w*a.h)
+        if candidate(x,y,0) then return true,'RETURN_POINT_SET' end
+    end
+    return false,'RETURN_POINT_INITIALIZING'
+end
 -- Validators are pure rejection hooks for future registered system-town boundaries.
 -- No native town/protection object is created here.
 function Ledger.commit(actor,id,name,area)
@@ -136,6 +182,7 @@ function Ledger.commit(actor,id,name,area)
         entry.areas[#entry.areas+1]={x=area.x,y=area.y,w=area.w,h=area.h}
     end
     notify(data,entry)
+    if not entry.returnPoint then Ledger.ensureReturnPoint(actor,entry.id) end
     return Ledger.get(entry.id),"SETTLEMENT_SAVED"
 end
 return Ledger

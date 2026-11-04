@@ -58,7 +58,7 @@ function F.new(c)
             -- The real danger conditions stay guarded by update() with custody handling.
             action.stopOnWalk=false action.stopOnRun=false action.stopOnAim=false
             action.useProgressBar=false
-            local baseStart=action.start
+            local baseStart,nativeWait=action.start,action.waitToStart
             action.isValidStart=function()
                 return active() and require('EmberRoutesProbe/LeisurePolicy').allowed('FITNESS',
                     require('EmberRoutesProbe/LeisureService').sample(c.npc,c.sample()),{hold=true})
@@ -66,7 +66,7 @@ function F.new(c)
             action.isValid=function() return active() and c.npc:getVehicle()==nil end
             action.waitToStart=function(self)
                 waitAt=waitAt or getTimestampMs()
-                if c.npc:getCurrentState()==IdleState.instance() then return false end
+                if not nativeWait(self) then return false end
                 if getTimestampMs()-waitAt>=3000 then cause='WAIT_TIMEOUT' self:forceStop() return false end
                 return true
             end

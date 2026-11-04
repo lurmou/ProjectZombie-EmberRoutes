@@ -114,7 +114,7 @@ function Info.new(owner,bounds)
         Cached.reconcile(list,rows,function(row)
             return (row.text or '')..tostring(row.color)..tostring(row.fraction)
                 ..tostring(row.fullType)..tostring(row.compact)..tostring(row.meterLabel)
-                ..tostring(row.isAssetRow)..tostring(row.status)..tostring(row.count)
+                ..tostring(row.isAssetRow)..tostring(row.statusText)..tostring(row.status)..tostring(row.count)
                 ..tostring(row.name)..tostring(row.credited)
         end,function(row) return row.key end,true)
     end

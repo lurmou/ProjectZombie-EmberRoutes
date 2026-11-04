@@ -263,7 +263,7 @@ local function evaluateRule(actor,r)
         return false
     end
     local npc=binding.handle
-    if npc:isDead() or npc:getBodyDamage():getOverallBodyHealth()<95 then
+    if npc:isDead() or not require('EmberRoutesProbe/HealthAssessment').canWork(npc) then
         ruleStates[r.id].state="WAIT_WORKER"
         ruleStates[r.id].reason="WORKER_INJURED"
         return false

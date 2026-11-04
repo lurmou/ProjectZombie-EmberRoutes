@@ -119,7 +119,6 @@ local function leaf(c,sequence,kind,itemIds,hooks)
                 if not self:isValidStart() then return end
                 nativeStart(self)
                 if hooks.started and not hooks.started(self) then self:stop() return end
-                if kind=='ADD' and active() then self:setActionAnim('Craft') end
             end
             action.update=function(self) if active() and hooks.live() then nativeUpdate(self) end end
             if kind=='TRANSFER' then

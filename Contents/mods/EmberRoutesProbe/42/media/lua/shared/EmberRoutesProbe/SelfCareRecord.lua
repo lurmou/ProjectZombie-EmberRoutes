@@ -2,7 +2,7 @@
 -- fenced; unresolved attempts/custody cannot be replaced by a later episode.
 local Validate=require 'EmberRoutesProbe/Validate'
 local Record={}
-local kinds={EAT=true,DRINK=true,REST=true,SLEEP=true,STUDY=true,LEISURE=true}
+local kinds={EAT=true,DRINK=true,REST=true,SLEEP=true,STUDY=true,LEISURE=true,MEDICAL=true}
 local steps={IDLE=true,REQUESTED=true,STOP_CONFIRMED=true,ACTING=true,SETTLING=true,
     RESTORE_PENDING=true,RECONCILE_REQUIRED=true}
 local finite=Validate.finite
@@ -70,17 +70,19 @@ function Record.valid(job)
             or read.completed~=nil and type(read.completed)~='boolean'
             or read.stopped~=nil and type(read.stopped)~='boolean'
             or read.completing~=nil and type(read.completing)~='boolean') then return false end
-        local relief=p.relief
-        if relief then
-            if type(relief)~='table' or not finite(relief.sequence) or relief.sequence<1
-                or relief.sequence~=math.floor(relief.sequence) or type(relief.finished)~='boolean'
-                or relief.kind~='EAT' and relief.kind~='DRINK' and relief.kind~='REST' and relief.kind~='SLEEP' then return false end
-            local identity=p.attemptId..':relief'
-            if not Record.valid({id=identity,providerType='SELF_CARE',payload={format=1,step='ACTING',
-                kind=relief.kind,sequence=relief.sequence,attemptId=identity..':'..relief.sequence,
-                itemId=relief.itemId,claims={},consumption=relief.fact,repose=relief.repose,floorSite=relief.floorSite}}) then return false end
-        end
-    elseif p.reading~=nil or p.study~=nil or p.relief~=nil then return false end
+    elseif p.reading~=nil or p.study~=nil then return false end
+    local relief=p.relief
+    if relief then
+        if type(relief)~='table' or not finite(relief.sequence) or relief.sequence<1
+            or relief.sequence~=math.floor(relief.sequence) or type(relief.finished)~='boolean'
+            or relief.kind~='EAT' and relief.kind~='DRINK' and relief.kind~='REST' and relief.kind~='SLEEP' and relief.kind~='MEDICAL'
+            or p.kind~='STUDY' and relief.kind~='MEDICAL' then return false end
+        local identity=p.attemptId..':relief'
+        if not Record.valid({id=identity,providerType='SELF_CARE',payload={format=1,step='ACTING',
+            kind=relief.kind,sequence=relief.sequence,attemptId=identity..':'..relief.sequence,
+            itemId=relief.itemId,claims={},consumption=relief.fact,repose=relief.repose,
+            medical=relief.medical,floorSite=relief.floorSite}}) then return false end
+    end
     if p.readingSite~=nil and (p.kind~='STUDY' or not require('EmberRoutesProbe/ReposeRecord').valid(p.readingSite)) then return false end
     if p.floorSite~=nil then
         local floor=p.floorSite
@@ -89,6 +91,7 @@ function Record.valid(job)
             if not finite(floor[name]) or floor[name]~=math.floor(floor[name]) then return false end
         end
     end
+    if not require('EmberRoutesProbe/MedicalRecord').valid(p) then return false end
     local fact=p.consumption
     if p.site~=nil and (p.kind~='REST' and p.kind~='SLEEP'
         and not (p.kind=='LEISURE' and p.leisure and p.leisure.activity=='SIT')

@@ -45,7 +45,7 @@ function EmberRoutesOrderMonitorPage:new(owner,bounds)
     o.fontHeight,o.pad=owner.fontHeight,owner.pad
     o.background=false
     o.buttons={}
-    o.store=State.new({snapshot={rows={}},selection=false,filter='open',detailMode=false})
+    o.store=State.new({snapshot={rows={}},selection=false,filter='open',detailMode=false,expanded=false})
     return o
 end
 
@@ -116,6 +116,9 @@ function EmberRoutesOrderMonitorPage:createChildren()
         button(key,text('button_'..key),actions[i],function() self:command(key) end,key=='resume')
     end
 
+    button('expand',text('expand'),actions[1],function()
+        self.store:setState({expanded=not self.store.value.expanded})
+    end)
     self.noticeBounds=regions[4]
 end
 
@@ -124,15 +127,17 @@ function EmberRoutesOrderMonitorPage:filterChanged(combo)
 end
 
 function EmberRoutesOrderMonitorPage:activate()
-    local mounted=Lifecycle.mount(self,function(callback) return Service.watch(self.actor,self.entry.id,callback) end,function(snapshot)
+    local received=false
+    local mounted=Lifecycle.mount(self,function(callback) return (self.service or Service).watch(self.actor,self.entry.id,callback) end,function(snapshot)
+        received=true
         if snapshot.reason=='WORLD_RESET' then self.owner:close() return end
         self.store:setState({snapshot=snapshot})
     end)
-    if mounted and self.active then self:refresh() end
+    if mounted and self.active and not received then self:refresh() end
 end
 
 function EmberRoutesOrderMonitorPage:refresh()
-    if self.active then self.store:setState({snapshot=Service.status(self.actor,self.entry.id)}) end
+    if self.active then self.store:setState({snapshot=(self.service or Service).status(self.actor,self.entry.id)}) end
 end
 
 function EmberRoutesOrderMonitorPage:project(value)
@@ -164,9 +169,14 @@ function EmberRoutesOrderMonitorPage:project(value)
     local selected
     for i,row in ipairs(rows) do if row.id==value.selection then selected=row self.orderList.selected=i break end end
     selected=selected or chosen
-    if (selected and selected.id or false)~=value.selection then self.store:setState({selection=selected and selected.id or false}) return end
+    if type(selected)~='table' then selected=nil end
+    if (selected and selected.id or false)~=value.selection then self.store:setState({selection=selected and selected.id or false,expanded=false}) return end
     self.selected=selected
-    self.details:set(selected)
+    self.details:set(selected,value.expanded)
+    local compact=selected and selected.compact==true
+    for _,key in ipairs({'stop','resume','return'}) do self.buttons[key]:setVisible(selected~=nil and not selected.readOnly) end
+    self.buttons.expand:setVisible(compact==true)
+    self.buttons.expand:setTitle(text(value.expanded and 'collapse' or 'expand'))
     self.orderList:setVisible(not self.narrow or not value.detailMode)
     self.details.list:setVisible(not self.narrow or value.detailMode)
     self.buttons.details:setTitle(text(value.detailMode and 'backToList' or 'details'))
@@ -176,7 +186,8 @@ function EmberRoutesOrderMonitorPage:project(value)
     Theme.enable(self.buttons['return'],selected and selected.canCancel or false)
     self.noticeLines=require('EmberRoutesProbe/UI/Text').wrapLimited(self.notice or Cards.reason(value.snapshot.reason) or '',
         self.noticeBounds.width,UIFont.Small,2)
-    if self.owner.setFooter then self.owner:setFooter(text('summary',#rows,#value.snapshot.rows)) end
+    if self.owner.setFooter then self.owner:setFooter(self.demandMode
+        and getText('IGUI_EmberRoutesProbe_Demand_footer',tostring(#rows)) or text('summary',#rows,#value.snapshot.rows)) end
 end
 
 function EmberRoutesOrderMonitorPage:command(action)
@@ -231,7 +242,7 @@ function EmberRoutesOrderMonitorPage:executeCommand(action,row)
     row=row or self.selected
     if not self.active or not row then return end
     if not self.owner:valid() then self.owner:close() return end
-    local result=Service.command(self.actor,self.entry.id,row.id,row.generation,action)
+    local result=(self.service or Service).command(self.actor,self.entry.id,row.id,row.generation,action)
     self.notice=Cards.reason(result)
     self:refresh()
 end

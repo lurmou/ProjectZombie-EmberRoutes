@@ -170,7 +170,7 @@ local function context(actor,binding,r,entry,object,body)
         return body.current() and contexts[r.npcId]==c and not c.cancelled and c.root==Registry.data() and record(r.npcId)==r
             and r.generation==c.generation and r.state=="RUNNING" and not actor:isDead()
             and actor:getUsername()==r.requester and Driver.valid(binding)
-            and c.npc:getBodyDamage():getOverallBodyHealth()>=95
+            and require('EmberRoutesProbe/HealthAssessment').canWork(c.npc)
 	    and Supply.entry(actor,c.npc,locationObject,r.settlementId,true)~=nil and JobExecution.valid(r,c.token)
     end
     c.changed=function(message) changed(c,message) return not c.commitFailure,c.commitFailure end
@@ -580,7 +580,8 @@ local function execute(actor,command,object,id,options,body,validateOnly)
     if Work.executing(id) then return "BUSY" end
     local binding=Driver.bindId(actor,id) if not binding then return "CARRIER_UNAVAILABLE" end
     local npc=binding.handle local r=record(id) local spec
-    if npc:getBodyDamage():getOverallBodyHealth()<95 then return "INJURED" end
+    local healthy,healthReason=require('EmberRoutesProbe/HealthAssessment').canWork(npc)
+    if not healthy then return healthReason end
     if command=="run" then
         if r and not r.released then return "RETURN_OR_RECONCILE_FIRST" end
         if Work.hasCargo(actor,id) then return "CARGO_RETAINED_RESUME_FIRST" end
