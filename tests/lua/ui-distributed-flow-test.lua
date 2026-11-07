@@ -4,9 +4,9 @@ local n=0
 local function check(v,m) assert(v,m) n=n+1 end
 local fixture=ERSettlementPreview('warehouse',20,1280,900)
 local actor=fixture.actor fixture:close()
-local D=require 'EmberRoutesProbe/SettlementDashboard'
+local D=require 'EmberRoutesProbe/UI/SettlementDashboard'
 local shell=assert(D.open(actor,'settlement','warehouse'))
-local C=package.loaded['EmberRoutesProbe/CraftingService']
+local C=package.loaded['EmberRoutesProbe/Crafting/CraftingService']
 local queries={}
 C.watchCatalog=function(_,_,q,cb)
  queries[#queries+1]=q
@@ -16,6 +16,15 @@ C.watchCatalog=function(_,_,q,cb)
 end
 check(shell:selectTab('crafting',{returnTab='warehouse',filterProduct='Base.Plank'}),'product jump')
 local page=shell.pages.crafting local browser=page.views.recipes
+local stepper=browser.draft.stepper
+local before=browser.store.value.quantity
+check(not stepper:onMouseWheel(-1) and browser.store.value.quantity==before,'unfocused quantity does not hijack scrolling')
+browser.draft.quantity:setText('0')
+check(browser.store.value.quantity==false,'invalid input is rejected rather than silently changed')
+browser.draft.quantity:setText('1')
+browser:change({quantity=3})
+check(browser.draft.quantity:getText()=='3','state-driven quantity updates the shared input without a second projection')
+browser:change({quantity=1})
 check(#browser.store.value.catalog.rows==2 and not browser.store.value.recipeId and browser.recipe==nil,'multiple recipes filtered without draft')
 check(queries[1].productType=='Base.Plank','filter installed before initial catalog watch')
 page:returnWarehouse()
@@ -26,20 +35,23 @@ check(browser.grid.empty==getText('IGUI_EmberRoutesProbe_Distributed_noRecipe'),
 page:returnWarehouse()
 shell:selectTab('crafting',{returnTab='warehouse',filterProduct='Base.Plank'})
 browser:command('run','Base.SawLogs','surface')
-check(shell.activeTab=='warehouse' and not page.returnContext,'successful submit returns to warehouse')
-local monitor=package.loaded['EmberRoutesProbe/OrderMonitorService']
+check(shell.activeTab=='crafting','successful submit keeps crafting context')
+check(not shell:selectTab('crafting',{view='orders'}),'retired orders view rejected')
+local monitor=package.loaded['EmberRoutesProbe/Warehouse/OrderMonitorService']
 local row={id='ORDER:unclaimed',orderId='unclaimed',generation='ORDER:9',kind='ORDER',title='Public fork',state='WAITING',canCancel=true}
-monitor.status=function() return {rows={row}} end
 local called
 monitor.command=function(_,_,id,generation,action) called={id,generation,action} return 'CANCELLED' end
-shell:selectTab('crafting',{view='orders'})
-local orders=page.views.orders
-check(#orders.unclaimed.list.items==1,'unclaimed public order has a real section')
-orders.unclaimedSelection=row orders:project(orders.store.value,{selection=true})
-check(orders.buttons['return'].enable,'selected public order can cancel')
-orders:command('return')
-check(called[1]==row.id and called[2]=='ORDER:9' and called[3]=='return','cancel preserves service generation')
-local overview=package.loaded['EmberRoutesProbe/WorkOverviewService']
+local pending={key=row.id,title=row.title,state='waiting',category='crafting',row=row}
+local fixtureOwner=shell.pages.warehouse
+local Queue=require('EmberRoutesProbe/UI/WorkQueue')
+local q=Queue.new(fixtureOwner,{x=0,y=0,width=400,height=200},function(w) return w.category=='crafting' end)
+q:set({works={pending}})
+check(#q.info.list.items==1,'unclaimed production lives in category queue')
+q.selectedId=row.id q:set({works={pending}})
+check(#q.info.list.items>1,'selected queue item exposes responsibility details')
+local result=require('EmberRoutesProbe/Work/WorkCommandAdapter').command(actor,'settlement',row,'return')
+check(result=='CANCELLED' and called[1]==row.id and called[2]=='ORDER:9' and called[3]=='return','relocated command preserves identity/generation')
+local overview=package.loaded['EmberRoutesProbe/Work/WorkOverviewService']
 local current={title='True current work',state='working',row={kind='FIELD_WORK',id='FIELD_WORK:real',npcId='worker',jobId='real',generation=1}}
 overview.status=function() return {works={current},byNpc={worker=current},alerts={},counts={},problems={}} end
 shell:selectTab('personnel')

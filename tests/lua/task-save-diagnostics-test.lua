@@ -7,9 +7,9 @@ local root=f.root
 function getSpecificPlayer() return actor end
 local checks,captures,nonce=0,0,nil
 local function check(v,m) checks=checks+1 assert(v,m) end
-package.loaded['EmberRoutesProbe/CraftProbe']={prepareRecovery=function() end,record=function() end}
-package.loaded['EmberRoutesProbe/LaborStore']={data=function() end,record=function() end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD',id='npc-a'} end}
+package.loaded['EmberRoutesProbe/Crafting/CraftProbe']={prepareRecovery=function() end,record=function() end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={data=function() end,record=function() end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD',id='npc-a'} end}
 local bridge=EmberRoutesProbeJava
 bridge.workerCount=function() return 1 end bridge.workerIdAt=function() return 'npc-a' end
 local frozen=false
@@ -24,7 +24,7 @@ end
 bridge.armSaveReceipt=function() nonce=root.executionSave.id return true end
 bridge.verifySaveReceipt=function() return nonce==root.executionSave.id end
 bridge.blockAllCheckpoints=function() return 'CHECKPOINT_BLOCKED' end
-local Save=require 'EmberRoutesProbe/TaskPersistence'
+local Save=require 'EmberRoutesProbe/Runtime/TaskPersistence'
 Save.load()
 local property=npc:getInventory():AddItem('Base.Pencil')
 property:getModData().PersistenceOriginal='retain-on-save'

@@ -3,9 +3,9 @@
 -- write through SelfCareCommit.update (kernel mutate); removeSettled stays
 -- the single explicitly-listed kernel-external retirement primitive.
 -- Host bridge model only; NOT Java execution, NOT in-game proof.
-local JobStore=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
 local root={} local jobs=assert(JobStore.open(root))
 local st={root=root,claims=Claims.new(),tokens={},personalTokens={}}
@@ -27,14 +27,14 @@ stub('TaskRuntime',{current=function() return {
 stub('Hauling/HaulManifest',{valid=function() return true end,claimItemIds=function() return {} end})
 stub('TaskResume',{pending=function() return true end})
 for _,name in ipairs({'SelfCareCommit','BusinessJobs'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
-require 'EmberRoutesProbe/LaborDomainAdapters'.install(S,st,identity,clean,function() return true end)
+require 'EmberRoutesProbe/Work/LaborDomainAdapters'.install(S,st,identity,clean,function() return true end)
 local host=dofile('tests/lua/fixtures/dec003-activity-kernel-host.lua')
 host.install(st,alloc,clean)
-require 'EmberRoutesProbe/LaborJobCommit'.install(S,st,alloc,clean)
+require 'EmberRoutesProbe/Work/LaborJobCommit'.install(S,st,alloc,clean)
 EmberRoutesProbeJava.workerCount=function() return 1 end
 EmberRoutesProbeJava.workerIdAt=function() return 'a' end
-local Business=require 'EmberRoutesProbe/BusinessJobs'
-local SelfCareCommit=require 'EmberRoutesProbe/SelfCareCommit'
+local Business=require 'EmberRoutesProbe/Work/BusinessJobs'
+local SelfCareCommit=require 'EmberRoutesProbe/SelfCare/SelfCareCommit'
 -- Settle a CRAFT job through the ordinary JobStore transitions. Format 3 is
 -- admission-only for retirement (BuiltinJobContracts), so no full production
 -- record is needed; canRetire's format-4 production check does not apply.

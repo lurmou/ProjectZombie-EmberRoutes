@@ -1,11 +1,11 @@
 -- Real delivery/haul/claims/Session modules; native inventory/actions/pathing are substitutes.
 local f=dofile('tests/lua/multi-worker-test.lua')
 local Work,actor,npc=f.Work,f.actor,f.a
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Probe=f.fixture.ctx.Probe
 local checks=0
 local function check(v,why) checks=checks+1 assert(v,why) end
@@ -63,8 +63,8 @@ ISTimedActionQueue.clear=function(body)
     rawClear(body) local q=ISTimedActionQueue.queues[body] if q then q.queue={} q.current=nil end
 end
 Probe.controlledExecution=true Runtime.begin()
-local Delivery=require 'EmberRoutesProbe/DeliveryService'
-local directory=require('EmberRoutesProbe/TaskDirectory').new()
+local Delivery=require 'EmberRoutesProbe/Logistics/DeliveryService'
+local directory=require('EmberRoutesProbe/Kernel/TaskDirectory').new()
 local recovery=true
 local function step(n,effects)
     for _=1,n do

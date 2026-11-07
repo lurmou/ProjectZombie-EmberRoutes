@@ -1,5 +1,5 @@
 -- Unit tests for StockRule and StockStore under Kahlua VM.
-local StockRule=require "EmberRoutesProbe/StockRule"
+local StockRule=require "EmberRoutesProbe/Warehouse/StockRule"
 
 local checks=0
 local function check(cond,msg)
@@ -90,12 +90,12 @@ _G.isClient=function() return false end
 _G.isServer=function() return false end
 _G.getRandomUUID=function() checks=checks+1 return "uuid_"..checks end
 
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 Registry.data=function() return mockModData end
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
 Ledger.data=function() return {format=1,factionId="f1",entries={s1=mockSettlement}} end
 
-local StockStore=require "EmberRoutesProbe/StockStore"
+local StockStore=require "EmberRoutesProbe/Warehouse/StockStore"
 
 -- Create rule
 local ruleId,err=StockStore.command(mockActor,"s1","create",{

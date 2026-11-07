@@ -8,11 +8,13 @@ public final class ProbeRuntime {
     /** Read-only, loaded-world evidence; no ownership or movement side effects. */
     public static boolean socialVisible(IsoPlayer first,IsoPlayer second) {
         if (first==null || second==null || first.isDead() || second.isDead()) return false;
+        // Cheapest reject first: most actor pairs are far apart and never need a
+        // square lookup, a cell comparison or a line-of-sight ray.
+        double dx=first.getX()-second.getX(), dy=first.getY()-second.getY();
+        if (dx*dx+dy*dy>7.5625) return false;
         var firstSquare=first.getCurrentSquare(); var secondSquare=second.getCurrentSquare();
         if (firstSquare==null || secondSquare==null || firstSquare.getZ()!=secondSquare.getZ()
                 || first.getCell()!=second.getCell()) return false;
-        double dx=first.getX()-second.getX(), dy=first.getY()-second.getY();
-        if (dx*dx+dy*dy>7.5625) return false;
         zombie.iso.LosUtil.TestResults result=zombie.iso.LosUtil.lineClear(first.getCell(),
                 (int)Math.floor(first.getX()),(int)Math.floor(first.getY()),firstSquare.getZ(),
                 (int)Math.floor(second.getX()),(int)Math.floor(second.getY()),secondSquare.getZ(),false);
@@ -112,12 +114,37 @@ public final class ProbeRuntime {
             se.krka.kahlua.vm.KahluaTable containers, boolean force) {
         return WarehouseFastIndex.scanSettlement(settlementId, containers, force);
     }
+    /** Mount the container set once; known containers are not re-read. */
+    public static se.krka.kahlua.vm.KahluaTable warehouseMountSettlement(String settlementId,
+            se.krka.kahlua.vm.KahluaTable containers) {
+        return WarehouseFastIndex.mountSettlement(settlementId, containers);
+    }
+    /** Refresh exactly one container; returns the unchanged snapshot when nothing moved. */
+    public static se.krka.kahlua.vm.KahluaTable warehouseApplyContainer(String settlementId,
+            se.krka.kahlua.vm.KahluaTable descriptor) {
+        return WarehouseFastIndex.applyContainer(settlementId, descriptor);
+    }
+    /** Drops a container that left the settlement membership (AE2 unmount). */
+    public static se.krka.kahlua.vm.KahluaTable warehouseUnmountContainer(String settlementId, String containerId) {
+        return WarehouseFastIndex.unmountContainer(settlementId, containerId);
+    }
     public static void warehouseResetCache(String settlementId) {
         if (settlementId != null) {
             WarehouseFastIndex.invalidateSettlement(settlementId);
         } else {
             WarehouseFastIndex.reset();
         }
+    }
+    /** O(1) aggregate reads: no item rows, no re-aggregation, no allocation. */
+    public static double warehouseTypeCount(String settlementId, String fullType) {
+        return WarehouseFastIndex.typeCount(settlementId, fullType);
+    }
+    public static boolean warehouseHasType(String settlementId, String fullType) {
+        return WarehouseFastIndex.hasType(settlementId, fullType);
+    }
+    /** URGENT/SLOWER gate; false means this settlement is asleep this pass. */
+    public static boolean warehouseTickDue(String settlementId, boolean urgent) {
+        return WarehouseFastIndex.tickDue(settlementId, urgent);
     }
     /** CraftRecipe.LuaCall is not exported to Lua in the pinned engine. Read metadata only. */
     public static boolean recipeHasCallbacks(zombie.scripting.entity.components.crafting.CraftRecipe recipe) {
@@ -128,6 +155,16 @@ public final class ProbeRuntime {
     }
     public static se.krka.kahlua.vm.KahluaTable cleaningScanStains(zombie.iso.IsoChunk chunk, int maxCount) {
         return CleaningFastScan.scanChunkStains(chunk, maxCount);
+    }
+    /** One chunk pass returning both stains and corpses; corpseLimit<=0 skips corpses. */
+    public static se.krka.kahlua.vm.KahluaTable cleaningScanTargets(zombie.iso.IsoChunk chunk,
+            int stainLimit, int corpseLimit) {
+        return CleaningFastScan.scanChunkTargets(chunk, stainLimit, corpseLimit);
+    }
+    /** Frame-bounded variant: only a few z-levels per call. */
+    public static se.krka.kahlua.vm.KahluaTable cleaningScanTargetsSlice(zombie.iso.IsoChunk chunk,
+            int startLevel, int levelCount, int stainLimit, int corpseLimit) {
+        return CleaningFastScan.scanChunkTargetsSlice(chunk, startLevel, levelCount, stainLimit, corpseLimit);
     }
     public static se.krka.kahlua.vm.KahluaTable cleaningScanCorpses(zombie.iso.IsoChunk chunk, int maxCount) {
         return CleaningFastScan.scanChunkCorpses(chunk, maxCount);
@@ -201,7 +238,9 @@ public final class ProbeRuntime {
     public static IsoPlayer carrierFor(String id,IsoPlayer actor) {
         CarrierRuntime runtime=find(id);
         if (runtime==null || actor==null || actor.isDead() || !actor.isLocalPlayer()) return null;
-        return runtime.carrierPresent(runtime.body()) ? runtime.body() : null;
+        ProbeNpc body=runtime.body();
+        // A parked carrier keeps its binding: the chunk is gone, the identity is not.
+        return (body!=null && (runtime.carrierPresent(body) || body.suspended())) ? body : null;
     }
     public static IsoPlayer controlledCarrier(IsoPlayer actor) { return current().controlledCarrier(actor); }
     public static IsoPlayer actionCarrier(IsoPlayer actor) { return current().actionCarrier(actor); }
@@ -250,6 +289,50 @@ public final class ProbeRuntime {
     }
     public static boolean releaseBodyControl(IsoPlayer body,String key) {
         return bodyStopMask(body,key)==0 && authority.release(carrierId(body),key,true);
+    }
+    static boolean followAllowed(ProbeNpc body,String id,String key) {
+        return liveAuthority() && body.attached() && !body.isDead() && !body.failed() && !body.retiring()
+            && authority.allows(id,key,false) && handles.get(body)!=null && handles.get(body)==ids.get(id);
+    }
+    public static se.krka.kahlua.vm.KahluaTable followMetrics() {
+        return liveAuthority() ? FollowMetrics.snapshot() : null;
+    }
+    /** Local queue check for a blocked follower: another granted companion lies
+     *  within 0.8 tiles ahead. Bounded by the carrier map, never a squad scan. */
+    static boolean squadAhead(ProbeNpc self,float dx,float dy) {
+        CompanionNavigation own=self.companionNavigation();
+        if (own==null) return false;
+        float length=(float)Math.sqrt(dx*dx+dy*dy);
+        if (length<0.001f) return false;
+        float nx=dx/length,ny=dy/length,sx=self.getX(),sy=self.getY();
+        for (CarrierRuntime runtime:slots.values()) {
+            ProbeNpc other=runtime.body();
+            if (other==null || other==self || other.isDead()) continue;
+            // Distance is the discriminating test for nearly every other NPC.
+            // Do it before the yieldsTo/z checks so the common case is two
+            // subtractions instead of a navigation lookup and two floor calls.
+            float ox=other.getX()-sx,oy=other.getY()-sy;
+            float distance2=ox*ox+oy*oy;
+            if (distance2>0.64f || distance2<0.0004f) continue;
+            if (!own.yieldsTo(other.companionNavigation())
+                    || Math.abs(other.getZ()-self.getZ())>0.2f
+                    || Math.floor(other.getZ()+0.001f)!=Math.floor(self.getZ()+0.001f)) continue;
+            if ((ox*nx+oy*ny)/(float)Math.sqrt(distance2)>0.5f) return true;
+        }
+        return false;
+    }
+    public static String followWithControl(IsoPlayer body,String key,IsoPlayer leader,double slotRank) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body)
+                || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
+        try {
+            if (leader==null || leader==body || !leader.isLocalPlayer() || leader.isDead()
+                    || leader.getCell()!=body.getCell() || leader.getCurrentSquare()==null) return "INVALID_ACTOR";
+            if (!Double.isFinite(slotRank) || slotRank<0 || slotRank>2 || slotRank!=Math.floor(slotRank)) return "INVALID_SLOT";
+            if (npc.stopMask()!=0) return "BODY_BUSY";
+            npc.beginFollow(leader,id,key,(int)slotRank);
+            return "FOLLOW_STARTED";
+        } finally { controlCalls.remove(id); }
     }
     public static String moveWithControl(IsoPlayer body,String key,IsoPlayer actor,double x,double y,double z) {
         String id=carrierId(body);
@@ -359,6 +442,8 @@ public final class ProbeRuntime {
         var world=zombie.iso.IsoWorld.instance;
         var cell=world==null ? null : world.currentCell;
         if (owner!=null && (owner!=world || ownerCell!=cell)) {
+            SquadTrail.clear(); // Trail geometry belongs to the world it was recorded in.
+            FollowMetrics.clear();
             for (CarrierRuntime runtime:slots.values()) {
                 runtime.begin(false,false);
                 if (runtime.body()!=null) { enabled=false; return "RESET_REQUIRED old world disposal pending"; }

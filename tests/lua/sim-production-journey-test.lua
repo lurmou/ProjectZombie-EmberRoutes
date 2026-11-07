@@ -297,7 +297,7 @@ function getSpecificPlayer() return actor end
 -- 2. Service & Backend Mocks
 -- =========================================================================
 local requestIdCounter=0
-package.loaded['EmberRoutesProbe/ContainerRegistry']={
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={
     id=function()
         requestIdCounter=requestIdCounter+1
         return 'req-'..tostring(requestIdCounter)
@@ -306,7 +306,7 @@ package.loaded['EmberRoutesProbe/ContainerRegistry']={
 }
 
 local registeredSurfaces={{id='bench-carpentry',x=12,y=24,z=0}}
-package.loaded['EmberRoutesProbe/CraftSurfaces']={
+package.loaded['EmberRoutesProbe/Crafting/CraftSurfaces']={
     list=function() return registeredSurfaces end
 }
 
@@ -339,7 +339,7 @@ local carveForkSpec={
 
 local catalogRecipes={sawLogsSpec,carveForkSpec}
 
-package.loaded['EmberRoutesProbe/ProductionRecipe']={
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={
     read=function(id)
         if id=='Base.SawLogs' then return sawLogsSpec end
         if id=='Base.CarveWoodenFork' then return carveForkSpec end
@@ -348,7 +348,7 @@ package.loaded['EmberRoutesProbe/ProductionRecipe']={
     describe=function(spec) return spec end
 }
 
-package.loaded['EmberRoutesProbe/CraftingCatalog']={
+package.loaded['EmberRoutesProbe/Crafting/CraftingCatalog']={
     productionIndex=function()
         local byId,byType={},{}
         for _,rec in ipairs(catalogRecipes) do
@@ -363,7 +363,7 @@ package.loaded['EmberRoutesProbe/CraftingCatalog']={
 }
 
 local catalogCallbacks={}
-package.loaded['EmberRoutesProbe/CraftingService']={
+package.loaded['EmberRoutesProbe/Crafting/CraftingService']={
     status=function() return {workers={{id='npc-bob',name='Bob'}},surfaces=registeredSurfaces} end,
     watchCatalog=function(pActor,scope,q,callback)
         catalogCallbacks[#catalogCallbacks+1]=callback
@@ -387,7 +387,7 @@ package.loaded['EmberRoutesProbe/CraftingService']={
 }
 
 local previewCallback
-package.loaded['EmberRoutesProbe/PublicPreview']={
+package.loaded['EmberRoutesProbe/Work/PublicPreview']={
     watch=function(pActor,scope,recipeId,quantity,surfaceId,callback,preferences)
         previewCallback=callback
         local units=math.ceil((quantity or 1)/3)
@@ -408,10 +408,10 @@ local publicRuleCalls={}
 local publicRules={
     ['Base.Plank']={minimum=30,batch=15}
 }
-package.loaded['EmberRoutesProbe/PublicWork']={
+package.loaded['EmberRoutesProbe/Work/PublicWork']={
     available=function() return true end,
     requestId=function()
-        return package.loaded['EmberRoutesProbe/ContainerRegistry'].id()
+        return package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'].id()
     end,
     rule=function(scope,product)
         return publicRules[product]
@@ -435,7 +435,7 @@ package.loaded['EmberRoutesProbe/PublicWork']={
 local monitorCommands={}
 local monitorSnapshot={rows={}}
 local monitorWatchers={}
-package.loaded['EmberRoutesProbe/OrderMonitorService']={
+package.loaded['EmberRoutesProbe/Warehouse/OrderMonitorService']={
     status=function() return monitorSnapshot end,
     watch=function(pActor,scope,callback)
         monitorWatchers[#monitorWatchers+1]=callback
@@ -653,8 +653,8 @@ local initialCreateCount=#publicCreateCalls
 local interceptCheckPassed=false
 
 -- Override Public.create to simulate network latency and verify lock
-local originalCreate=package.loaded['EmberRoutesProbe/PublicWork'].create
-package.loaded['EmberRoutesProbe/PublicWork'].create=function(pActor,scope,recipeId,qty,surfaceId,reqId,prefs)
+local originalCreate=package.loaded['EmberRoutesProbe/Work/PublicWork'].create
+package.loaded['EmberRoutesProbe/Work/PublicWork'].create=function(pActor,scope,recipeId,qty,surfaceId,reqId,prefs)
     -- Verify lock state inside in-flight request
     check(dialog.submitting==true,'dialog.submitting flag is true during request')
     check(dialog.actionButton.title=='提交中...','button title changed to 提交中...')
@@ -682,12 +682,12 @@ check(owner.activeTab=='orders','successful submission navigates owner to orders
 check(dialog.disposed==true,'successful submission closes the dialog')
 
 -- Restore Public.create
-package.loaded['EmberRoutesProbe/PublicWork'].create=originalCreate
+package.loaded['EmberRoutesProbe/Work/PublicWork'].create=originalCreate
 
 -- 4.2 Error Recovery: Failure does not close dialog and restores controls
 local dialogFail=PublicOrderDialog.open(owner,{recipeId='Base.SawLogs'})
 dialogFail.quantity:setText('3')
-package.loaded['EmberRoutesProbe/PublicWork'].create=function()
+package.loaded['EmberRoutesProbe/Work/PublicWork'].create=function()
     return 'NO_CAPACITY'
 end
 
@@ -699,7 +699,7 @@ check(dialogFail.actionButton.enable==true,'action button re-enabled after failu
 check(dialogFail.notice=='委托池已满，暂无法接收新工单','notice displays translated error reason')
 
 dialogFail:close()
-package.loaded['EmberRoutesProbe/PublicWork'].create=originalCreate
+package.loaded['EmberRoutesProbe/Work/PublicWork'].create=originalCreate
 
 -- =========================================================================
 -- Scenario 5: 生产工单监控 (Order Monitor - 4 Discrete Stages & BOM Drawer)

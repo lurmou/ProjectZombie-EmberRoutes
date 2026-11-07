@@ -107,8 +107,8 @@ print("PASS: Placeholders %1$s and %2$s formatted cleanly without $s residue.")
 
 -- Test 2: SettlementZones with isWorkZone = true outside territory
 print("=== Test 2: Testing SettlementZones WorkZone Saving ===")
-local Zones = require("EmberRoutesProbe/SettlementZones")
-local Ledger = require("EmberRoutesProbe/SettlementLedger")
+local Zones = require("EmberRoutesProbe/Settlement/SettlementZones")
+local Ledger = require("EmberRoutesProbe/Settlement/SettlementLedger")
 
 -- Mock actor and ledger
 local mockActor = {

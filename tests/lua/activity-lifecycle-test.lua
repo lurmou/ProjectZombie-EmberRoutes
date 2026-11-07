@@ -27,36 +27,36 @@ EmberRoutesProbeJava={carrierFor=function(id) return bodies[id] end,carrierPrese
     freezeBodyControl=function() return true end,thawBodyControl=function() return not keys.a and not keys.b end,
     retireBodyControl=function() return true end}
 local memberRevision={a=1,b=1,c=1} local epochs={a=0,b=0,c=0}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,
     id=function() serial=serial+1 return 'id-'..serial end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return spatial end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return spatial end,
     view=function(a,id) if a==actor then return spatial.entries[id] end end}
-package.loaded['EmberRoutesProbe/MembershipService']={view=function(id)
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function(id)
     if memberRevision[id] then return {context='SETTLEMENT',settlementId='home',revision=memberRevision[id]} end end,
     entry=function() return spatial.entries.home end,character=function() return 'player' end,
     check=function(id) return {allowed=true,revision=memberRevision[id],entryRevision=1,settlementId='home'} end}
-package.loaded['EmberRoutesProbe/TaskResume']={epoch=function(id) return epochs[id] end}
-package.loaded['EmberRoutesProbe/NeedsObserver']={sample=function(body,id,time)
+package.loaded['EmberRoutesProbe/Runtime/TaskResume']={epoch=function(id) return epochs[id] end}
+package.loaded['EmberRoutesProbe/SelfCare/NeedsObserver']={sample=function(body,id,time)
     return {safe=not body.dead,observedAt=time,hunger=0,thirst=0,fatigue=0,endurance=1,health=100,healthy=true} end}
-package.loaded['EmberRoutesProbe/Work']={hasCargo=function() return false end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Work/Work']={hasCargo=function() return false end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local square={TreatAsSolidFloor=function() return true end,isSolid=function() return false end,
     isSolidTrans=function() return false end,HasStairs=function() return false end,isDoorSquare=function() return false end,
     isFree=function() return true end,isOutside=function() return false end,
     getMovingObjects=function() return {size=function() return 0 end} end}
 getCell=function() return {getGridSquare=function() return square end} end
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local runtime=Runtime.new()
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
-local Probe=require 'EmberRoutesProbe/Boot' Probe.ready=true Probe.runtimeReady=true
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/ActivityStore'
-local Service=require 'EmberRoutesProbe/ActivityService'
-local Assets=require 'EmberRoutesProbe/LaborStore'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Stop=require 'EmberRoutesProbe/TaskBusinessStop'
-local Zones=require 'EmberRoutesProbe/SettlementZones'
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return runtime end}
+local Probe=require 'EmberRoutesProbe/Kernel/Boot' Probe.ready=true Probe.runtimeReady=true
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
+local Service=require 'EmberRoutesProbe/Activity/ActivityService'
+local Assets=require 'EmberRoutesProbe/Work/LaborStore'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Stop=require 'EmberRoutesProbe/Runtime/TaskBusinessStop'
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local zone=assert(Zones.save(actor,'home',nil,nil,{name='Garden',enabled=true,area={x=0,y=0,w=9,h=9,z=0},rules={OBSERVE=1}}))
 local function args(roster)
     return {name='Gathering',settlementId='home',zoneId=zone.id,zoneRevision=zone.revision,

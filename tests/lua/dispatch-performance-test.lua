@@ -7,38 +7,38 @@ local actor={getUsername=function() return 'owner' end,isRecipeKnown=function() 
 local entry={id='s'}
 local recipe={recipe={},id='saw',name='Saw',product='Base.Plank',yield=3,surface=false}
 local serial=0
-package.loaded['EmberRoutesProbe/Boot']={ready=true,runtimeReady=true,hasJava=function() return true end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={listeners=listeners,inventoryListeners=inventoryListeners,
+package.loaded['EmberRoutesProbe/Kernel/Boot']={ready=true,runtimeReady=true,hasJava=function() return true end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={listeners=listeners,inventoryListeners=inventoryListeners,
  data=function() return root end,id=function() serial=serial+1 return 'id-'..serial end,
  describe=function() return {x=1,y=1} end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={listeners={},view=function() if allowed then return entry end end,at=function() return {entry} end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'crate'} end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) return handles[id] and {handle=handles[id]} end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {accepting=function() return accepting end,status=function() end} end}
-package.loaded['EmberRoutesProbe/Work']={busy=function(id) return busy[id] end,hasCargo=function() return false end,record=function() end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={listeners={},view=function() if allowed then return entry end end,at=function() return {entry} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'crate'} end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(_,id) return handles[id] and {handle=handles[id]} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return accepting end,status=function() end} end}
+package.loaded['EmberRoutesProbe/Work/Work']={busy=function(id) return busy[id] end,hasCargo=function() return false end,record=function() end,
  allowAutomation=function() end,assign=function(_,id) busy[id]=true calls[#calls+1]={kind='haul',id=id,time=now} return 'QUEUED' end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
-package.loaded['EmberRoutesProbe/ProductionRecipe']={read=function() return recipe end,inspect=function() if known then return recipe end return nil,'NPC_RECIPE_UNKNOWN' end}
-package.loaded['EmberRoutesProbe/CraftSurfaces']={resolve=function() return {} end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function(_,s) if string.find(s,'DISPATCH_BLOCKED',1,true) then print(s) end end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={records=function() return {} end,crafts=function() return {} end,flush=function() end}
-package.loaded['EmberRoutesProbe/ProductionChain']={new=function()
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={read=function() return recipe end,inspect=function() if known then return recipe end return nil,'NPC_RECIPE_UNKNOWN' end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSurfaces']={resolve=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function(_,s) if string.find(s,'DISPATCH_BLOCKED',1,true) then print(s) end end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={records=function() return {} end,crafts=function() return {} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain']={new=function()
  local remaining=planCost
  return {cancel=function() end,step=function(_,budget)
   steps=steps+1 remaining=remaining-(budget or 32)
   if remaining<=0 then if planFailure then return nil,planFailure end return {nodes={}} end
  end}
 end}
-package.loaded['EmberRoutesProbe/Production']={execute=function(_,_,_,id)
+package.loaded['EmberRoutesProbe/Crafting/Production']={execute=function(_,_,_,id)
  busy[id]=true calls[#calls+1]={kind='craft',id=id,time=now} return 'QUEUED'
 end}
-package.loaded['EmberRoutesProbe/LogisticsService']={publicOffer=function() if haul then return {source='a',items={1}} end end}
+package.loaded['EmberRoutesProbe/Logistics/LogisticsService']={publicOffer=function() if haul then return {source='a',items={1}} end end}
 function isClient() return false end function isServer() return false end
 function getTimestampMs() return now end function getSpecificPlayer() return actor end
 EmberRoutesProbeJava={workerCount=function() return #workers end,workerIdAt=function(i) return workers[i+1] end}
-local Public=require 'EmberRoutesProbe/PublicWork'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local function reset(n)
  root={} workers={} busy={} handles={} calls={} steps=0 now=0 accepting=true known=true haul=false planCost=512 planFailure=nil
  for i=1,n do
@@ -95,7 +95,7 @@ for _=1,24 do tick() end assert(steps>previous,'relevant inventory event wakes f
 previous=steps for _=1,640 do tick() end assert(steps>previous,'staggered fallback eventually retries without inventory events')
 print('PASS dispatch performance/admission/priority/event scenarios; synthetic time, native world mocked')
 reset(1) tick()
-local registry=package.loaded['EmberRoutesProbe/ContainerRegistry']
+local registry=package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']
 local originalData=registry.data local reads=0
 registry.data=function() reads=reads+1 return originalData() end
 for _=1,100 do Public.tick() end

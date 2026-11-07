@@ -1,11 +1,11 @@
 -- CraftRecord pure contract test: verify decoupled schema and resource extraction without BusinessJobs
 package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
-package.loaded['EmberRoutesProbe/BusinessJobs']=nil
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']=nil
 
-local Record=require 'EmberRoutesProbe/CraftRecord'
+local Record=require 'EmberRoutesProbe/Crafting/CraftRecord'
 
 -- Assert that loading CraftRecord does NOT load BusinessJobs
-if package.loaded['EmberRoutesProbe/BusinessJobs']~=nil then
+if package.loaded['EmberRoutesProbe/Work/BusinessJobs']~=nil then
     error('CraftRecord must not load BusinessJobs')
 end
 

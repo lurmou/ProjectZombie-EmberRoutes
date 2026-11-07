@@ -2,13 +2,13 @@
 -- Only proven output IDs travel. Shared warehouse ranking/access and native transfer.
 require 'TimedActions/ISInventoryTransferAction'
 require 'TimedActions/ISGrabItemAction'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Record=require 'EmberRoutesProbe/FieldRecord'
-local Spatial=require 'EmberRoutesProbe/FieldSpatial'
-local Supply=require 'EmberRoutesProbe/CraftSupply'
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
-local Native=require 'EmberRoutesProbe/FieldActions'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Record=require 'EmberRoutesProbe/Field/FieldRecord'
+local Spatial=require 'EmberRoutesProbe/Field/FieldSpatial'
+local Supply=require 'EmberRoutesProbe/Crafting/CraftSupply'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local Native=require 'EmberRoutesProbe/Field/FieldActions'
 local C={}
 function C.snapshot(container)
     local list=container:getItems() if list:size()>512 then return nil end
@@ -66,7 +66,7 @@ end
 local function transfer(c,item,from,to,endpoint,pickup,destination)
     local function valid()
         if not c.valid() or not Store.validField(c.job,c.token,'item:'..item:getID()) then return false end
-        if not require('EmberRoutesProbe/LaborProducers').eligible(item) or item:getIsCraftingConsumed() then return false end
+        if not require('EmberRoutesProbe/Work/LaborProducers').eligible(item) or item:getIsCraftingConsumed() then return false end
         if pickup then
             return pickup:getItem()==item and pickup:getSquare()~=nil and pickup:getSquare():getWorldObjects():contains(pickup)
                 and Spatial.reachable(c.npc,pickup:getSquare()) and to:hasRoomFor(c.npc,item)
@@ -136,7 +136,7 @@ function C.step(c,def)
             if it and it:getID()==ground.id and it:getFullType()==ground.fullType then w,item=o,it break end
         end
         if not item then c.unknown('FIELD_GROUND_ORIGINAL_MISSING') return 'Failure' end
-        if require('EmberRoutesProbe/LaborProducers').freeCarry(c.npc)<item:getUnequippedWeight() then
+        if require('EmberRoutesProbe/Work/LaborProducers').freeCarry(c.npc)<item:getUnequippedWeight() then
             c.reason='FIELD_ITEM_TOO_HEAVY' return 'Failure'
         end
         c.approach=c.approach or Spatial.adjacent(c.npc,square)

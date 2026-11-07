@@ -115,7 +115,7 @@
 - **技术规范**：
   1. 所有自绘可滚动区域必须封装进 `Viewport` 作用域；
   2. 离开 `prerender` 时必须严格配对 `clearStencilRect()`，并在 `pcall` 异常保护块中强制清理；
-  3. 悬停提示（Tooltip）绝不可在 Viewport 内部渲染，必须在顶层 `TooltipAnchor` 中于根窗口绘制。
+  3. 悬停提示（Tooltip）绝不可在 Viewport 内部渲染，必须在顶层 `TooltipManager` 中于根窗口绘制。
 
 ### 3.2 动态字号基准标尺系统（Dynamic Typography & Resolution Scaling）
 - **禁止硬编码像素**：严禁在代码中出现 `width = 240`, `height = 150`, `iconSize = 40` 等绝对数值！

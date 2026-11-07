@@ -52,7 +52,10 @@ final class CarrierRuntime {
     }
 
     public String carrierId(IsoPlayer expected) {
-        return carrierPresent(expected) ? probeId : "";
+        ProbeNpc npc = SESSION.get();
+        if (npc == null || npc != expected) return "";
+        // Identity survives parking: the chunk is unloaded, the carrier is not gone.
+        return (carrierPresent(expected) || npc.suspended()) ? probeId : "";
     }
 
     /** Pause event advances retirement or freezes the path deadline; never steps simulation. */
@@ -304,8 +307,13 @@ final class CarrierRuntime {
             }
             if (npc == null && RESTORE.state() == ProbeRestoreGate.State.UNRESOLVED)
                 return result("CHECKPOINT_RETAINED", "unresolved saved record left unchanged");
-            if (!carrierPresent(npc)) return blockCheckpoint("CARRIER_UNAVAILABLE state=" + RESTORE.state());
-            if (stopped) {
+            if (!carrierPresent(npc)) {
+                // A parked carrier still owns a valid body record: its chunk is
+                // gone, not its state. Saving it must not be blocked, otherwise
+                // leaving the settlement makes the game unsavable.
+                if (npc == null || !npc.suspended())
+                    return blockCheckpoint("CARRIER_UNAVAILABLE state=" + RESTORE.state());
+            } else if (stopped) {
                 if (npc.stopMask() != 0) return blockCheckpoint("BODY_NOT_STOPPED");
             } else npc.stopProbe();
             ProbeCheckpoint.Data data = ProbePersistence.capture(npc, probeId, mode, home, (float)hx, (float)hy, (float)hz);
@@ -335,10 +343,8 @@ final class CarrierRuntime {
             String state = persistence.state();
             if (state.equals("EMPTY")) return result("CHECKPOINT_EMPTY", "no saved NPC");
             ProbeCheckpoint.Data data = persistence.read();
-            double dx = actor.getX() - data.x(), dy = actor.getY() - data.y(), dz = actor.getZ() - data.z();
-            if (dx * dx + dy * dy + dz * dz > 256)
-                return result("RESTORE_TOO_FAR", "saved pos=" + data.x() + "," + data.y() + "," + data.z()
-                        + "; approach within 16 tiles then retry");
+            // Restore the original snapshot only at its loaded saved square.
+            // Distance to the player is not evidence of tile availability.
             IsoCell cell = IsoWorld.instance.currentCell;
             IsoGridSquare square = cell.getGridSquare((int)Math.floor(data.x()), (int)Math.floor(data.y()), (int)Math.floor(data.z()));
             if (square == null || !square.TreatAsSolidFloor() || square.isSolid() || square.isSolidTrans() || !square.isFree(false))

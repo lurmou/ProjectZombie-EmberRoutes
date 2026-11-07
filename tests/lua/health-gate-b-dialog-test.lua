@@ -8,21 +8,21 @@ local actor=owner.actor
 -- Native text-entry capability used by the real shared StepperInput.
 function ISTextEntryBox:setOnlyNumbers(value) self.onlyNumbers=value end
 local spec={id='Base.SawLogs',name='Saw logs',product='Base.Plank',yield=3,surface=false,inputs={},outputs={}}
-package.loaded['EmberRoutesProbe/ProductionRecipe']={read=function() return spec end,describe=function() return spec end}
-package.loaded['EmberRoutesProbe/CookingOrders']={describe=function() end}
-package.loaded['EmberRoutesProbe/CraftingCatalog']={describe=function() return spec end}
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={read=function() return spec end,describe=function() return spec end}
+package.loaded['EmberRoutesProbe/Cooking/CookingOrders']={describe=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftingCatalog']={describe=function() return spec end}
 local callbacks={} local watches=0
-package.loaded['EmberRoutesProbe/PublicPreview']={watch=function(_,_,_,_,_,fn)
+package.loaded['EmberRoutesProbe/Work/PublicPreview']={watch=function(_,_,_,_,_,fn)
     callbacks[#callbacks+1]=fn
     fn({state='READY',counts={}})
     return function() end
 end}
-local Crafting=require 'EmberRoutesProbe/CraftingService'
+local Crafting=require 'EmberRoutesProbe/Crafting/CraftingService'
 Crafting.watchCatalog=function(_,_,_,fn)
     watches=watches+1 fn({rows={spec},page=1,pages=1})
     return function() watches=watches-1 end
 end
-local Public=require 'EmberRoutesProbe/PublicWork'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local serial,calls=0,0
 Public.requestId=function() serial=serial+1 return 'dialog-intent-'..serial end
 local Dialog=require 'EmberRoutesProbe/UI/PublicOrderDialog'

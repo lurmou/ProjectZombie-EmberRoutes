@@ -13,7 +13,7 @@ ISEatFoodAction={new=function(_,npc,food,fraction)
         stop=function() stops=stops+1 remaining=remaining-0.025 queued=nil end}
 end}
 ISTimedActionQueue={hasAction=function(action) return action==queued end}
-local Actions=require 'EmberRoutesProbe/SelfCareActions'
+local Actions=require 'EmberRoutesProbe/SelfCare/SelfCareActions'
 local function context()
     return {npc={getInventory=function() return inventory end},payload={attemptId='care:1'},
         sameAttempt=function() return true end,valid=function() return true end,

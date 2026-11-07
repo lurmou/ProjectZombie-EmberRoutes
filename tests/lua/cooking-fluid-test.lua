@@ -1,11 +1,11 @@
 -- Installed progressive pour action, real Jobs/Claims/receipts. Physical fluid
 -- mutation is a host double; this is not an in-game pouring/animation result.
 local w=dofile('tests/lua/cooking-water-test.lua') local f=w.f
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Fluids=require 'EmberRoutesProbe/CraftFluids'
-local Pour=require 'EmberRoutesProbe/CookingFluidTransfer'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Fluids=require 'EmberRoutesProbe/Crafting/CraftFluids'
+local Pour=require 'EmberRoutesProbe/Cooking/CookingFluidTransfer'
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 local previousInstance=instanceof
 function instanceof(value,kind)
@@ -38,7 +38,7 @@ local calls=0
 FluidContainer={CanTransfer=function(a,b) return a~=b and a.amount>0 and b.amount<b.capacity end,
     Transfer=function(a,b,amount)
         local token=assert(Store.owner(b.owner.id))
-        local job=require('EmberRoutesProbe/TaskJobs').current():peek(token.taskId)
+        local job=require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(token.taskId)
         assert(job.effects=='UNKNOWN' and job.payload.attempt.state=='COMMITTING','effect barrier precedes every native pour')
         calls=calls+1 local n=math.max(0,math.min(amount,a.amount,b.capacity-b.amount))
         a.amount=a.amount-n b.amount=b.amount+n
@@ -71,7 +71,7 @@ local beforeB={amount=1,capacity=10,components={{kind='Bleach',amount=1}}}
 local wrongB={amount=2,capacity=10,components={{kind='Water',amount=2}}}
 check(not Fluids.transferred(beforeA,afterA,beforeB,wrongB,1),'equal total volume cannot conceal a changed mixture')
 -- The bridge supplies the engine-selected backing object, not a nearby guess.
-local Sources=require 'EmberRoutesProbe/CookingWaterSources'
+local Sources=require 'EmberRoutesProbe/Cooking/CookingWaterSources'
 local tap,tank=w.source(1,0),w.source(2,5) tap.external=true
 tank.fluid=fluid(tank,5)
 function tank:getFluidAmount() return self.fluid.amount end function tank:hasFluid() return self.fluid.amount>0 end

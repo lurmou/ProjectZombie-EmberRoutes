@@ -1,6 +1,7 @@
 -- Prepared recipe/material/chain drawing, isolated from dialog commands and subscriptions.
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
+local UICache=require 'EmberRoutesProbe/UI/UICache'
 local Rows={}
 function Rows.style(self)
     local h,p=self.fontHeight,self.pad
@@ -184,14 +185,14 @@ function Rows.style(self)
 
             if row.isTool then
                 local badgeText=craftText('toolBadge')
-                local bw=getTextManager():MeasureStringX(UIFont.Small,badgeText)+p
+                local bw=UICache.measure(UIFont.Small,badgeText)+p
                 local bx=list.width-p-bw
                 safeRect(bx,titleY,bw,h,Theme.control,false)
                 safeRect(bx,titleY,bw,h,borderColor,true)
                 safeText(badgeText,bx+math.floor(p/2),titleY,borderColor)
             elseif row.precursor then
                 local chainText=text('chainSupplyTag')
-                local bw=getTextManager():MeasureStringX(UIFont.Small,chainText)+p
+                local bw=UICache.measure(UIFont.Small,chainText)+p
                 local bx=list.width-p-bw
                 safeRect(bx,titleY,bw,h,Theme.control,false)
                 safeRect(bx,titleY,bw,h,Theme.accent,true)

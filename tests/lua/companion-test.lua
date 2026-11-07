@@ -1,135 +1,83 @@
-package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
-package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;" .. package.path
-DebugLog = { log = function(message) print(message) end }
-local assertions, time, id, present, refuse, moves, stops = 0, 0, "npc-1", true, false, 0, 0
-local function check(value, message) assertions = assertions + 1 assert(value, message) end
-local function body(x)
-    local npc = { x = x, y = 0, z = 0, motion = "IDLE" }
-    function npc:getX() return self.x end
-    function npc:getY() return self.y end
-    function npc:getZ() return self.z end
-    return npc
-end
-local npc = body(0)
-local actor = body(6)
-function getSpecificPlayer() return actor end
-actor.dead, actor.speech = false, {}
+local assertions,time=0,0
+local function check(v,m) assertions=assertions+1 assert(v,m) end
+local reads,starts,stops,moves=0,0,0,0
+local npc={id='n',x=0}
+local actor={x=6,dead=false}
+function npc:getX() reads=reads+1 return self.x end
+function npc:getY() return 0 end
+function npc:getZ() return 0 end
+function actor:getX() reads=reads+1 return self.x end
+function actor:getY() return 0 end
+function actor:getZ() return 0 end
 function actor:isDead() return self.dead end
-function actor:Say(value) self.speech[#self.speech + 1] = value end
+function actor:Say() end
 function getTimestampMs() return time end
 function getText(key) return key end
-local nativeTarget
-EmberRoutesProbeJava = {
-    controlledCarrier = function() if present and not actor.dead then return npc end end,
-    carrierPresent = function(expected) return present and npc == expected end,
-    carrierId = function(expected) return present and npc == expected and id or "" end,
-    motionResult = function(expected) return expected.motion end,
-    stopCarrier = function(expected) stops = stops + 1 expected.motion = "STOPPED" return true end,
-    command = function(command, _, x, y, z)
-        check(command == "move", "adapter submits only native move intent")
-        if refuse then return "INVALID_TILE" end
-        moves, npc.motion = moves + 1, "MOVING"
-        nativeTarget = { x = x, y = y, z = z }
-        return "MOVE_REQUESTED"
+DebugLog={log=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={ready=true,hasJava=function() return true end,build={prefix='TEST'}}
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={followSlot=function(id,leader,revision)
+    assert(id=='n' and leader==actor and revision==1) return 2
+end}
+local Factory=require 'EmberRoutesProbe/Settlement/CompanionAgent'
+local motion='STOPPED'
+EmberRoutesProbeJava={carrierPresent=function(b) return b==npc end,carrierId=function(b) return b.id end,
+    motionResult=function() return motion end,
+    stopCarrier=function() error('uncontrolled stop forbidden') end,
+    command=function() error('uncontrolled move forbidden') end}
+local current=true
+local grant={current=function() return current end,
+    stop=function() stops=stops+1 motion='STOPPED' return true end,
+    follow=function(leader,rank)
+        check(leader==actor and rank==2,'follow receives its explicit membership slot')
+        starts=starts+1 motion='FOLLOW_ACTIVE' return true,'FOLLOW_STARTED'
     end,
-}
-local jobsCancelled = 0
-local Probe = { ready = true, build = { prefix = "TEST" }, hasJava = function() return true end }
-function Probe.cancelAll(reason)
-    if Probe.cancelCompanion then Probe.cancelCompanion(reason) end
-    jobsCancelled = jobsCancelled + 1
+    move=function(leader,point)
+        check(leader==actor and point.x==0,'return uses captured home')
+        moves=moves+1 motion='MOVING' return true,'MOVE_REQUESTED'
+    end}
+local worker=Factory.new()
+worker.membershipRevision=1
+check(worker.execute(actor,'follow',nil,{id='n',handle=npc})=='CONTROL_REQUIRED','no body grant has no legacy fallback')
+check(worker.execute(actor,'follow',grant,{id='n',handle=npc})=='FOLLOW','start controlled follow')
+check(starts==1 and worker.home.x==0,'one native follow start and home capture')
+local before=reads
+for i=1,100 do time=i*20 worker.tick() end
+check(starts==1 and reads==before,'ticks poll status without coordinate snapshots or repeated starts')
+motion='FOLLOW_WAITING' time=2500 worker.tick()
+check(worker.mode=='FOLLOW','native waiting keeps the macro intent')
+motion='FOLLOW_WAIT_VEHICLE' time=3000 worker.tick()
+check(worker.mode=='FOLLOW' and moves==0,'vehicle waiting never issues a foot chase')
+local saved=worker.exportState()
+check(saved.mode=='FOLLOW' and saved.id=='n' and saved.homeX==0,'export contains stable scalar intent')
+check(saved.actor==nil and saved.body==nil,'export never contains native grants or leader handles')
+current=false motion='FOLLOW_STALLED' time=3500 worker.tick()
+check(worker.mode=='FOLLOW','old worker cannot react after its grant expires')
+current=true worker.tick()
+check(worker.mode=='BLOCKED' and worker.reason=='FOLLOW_STALLED' and motion=='STOPPED','failure halts owned body and records reason')
+check(worker.restoreState(actor,saved,grant) and starts==2,'restoration starts a fresh controlled follower')
+saved.id='replacement'
+check(not worker.restoreState(actor,saved,grant),'saved intent cannot move replacement NPC')
+saved.id='n'
+check(worker.execute(actor,'home',grant,{id='n',handle=npc})=='RETURNING' and moves==1,'return starts the real move')
+motion='REACHED' time=4000 worker.tick()
+check(worker.mode=='HOLD' and worker.reason=='HOME_REACHED','return requires reached evidence')
+check(worker.restoreState(actor,saved,grant),'follow can resume after a return')
+actor.dead=true time=4500 worker.tick()
+check(worker.mode=='HOLD' and motion=='STOPPED','leader death stops controlled movement')
+actor.dead=false
+check(not worker.restoreState(actor,saved,nil),'recovery cannot bypass body authorization')
+local original=grant.follow
+grant.follow=function() return false,'CONTROL_DENIED' end
+check(worker.execute(actor,'follow',grant,{id='n',handle=npc})=='CONTROL_DENIED'
+    and worker.mode=='BLOCKED','native refusal cannot be reported as an active follower')
+check(not worker.restoreState(actor,saved,grant),'restore also propagates native refusal')
+grant.follow=original
+assert(worker.restoreState(actor,saved,grant))
+time=10000
+for _,state in ipairs({'FOLLOW_TRAVERSAL','FOLLOW_QUEUED','FOLLOW_YIELD_SIDE','FOLLOW_YIELD_BACK','FOLLOW_TIMEOUT','FOLLOW_PATH_FAILED'}) do
+    motion=state time=time+500 worker.tick()
+    check(worker.mode=='FOLLOW' and motion==state,'normal navigation state must retain the current session: '..state)
 end
-package.loaded["EmberRoutesProbe/Boot"] = Probe
-local Driver = require "EmberRoutesProbe/Driver"
-local Companion = require "EmberRoutesProbe/Companion"
-local realPrint = print
-print = function() end
-local function tick(at) time = at Companion.tick() end
-Companion.debugExecute(actor, "follow")
-check(Companion.mode == "FOLLOW" and Companion.home.x == 0, "first follow captures home and starts mode")
-check(jobsCancelled == 1, "new order cancels previous executor")
-tick(0)
-check(moves == 1 and nativeTarget.x == actor.x, "controller submits follow intent through driver")
-tick(100)
-tick(500)
-check(moves == 1, "no per-frame path restart")
-npc.x = 5
-tick(1000)
-check(npc.motion == "STOPPED" and Companion.mode == "FOLLOW", "nearby follower stops but keeps follow order")
-Companion.debugExecute(actor, "home")
-check(Companion.mode == "RETURNING" and nativeTarget.x == 0, "return uses captured home")
-npc.x, npc.motion = 0, "REACHED"
-tick(1500)
-check(Companion.mode == "HOLD" and Companion.reason == "HOME_REACHED", "return finishes in hold")
-Companion.debugExecute(actor, "follow")
-Companion.debugExecute(actor, "hold")
-local heldMoves = moves
-tick(10000)
-check(Companion.mode == "HOLD" and moves == heldMoves, "hold does not spontaneously restart")
-Companion.debugExecute(actor, "follow")
-actor.x = 100
-tick(11000)
-check(Companion.mode == "BLOCKED" and Companion.reason == "LEADER_TOO_FAR", "far leader blocks without teleport")
-actor.x = 6
-Companion.debugExecute(actor, "follow")
-actor.dead = true
-tick(12000)
-check(Companion.mode == "HOLD" and npc.motion == "STOPPED", "leader death cancels movement")
-actor.dead = false
-Companion.debugExecute(actor, "follow")
-Probe.cancelCompanion("HAUL_ORDER")
-check(Companion.mode == "HOLD" and Companion.reason == "HAUL_ORDER", "work handoff cancels follow")
-Companion.debugExecute(actor, "home")
-npc.motion = "TIMEOUT"
-tick(13000)
-check(Companion.mode == "BLOCKED" and Companion.reason == "HOME_TIMEOUT", "home path failure is terminal")
-local previous = Driver.bind(actor)
-Companion.debugExecute(actor, "follow")
-npc, id = body(1), "npc-2"
-local beforeReplacementTick = moves
-tick(14000)
-check(Companion.mode == "HOLD" and moves == beforeReplacementTick, "stale order cannot move a replacement NPC")
-check(Driver.move(previous, actor, {x=3,y=0,z=0}) == "STALE_NPC", "adapter rejects old stable ID")
-Companion.debugExecute(actor, "home")
-check(Companion.home == nil and actor.speech[#actor.speech]:find("HOME_NOT_SET"), "old home does not transfer to new NPC")
-Companion.debugExecute(actor, "sethome")
-check(Companion.home.npcId == "npc-2" and Companion.home.x == 1, "home binds to new NPC UUID")
-local snapshot = Driver.snapshot(Driver.bind(actor), actor)
-snapshot.x = 1234
-check(npc.x == 1 and snapshot.id == id and snapshot.handle == nil, "public snapshot is scalar data, not mutable carrier")
-check(Driver.capabilities().mode == "SINGLE_PLAYER" and not Driver.capabilities().multiplayer, "reserved interface does not claim MP support")
-refuse = true
-Companion.debugExecute(actor, "follow")
-for _, at in ipairs({15000, 16500, 18000}) do tick(at) end
-check(Companion.mode == "BLOCKED" and Companion.reason == "REQUEST_FAILURE_LIMIT", "three refused paths stop controller")
-local blockedMoves = moves
-tick(30000)
-check(moves == blockedMoves, "blocked mode never retries forever")
-refuse = false
-Companion.debugExecute(actor, "follow")
-local saved = Companion.exportState()
-check(saved.mode == "FOLLOW" and saved.id == "npc-2" and saved.hasHome and saved.homeX == 1,
-    "export captures intent and home for stable identity")
-saved.homeX = 9
-check(Companion.home.x == 1 and saved.handle == nil and saved.actor == nil, "export contains detached scalars only")
-Probe.cancelCompanion("SAVE")
-local resumeMoves = moves
-check(Companion.restoreState(actor, saved) and Companion.mode == "FOLLOW" and moves == resumeMoves,
-    "restore follow builds fresh policy without replaying old native path")
-check(Companion.home.x == 9 and Companion.home.npcId == "npc-2", "restored home binds to current stable UUID")
-saved.mode = "RETURNING"
-Companion.restoreState(actor, saved)
-check(Companion.mode == "RETURNING" and moves == resumeMoves + 1 and nativeTarget.x == 9,
-    "restore return creates a newly validated move request")
-saved.id = "old-npc"
-check(not Companion.restoreState(actor, saved), "persisted intent cannot bind replacement character")
-saved.id, saved.mode, saved.hasHome = "npc-2", "HOLD", false
-Companion.restoreState(actor, saved)
-check(Companion.mode == "HOLD" and Companion.home == nil, "hold without anchor does not invent a home")
-present = false
-tick(31000)
-check(Companion.binding == nil and Companion.home == nil, "inactive controller releases removed carrier references")
-Probe.resetCompanion()
-check(Companion.binding == nil and Companion.home == nil and Companion.mode == "HOLD", "world reset releases bindings and home")
-print = realPrint
-print("PASS " .. assertions .. " companion/driver assertions; native fakes NOT runtime evidence")
+motion='UNRECOGNIZED_NAV_STATE' time=time+500 worker.tick()
+check(worker.mode=='BLOCKED' and motion=='STOPPED','unknown native state still stops safely')
+print('PASS '..assertions..' companion agent checks; native host mocked')

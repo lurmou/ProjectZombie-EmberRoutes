@@ -1,6 +1,6 @@
 -- TEST ONLY: frozen 9ebe06f LaborJobCommit.lua; never loaded by production.
 -- Synchronous resource/record commit. Domain policy comes from contracts.
-local Contracts=require 'EmberRoutesProbe/JobContracts'
+local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 local M={}
 function M.install(Store,state,nextAuthoritativeClaimId,cleanToken)
 function Store.createClaimedJob(job)
@@ -11,7 +11,7 @@ function Store.createClaimedJob(job)
     if type(job) == "table" then
 	job.claimId = persistentClaimId
     end
-    local JobStore=require('EmberRoutesProbe/JobStore')
+    local JobStore=require('EmberRoutesProbe/Kernel/JobStore')
     if not JobStore.validate(job) or job.state~='PREPARING' or job.revision~=1 then
 	return false,'INVALID_JOB_ENVELOPE'
     end
@@ -39,7 +39,7 @@ function Store.createClaimedJob(job)
 	    end
 	end
     end
-    local TaskJobs=require('EmberRoutesProbe/TaskJobs')
+    local TaskJobs=require('EmberRoutesProbe/Runtime/TaskJobs')
     local store=TaskJobs.current()
     local ok,err=store:create(job)
     if not ok then
@@ -54,7 +54,7 @@ function Store.createClaimedJob(job)
 end
 function Store.mutateJob(jobId, expectedRevision, proposedPayload, mutation)
     Store.data()
-    local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+    local TaskJobs = require('EmberRoutesProbe/Runtime/TaskJobs')
     local store = TaskJobs.current()
     -- Batch capacity mutations amortize the Lua/Java boundary. Small updates
     -- retain the Lua path: host measurements found a whole-store port slower.

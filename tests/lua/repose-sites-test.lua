@@ -38,12 +38,12 @@ getTimestampMs=function() return now end getSpecificPlayer=function() return act
 ArrayList={new=function() return list() end}
 SeatingManager={getInstance=function() return {getTilePositionCount=function() return 1 end} end}
 IsoFlagType={bed='bed'}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'stable-'..serial end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={authorized=function() return allowed end,at=function() return {entry} end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) if known[id] then return {id=id,handle=npc} end end}
-package.loaded['EmberRoutesProbe/LaborStore']={resourceOwner=function(key) return claims[key] end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() return function() end end}
-local Sites=require 'EmberRoutesProbe/ReposeSites' Sites.RADIUS=1
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'stable-'..serial end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={authorized=function() return allowed end,at=function() return {entry} end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(_,id) if known[id] then return {id=id,handle=npc} end end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={resourceOwner=function(key) return claims[key] end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() return function() end end}
+local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites' Sites.RADIUS=1
 local function discover(id,kind,options)
  local request=Sites.new(actor,npc,id,kind or 'SLEEP',nil,options)
  for _=1,1000 do local c,done=request:step(4) if done then return c end end error('unbounded furniture search')
@@ -96,19 +96,19 @@ left.rows={} right.rows={} parts={}
 local replacement=furniture(left) local replacementOther=furniture(right) parts={replacement,replacementOther}
 check(not Sites.resolve(retained,actor,npc,'a','SLEEP') and not replacement.mod.EmberRoutesRepose,
  'replacement at same coordinates cannot inherit identity or reservation')
-check(require('EmberRoutesProbe/ReposeRecord').valid(retained),'proof is serializable without native handles')
+check(require('EmberRoutesProbe/SelfCare/ReposeRecord').valid(retained),'proof is serializable without native handles')
 getText=function(key,arg) return key..(arg and ':'..arg or '') end getTextOrNull=getText
 EmberRoutesProbeJava={workerCount=function() return 2 end,workerIdAt=function(i) return i==0 and 'a' or 'b' end}
-package.loaded['EmberRoutesProbe/DisplayNames']={name=function(id) return 'Member '..id end}
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function(id) return 'Member '..id end}
 local options={}
 local function menu() return {addOption=function(_,name,target,callback,...) local o={name=name,target=target,callback=callback,args={...}}
  options[#options+1]=o return o end,addSubMenu=function() end} end
 ISContextMenu={getNew=function() return menu() end}
-require('EmberRoutesProbe/ReposeMenu').fill(actor,menu(),{replacement,replacementOther})
+require('EmberRoutesProbe/Integration/ReposeMenu').fill(actor,menu(),{replacement,replacementOther})
 local assign
 for _,option in ipairs(options) do if option.args[3]=='ASSIGNED' and option.args[4]=='b' then assign=option break end end
 check(assign and assign.target==actor and assign.args[1]==replacement,'real context menu offers stable NPC selection for one grouped furniture')
 print('PASS '..checks..' furniture identity/policy/occupancy/menu checks; engine furniture and paths mocked')
 return {root=root,actor=actor,npc=npc,sites=Sites,furniture=replacement,other=replacementOther,
  square=square,entry=entry,cell=cell,chunk=chunk,squares=squares,
- resourceProxy=package.loaded['EmberRoutesProbe/LaborStore'],list=list,advance=function(ms) now=now+(ms or 6000) end}
+ resourceProxy=package.loaded['EmberRoutesProbe/Work/LaborStore'],list=list,advance=function(ms) now=now+(ms or 6000) end}

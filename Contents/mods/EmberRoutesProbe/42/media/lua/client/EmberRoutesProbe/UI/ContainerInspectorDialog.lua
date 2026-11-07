@@ -202,7 +202,7 @@ function Dialog:locateContainer(c)
         local position,reason=self.owner.locator:locate(c.id)
         if position then
             if HaloTextHelper and HaloTextHelper.addGoodText then
-                HaloTextHelper.addGoodText(self.owner.actor,c.name..' · '..c.locStr)
+                HaloTextHelper.addGoodText(self.owner.actor,c.name..' | '..c.locStr)
             end
         end
     end

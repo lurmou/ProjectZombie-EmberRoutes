@@ -1,8 +1,8 @@
 -- Uses the existing real Actions/Haul modules; engine and item effects remain fakes.
 local f=dofile('tests/lua/haul-test.lua')
 local npc,actor,Probe,Actions,Haul=f.npc,f.actor,f.ctx.Probe,f.ctx.Actions,f.Haul
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local root,key,serial={},nil,0
 local selected='npc-a'
 Registry.data=function() return root end
@@ -57,7 +57,7 @@ local incumbent=assert(Runtime.current():submit({npcId='npc-a',jobId='incumbent-
     tick=function() end,finished=function() return false end,persistFailure=function() return true end,
     stopAdapter=function(controller,ticket)
         incumbentTicket=ticket()
-        return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=npc,npcId='npc-a',jobId='incumbent-work',
+        return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=npc,npcId='npc-a',jobId='incumbent-work',
             same=function() return true end,pause=function() stopped=true return incumbentBody.clear() end,
             effects=function() return 'KNOWN' end,persist=function() return true end})
     end}))

@@ -2,18 +2,18 @@ require 'ISUI/ISCollapsableWindow'
 require 'ISUI/ISButton'
 require 'ISUI/ISTextEntryBox'
 require 'ISUI/ISComboBox'
-local Crafting=require 'EmberRoutesProbe/CraftingService'
-local Public=require 'EmberRoutesProbe/PublicWork'
-local Draft=require 'EmberRoutesProbe/PublicOrderDraft'
+local Crafting=require 'EmberRoutesProbe/Crafting/CraftingService'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
+local Draft=require 'EmberRoutesProbe/Work/PublicOrderDraft'
 local Lifecycle=require 'EmberRoutesProbe/UI/PageLifecycle'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
-local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
 local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local Presentation=require 'EmberRoutesProbe/UI/ItemPresentation'
-local Recipe=require 'EmberRoutesProbe/ProductionRecipe'
-local Catalog=require 'EmberRoutesProbe/CraftingCatalog'
+local Recipe=require 'EmberRoutesProbe/Crafting/ProductionRecipe'
+local Catalog=require 'EmberRoutesProbe/Crafting/CraftingCatalog'
 local StepperInput=require 'EmberRoutesProbe/UI/StepperInput'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
@@ -46,8 +46,11 @@ function EmberRoutesPublicOrderDialog.open(owner,context)
         return owner.publicDialog
     end
     local h,p=owner.fontHeight,owner.pad
-    local w=math.min(getCore():getScreenWidth()*0.94,h*46)
-    local height=math.min(getCore():getScreenHeight()*0.94,h*32)
+    local sw,sh=getCore():getScreenWidth(),getCore():getScreenHeight()
+    local targetW=math.floor(sw*0.58)
+    local w=math.min(math.floor(sw*0.92),math.max(math.max(680,h*46),math.min(targetW,math.max(980,h*60))))
+    local targetH=math.floor(sh*0.72)
+    local height=math.min(math.floor(sh*0.92),math.max(math.max(480,h*32),math.min(targetH,math.max(720,h*46))))
     local o=ISCollapsableWindow.new(EmberRoutesPublicOrderDialog,(getCore():getScreenWidth()-w)/2,(getCore():getScreenHeight()-height)/2,w,height)
     o.owner,o.actor,o.entry=owner,owner.actor,owner.entry
     o.fontHeight,o.pad=h,p
@@ -180,7 +183,7 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self:addChild(self.surfaceCombo)
     self.surfaces={false}
     self.surfaceCombo:addOption(text('noSurface'))
-    for _,surface in ipairs(require('EmberRoutesProbe/CraftSurfaces').list(self.entry)) do
+    for _,surface in ipairs(require('EmberRoutesProbe/Crafting/CraftSurfaces').list(self.entry)) do
         self.surfaces[#self.surfaces+1]=surface.id
         self.surfaceCombo:addOption(text('surfaceAt',surface.x,surface.y,surface.z))
         if surface.id==self.context.surfaceId then self.surfaceCombo.selected=#self.surfaces end
@@ -200,7 +203,7 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self:addChild(self.quantityStepper)
     self.quantity=self.quantityStepper.entry
     self.quantity.tooltip=craftText('quantityHint')
-    Tooltip.attach(self.quantity,'prerender',self)
+    Tooltip.register(self.quantity,{method='prerender',owner=self})
 
     -- B. Stock Thresholds (Maintain Stock)
     local stockRows=assert(Layout.axis({x=self.formRegion.x,y=self.formRegion.y,width=self.formRegion.width,height=self.formRegion.height},
@@ -224,7 +227,7 @@ function EmberRoutesPublicOrderDialog:createChildren()
     self:addChild(self.batchStepper)
     self.batch=self.batchStepper.entry
     self.batch.tooltip=craftText('quantityHint')
-    Tooltip.attach(self.batch,'prerender',self)
+    Tooltip.register(self.batch,{method='prerender',owner=self})
 
     -- 6. Main Action Button
     self.actionButton=ISButton:new(self.actionRegion.x,self.actionRegion.y,self.actionRegion.width,self.actionRegion.height,text('submit'),self,function()
@@ -285,7 +288,7 @@ function EmberRoutesPublicOrderDialog:query()
     -- Fast-path for direct recipe injection (from vanilla crafting menu or direct context)
     if self.context.recipeId then
         local targetId=self.context.recipeId
-        local cooking=require('EmberRoutesProbe/CookingOrders').describe(targetId)
+        local cooking=require('EmberRoutesProbe/Cooking/CookingOrders').describe(targetId)
         local spec=cooking or Recipe.read(targetId)
         if spec then
             local desc=cooking or Recipe.describe(spec)
@@ -480,7 +483,7 @@ function EmberRoutesPublicOrderDialog:requestPreview()
     self.currentSpec=row.cooking and Catalog.describe(row.id) or spec and Recipe.describe(spec) or row
     self:updateBlueprint()
 
-    local release=require('EmberRoutesProbe/PublicPreview').watch(self.actor,self.entry.id,row.id,qty,surfaceId,function(result)
+    local release=require('EmberRoutesProbe/Work/PublicPreview').watch(self.actor,self.entry.id,row.id,qty,surfaceId,function(result)
         if not activation:isCurrent() or self.previewToken~=token then return end
         self.previewData=result
         if result.cooking and result.recipe then self.currentSpec=result.recipe end
@@ -525,7 +528,7 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
     local recipeTitle=row.name or (spec and spec.name)
     local subStr=text('batchCount',yield,units)
     if recipeTitle and recipeTitle~=prodName then
-        subStr=subStr..' · '..recipeTitle
+        subStr=subStr..' | '..recipeTitle
     end
     add({
         kind='output',
@@ -606,7 +609,7 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
                         end
                     end
                     if #altNames>0 then
-                        subStr=subStr..' · '..text('toolAlternatives',table.concat(altNames,' / '))
+                        subStr=subStr..' | '..text('toolAlternatives',table.concat(altNames,' / '))
                     end
                 end
                 add({
@@ -713,7 +716,7 @@ function EmberRoutesPublicOrderDialog:updateBlueprint()
             local workerMsg = (preview.eligibleWorkerCount>0)
                 and getText('IGUI_EmberRoutesProbe_Public_workersReady',preview.eligibleWorkerCount)
                 or getText('IGUI_EmberRoutesProbe_Public_noWorkersReady')
-            self.statusNotice = self.statusNotice .. ' · ' .. workerMsg
+            self.statusNotice = self.statusNotice .. ' | ' .. workerMsg
         end
     else
         self.statusNotice=text('statusChecking')
@@ -805,9 +808,15 @@ function EmberRoutesPublicOrderDialog:prerender()
     Theme.text(self,text('recipeSelect'),self.searchLabel.x,self.searchLabel.y+(self.searchLabel.height-h)/2,Theme.textColor)
     Theme.text(self,text('surfaceSelect'),self.surfaceLabel.x,self.surfaceLabel.y+(self.surfaceLabel.height-h)/2,Theme.textColor)
 
-    local pageStr=(self.page or 1)..' / '..(self.totalPages or 1)
-    if self._pageKey~=pageStr then self._pageKey=pageStr
-        self._pageW=getTextManager():MeasureStringX(UIFont.Small,pageStr) end
+    local pageStr
+    if self._pageNum~=self.page or self._totalNum~=self.totalPages then
+        self._pageNum=self.page self._totalNum=self.totalPages
+        pageStr=(self.page or 1)..' / '..(self.totalPages or 1)
+        self._pageKey=pageStr
+        self._pageW=getTextManager():MeasureStringX(UIFont.Small,pageStr)
+    else
+        pageStr=self._pageKey
+    end
     local pageW=self._pageW
     Theme.text(self,pageStr,self.pageIndicatorRegion.x+(self.pageIndicatorRegion.width-pageW)/2,self.pageIndicatorRegion.y+(self.pageIndicatorRegion.height-h)/2,Theme.muted)
 
@@ -861,7 +870,13 @@ function EmberRoutesPublicOrderDialog:prerender()
     Theme.rect(self,sr.x,sr.y,sr.width,sr.height,Theme.border,true)
 
     local msg=self.notice or self.statusNotice or text('statusChecking')
-    local lines=Text.wrapLimited(msg,sr.width-self.pad*2,UIFont.Small,2)
+    -- Wrapping measures every character; cache per text and width.
+    local wrapWidth=sr.width-self.pad*2
+    if self._statusMsg~=msg or self._statusWidth~=wrapWidth then
+        self._statusMsg=msg self._statusWidth=wrapWidth
+        self._statusLines=Text.wrapLimited(msg,wrapWidth,UIFont.Small,2)
+    end
+    local lines=self._statusLines
     local curY=sr.y+math.max(2,math.floor((sr.height-#lines*h)/2))
     for _,line in ipairs(lines) do
         Theme.text(self,line,sr.x+self.pad,curY,self.notice and Theme.gold or (self.statusColor or Theme.textColor))

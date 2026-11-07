@@ -1,5 +1,5 @@
 -- Durable business facts, never an inventory or a body owner.
-local Validate=require 'EmberRoutesProbe/Validate'
+local Validate=require 'EmberRoutesProbe/Kernel/Validate'
 local M={}
 local states={UNCOLLECTED=true,CARRIED=true,RECONCILE=true,DELIVERED=true,WITHDRAWN=true}
 function M.pending(line) return line.custodyState~='DELIVERED' and line.custodyState~='WITHDRAWN' end

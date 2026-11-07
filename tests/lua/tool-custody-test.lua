@@ -4,13 +4,13 @@ local function check(v,msg) n=n+1 assert(v,msg) end
 
 local root={}
 local registry={data=function() return root end,id=function() return 'custody-1' end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=registry
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=registry
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
 
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Record=require 'EmberRoutesProbe/ToolCustodyRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Record=require 'EmberRoutesProbe/Field/ToolCustodyRecord'
 
 -- 1. Schema Validation Checks
 local validEntry={

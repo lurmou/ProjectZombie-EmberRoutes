@@ -3,7 +3,7 @@ local Table=require "EmberRoutesProbe/UI/WarehouseSourceTable"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Theme=require "EmberRoutesProbe/UI/Theme"
-local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 local Details={}
 local methods={}
 methods.__index=methods
@@ -19,7 +19,7 @@ local function extractCalibers(row)
     if (reserved==nil or inTransit==nil) and row.fullType then
         local calcReserved=0
         local calcTransit=0
-        local okJobs,Jobs=pcall(require,"EmberRoutesProbe/BusinessJobs")
+        local okJobs,Jobs=pcall(require,"EmberRoutesProbe/Work/BusinessJobs")
         if okJobs and Jobs and Jobs.records then
             local okHaul,hauls=pcall(Jobs.records,'HAUL')
             if okHaul and type(hauls)=="table" then
@@ -72,12 +72,12 @@ local function location(source)
     local floorStr
     if source.z==0 then floorStr=text("floorGround")
     else floorStr=(source.z+1)..text("floorLevel") end
-    return floorStr.." · ("..source.x..", "..source.y..")"
+    return floorStr.." | ("..source.x..", "..source.y..")"
 end
 
 function Details.new(owner,bounds,presentation)
     local h,p=owner.fontHeight,owner.pad
-    local compact=bounds.height<h*10
+    local compact=(owner and owner.height and owner.height<h*24) or bounds.height<h*10
     local heroBasis=math.floor(h*2.8+p)
     local parts=assert(Layout.axis(bounds,{{basis=heroBasis},{basis=h},{grow=1},{basis=h+p}},
         {direction="column",gap=p/2}))
@@ -90,13 +90,19 @@ function Details.new(owner,bounds,presentation)
     self.list.emberMetric="ui.sources"
     Theme.list(self.list) Table.columns(self.list,false) owner:addChild(self.list)
     Table.empty(owner,self.list,text("chooseItem"))
+    local onDbl=function(panel,item) self:onSourceDoubleClick(item) end
+    if self.list.setOnMouseDoubleClick then
+        self.list:setOnMouseDoubleClick(owner,onDbl)
+    else
+        self.list.onMouseDoubleClick=onDbl
+    end
     self.quantityX=self.list.x+self.list.width-h-p-getTextManager():MeasureStringX(UIFont.Small,text("quantity"))
 
     self.heroPanel=ISPanel:new(parts[1].x,parts[1].y,parts[1].width,parts[1].height)
     self.heroPanel:initialise()
     self.heroPanel.background=false
     self.heroPanel.updateTooltip=ISButton.updateTooltip
-    Tooltip.attach(self.heroPanel,"prerender",owner)
+    Tooltip.register(self.heroPanel,{method="prerender",owner=owner})
     owner:addChild(self.heroPanel)
     self.heroPanel.prerender=function(panel)
         ISPanel.prerender(panel)
@@ -127,45 +133,28 @@ function Details.new(owner,bounds,presentation)
     self.pinButton.tooltip = text("pinHint")
     owner:addChild(self.pinButton)
 
-    -- 3 action buttons: Locate, Cart, Create Order
-    local botBtns=assert(Layout.axis(parts[4],{{grow=1.0},{grow=1.0},{grow=1.2},{grow=1.2}},{gap=p/2}))
-
-    self.locate=ISButton:new(botBtns[1].x,botBtns[1].y,botBtns[1].width,botBtns[1].height,text("locate"),owner,owner.locateSource)
-    self.locate:initialise() Theme.enable(self.locate,false)
+    -- Clean bottom bar: Locate button
+    self.locate=ISButton:new(parts[4].x,parts[4].y,parts[4].width,parts[4].height,text("locate"),owner,owner.locateSource)
+    self.locate:initialise() Theme.button(self.locate) Theme.enable(self.locate,false)
     self.locate.tooltip=text("chooseSource") owner:addChild(self.locate)
-
-    self.cartButton=ISButton:new(botBtns[2].x,botBtns[2].y,botBtns[2].width,botBtns[2].height,getText("IGUI_EmberRoutesProbe_Warehouse_addShort"),owner,function()
-        if self.row and owner.addToDeliveryCart then
-            local src=self.selectedSource
-            local cartKey=src and (self.row.fullType..':'..src.id) or self.row.fullType
-            local inCart=owner.deliveryCart and owner.deliveryCart[cartKey]~=nil
-            if inCart then owner:removeFromDeliveryCart(cartKey)
-            else owner:addToDeliveryCart(self.row,1,src) end
-            if self.updateCartButton then self:updateCartButton() end
-        end
-    end)
-    self.cartButton:initialise() Theme.enable(self.cartButton,false)
-    self.cartButton.tooltip=getText("IGUI_EmberRoutesProbe_Warehouse_cartTitle") owner:addChild(self.cartButton)
-
-    self.maintainStock=ISButton:new(botBtns[3].x,botBtns[3].y,botBtns[3].width,botBtns[3].height,getText("IGUI_EmberRoutesProbe_Public_createOrder"),owner,function()
-        if self.row and self.row.fullType and owner.owner and owner.owner.openPublicOrder then
-            owner.owner:openPublicOrder({productType=self.row.fullType})
-        end
-    end)
-    self.maintainStock:initialise() Theme.enable(self.maintainStock,false)
-    self.maintainStock.tooltip=text("chooseItem") owner:addChild(self.maintainStock)
-
-    local r=botBtns[4]
-    self.craftButton=ISButton:new(r.x,r.y,r.width,r.height,getText('IGUI_EmberRoutesProbe_Distributed_craft'),owner,function()
-        if self.row and self.row.fullType then owner.owner:selectTab('crafting',{returnTab='warehouse',filterProduct=self.row.fullType}) end
-    end)
-    self.craftButton:initialise() Theme.button(self.craftButton) Theme.enable(self.craftButton,false) owner:addChild(self.craftButton)
     return self
 end
 
+function methods:onSourceDoubleClick(item)
+    local row=self.row
+    if row and self.owner and self.owner.addToDeliveryCart then
+        local src=item
+        if type(item)=="number" and self.list and self.list.items and self.list.items[item] then
+            local it=self.list.items[item]
+            src=it.item and (it.item.value or it.item) or it
+        end
+        src=src and (src.source or src.value or src) or nil
+        self.owner:addToDeliveryCart(row,1,src)
+    end
+end
 function methods:setItem(row)
     self.row=row
-    Theme.enable(self.craftButton,row and row.fullType~=nil or false)
+
     local owner=self.owner
     local pinW=self.pinButton and self.pinButton.width or 68
     local width=self.hero.width-self.iconSize-pinW-owner.pad*3
@@ -175,6 +164,13 @@ function methods:setItem(row)
         self.nameLines=Text.wrapLimited(label,math.max(1,width),UIFont.Small,self.compact and 1 or 2)
     end
     self.icon=row and self.presentation:icon(row.fullType) or nil
+    local r,g,b=1,1,1
+    if row and self.presentation and self.presentation.color then
+        r,g,b=self.presentation:color(row.fullType)
+    end
+    self.iconR=r
+    self.iconG=g
+    self.iconB=b
 
     if row then
         local inStock,reserved,inTransit=extractCalibers(row)
@@ -232,26 +228,11 @@ function methods:setItem(row)
         if self.pinButton.setX then self.pinButton:setX(clampedX) else self.pinButton.x = clampedX end
     end
 
-    Theme.enable(self.cartButton,row~=nil,true)
-    if self.updateCartButton then self:updateCartButton() end
 
-    Theme.enable(self.maintainStock,row~=nil,true)
     Table.empty(owner,self.list,row and text("noSources") or text("chooseItem"))
 end
 
 function methods:updateCartButton()
-    if not self.cartButton then return end
-    local row=self.row
-    if not row or not row.fullType then
-        Theme.enable(self.cartButton,false)
-        return
-    end
-    Theme.enable(self.cartButton,true)
-    local src=self.selectedSource
-    local cartKey=src and (row.fullType..':'..src.id) or row.fullType
-    local inCart=self.owner.deliveryCart and self.owner.deliveryCart[cartKey]~=nil
-    local title=getText(inCart and "IGUI_EmberRoutesProbe_Warehouse_removeShort" or "IGUI_EmberRoutesProbe_Warehouse_addShort")
-    if self.cartButton.setTitle then self.cartButton:setTitle(title) else self.cartButton.title=title end
 end
 
 function methods:drawHero(panel)
@@ -260,7 +241,7 @@ function methods:drawHero(panel)
     Theme.rect(panel,0,0,panel.width,panel.height,Theme.border,true)
 
     if self.icon then
-        panel:drawTextureScaledAspect(self.icon,p/2,(panel.height-self.iconSize)/2,self.iconSize,self.iconSize,1,1,1,1)
+        panel:drawTextureScaledAspect(self.icon,p/2,(panel.height-self.iconSize)/2,self.iconSize,self.iconSize,1,self.iconR or 1,self.iconG or 1,self.iconB or 1)
     else
         Theme.rect(panel,p/2,(panel.height-self.iconSize)/2,self.iconSize,self.iconSize,Theme.border,true)
     end
@@ -281,8 +262,10 @@ function methods:draw()
     Theme.text(o,self.quantityLabel,self.quantityX,self.heading.y,Theme.muted)
 end
 function methods:setVisible(value)
-    for _,control in ipairs({self.list,self.heroPanel,self.locate,self.pinButton,self.cartButton,self.maintainStock}) do
-        control:setVisible(value)
+    for _,control in ipairs({self.list,self.heroPanel,self.locate,self.pinButton}) do
+        if control then
+            if control.setVisible then control:setVisible(value) else control.visible=value end
+        end
     end
 end
 

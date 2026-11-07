@@ -56,6 +56,7 @@ public final class ProbeLogicTest {
         }
         check(session.spawn(Object::new) != null, "retry after construction failure");
         movementRegression();
+        rootMotionRegression();
         retirementRegression();
         FurnitureExitState exit=new FurnitureExitState();
         exit.begin(); exit.observe(true,false,0); exit.request();
@@ -138,6 +139,22 @@ public final class ProbeLogicTest {
         move.begin(0, 0, 1, 60);
         check(move.tick(() -> ProbeMovement.PathResult.SUCCEEDED, 0, 0, 0, 61)
                 == ProbeMovement.Outcome.PATH_ENDED, "path ending downstairs does not report success");
+    }
+
+    private static void rootMotionRegression() {
+        check(ProbeMovement.rootMotionScale(0.1f,0,0,1)==1,
+                "90 degree waypoint does not rotate or accelerate animated motion");
+        check(ProbeMovement.rootMotionScale(-0.1f,0,0,1)==1,
+                "backwards drag keeps its animated displacement sign");
+        float scale=ProbeMovement.rootMotionScale(-0.3f,0.4f,0,0.25f);
+        check(Math.abs(scale-0.5f)<0.00001f, "endpoint caps root-motion length");
+        check(-0.3f*scale<0 && 0.4f*scale>0, "cap preserves both direction components");
+        check(ProbeMovement.rootMotionScale(0.1f,0,0,0)==0, "no overshoot at endpoint");
+        check(ProbeMovement.rootMotionScale(0,0,0,0)==1, "stationary animation stays stationary");
+        check(ProbeMovement.rootMotionScale(0.01f,0,0.1f,0)==1, "deceleration is never enlarged");
+        check(ProbeMovement.rootMotionScale(Float.NaN,0,1,0)==0, "non-finite motion rejected");
+        check(ProbeMovement.rootMotionScale(1,0,Float.POSITIVE_INFINITY,0)==0,
+                "non-finite endpoint rejected");
     }
 
     private static void retirementRegression() {

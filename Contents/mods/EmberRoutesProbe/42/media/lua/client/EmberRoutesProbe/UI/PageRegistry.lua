@@ -14,7 +14,6 @@ local PageRegistry = {
 ---@field order number?
 ---@field group string
 ---@field parentTab string?
----@field footerText (string|fun(page:any):string)?
 ---@field visible (fun(actor:any, entry:any):boolean)?
 
 ---@param def EmberRoutesPageDefinition
@@ -66,26 +65,12 @@ function PageRegistry.getTabIds(actor, entry)
     return tabs
 end
 
----@param id string
----@param page any
----@return string?
-function PageRegistry.getFooter(id, page)
-    local def = PageRegistry.pages[id]
-    if not def then return nil end
-    if type(def.footerText) == "function" then
-        return def.footerText(page)
-    elseif type(def.footerText) == "string" then
-        return def.footerText
-    end
-    return nil
-end
 
 -- isTab denotes a group-local page button; child views retain parentTab.
 PageRegistry.groups = {
-    {id='settlement',titleKey='group_settlement',defaultTab='activities'},
+    {id='settlement',titleKey='group_settlement',defaultTab='overview'},
     {id='warehouse',titleKey='tab_warehouse',defaultTab='warehouse'},
-    {id='personnel',titleKey='tab_personnel',defaultTab='personnel'},
-    {id='work',titleKey='group_work',defaultTab='crafting'}
+    {id='personnel',titleKey='tab_personnel',defaultTab='personnel'}
 }
 
 function PageRegistry.getGroup(id)
@@ -122,6 +107,16 @@ end
 
 -- Default built-in Page Registrations:
 PageRegistry.register({
+    id = "overview",
+    group = "settlement",
+    module = "SettlementOverviewPage",
+    isTab = true,
+    titleKey = "tab_overview",
+    tooltipKey = "tabNavigation",
+    order = 5,
+})
+
+PageRegistry.register({
     id = "warehouse",
     group = "warehouse",
     module = "WarehousePage",
@@ -129,7 +124,6 @@ PageRegistry.register({
     titleKey = "tab_warehouse",
     tooltipKey = "tabNavigation",
     order = 10,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Monitor_warehouseFooter") end
 })
 
 PageRegistry.register({
@@ -140,7 +134,6 @@ PageRegistry.register({
     titleKey = "tab_personnel",
     tooltipKey = "tabNavigation",
     order = 30,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Personnel_priorityLegend") end
 })
 
 PageRegistry.register({
@@ -152,7 +145,6 @@ PageRegistry.register({
     titleKey = "tab_policies",
     tooltipKey = "tabNavigation",
     order = 35,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Policy_footer") end
 })
 
 PageRegistry.register({
@@ -163,7 +155,6 @@ PageRegistry.register({
     titleKey = "tab_activities",
     tooltipKey = "tabNavigation",
     order = 38,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Activity_footer") end
 })
 
 PageRegistry.register({
@@ -174,29 +165,16 @@ PageRegistry.register({
     titleKey = "tab_defense",
     tooltipKey = "tabNavigation",
     order = 40,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Defense_alertHint") end
-})
-
-PageRegistry.register({
-    id = "logistics",
-    group = "personnel",
-    module = "LogisticsPage",
-    parentTab = "personnel",
-    titleKey = "tab_logistics",
-    isTab = true,
-    order = 50,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Monitor_compatFooter") end
 })
 
 PageRegistry.register({
     id = "crafting",
-    group = "work",
+    group = "warehouse",
     module = "CraftingPage",
-    parentTab = "work",
+    parentTab = "warehouse",
     titleKey = "tab_crafting",
-    isTab = true,
+    isTab = false,
     order = 60,
-    footerText = function() return getText("IGUI_EmberRoutesProbe_Monitor_compatFooter") end
 })
 
 return PageRegistry

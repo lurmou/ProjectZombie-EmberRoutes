@@ -1,19 +1,19 @@
 local f=dofile('tests/lua/repose-sites-test.lua')
 -- Native bed entry is covered by self-care-repose-test; this fixture isolates
 -- real routine/claim/stop integration from animation and pathfinding.
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/SleepBed']={move=function() return {kind='Action',run=function() return 'Success' end} end,
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/SelfCare/SleepBed']={move=function() return {kind='Action',run=function() return 'Success' end} end,
     posture=function(_,object) return {object=object,enter=function() return 'Success' end,leave=function() return true end} end}
 f.advance()
 local checks=0 local function check(v,s) checks=checks+1 assert(v,s) end
-package.loaded['EmberRoutesProbe/LaborStore']=nil
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-local Store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Work/LaborStore']=nil
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 f.resourceProxy.resourceOwner=function(key) return Store.resourceOwner(key) end
 for _,name in ipairs({'ISInventoryTransferAction','ISEatFoodAction','ISDrinkFluidAction'}) do package.loaded['TimedActions/'..name]=true end
-package.loaded['EmberRoutesProbe/CraftSupply']={}
-package.loaded['EmberRoutesProbe/SelfCareResources']={}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareResources']={}
 local main={getItems=function() return f.list({}) end}
 local current=f.square(0,1) current.canReachTo=function() return true end
 local asleep,resting,bed=false,false,nil local fatigue=0.9 local live,retained=true,true
@@ -27,8 +27,8 @@ f.npc.getStats=function() return {get=function() return fatigue end} end
 CharacterStat={FATIGUE='fatigue',ENDURANCE='endurance'}
 getGameTime=function() return {getWorldAgeHours=function() return 10 end} end
 ISTimedActionQueue={queues={[f.npc]={queue={}}}}
-local Jobs=require 'EmberRoutesProbe/TaskJobs' local jobs=Jobs.current()
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs' local jobs=Jobs.current()
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 assert(jobs:create(Record.create('care-a','a'))) Store.data()
 local Sites=f.sites
 local body={current=function() return live end,retained=function() return retained end,
@@ -38,7 +38,7 @@ local body={current=function() return live end,retained=function() return retain
   if enter then assert(object==f.furniture and quality=='goodBed') bed=object asleep=kind=='SLEEP' resting=kind=='REST' entered=entered+1
   else if asleep or resting then exited=exited+1 end asleep=false resting=false bed=nil end return true
  end}
-local Execute=require 'EmberRoutesProbe/SelfCareExecution'
+local Execute=require 'EmberRoutesProbe/SelfCare/SelfCareExecution'
 local controller={inspect=function() return {state='STOPPING',npcId='a',jobId='care-a'} end,
  stopBody=function() return true end,
  bodySnapshot=function() return {available=true,nativeStopped=not asleep and not resting and bed==nil} end}
@@ -86,16 +86,16 @@ check(stop(successor).effects=='KNOWN' and not Store.resourceOwner(Sites.keys(ne
 local sampled=0 local pending
 f.actor.isDead=function() return false end
 f.npc.isOnFire=function() return false end f.npc.getSurroundingAttackingZombies=function() return 0 end
-package.loaded['EmberRoutesProbe/Boot']={}
-package.loaded['EmberRoutesProbe/NeedsObserver']={sample=function(_,id,time)
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
+package.loaded['EmberRoutesProbe/SelfCare/NeedsObserver']={sample=function(_,id,time)
  sampled=sampled+1 return {hunger=0,thirst=0,fatigue=0.9,endurance=1,safe=true,observedAt=time} end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {accepting=function() return true end,status=function() end,
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return true end,status=function() end,
  submit=function(_,candidate) pending=candidate return {state='PENDING'} end} end}
 EmberRoutesProbeJava.workerCount=function() return 1 end
 EmberRoutesProbeJava.reposeWithControl=function() return true end
 EmberRoutesProbeJava.reposeAtWithControl=function() return true end
-local service=require 'EmberRoutesProbe/SelfCare' service.install()
+local service=require 'EmberRoutesProbe/SelfCare/SelfCare' service.install()
 for _=1,1000 do f.advance() service.tick() if pending then break end end
 saved=jobs:get('care-a')
 check(pending and sampled>0 and saved.payload.site and #saved.payload.claims==2,
@@ -117,7 +117,7 @@ p.claims=Sites.keys(moveProof,'SLEEP')
 assert(jobs:update(job.id,job.revision,{payload=p}))
 job=jobs:get(job.id)
 assert(Store.claimPersonal(job))
-local Furniture=require 'EmberRoutesProbe/SelfCareFurniture'
+local Furniture=require 'EmberRoutesProbe/SelfCare/SelfCareFurniture'
 local moveCalled,stopCalled=0,0
 local farSquare=f.square(10,10) farSquare.canReachTo=function() return true end
 local currentSquare=farSquare

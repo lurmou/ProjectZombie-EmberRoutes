@@ -3,17 +3,17 @@ require 'ISUI/ISButton'
 require 'ISUI/ISComboBox'
 require 'ISUI/ISTextEntryBox'
 require 'ISUI/ISScrollingListBox'
-local Service=require 'EmberRoutesProbe/ActivityService'
-local Zones=require 'EmberRoutesProbe/SettlementZones'
-local Members=require 'EmberRoutesProbe/MembershipService'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Names=require 'EmberRoutesProbe/DisplayNames'
+local Service=require 'EmberRoutesProbe/Activity/ActivityService'
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
+local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Names=require 'EmberRoutesProbe/Warehouse/DisplayNames'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
-local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
-local Definitions=require 'EmberRoutesProbe/ActivityRegistry'
-local Catalog=require 'EmberRoutesProbe/ActivityScenarioCatalog'
+local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
+local Definitions=require 'EmberRoutesProbe/Activity/ActivityRegistry'
+local Catalog=require 'EmberRoutesProbe/Activity/ActivityScenarioCatalog'
 local Presentation=require 'EmberRoutesProbe/UI/ActivityPresentation'
 local AtmosphereBoard=require 'EmberRoutesProbe/UI/ActivityAtmosphereBoard'
 
@@ -24,6 +24,18 @@ local AtmosphereBoard=require 'EmberRoutesProbe/UI/ActivityAtmosphereBoard'
 ---@field fontHeight number
 ---@field pad number
 local Page=ISPanel:derive('EmberRoutesActivityPage')
+
+-- Row badges reuse a handful of status strings; measuring them per row per
+-- frame was a JNI call inside the draw loop.
+local badgeWidthCache={}
+local function badgeWidth(text)
+    local w=badgeWidthCache[text]
+    if not w then
+        w=((getTextManager and getTextManager():MeasureStringX(UIFont.Small,text)) or (#text*8))+8
+        badgeWidthCache[text]=w
+    end
+    return w
+end
 
 local function t(key,...) return getText('IGUI_EmberRoutesProbe_Activity_'..key,...) end
 local function reason(key)
@@ -69,7 +81,7 @@ function Page:list(r,mode,rowHeight,callback)
     list.backgroundColor=Theme.panel list.borderColor=Theme.border
     list.owner=self list.mode=mode list.doDrawItem=Page.drawRow
     if callback then list:setOnMouseDownFunction(self,callback) end
-    Tooltip.attach(list,'updateTooltip',self)
+    Tooltip.register(list,{method='updateTooltip',owner=self})
     self:addChild(list) self.widgets[#self.widgets+1]={control=list,mode=mode}
     return list
 end
@@ -84,7 +96,7 @@ function Page:field(r,key,value,mode,combo)
         or ISTextEntryBox:new(value or '',c.x,c.y,c.width,height)
     control:initialise() self:addChild(control)
     if not combo then control.target=self control.onTextChangeFunction=Page.draftChanged end
-    control.tooltip=t(key) Tooltip.attach(control,'prerender',self)
+    control.tooltip=t(key) Tooltip.register(control,{method='prerender',owner=self})
     self.widgets[#self.widgets+1]={control=control,mode=mode}
     return control
 end
@@ -369,8 +381,8 @@ function Page:selectScene(row)
             local mState=m.settled and 'SETTLED' or m.withdrawn and 'REJECTED' or m.joined and 'READY'
                 or m.state=='ACCEPTED' and 'ADMITTED' or m.attendanceState or 'WAIT'
             local badge=Presentation.statusBadge(mState,m.reason)
-            local label=self:name(id)..(v.speakerId and ' · '..t(id==v.speakerId and 'speaker' or 'listener') or '')
-            local statusDesc=badge.text..' · '..t('participation',minutes(m.participationHours))
+            local label=self:name(id)..(v.speakerId and ' | '..t(id==v.speakerId and 'speaker' or 'listener') or '')
+            local statusDesc=badge.text..' | '..t('participation',minutes(m.participationHours))
             if badge.desc and #badge.desc>0 then statusDesc=statusDesc..' ('..badge.desc..')' end
             line(label,statusDesc)
             if m.relief then
@@ -575,7 +587,7 @@ function Page.drawRow(list,y,item,alt)
         if o.selectedNpc[row.id] then list:drawRect(9,yy+3,size-6,size-6,1,Theme.accent.r,Theme.accent.g,Theme.accent.b) end
         if row.badge then
             local badgeText=row.badge.text or ''
-            local bw=(getTextManager and getTextManager():MeasureStringX(UIFont.Small,badgeText) or (#badgeText*8))+8
+            local bw=badgeWidth(badgeText)
             local bx=list.width-bw-10
             local by=y+(item.height-h)/2
             list:drawRect(bx,by,bw,h,0.9,0.12,0.16,0.20)

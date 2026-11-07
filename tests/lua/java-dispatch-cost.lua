@@ -1,13 +1,13 @@
 -- Host cost comparison only; reflective JavaFunction bridge is not game Exposer.
 EmberRoutesProbeJava=ERDispatchTestBridge
 local root={}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,listeners={},inventoryListeners={}}
-package.loaded['EmberRoutesProbe/SettlementLedger']={listeners={}}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,listeners={},inventoryListeners={}}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={listeners={}}
 local ids={} for i=1,128 do ids[i]='container-'..i end
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return ids end}
-local Selector=require 'EmberRoutesProbe/WorkSelector'
-local Directory=require 'EmberRoutesProbe/TaskDirectory'
-local Wake=require 'EmberRoutesProbe/PlanningWake'
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return ids end}
+local Selector=require 'EmberRoutesProbe/Work/WorkSelector'
+local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory'
+local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
 local candidates={} for i=1,16 do candidates[i]={key='job-'..i,category=i%2==0 and 'a' or 'b',score=i,allowed=true} end
 local priorities={a=2,b=3}
 local proof={effects='KNOWN',obligationsCleared=true}

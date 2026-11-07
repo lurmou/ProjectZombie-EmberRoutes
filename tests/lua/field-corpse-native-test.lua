@@ -19,19 +19,19 @@ local function square(x,y) return {getX=function() return x end,getY=function() 
 local dest=square(10905,10035) local edge=square(10906,10035) local own=edge
 local zone={enabled=true,settlementId='s',areas={{x=10905,y=10035,z=0,w=2,h=2}}}
 local Zones={get=function() return zone end,contains=function(_,x,y,z) return x>=10905 and x<10907 and y>=10035 and y<10037 and z==0 end}
-package.loaded['EmberRoutesProbe/SettlementZones']=Zones
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']=Zones
 local item={getID=function() return 14 end,setJobType=function() end,setJobDelta=function() end,getFullType=function() return 'Base.CorpseMale' end}
 local bodySquare=edge local identity='original' local itemWorld=true
 local body={getSquare=function() return bodySquare end,getItem=function() return item end,
  getStaticMovingObjectIndex=function() return itemWorld and 0 or -1 end,
  getModData=function() return {} end,getPickUpSound=function() return 'pickup' end}
 local Spatial={identity=function(b) return b==body and identity end,square=function() return dest end}
-package.loaded['EmberRoutesProbe/FieldSpatial']=Spatial
+package.loaded['EmberRoutesProbe/Field/FieldSpatial']=Spatial
 local Discovery={object=function(t) return itemWorld and t.x==bodySquare:getX() and t.y==bodySquare:getY() and t.z==0 and body or nil end,policy=function() return {corpseZoneId='dump'} end}
-package.loaded['EmberRoutesProbe/FieldDiscovery']=Discovery
-package.loaded['EmberRoutesProbe/FieldCargo']={}
-package.loaded['EmberRoutesProbe/LaborStore']={}
-package.loaded['EmberRoutesProbe/ToolRequirements']={}
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']=Discovery
+package.loaded['EmberRoutesProbe/Field/FieldCargo']={}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={}
+package.loaded['EmberRoutesProbe/Field/ToolRequirements']={}
 local list={size=function() return itemWorld and 1 or 0 end,get=function() return body end}
 getCell=function() return {getGridSquare=function(_,x,y,z) if x==bodySquare:getX() and y==bodySquare:getY() and z==0 then bodySquare.getDeadBodys=function() return list end return bodySquare end end} end
 local dragging,turning,releaseRequested=false,true,false
@@ -59,7 +59,7 @@ local function context()
  c.move=function(_,arrived) return arrived and 'Success' or 'Running' end
  return c
 end
-local Actions=require 'EmberRoutesProbe/FieldActions'
+local Actions=require 'EmberRoutesProbe/Field/FieldActions'
 local c=context()
 local grab=Actions.new(c,{kind='GRAB_CORPSE',create=function() return ISGrabCorpseAction:new(npc,body) end,
  observe=function() return true,dragging,not dragging end})
@@ -72,7 +72,7 @@ check(anim=='Loot' and low=='Low' and event=='EventLootItem','installed start pr
 native:update() check(faced==3,'installed update continues facing actual corpse')
 native:complete() native:perform()
 check(grab.run()=='Success' and grabType=='BwdDrag','installed complete grabs same original with native backward drag type')
-local Operations=require 'EmberRoutesProbe/FieldOperations'
+local Operations=require 'EmberRoutesProbe/Field/FieldOperations'
 c=context() c.job.payload.holding=true
 check(Operations.step(c)=='Running' and not c.node,'entering dump-zone edge is not arrival at drop point')
 x=10905.5 own=dest
@@ -102,7 +102,7 @@ dragging=false itemWorld=true bodySquare=edge identity='original'
 local secondary={getID=function() return 55 end}
 npc.getPrimaryHandItem=function() return nil end
 npc.getSecondaryHandItem=function() return secondary end
-package.loaded['EmberRoutesProbe/LaborStore'].owner=function() end
+package.loaded['EmberRoutesProbe/Work/LaborStore'].owner=function() end
 ISUnequipAction={new=function(_,who,what) assert(who==npc and what==secondary) return {isValid=function() return true end,start=function() end,update=function() end,perform=function() end,stop=function() end} end}
 local motion='MOVING' local requests=0
 EmberRoutesProbeJava={motionResult=function() return motion end}

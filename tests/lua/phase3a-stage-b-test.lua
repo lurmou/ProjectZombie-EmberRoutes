@@ -4,11 +4,11 @@
 
 package.path = './Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;./Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;./tests/lua/?.lua;' .. package.path
 
-local Claims = require 'EmberRoutesProbe/LaborClaims'
-local Store = require 'EmberRoutesProbe/LaborStore'
-local JobStore = require 'EmberRoutesProbe/JobStore'
-local TaskJobs = require 'EmberRoutesProbe/TaskJobs'
-local ContainerRegistry = require 'EmberRoutesProbe/ContainerRegistry'
+local Claims = require 'EmberRoutesProbe/Kernel/LaborClaims'
+local Store = require 'EmberRoutesProbe/Work/LaborStore'
+local JobStore = require 'EmberRoutesProbe/Kernel/JobStore'
+local TaskJobs = require 'EmberRoutesProbe/Runtime/TaskJobs'
+local ContainerRegistry = require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 
 local function assertTrue(cond, msg)
     if not cond then error("ASSERTION_FAILED: " .. tostring(msg)) end
@@ -580,7 +580,7 @@ assertEq(demotedJob.state, "RECONCILE_REQUIRED", "Job demoted to RECONCILE_REQUI
 assertEq(demotedJob.effects, "UNKNOWN", "Job effects demoted to UNKNOWN")
 
 -- Test 4.5: B.3 - Terminal cleanup cleans up all token dictionaries
-local CookingRecord = require 'EmberRoutesProbe/CookingRecord'
+local CookingRecord = require 'EmberRoutesProbe/Cooking/CookingRecord'
 local cookJobLife = CookingRecord.new("cook-lifecycle", "npc-life", "settlement-1", "Soup", "AUTO", "policy:base", 0.5, 0.5)
 cookJobLife.payload.assets = { { id = 5001, fullType = "Base.Pot", custody = "HELD", role = "TOOL" } }
 cookJobLife.payload.claims = { "item:5001" }
@@ -735,10 +735,10 @@ assertEq(savedJob.effects, "UNKNOWN", "Job effects demoted to UNKNOWN")
 
 -- Test 5.2: B.2 - Multi-provider immunity against Quarantine crash
 -- Verify COOKING, FIELD_WORK, ACTIVITY, SELF_CARE, and HAUL all demote gracefully on quarantine
-local CookingRecord = require 'EmberRoutesProbe/CookingRecord'
-local SelfCareRecord = require 'EmberRoutesProbe/SelfCareRecord'
-local ActivityRecord = require 'EmberRoutesProbe/ActivityRecord'
-local LeisureRecord = require 'EmberRoutesProbe/LeisureRecord'
+local CookingRecord = require 'EmberRoutesProbe/Cooking/CookingRecord'
+local SelfCareRecord = require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local ActivityRecord = require 'EmberRoutesProbe/Activity/ActivityRecord'
+local LeisureRecord = require 'EmberRoutesProbe/Leisure/LeisureRecord'
 
 local cookJob = CookingRecord.new("cook-q", "npc-cook", "settlement-1", "Soup", "AUTO", "policy:base", 0.5, 0.5)
 cookJob.payload.assets = { { id = 777, fullType = "Base.Pot", custody = "HELD", role = "TOOL" } }
@@ -1436,7 +1436,7 @@ end
 
 -- Test 6.12: P1 - Authoritative monotonic claimId across creation and cold boot reconstruction
 do
-    local SelfCareRecord = require('EmberRoutesProbe/SelfCareRecord')
+    local SelfCareRecord = require('EmberRoutesProbe/SelfCare/SelfCareRecord')
     local careJob = SelfCareRecord.create("care-p1", "npc-care")
     careJob.state = "RUNNING"
     careJob.payload.kind = "EAT"
@@ -1556,7 +1556,7 @@ do
     }
     ContainerRegistry.data = function() return legacyRoot end
     local okLegacy, errLegacy = pcall(function()
-        local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+        local TaskJobs = require('EmberRoutesProbe/Runtime/TaskJobs')
         TaskJobs.current()
     end)
     assertFalse(okLegacy, "TaskJobs.current() must reject legacy root envelope")
@@ -1594,7 +1594,7 @@ do
     }
     ContainerRegistry.data = function() return bootRootE2E end
     -- Real production boot chain without mocking BusinessJobs.hauls:
-    local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+    local TaskJobs = require('EmberRoutesProbe/Runtime/TaskJobs')
     local service = TaskJobs.current()
     assertTrue(service ~= nil, "JobStore.open and TaskJobs.current succeed for valid envelope structure")
 
@@ -1750,7 +1750,7 @@ end
 -- Test 6.15: B.5-R2 - Authoritative claimId forged injection & cross-provider identity collision isolation
 do
     -- Part A: Direct JobStore:create with forged or mismatched claimId
-    local TaskJobs = require('EmberRoutesProbe/TaskJobs')
+    local TaskJobs = require('EmberRoutesProbe/Runtime/TaskJobs')
     local jobStoreRoot = {
         format = 1,
         taskJobs = { format = 1, byId = {} },
@@ -1928,13 +1928,13 @@ do
     for boot = 1, 2 do
         -- Fresh module handles AND a detached persisted root; no runtime token is copied.
         collisionBootRoot = clone(collisionBootRoot)
-        package.loaded['EmberRoutesProbe/TaskJobs'] = nil
-        package.loaded['EmberRoutesProbe/BusinessJobs'] = nil
-        package.loaded['EmberRoutesProbe/LaborStore'] = nil
+        package.loaded['EmberRoutesProbe/Runtime/TaskJobs'] = nil
+        package.loaded['EmberRoutesProbe/Work/BusinessJobs'] = nil
+        package.loaded['EmberRoutesProbe/Work/LaborStore'] = nil
         ContainerRegistry.data = function() return collisionBootRoot end
         local opened, why = JobStore.open(collisionBootRoot)
         assertTrue(opened ~= nil, "Collision ledger reopens on boot " .. boot .. ": " .. tostring(why))
-        local freshStore = require('EmberRoutesProbe/LaborStore')
+        local freshStore = require('EmberRoutesProbe/Work/LaborStore')
         freshStore.data()
         assertFalse(freshStore.claimsInstance() == firstClaims, "Cold boot creates fresh Claims")
         firstClaims = freshStore.claimsInstance()
@@ -2019,7 +2019,7 @@ end
             return function() n=n+1 local k=keys[n] if k then return k,t[k] end end
         end
         local ok,result=pcall(function()
-            local s=require('EmberRoutesProbe/LaborStore')
+            local s=require('EmberRoutesProbe/Work/LaborStore')
             assertTrue(JobStore.open(world)~=nil,'Variant ledger opens before reconstruction')
             s.data()
             assertTrue(JobStore.open(world)~=nil,'Variant ledger opens after reconstruction')
@@ -2095,7 +2095,7 @@ end
 
     -- Non-item cooking batch promises must be isolated once, while ordinary
     -- workstation keys must not accidentally inherit the same capacity amount.
-    local cook=require('EmberRoutesProbe/CookingRecord').new('cook-collision','npc-cook','scope','profile','AUTO','source',1,1)
+    local cook=require('EmberRoutesProbe/Cooking/CookingRecord').new('cook-collision','npc-cook','scope','profile','AUTO','source',1,1)
     assertTrue(cook~=nil,'Production CookingRecord creates the fixture')
     cook.claimId='cook-collision:c1'
     cook.obligations.storage=true
@@ -2190,7 +2190,7 @@ end)()
     local world={containers={},taskJobs={format=1,byId={}}}
     ContainerRegistry.data=function() return world end
     for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
-    local s=require('EmberRoutesProbe/LaborStore')
+    local s=require('EmberRoutesProbe/Work/LaborStore')
     s.data()
     local kernel=s.claimsInstance()
     local original=kernel:acquireNew('partial-persist',1,{'item:25011','item:25012'})
@@ -2209,7 +2209,7 @@ end)()
     end
     world=copy(world)
     for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
-    local fresh=require('EmberRoutesProbe/LaborStore')
+    local fresh=require('EmberRoutesProbe/Work/LaborStore')
     fresh.data()
     assertFalse(fresh.claimsInstance()==kernel,'Reload uses a different Claims instance')
     assertEq(fresh.claimsInstance().capacity['persist-bin'].total,3,'After reload: isolated capacity remains 3')

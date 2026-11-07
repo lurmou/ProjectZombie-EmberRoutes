@@ -11,8 +11,8 @@ require 'ISUI/ISScrollingListBox'
 local Layout = require 'EmberRoutesProbe/UI/Layout'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
 local Text = require 'EmberRoutesProbe/UI/Text'
-local Registry = require 'EmberRoutesProbe/JobPolicyRegistry'
-local PolicyService = require 'EmberRoutesProbe/JobPolicyService'
+local Registry = require 'EmberRoutesProbe/Kernel/JobPolicyRegistry'
+local PolicyService = require 'EmberRoutesProbe/Work/JobPolicyService'
 local Editors = require 'EmberRoutesProbe/UI/JobPolicyEditors'
 
 ---@class EmberRoutesWorkPolicyPage:ISPanel
@@ -94,10 +94,7 @@ function EmberRoutesWorkPolicyPage:createChildren()
 
     self:addChild(self.jobList)
 
-    local split=assert(Layout.axis(self.rightBounds,{{basis=h*7+p},{grow=1}},{direction='column',gap=p}))
-    self.queue=require('EmberRoutesProbe/UI/WorkQueue').new(self,split[1],function(w) return w.category==self.selectedCategory and w.category~='crafting' end)
-    self.rightBounds=split[2]
-    -- Right Column: Form Panel
+    -- Right Column: Full-Height Policy Form Panel (dedicated 100% vertical space)
     self.formPanel = ISPanel:new(self.rightBounds.x, self.rightBounds.y, self.rightBounds.width, self.rightBounds.height)
     self.formPanel:initialise()
     self.formPanel.background = false
@@ -136,7 +133,6 @@ function EmberRoutesWorkPolicyPage:selectCategory(cat)
     self.noticeText = ""
     self.noticeColor = Theme.muted
     self:buildForm(cat)
-    if self.overview then self.queue:set(self.overview) end
 end
 
 ---Rebuild the right-hand policy editor form.
@@ -206,20 +202,37 @@ function EmberRoutesWorkPolicyPage:buildForm(cat)
     local fieldContainer = ISPanel:new(0, headerH + p, self.formPanel.width, availableH)
     fieldContainer:initialise()
     fieldContainer.background = false
+    fieldContainer.fontHeight = h
     fieldContainer:setScrollChildren(true)
     fieldContainer:addScrollBars()
+    function fieldContainer:onMouseWheel(del)
+        self:setYScroll(self:getYScroll() - del * math.floor(self.fontHeight * 1.5))
+        return true
+    end
+    fieldContainer.prerender = function(panel)
+        ISPanel.prerender(panel)
+        panel:setStencilRect(0, 0, panel.width, panel.height)
+    end
+    fieldContainer.render = function(panel)
+        panel:clearStencilRect()
+        ISPanel.render(panel)
+    end
     self.formPanel:addChild(fieldContainer)
 
     local rowH = math.floor(h * 2.0)
     local curY = 0
+    local scrollbarW = 18
 
     for _, field in ipairs(fields) do
-        local measureWidth=fieldContainer.width-math.floor(fieldContainer.width*.45)-p*2
-        local controlH=Editors.height(field,measureWidth,h,p)
-        rowH=math.max(math.floor(h*2),controlH+p)
-        local rowPanel = ISPanel:new(0, curY, fieldContainer.width, rowH)
+        local measureWidth = fieldContainer.width - math.floor(fieldContainer.width * .45) - p * 2 - scrollbarW
+        local controlH = Editors.height(field, measureWidth, h, p)
+        rowH = math.max(math.floor(h * 2), controlH + p)
+        local rowPanel = ISPanel:new(0, curY, fieldContainer.width - scrollbarW, rowH)
         rowPanel:initialise()
         rowPanel.background = false
+        function rowPanel:onMouseWheel(del)
+            return self.parent:onMouseWheel(del)
+        end
 
         -- Left label (45%) and right control (55%)
         local labelW = math.floor(rowPanel.width * 0.45)
@@ -313,12 +326,12 @@ function EmberRoutesWorkPolicyPage:resolveContext(context)
 end
 function EmberRoutesWorkPolicyPage:applyContext(context) self:selectCategory(context.category) return true end
 function EmberRoutesWorkPolicyPage:activate()
-    local Service=require 'EmberRoutesProbe/WorkOverviewService'
+    local Service=require 'EmberRoutesProbe/Work/WorkOverviewService'
     local mounted=require('EmberRoutesProbe/UI/PageLifecycle').mount(self,function(callback) return Service.watch(self.actor,self.entry.id,callback) end,function(snapshot)
         if snapshot.reason=='WORLD_RESET' then self.owner:close() return end
-        self.overview=snapshot self.queue:set(snapshot)
+        self.overview=snapshot
     end)
-    if mounted and self.active then self.overview=Service.status(self.actor,self.entry.id) self.queue:set(self.overview) end
+    if mounted and self.active then self.overview=Service.status(self.actor,self.entry.id) end
 end
 
 function EmberRoutesWorkPolicyPage:deactivate()

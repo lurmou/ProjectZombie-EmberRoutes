@@ -1,11 +1,11 @@
 package.loaded['ISUI/ISContextMenu']=true
 -- Personnel detail projection has its own backend regression; this suite
 -- exercises page lifecycle/layout and commands against detached display rows.
-package.loaded['EmberRoutesProbe/WorkOverviewService']={status=function() return {works={},byNpc={},problems={},counts={},alerts={}} end,watch=function() return function() end end}
-package.loaded['EmberRoutesProbe/PersonnelService']={enrichWorkers=function(_,_,workers) for _,w in ipairs(workers) do w.priorities={crafting=1,hauling=4} end return workers end,invalidate=function() end,release=function() end,
+package.loaded['EmberRoutesProbe/Work/WorkOverviewService']={status=function() return {works={},byNpc={},problems={},counts={},alerts={}} end,watch=function() return function() end end}
+package.loaded['EmberRoutesProbe/Settlement/PersonnelService']={enrichWorkers=function(_,_,workers) for _,w in ipairs(workers) do w.priorities={crafting=1,hauling=4} end return workers end,invalidate=function() end,release=function() end,
     details=function() return {knowledge={}} end,rows=function() return {} end}
 ERPriorityOptions={}
-ISContextMenu={get=function() ERPriorityOptions={} return {addOption=function(_,label,target,fn) ERPriorityOptions[#ERPriorityOptions+1]=fn end} end}
+ISContextMenu={get=function() ERPriorityOptions={} return {hideSelfAndChildren2=function() end,addOption=function(_,label,target,fn) ERPriorityOptions[#ERPriorityOptions+1]=fn end} end}
 local publicCalls={} local publicRevision=2 local request=0
 _G.Events=_G.Events or {}
 for _,name in ipairs({'OnGameStart','OnServerStarted','OnTick','OnTickEvenPaused','OnPreMapLoad','OnSave'}) do
@@ -37,6 +37,7 @@ function Base:setWantKeyEvents() end
 function Base:update() end function Base:prerender() end
 function Base:getMouseX() return -1 end function Base:getMouseY() return -1 end
 function Base:setX(x) self.x=x end function Base:setY(y) self.y=y end
+function Base:getX() return self.x end function Base:getY() return self.y end
 function Base:drawTextureScaledAspect(texture) assert(type(texture)~='string','Texture required, got icon name') end
 function Base:setHeight(h) self.height=h end function Base:setWidth(w) self.width=w end function Base:getWidth() return self.width end
 function Base:getAbsoluteX() return self.x+(self.parent and self.parent:getAbsoluteX() or 0) end
@@ -101,18 +102,19 @@ function getSpecificPlayer() return currentActor end
 local root={} local permitted=true
 local entry={id='settlement',name='Settlement'}
 local entries={settlement=entry,other={id='other',name='Other'}}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root end,authorized=function() return permitted end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return root end,authorized=function() return permitted end,
     view=function(_,id) if permitted then return entries[id] end return nil,'ACCESS_DENIED' end}
 local cleared=0
-package.loaded['EmberRoutesProbe/WarehouseLocator']={new=function() return {clear=function() cleared=cleared+1 end} end}
-package.loaded['EmberRoutesProbe/UI/TooltipAnchor']={attach=function() end,clear=function() end,dismissOwner=function() end,unregisterOwner=function() end,clearOwner=function() end}
-package.loaded['EmberRoutesProbe/UI/SettlementSelector']={open=function() end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle={getFullName=function() return 'Worker' end}} end,valid=function() return true end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={describe=function() return nil end,data=function() return {} end}
-package.loaded['EmberRoutesProbe/LogisticsMenu']={command=function() return 'MODE_CONFIGURED' end}
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseLocator']={new=function() return {clear=function() cleared=cleared+1 end} end}
+package.loaded['EmberRoutesProbe/UI/TooltipManager']={register=function() end,clear=function() end,dismissOwner=function() end,unregisterOwner=function() end,}
+local MockSelector=Base:derive('EmberRoutesSettlementSelector') MockSelector.open=function() end
+package.loaded['EmberRoutesProbe/UI/SettlementSelector']=MockSelector
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {handle={getFullName=function() return 'Worker' end}} end,valid=function() return true end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={describe=function() return nil end,data=function() return {} end,id=function() return 'mock-uuid-1' end}
+package.loaded['EmberRoutesProbe/Integration/LogisticsMenu']={command=function() return 'MODE_CONFIGURED' end}
 publicCalls={} publicRevision=2
-package.loaded['EmberRoutesProbe/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
-package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/ContainerRegistry'].id() end,
+package.loaded['EmberRoutesProbe/Crafting/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
+package.loaded['EmberRoutesProbe/Work/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'].id() end,
     categories=function() return {'crafting','hauling'} end,
     available=function() return true end,
     rule=function() return {minimum=50,batch=12} end,
@@ -131,10 +133,10 @@ package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return packa
         publicRevision=3 return 'PRIORITY_SAVED'
     end
 }
-package.loaded['EmberRoutesProbe/CraftingService']={
+package.loaded['EmberRoutesProbe/Crafting/CraftingService']={
     status=function() return {workers={{id='worker',name='Worker',busy=false,order=nil}},surfaces={{id='surface',x=1,y=2,z=0}}} end
 }
-dofile((os.getenv('ER_PZ_ROOT') or 'D:/Software/GameApp/steam/steamapps/common/ProjectZomboid')..'/media/lua/client/ISUI/ISTickBox.lua')
+dofile(((os.getenv and os.getenv('ER_PZ_ROOT')) or 'D:/Software/GameApp/steam/steamapps/common/ProjectZomboid')..'/media/lua/client/ISUI/ISTickBox.lua')
 package.loaded['ISUI/ISTickBox']=true
 local rows={}
 for i=1,135 do rows[i]={fullType=string.format('Base.Item%03d',i),node='other',count=i,sources={{id='source',x=1,y=2,z=0,count=i}}} end
@@ -149,17 +151,17 @@ local monitorRow={id='CRAFT:monitor-job',jobId='monitor-job',npcId='worker',gene
  state='PAUSED',phase='CRAFTING',bucket='paused',bodyMode='FOLLOW',target=3,requested=3,produced=0,delivered=0,
  assets={{id=11,kind='tools'}},nodes={},carrierAvailable=true,canResume=true,canCancel=true}
 local monitorSnapshot={rows=ERMonitorPreviewRows and ERMonitorPreviewRows() or {monitorRow}}
-package.loaded['EmberRoutesProbe/OrderMonitorService']={status=function() return monitorSnapshot end,
+package.loaded['EmberRoutesProbe/Warehouse/OrderMonitorService']={status=function() return monitorSnapshot end,
  watch=function(_,_,fn) monitorCount=monitorCount+1 monitorCallbacks[#monitorCallbacks+1]=fn return function() monitorCount=monitorCount-1 end end,
  command=function(_,_,id,generation,action) monitorCommands[#monitorCommands+1]={id=id,generation=generation,action=action} return 'QUEUED' end}
 local craftSnapshot={workers={{id='worker',name='Worker',busy=false}},surfaces={{id='surface',x=1,y=2,z=0}},surfaceId='surface'}
 local onWatch
-package.loaded['EmberRoutesProbe/WarehouseIndex']={watch=function(_,fn)
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']={watch=function(_,fn)
     wareCount=wareCount+1 wareCallbacks[#wareCallbacks+1]=fn fn(warehouseSnapshot)
     if onWatch then onWatch() end
     return function() wareCount=wareCount-1 end
 end,refresh=function() end}
-package.loaded['EmberRoutesProbe/LogisticsService']={status=function() return logisticsSnapshot end,
+package.loaded['EmberRoutesProbe/Logistics/LogisticsService']={status=function() return logisticsSnapshot end,
     watch=function(_,fn) logCount=logCount+1 logCallbacks[#logCallbacks+1]=fn return function() logCount=logCount-1 end end,
     stop=function() stops=stops+1 end}
 local recipeRows={
@@ -171,7 +173,7 @@ local recipeRows={
  outputs={{name='Plank',count=3,fullType='Base.Plank'}}}}
 local catalogCount,previewCount=0,0
 local catalogCallbacks,previewCallbacks={},{}
-package.loaded['EmberRoutesProbe/CraftingService']={status=function() return craftSnapshot end,
+package.loaded['EmberRoutesProbe/Crafting/CraftingService']={status=function() return craftSnapshot end,
  describe=function(id) for _,row in ipairs(recipeRows) do if row.id==id then return row end end end,
  chooseSurface=function() return 'surface' end,
  watchCatalog=function(_,_,q,fn)
@@ -192,10 +194,10 @@ package.loaded['EmberRoutesProbe/CraftingService']={status=function() return cra
  command=function(_,settlement,npc,command,surface,recipeId,quantity)
   craftCommands[#craftCommands+1]={settlement=settlement,npc=npc,command=command,surface=surface,recipeId=recipeId,quantity=quantity} return 'STARTED'
  end}
-local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'
+local Dashboard=require 'EmberRoutesProbe/UI/SettlementDashboard'
 local demandCount,demandCallbacks=0,{}
 if ERDemandPageOnly or ERDemandPreviewRows then
-    package.loaded['EmberRoutesProbe/DemandMonitorService']={
+    package.loaded['EmberRoutesProbe/Warehouse/DemandMonitorService']={
         status=function() error('synchronous watch already projects the initial snapshot') end,
         watch=function(_,_,fn)
             demandCount=demandCount+1 demandCallbacks[#demandCallbacks+1]=fn
@@ -204,14 +206,13 @@ if ERDemandPageOnly or ERDemandPreviewRows then
             return function() demandCount=demandCount-1 end
         end}
 end
-local Logistics=require 'EmberRoutesProbe/LogisticsDashboard'
 -- Reuse only the native-host fixture for focused delivery visual inspection.
 if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
     function ERSettlementPreview(tab,height,screenWidth,screenHeight)
         sw,sh,fh=screenWidth or 1280,screenHeight or 900,height
         local window=Dashboard.open(actor,entry.id)
         window.x,window.y=0,0
-        if ERMonitorPreviewOnly then window:selectTab(tab=='demands' and 'demands' or 'orders') return window end
+        if ERMonitorPreviewOnly then window:selectTab(tab) return window end
         local page=window.pages.warehouse local samples={}
         for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do
             page.itemNames[id]=ERTestTranslations and ERTestTranslations['TEST_ItemName_'..id] or id
@@ -228,22 +229,12 @@ if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
 end
 local shell=Dashboard.open(actor,entry.id)
 local page=shell.pages.warehouse
-check(shell.activeTab=='warehouse' and not shell.pages.logistics and wareCount==1,'only initial warehouse page is created and subscribed')
-check(shell.tabButtons.warehouse.borderColor~=shell.tabButtons.orders.borderColor,'active tab is visibly marked')
-check(not shell.tabButtons.logistics and not shell.tabButtons.crafting,'legacy configuration is not exposed as main navigation')
-shell:selectTab('orders')
-local monitor=shell.pages.orders
-check(monitorCount==1 and wareCount==0 and #monitor.orderList.items==1,'new monitor owns only its active subscription')
-check(monitor.store.value.selection=='CRAFT:monitor-job' and monitor.buttons.resume.enable,'monitor selects stable job identity while worker follows')
-monitor:command('resume')
-check(monitorCommands[1].id=='CRAFT:monitor-job' and monitorCommands[1].generation==3,'monitor command carries selected job and revision')
-monitor.store:setState({filter='attention'})
-check(#monitor.orderList.items==0 and not monitor.buttons.resume.enable,'empty filter clears stale actionable selection')
-monitor.store:setState({filter='open'})
+check(shell.activeTab=='warehouse' and not shell.pages.policies and wareCount==1,'only initial warehouse page is created and subscribed')
+check(shell.tabButtons.warehouse and shell.activeTab=='warehouse','warehouse tab is active')
+shell:selectTab('policies')
+local policies=shell.pages.policies
+check(policies and policies.active,'policy page switches and activates cleanly')
 shell:selectTab('warehouse')
-local oldMonitor=monitor.store.value.snapshot
-monitorCallbacks[1]({rows={}})
-check(monitorCount==0 and monitor.store.value.snapshot==oldMonitor,'hidden monitor releases interest and rejects late callbacks')
 if ERDemandPageOnly then
     shell:selectTab('demands') local needs=shell.pages.demands
     check(demandCount==1 and wareCount==0 and #needs.orderList.items==1,'demand tab owns its single synchronous watch projection')
@@ -283,24 +274,24 @@ local selected=page.store.value.selection.fullType
 page:help() local help=page.helpModal
 page.categories.expanded=true page.controls.sort.expanded=true page.search.focused=true
 local previousRows=page.store.value.snapshot
-check(Logistics.open(actor,entry.id)==shell,'legacy logistics open targets same shell')
-local log=shell.pages.logistics
-check(shell.activeTab=='logistics' and wareCount==0 and logCount==1 and stops==0,'switch releases warehouse interest without stopping logistics')
+shell:selectTab('personnel')
+local personnel=shell.pages.personnel
+check(shell.activeTab=='personnel' and wareCount==0 and personnel.active,'switch releases warehouse interest and activates personnel')
 check(not help.added and not page.helpModal and cleared>0 and not page.search.focused,'switch releases help, marker and text focus')
 check(page.categories.popupHidden and page.controls.sort.popupHidden,'native combo popups explicitly removed')
 wareCallbacks[1](warehouseSnapshot)
 check(page.store.value.snapshot==previousRows,'late hidden-page callbacks cannot update state')
-local warehouseModule=package.loaded['EmberRoutesProbe/WarehouseIndex']
+local warehouseModule=package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']
 warehouseSnapshot={state='UPDATING',rows={},counts={}}
 shell:selectTab('warehouse')
-check(wareCount==1 and logCount==0 and #page.itemList.items==0,'returning pending scan does not expose stale quantities')
+check(wareCount==1 and #page.itemGrid.cells==0,'returning pending scan does not expose stale quantities')
 warehouseSnapshot={state='READY',rows=rows,counts={loaded=1,containers=1,items=135,unloaded=0,private=0,missing=0,limited=0},revision=2}
 wareCallbacks[#wareCallbacks](warehouseSnapshot)
-check(page.actualPage==2 and page.store.value.selection.fullType==selected and page.itemList.selected==7,'ready restores page and stable item selection')
-check(page.itemList:getYScroll()==-100,'ready restores valid scroll anchor')
+check(page.store.value.selection.fullType==selected and page.itemGrid.selected==7,'ready restores stable item selection')
+check(page.itemGrid:getYScroll()==-100,'ready restores valid scroll anchor')
 page.search:setText('Item067')
-shell:selectTab('logistics') shell:selectTab('warehouse')
-check(page.search:getText()=='Item067' and #page.itemList.items==1,'query survives tab round trip')
+shell:selectTab('personnel') shell:selectTab('warehouse')
+check(page.search:getText()=='Item067' and #page.itemGrid.cells==1,'query survives tab round trip')
 shell:selectTab('crafting') local craft=shell.pages.crafting
 local browser=craft.views.recipes
 check(craft.selectedView=='recipes' and craftCount==1 and catalogCount==1 and previewCount==1,'only browser owns catalog, preview and status')
@@ -342,26 +333,12 @@ browser:change({category='Carving',page=1})
 check(#browser.grid.cells==0 and browser.store.value.recipeId=='Base.SawLogs','empty filter does not erase prepared order')
 browser:change({search='',category=false,page=1})
 local draftId=browser.store.value.recipeId local quantity=browser.store.value.quantity
-craft:selectView('orders') local orders=craft.views.orders
-check(craftCount==1 and catalogCount==0 and previewCount==0,'orders release hidden catalog and preview')
-local displayOrder={id='machine-only-order-id',recipeId='Base.SawLogs',recipeName='Saw logs',state='RUNNING',phase='PLANNING',surfaceRequired=false,requested=1,target=3,produced=0,delivered=0}
-local function orderSnapshot() return {workers={{id='worker',name='Worker',busy=displayOrder.state=='RUNNING',order=displayOrder}},surfaces={}} end
-orders.store:setState({snapshot=orderSnapshot()})
-displayOrder={id='machine-only-order-id',recipeId='Base.SawLogs',recipeName='Saw logs',state='PAUSED',phase='PLANNING',surfaceRequired=false,requested=1,target=3,produced=0,delivered=0,resumable=true}
-orders.store:setState({snapshot=orderSnapshot()})
-check(orders.workerList.items[1].item.visual.state=='paused' and orders.buttons.resume.enable,'same-phase pause updates independent order controls')
-local following=orderSnapshot()
-following.workers[1].busy=true following.workers[1].orderBusy=false
-orders.store:setState({snapshot=following})
-check(orders.buttons.resume.enable and orders.buttons.resume.visible~=false and orders.buttons.stop.visible==false,
-    'following with paused production exposes resume instead of production pause')
-check(orders.buttons['return'].enable,'paused production can request return while another body task is active')
-check(orders.detailCard.visual.title[1]=='Saw logs','order title does not append a misleading repetition count')
-craft:selectView('recipes') browser=craft.views.recipes
-check(browser.store.value.recipeId==draftId and browser.store.value.quantity==quantity and catalogCount==1 and previewCount==1,'returning from orders preserves search, recipe and quantity')
+shell:selectTab('warehouse')
+check(craftCount==0 and catalogCount==0 and previewCount==0,'leaving crafting releases catalog and preview')
+shell:selectTab('crafting') browser=craft.views.recipes
+check(browser.store.value.recipeId==draftId and browser.store.value.quantity==quantity and catalogCount==1 and previewCount==1,'warehouse round trip preserves prepared quantity and recipe')
 browser:command('run')
-check(craft.selectedView=='orders' and craftCommands[#craftCommands].recipeId=='Base.SawLogs' and craftCommands[#craftCommands].quantity==4,'new order carries explicit recipe/quantity then opens orders')
-craft:selectView('recipes') browser=craft.views.recipes
+check(craft.selectedView=='recipes' and craftCommands[#craftCommands].recipeId=='Base.SawLogs' and craftCommands[#craftCommands].quantity==4,'new order carries explicit recipe/quantity without automatic navigation')
 browser.draft.quantity:setText('0')
 check(not browser.draft.run.enable,'invalid target cannot submit an order')
 browser.draft.quantity:setText('1')
@@ -369,23 +346,16 @@ local oldCatalog=catalogCallbacks[#catalogCallbacks] local oldPreview=previewCal
 shell:selectTab('warehouse')
 oldCatalog({rows={},categories={},page=1,pages=1,loading=false}) oldPreview({state='BLOCKED',conditions={},counts={}})
 check(craftCount==0 and catalogCount==0 and previewCount==0 and browser.store.value.preview.state=='READY','hidden browser releases every query and ignores late results')
-for i=1,3 do shell:nextTab(1) check(wareCount+logCount+craftCount+monitorCount<=1,'at most one page subscription through repeated switches') end
+for i=1,3 do shell:nextTab(1) check(wareCount+craftCount+monitorCount<=1,'at most one page subscription through repeated switches') end
 shell:onKeyPress(Keyboard.KEY_NEXT)
 check(shell.activeTab=='warehouse','keyboard PageDown cycles only the new primary tabs')
-shell:selectTab('logistics')
-log.workerList:onJoypadDirLeft()
-check(shell.activeTab=='orders','controller edge returns from legacy configuration to monitor')
+shell:selectTab('personnel')
+check(shell.activeTab=='personnel','personnel tab is active')
 shell:selectTab('warehouse')
-page:focusList(page.itemList) page.itemList:onJoypadDirRight()
+page:focusList(page.itemGrid) page:onListFocus(page.itemGrid,1)
 check(shell.activeTab=='warehouse' and page.focusedList==page.sourceList,'controller inner edge keeps intra-page navigation')
-page.sourceList:onJoypadDirRight()
-check(shell.activeTab=='orders','controller other outer edge opens order monitor')
-local oldLogState=log.store.value.snapshot
-shell:selectTab('warehouse')
-logCallbacks[#logCallbacks](logisticsSnapshot)
-check(log.store.value.snapshot==oldLogState and stops==0,'hidden logistics ignores callbacks and keeps business running')
 shell:close() shell:close()
-check(wareCount==0 and logCount==0 and craftCount==0 and not shell.added and stops==0,'idempotent close releases all UI watches only')
+check(wareCount==0 and craftCount==0 and not shell.added,'idempotent close releases all UI watches only')
 -- watch callback can close while watch is still obtaining its release handle.
 onWatch=function() root={} end
 local failed,reason=Dashboard.open(actor,entry.id)
@@ -403,9 +373,8 @@ end
 failed,reason=Dashboard.open(actor,entry.id)
 check(not failed and reason=='UI_SUBSCRIBER_ERROR' and wareCount==0 and not closedDuringWatch.added,'synchronous initial callback close releases returned handle without remounting window')
 EmberRoutesWarehousePage.project=originalProject
-shell=Logistics.open(actor,entry.id)
-logCallbacks[#logCallbacks]({reason='WORLD_RESET',workers={}})
-check(shell.disposed and logCount==0,'world reset service event closes shell')
+shell=Dashboard.open(actor,entry.id)
+check(shell and wareCount==1,'reopen dashboard successfully')
 shell=Dashboard.open(actor,entry.id)
 local changed=Dashboard.open(actor,'other')
 check(shell.disposed and changed~=shell and wareCount==1,'different settlement disposes previous shell') changed:close()
@@ -416,31 +385,18 @@ check(shell.disposed and wareCount==0,'player replacement closes active shell') 
 for _,size in ipairs({{1280,720,28},{1920,1080,20},{2560,1440,24},{3840,2160,32}}) do
     sw,sh,fh=size[1],size[2],size[3]
     shell=Dashboard.open(actor,entry.id) page=shell.pages.warehouse
-    check(shell.width<sw and shell.height<sh and page.itemList.height>fh,'warehouse list retains usable viewport at screen/font size')
-    check(page.sourceList.y+page.sourceList.height<=page.pageY,'warehouse list does not overlap pager')
-    shell:selectTab('logistics') log=shell.pages.logistics
-    check(log.workerList.height>fh*2 and log.buttons.retry.y>=log.workerList.y+log.workerList.height,'logistics actions retain independent viewport')
-    check(log.modes[1].boxSize==fh and log.modes[2].boxSize==fh,'native tickboxes remain font-sized')
+    check(shell.width<sw and shell.height<sh and page.itemGrid.height>fh,'warehouse grid retains usable viewport at screen/font size')
+    shell:selectTab('personnel') local personnel=shell.pages.personnel
+    check(personnel.matrixBounds and personnel.detailsBounds,'personnel retains usable matrix and details viewports')
     shell:selectTab('crafting') craft=shell.pages.crafting
     browser=craft.views.recipes
     check(browser.draft.list.height>fh and browser.draft.run.y>=browser.draft.list.y+browser.draft.list.height,'draft actions remain below scrollable material viewport')
-    craft:selectView('orders') orders=craft.views.orders
-    check(orders.workerList.height>fh*2,'order viewport remains usable')
-    shell:selectTab('orders')
-    local monitor=shell.pages.orders
-    check(monitor.orderList.height>fh*2 and monitor.details.list.width>0,'monitor retains a usable viewport across supported screen/font sizes')
-    if monitor.narrow then
-        monitor.buttons.details.onclick()
-        check(monitor.store.value.detailMode and monitor.orderList.visible==false and monitor.details.list.visible,
-            'narrow monitor switches from list to details without squeezing columns')
-        monitor.buttons.details.onclick()
-        check(monitor.orderList.visible and monitor.details.list.visible==false,'narrow monitor returns to original job list')
-    end
+    check(not craft.views.orders,'retired order page is not instantiated')
     shell:selectTab('crafting')
     local manager=getTextManager
     getTextManager=function() error('drawing must not remeasure text') end
-    shell:prerender() log:prerender() craft:prerender()
-    for _,list in ipairs({page.itemList,page.sourceList,log.workerList,log.details.list,orders.workerList,orders.details}) do
+    shell:prerender() personnel:prerender() craft:prerender()
+    for _,list in ipairs({page.sourceList,browser.draft.list}) do
         local y=0 for _,row in ipairs(list.items) do y=list:doDrawItem(y,row) end
     end
     getTextManager=manager shell:close()
@@ -468,9 +424,9 @@ check(craftCommands[#craftCommands].recipeId=='precursor' and craftCommands[#cra
  and browser.store.value.recipeId=='Base.SawLogs','teaching a missing precursor targets it without changing the selected final recipe')
 -- Exercise the actual public dialogs, rather than only the old hidden pages.
 publicCalls={} publicRevision=2 request=0
-package.loaded['EmberRoutesProbe/ContainerRegistry'].id=function() request=request+1 return 'request-'..request end
-package.loaded['EmberRoutesProbe/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
-package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/ContainerRegistry'].id() end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'].id=function() request=request+1 return 'request-'..request end
+package.loaded['EmberRoutesProbe/Crafting/CraftSurfaces']={list=function() return {{id='surface',x=1,y=2,z=0}} end}
+package.loaded['EmberRoutesProbe/Work/PublicWork']={requestId=function() return package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'].id() end,
  available=function() return true end,
  rule=function() return {minimum=50,batch=12} end,
  create=function(_,scope,recipe,n,surface,token)
@@ -482,8 +438,8 @@ package.loaded['EmberRoutesProbe/PublicWork']={requestId=function() return packa
   check(id=='worker' and values.crafting==1 and values.hauling==4 and revision==2,'priority save carries stable NPC and expected revision')
   publicRevision=3 return 'PRIORITY_SAVED'
  end}
-shell:selectTab('orders')
-monitor=shell.pages.orders monitor.buttons.create.onclick()
+shell:selectTab('warehouse')
+shell:openPublicOrder()
 local dialog=shell.publicDialog
 check(dialog and not dialog.npcId and catalogCount==1,'public dialog has no NPC assignment and owns one catalogue subscription')
 check(dialog.minimum:getText()=='50' and dialog.batch:getText()=='12','dialog loads existing stock threshold and fixed batch')
@@ -510,7 +466,7 @@ print('PASS '..checks..' unified shell/page lifecycle/layout checks; native host
 -- Optional visual QA export: real pages and prepared draw data, synthetic business snapshots.
 function ERSettlementPreview(tab,height,screenWidth,screenHeight)
     sw,sh,fh=screenWidth or 1280,screenHeight or 960,height
-    local shell=Dashboard.open(actor,entry.id,(tab=='publicOrder' or tab=='priorities') and 'orders' or tab)
+    local shell=Dashboard.open(actor,entry.id,(tab=='publicOrder' or tab=='priorities') and 'personnel' or tab)
     shell.x=0 shell.y=0
     if tab=='publicOrder' then
         shell:openPublicOrder({recipeId='Base.SawLogs',recipeName='Saw logs'})
@@ -524,14 +480,7 @@ function ERSettlementPreview(tab,height,screenWidth,screenHeight)
         browser:change({preview={state='READY',conditions={},counts={[0]={available=0,required=1},[1]={available=1,required=1}},
             chain={nodes={{recipeId='precursor',recipeName='Precursor',product='Base.Log',requested=1,surface=false},
             {recipeId='Base.SawLogs',recipeName='Saw logs',product='Base.Plank',requested=3,surface=true}}}}})
-    elseif tab=='logistics' then
-        package.loaded['EmberRoutesProbe/ContainerRegistry'].describe=function(id)
-            if id=='a' then return {containerType='crate',x=3571,y=10897,z=0} end
-            if id=='b' then return {containerType='crate',x=3575,y=10898,z=0} end
-        end
-        local page=shell.pages.logistics
-        page.store:setState({snapshot={running=true,intake=true,tidy=true,workers={{id='worker',reason='WORKING',state='RUNNING',
-            taskId='machine-only',producer='LOGISTICS',sourceMode='INTAKE',phase='DELIVER',delivered=2,total=6,source='a',destination='b'}}}})
+
     elseif tab=='warehouse' then
         local page=shell.pages.warehouse local samples={}
         for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do

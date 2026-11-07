@@ -9,18 +9,18 @@ local actor={isDead=function() return false end,getCurrentSquare=function() retu
 function getSpecificPlayer() return actor end
 function isClient() return false end function isServer() return false end
 local Probe={ready=true,enabled=true,controlledExecution=true,hasJava=function() return true end}
-package.loaded['EmberRoutesProbe/Boot']=Probe
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local Registry={data=function() return root end,id=function() serial=serial+1 return 'id-'..serial end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=Registry
 local Store={data=function() rebuilt=true return root.labor end,
     record=function(id) return root.labor and root.labor[id] end}
-package.loaded['EmberRoutesProbe/LaborStore']=Store
+package.loaded['EmberRoutesProbe/Work/LaborStore']=Store
 package.loaded['EmberRoutesProbe/Hauling/HaulJobs']={prepareRecovery=function() Store.data() end}
 local Craft={prepareRecovery=function() Store.data() end,record=function(id) return root.craft and root.craft[id] end}
-package.loaded['EmberRoutesProbe/CraftProbe']=Craft
+package.loaded['EmberRoutesProbe/Crafting/CraftProbe']=Craft
 local Companion={exportState=function() return {id='a',jobId='follow-job',mode='FOLLOW',hasHome=true,homeX=2,homeY=3,homeZ=0} end}
-package.loaded['EmberRoutesProbe/Companion']=Companion
+package.loaded['EmberRoutesProbe/Settlement/Companion']=Companion
 local oldCapability
 local Actions={cleanupForHaul=function(expected,body)
     check(expected==npc and frozen and not key and body.current() and body.clear(),'cleanup only under verified frozen-idle system access')
@@ -28,7 +28,7 @@ local Actions={cleanupForHaul=function(expected,body)
     oldCapability=body return not cleanupFails
 end}
 local Haul={fixtures={},cleanup=function(expected,body) return expected==npc and body.current() end}
-package.loaded['EmberRoutesProbe/Actions']=Actions package.loaded['EmberRoutesProbe/Hauling/Haul']=Haul
+package.loaded['EmberRoutesProbe/Runtime/Actions']=Actions package.loaded['EmberRoutesProbe/Hauling/Haul']=Haul
 Probe.beforeStockSave=function() paused=true end
 Probe.afterStockSave=function() paused=false resumes=resumes+1 end
 Probe.resetStock=function() paused=false end
@@ -53,9 +53,9 @@ EmberRoutesProbeJava={
     blockAllCheckpoints=function() return 'CHECKPOINT_BLOCKED' end,
     restoreCheckpointFor=function(id) check(rebuilt and id=='a','claims rebuilt before stable-id body restore') return 'CHECKPOINT_RESTORED' end,
 }
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Stop=require 'EmberRoutesProbe/TaskBusinessStop'
-local Save=require 'EmberRoutesProbe/TaskPersistence'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Stop=require 'EmberRoutesProbe/Runtime/TaskBusinessStop'
+local Save=require 'EmberRoutesProbe/Runtime/TaskPersistence'
 local current
 local function submit(job,kind)
     local c={job=job,kind=kind,unknown=false}

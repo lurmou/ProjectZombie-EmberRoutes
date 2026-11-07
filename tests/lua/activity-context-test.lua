@@ -8,17 +8,17 @@ getTimestampMs=function() return millis end
 local members={a={context='SETTLEMENT',settlementId='home',revision=1},
     b={context='SETTLEMENT',settlementId='home',revision=1}}
 local epochs={a=0,b=0}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,
     id=function() serial=serial+1 return 'id-'..serial end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return spatial end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return spatial end,
     view=function(a,id) if a==actor and id=='home' then return spatial.entries.home end return nil,'ACCESS_DENIED' end}
-package.loaded['EmberRoutesProbe/MembershipService']={view=function(id) return members[id] end,
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function(id) return members[id] end,
     entry=function(id,scope) return members[id] and members[id].settlementId==scope and spatial.entries[scope] end,
     character=function(a) return a==actor and 'player-1' end}
-package.loaded['EmberRoutesProbe/TaskResume']={epoch=function(id) return epochs[id] end}
-local Zones=require 'EmberRoutesProbe/SettlementZones'
-local Store=require 'EmberRoutesProbe/ActivityStore'
-local Service=require 'EmberRoutesProbe/ActivityService'
+package.loaded['EmberRoutesProbe/Runtime/TaskResume']={epoch=function(id) return epochs[id] end}
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
+local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
+local Service=require 'EmberRoutesProbe/Activity/ActivityService'
 local zone=assert(Zones.save(actor,'home',nil,nil,{name='Garden',enabled=true,
     area={x=2,y=2,w=5,h=5,z=0},rules={SOCIAL=0,READING=1,OBSERVE=1}}))
 local function args()

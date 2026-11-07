@@ -1,3 +1,0 @@
-PASS 14 Lua action orchestration assertions; native fakes NOT runtime evidence
-TEST ACTION FIXTURES_CLEANED
-PASS 42 Lua world haul assertions; native fakes NOT runtime evidence

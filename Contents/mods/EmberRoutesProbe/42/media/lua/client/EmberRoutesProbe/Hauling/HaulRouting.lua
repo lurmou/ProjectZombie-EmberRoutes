@@ -1,10 +1,10 @@
 -- Pure bounded target discovery for already claimed cargo; no body/asset writes.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Membership=require 'EmberRoutesProbe/SettlementMembership'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Sort=require 'EmberRoutesProbe/SortPolicy'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Store=require 'EmberRoutesProbe/LaborStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Membership=require 'EmberRoutesProbe/Settlement/SettlementMembership'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Sort=require 'EmberRoutesProbe/Warehouse/SortPolicy'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local R={}
 local window,left=-1,0
 function R.allowance()
@@ -17,7 +17,7 @@ function R.accept(c,endpoint,item)
     local current=Registry.revalidate(endpoint,'put',c.job.scopeId)
     local entry=Ledger.get(c.job.settlementId)
     local p=current and Registry.describe(current.id)
-    if not current or not entry or not p or not require('EmberRoutesProbe/SettlementGeometry').inside(entry,p.x,p.y)
+    if not current or not entry or not p or not require('EmberRoutesProbe/Settlement/SettlementGeometry').inside(entry,p.x,p.y)
         or Registry.logistics(current)~='STORAGE' or not Registry.accepts(current,item) then return false end
     local weight=item:getUnequippedWeight()
     return current.container:hasRoomFor(c.npc,item)

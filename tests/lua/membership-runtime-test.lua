@@ -1,5 +1,5 @@
 -- This host fixture has no world furniture; model the no-bed commit explicitly.
-package.loaded['EmberRoutesProbe/MembershipBeds']={observe=function() return true end,settle=function(row) row.bedReason='BED_NONE' return true end,release=function() return true end,reconcile=function() end}
+package.loaded['EmberRoutesProbe/Settlement/MembershipBeds']={observe=function() return true end,settle=function(row) row.bedReason='BED_NONE' return true end,release=function() return true end,reconcile=function() end}
 local root={} local now,serial=0,0 local md={} local dead=false
 local actor={isDead=function() return dead end,getModData=function() return md end}
 local npc={x=20,y=1,z=0,getX=function(s) return s.x end,getY=function(s) return s.y end,getZ=function(s) return s.z end}
@@ -14,22 +14,23 @@ local rt={accepting=function() return true end,owns=function() return owned==tru
     stop=function() stops=stops+1 owned=false return true end,inspect=function(_,h) return {state=h.state} end,
     submit=function(_,s) assert(s.validate()) spec=s handle={state='ACTIVE'} owned=true
         assert(s.start({move=function() return true,'MOVE_REQUESTED' end})) return handle end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'id'..serial end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return ledger end,authorized=function() return not dead end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {id='a',handle=npc} end,valid=function() return true end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return rt end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
-package.loaded['EmberRoutesProbe/Boot']={}
-package.loaded['EmberRoutesProbe/BusinessJobs']={crafts=function() return {} end}
-package.loaded['EmberRoutesProbe/Work']={record=function() end}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {visitNpc=function(_,id,fn)
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'id'..serial end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return ledger end,authorized=function() return not dead end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {id='a',handle=npc} end,valid=function() return true end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return rt end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={crafts=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/Work']={record=function() end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return {visitNpc=function(_,id,fn)
     for _,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do if j.npcId==id then fn(j) end end
 end} end}
-package.loaded['EmberRoutesProbe/Companion']={startFor=function() follow=follow+1 owned=true end}
-local S=require 'EmberRoutesProbe/MembershipService' local M=require 'EmberRoutesProbe/MembershipRuntime'
+package.loaded['EmberRoutesProbe/Settlement/Companion']={startFor=function() follow=follow+1 owned=true end}
+local S=require 'EmberRoutesProbe/Settlement/MembershipService' local M=require 'EmberRoutesProbe/Settlement/MembershipRuntime'
 S.newWorld() S.register('a') M.install()
 local function command(kind,target)
-    local r=S.view('a') return S.request(actor,'a',{kind=kind,settlementId=target,expectedRevision=r.revision,requestId='cmd'..r.revision})
+    local r=S.view('a') return S.request(actor,'a',{kind=kind,settlementId=target,expectedRevision=r.revision,
+        requestId='cmd'..r.revision,followSlot=kind=='FOLLOW' and 1 or nil})
 end
 local function tick() now=now+201 M.tick() end
 command('SETTLE','home') tick() tick()

@@ -64,7 +64,7 @@ npc.damage = { health = 100 }
 function npc.damage:getOverallBodyHealth() return self.health end
 function npc.damage:RestoreToFullHealth() self.health = 100 end
 function npc:getBodyDamage() return self.damage end
-local Samples = require "EmberRoutesProbe/PersistenceSamples"
+local Samples = require "EmberRoutesProbe/Runtime/PersistenceSamples"
 check(Samples.check(npc, "npc-1") == "SAMPLE_ABSENT_OR_STALE", "missing sample is reported")
 local unrelated = npc.root:AddItem("USER_PROPERTY")
 check(Samples.prepare(npc, "npc-1") == "SAMPLE_PREPARED", "create durable samples")

@@ -193,7 +193,7 @@ function getSpecificPlayer(idx) return playerActor end
 
 local currentWorldLedger = {}
 local settlementEntry = {id = 'settlement-sanctuary', name = 'Sanctuary'}
-package.loaded['EmberRoutesProbe/SettlementLedger'] = {
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger'] = {
     data = function() return currentWorldLedger end,
     authorized = function(actor) return actor == playerActor end,
     view = function(actor, id)
@@ -203,9 +203,9 @@ package.loaded['EmberRoutesProbe/SettlementLedger'] = {
 }
 
 local tooltipCleared = {}
-package.loaded['EmberRoutesProbe/UI/TooltipAnchor'] = {
-    attach = function(widget, fn) widget.tooltipAttached = fn end,
-    dismissOwner = function() end, unregisterOwner = function() end, clearOwner = function() end,
+package.loaded['EmberRoutesProbe/UI/TooltipManager'] = {
+    register = function(widget, config) widget.tooltipAttached = config.method end,
+    dismissOwner = function() end, unregisterOwner = function() end,
     clear = function(widget)
         tooltipCleared[widget] = (tooltipCleared[widget] or 0) + 1
         widget.tooltipAttached = nil
@@ -219,7 +219,7 @@ local workerPriorities = {
 }
 local setPrioritiesCalls = {}
 
-package.loaded['EmberRoutesProbe/PublicWork'] = {
+package.loaded['EmberRoutesProbe/Work/PublicWork'] = {
     available = function() return true end,
     priorities = function(npcId)
         local p = workerPriorities[npcId] or {crafting = 3, hauling = 3, revision = 1}
@@ -242,7 +242,7 @@ package.loaded['EmberRoutesProbe/PublicWork'] = {
         if not p then return 'NPC_NOT_FOUND' end
         local values = {crafting = p.crafting, hauling = p.hauling}
         values[category] = val
-        return package.loaded['EmberRoutesProbe/PublicWork'].setPriorities(actor, scope, npcId, values, p.revision)
+        return package.loaded['EmberRoutesProbe/Work/PublicWork'].setPriorities(actor, scope, npcId, values, p.revision)
     end
 }
 
@@ -289,18 +289,18 @@ local workersData = {
     }
 }
 
-package.loaded['EmberRoutesProbe/CraftingService'] = {
+package.loaded['EmberRoutesProbe/Crafting/CraftingService'] = {
     status = function(actor, scope)
         return {workers = workersData, surfaces = {}}
     end
 }
 
-package.loaded['EmberRoutesProbe/ContainerRegistry'] = {
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'] = {
     describe = function() return nil end,
     data = function() return {} end
 }
 
-package.loaded['EmberRoutesProbe/Driver'] = {
+package.loaded['EmberRoutesProbe/Runtime/Driver'] = {
     bindId = function(actor, id)
         return nil -- Fallback to table data safely
     end
@@ -320,7 +320,7 @@ function OrderMonitorPage:dispose() self.disposed = true end
 package.loaded['EmberRoutesProbe/UI/OrderMonitorPage'] = OrderMonitorPage
 
 -- ==================== EXECUTE SIMULATION ====================
-local Dashboard = require 'EmberRoutesProbe/SettlementDashboard'
+local Dashboard = require 'EmberRoutesProbe/UI/SettlementDashboard'
 
 print('>>> STEP 1: Launch Dashboard & Navigate to Personnel Management')
 local dashboard = Dashboard.open(playerActor, settlementEntry.id, 'warehouse')

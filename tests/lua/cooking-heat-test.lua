@@ -1,18 +1,18 @@
 -- Actual Agent/Runtime/Jobs and installed actions. Native heat/power/path effects mocked.
 local e=dofile('tests/lua/cooking-evolved-test.lua') local f=e.w.f
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/Entity/TimedActions/ISHandcraftAction.lua')
 package.loaded['Entity/TimedActions/ISHandcraftAction']=true
-local Agent=require 'EmberRoutesProbe/CookingAgent'
-local Heat=require 'EmberRoutesProbe/CookingHeat'
-local Membership=require 'EmberRoutesProbe/MembershipService'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Agent=require 'EmberRoutesProbe/Cooking/CookingAgent'
+local Heat=require 'EmberRoutesProbe/Cooking/CookingHeat'
+local Membership=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local npc,actor=f.npc,f.fixture.actor
 local entry={id='kitchen',areas={{x=0,y=0,w=20,h=20}}}
 Membership.entry=function() return entry end
@@ -38,7 +38,7 @@ Registry.revalidate=function(endpoint) return endpoints[endpoint.id]==endpoint a
 Registry.logistics=function(endpoint) return endpoint.stove and 'INPUT' or 'STORAGE' end
 Registry.filter=function(object) return object.filter end
 Registry.accepts=function(endpoint,item) return endpoint.object.filter.types[item:getFullType()]==true end
-require('EmberRoutesProbe/SettlementMembership').query=function() return candidateIds end
+require('EmberRoutesProbe/Settlement/SettlementMembership').query=function() return candidateIds end
 local function endpoint(id,x,types)
     local object=f.fixture.fixture.object(x) local container=object.container
     object.filter=Filter.new() for _,kind in ipairs(types) do object.filter.types[kind]=true end

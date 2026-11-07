@@ -6,7 +6,7 @@ require 'ISUI/ISScrollingListBox'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Text=require 'EmberRoutesProbe/UI/Text'
-local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
 
 ---@class EmberRoutesDeliveryCartDrawer:ISCollapsableWindow
 local Drawer=ISCollapsableWindow:derive('EmberRoutesDeliveryCartDrawer')
@@ -114,7 +114,7 @@ function Drawer:createChildren()
             for i,line in ipairs(self.emptyLines) do Theme.text(list,line,p,start+(i-1)*h,Theme.muted) end
         end
     end
-    Tooltip.attach(self.list,'prerender',self) self:addChild(self.list)
+    Tooltip.register(self.list,{method='prerender',owner=self}) self:addChild(self.list)
 
     local buttons=assert(Layout.axis(blocks[4],{{grow=1},{grow=2}},{gap=p/2}))
     local a=buttons[1]
@@ -128,7 +128,7 @@ end
 
 function Drawer:refresh()
     if not self.list then return end
-    local Service=require 'EmberRoutesProbe/DeliveryService'
+    local Service=require 'EmberRoutesProbe/Logistics/DeliveryService'
     local function refreshPicker(combo,mode,selectedId)
         combo:clear() combo.endpointIds={}
         combo:addOption(combo.defaultLabel) combo.selected=1
@@ -175,9 +175,9 @@ function Drawer:refresh()
     self.countLabel=text('cartCountSummary',tostring(#ordered),tostring(self.owner.deliveryCartTotalUnits or 0))
     self.weightLabel=text('cartWeightSummary',string.format('%.1f',self.owner.deliveryCartWeight or 0))
     local actor=self.owner.actor
-    local weight=actor and actor.getInventoryWeight and actor:getInventoryWeight()
-        or actor and actor:getInventory():getCapacityWeight() or 0
-    local free=math.max(0,(actor and actor:getMaxWeight() or 0)-weight)
+    local weight=(actor and actor.getInventoryWeight and actor:getInventoryWeight())
+        or (actor and actor.getInventory and actor:getInventory() and actor:getInventory():getCapacityWeight()) or 0
+    local free=math.max(0,(actor and actor.getMaxWeight and actor:getMaxWeight() or 0)-weight)
     self.spaceLabel=text('cartSpaceSummary',string.format('%.1f',free))
     self.overCapacity=not self.owner.deliveryDestinationId and (self.owner.deliveryCartWeight or 0)>free
     local message=self.owner.deliveryFeedback
@@ -199,7 +199,7 @@ function Drawer:drawItemRow(list,y,entry,alt)
     local r=row.layout local h=self.fontHeight
     if list.selected==entry.index then Theme.rect(list,0,y,list.width,list.itemheight,Theme.selected)
     elseif alt then Theme.rect(list,0,y,list.width,list.itemheight,Theme.panel) end
-    if row.icon then list:drawTextureScaledAspect(row.icon,r.icon.x,y+r.icon.y,r.icon.width,r.icon.height,1,1,1,1) end
+    if row.icon then list:drawTextureScaledAspect(row.icon,r.icon.x,y+r.icon.y,r.icon.width,r.icon.height,1,row.r or 1,row.g or 1,row.b or 1) end
     Theme.text(list,row.name,r.name.x,y+r.name.y,Theme.textColor)
     button(list,r.minus,y,'-',Theme.textColor,h)
     button(list,r.plus,y,'+',row.count>=row.maxCount and Theme.muted or Theme.textColor,h)
@@ -212,6 +212,17 @@ end
 
 function Drawer:prerender()
     ISCollapsableWindow.prerender(self)
+    local dash = self.owner and self.owner.owner
+    if dash and dash.getX and dash.getY then
+        local targetX = dash:getX() + dash.width + 8
+        local screenW = getCore():getScreenWidth()
+        if targetX + self.width > screenW - 8 then targetX = math.max(8, screenW - self.width - 8) end
+        if math.abs(self:getX() - targetX) > 2 or math.abs(self:getY() - dash:getY()) > 2 then
+            self:setX(targetX)
+            self:setY(dash:getY())
+            self:setHeight(dash.height)
+        end
+    end
     local h,p=self.fontHeight,self.pad
     Theme.text(self,self.countLabel or '',self.header.x,self.header.y+p/2,Theme.gold)
     Theme.text(self,self.weightLabel or '',self.summary.x,self.summary.y,Theme.textColor)
@@ -228,6 +239,9 @@ function Drawer:close()
     Tooltip.dismissOwner(self)
     if self.owner then
         self.owner.cartDrawerOpen=false
+        if self.owner.owner then
+            require('EmberRoutesProbe/UI/Layout').undockDrawer(self.owner.owner)
+        end
     end
 end
 

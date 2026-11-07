@@ -1,9 +1,9 @@
 -- Host tests only admission/dispatch + real Lua record validity, NOT Java parity.
-local Contracts=require 'EmberRoutesProbe/JobContracts'
+local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 assert(Contracts.register('DEC003_TEST',{validate=function() return true end}))
-local Jobs=require 'EmberRoutesProbe/JobStore'
-local Commit=require 'EmberRoutesProbe/LaborJobCommit'
-local Kernel=require 'EmberRoutesProbe/LaborKernelAvailability'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
+local Commit=require 'EmberRoutesProbe/Work/LaborJobCommit'
+local Kernel=require 'EmberRoutesProbe/Kernel/LaborKernelAvailability'
 local n=0
 local function check(v,label) n=n+1 assert(v,label) end
 local root={}
@@ -52,7 +52,7 @@ end
 EmberRoutesProbeJava={laborMutate=function(...) calls.mutate={...} return {ok=true,result=2} end,
     laborCreate=function(...) calls.create={...} return {ok=true,result='x'} end,
     laborCancel=function(...) calls.cancel={...} return {ok=false,result='TASK_WRITE_FAILURE',evidence='CANCEL_BLOCKED_CLAIMS'} end}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobs end}
 Store.data=function() end
 local state={}
 Commit.install(Store,state,function() end,function() end)

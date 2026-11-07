@@ -2,10 +2,10 @@
 local w=dofile('tests/lua/cooking-water-test.lua') local f=w.f
 f.queue(nil)
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Food=require 'EmberRoutesProbe/CookingFood'
-local Evolved=require 'EmberRoutesProbe/CookingEvolved'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Food=require 'EmberRoutesProbe/Cooking/CookingFood'
+local Evolved=require 'EmberRoutesProbe/Cooking/CookingEvolved'
 local additions=0 local recipe={}
 function recipe:getOriginalname() return 'Soup' end function recipe:getBaseItem() return 'Base.Pot' end
 function recipe:getFullResultItem() return 'Base.PotOfSoupRecipe' end
@@ -74,7 +74,7 @@ check(output and output.extra:size()==2 and output.spices:size()==2 and not Food
 local calls=additions finish(c,assert(Evolved.new(c,recipe)))
 check(additions==calls,'completed chain replay only observes saved original binding')
 local forged=Record.copy(c.job) forged.payload.evolved.target=.9
-check(not require('EmberRoutesProbe/TaskJobs').current():update(forged.id,forged.revision,{payload=forged.payload}),
+check(not require('EmberRoutesProbe/Runtime/TaskJobs').current():update(forged.id,forged.revision,{payload=forged.payload}),
     'saved mixture target and input plan cannot be rewritten between steps')
 local resumed,base,ingredients=setup({'Base.Carrot','Base.Potato'})
 local run=assert(Evolved.new(resumed,recipe,base,ingredients,.12)) start=additions

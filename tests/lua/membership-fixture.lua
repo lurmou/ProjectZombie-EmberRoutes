@@ -16,10 +16,10 @@ return function(getEntry,ids)
         elseif purpose=='RECOVERY' or purpose=='SELF_CARE' then allowed=true
         elseif r and r.context~='SETTLEMENT' then allowed=false reason='CONTEXT_'..r.context
         elseif r and r.pending then allowed=false reason='COMMAND_PENDING'
-        elseif e and e.areas and at and not require('EmberRoutesProbe/SettlementGeometry').inside(e,at.x,at.y) then allowed=false reason='OUTSIDE_SETTLEMENT' end
+        elseif e and e.areas and at and not require('EmberRoutesProbe/Settlement/SettlementGeometry').inside(e,at.x,at.y) then allowed=false reason='OUTSIDE_SETTLEMENT' end
         return {allowed=allowed,reason=not allowed and reason or nil,revision=r and r.revision,
             sharedResources=(purpose=='SELF_CARE' or purpose=='RECOVERY') and r and e
-                and (r.context=='SETTLEMENT' or r.context=='WAIT') and (not e.areas or not at or require('EmberRoutesProbe/SettlementGeometry').inside(e,at.x,at.y)),
+                and (r.context=='SETTLEMENT' or r.context=='WAIT') and (not e.areas or not at or require('EmberRoutesProbe/Settlement/SettlementGeometry').inside(e,at.x,at.y)),
             settlementId=r and r.settlementId,context=r and r.context,entryRevision=e and e.revision}
     end
     function service.request(actor,id,c)
@@ -30,6 +30,6 @@ return function(getEntry,ids)
         row.revision=(row.revision or 1)+1
         return {state='ACCEPTED',revision=row.revision,requestId=c and c.requestId,kind=c and c.kind}
     end
-    package.loaded['EmberRoutesProbe/MembershipService']=service
+    package.loaded['EmberRoutesProbe/Settlement/MembershipService']=service
     return rows
 end

@@ -1,5 +1,5 @@
-local Controller=require 'EmberRoutesProbe/TaskController'
-local Evidence=require 'EmberRoutesProbe/TaskStopEvidence'
+local Controller=require 'EmberRoutesProbe/Runtime/TaskController'
+local Evidence=require 'EmberRoutesProbe/Runtime/TaskStopEvidence'
 local n=0
 local function check(v,m) n=n+1 assert(v,m) end
 local c=Controller.new()

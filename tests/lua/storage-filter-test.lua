@@ -1,6 +1,6 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Editor=require "EmberRoutesProbe/FilterEditor"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Editor=require "EmberRoutesProbe/Warehouse/FilterEditor"
 local count=0
 local function check(value,why) count=count+1 assert(value,why) end
 local function desc(fullType,display,category,food,perishable,ranged)

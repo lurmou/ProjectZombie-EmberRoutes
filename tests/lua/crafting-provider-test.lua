@@ -1,34 +1,34 @@
 package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
 
 -- Mock dependencies
-package.loaded['EmberRoutesProbe/ContainerRegistry'] = {
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'] = {
     data = function() return { craftSurfaces = {} } end,
     id = function() return 'test_craft_id' end
 }
-package.loaded['EmberRoutesProbe/TaskRuntime'] = {
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime'] = {
     current = function()
         return { status = function(self, npcId, jobId) return false end }
     end
 }
-package.loaded['EmberRoutesProbe/Boot'] = { idleStudy = function() end }
-package.loaded['EmberRoutesProbe/LaborSignals'] = { changed = function() end }
-package.loaded['EmberRoutesProbe/PlanningWake'] = {
+package.loaded['EmberRoutesProbe/Kernel/Boot'] = { idleStudy = function() end }
+package.loaded['EmberRoutesProbe/Work/LaborSignals'] = { changed = function() end }
+package.loaded['EmberRoutesProbe/Runtime/PlanningWake'] = {
     capture = function() return 1 end,
     changed = function() return false end
 }
-package.loaded['EmberRoutesProbe/CookingOrders'] = {
+package.loaded['EmberRoutesProbe/Cooking/CookingOrders'] = {
     parentAllows = function(o) return true end
 }
 
 local executedAction = nil
-package.loaded['EmberRoutesProbe/Production'] = {
+package.loaded['EmberRoutesProbe/Crafting/Production'] = {
     execute = function(actor, action, object, npcId, params)
         executedAction = { actor = actor, action = action, npcId = npcId, params = params }
         return 'QUEUED'
     end
 }
 
-local CraftingProvider = require 'EmberRoutesProbe/CraftingProvider'
+local CraftingProvider = require 'EmberRoutesProbe/Crafting/CraftingProvider'
 
 -- 1. Contract definition
 assert(CraftingProvider.category == 'crafting', "category must be crafting")

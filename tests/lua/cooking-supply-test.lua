@@ -1,10 +1,10 @@
 -- Real registered endpoints, permission checks and invalidation; food reads are host doubles.
 local f=dofile('tests/lua/multi-worker-test.lua')
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Index=require 'EmberRoutesProbe/MealSupplyIndex'
-local Facilities=require 'EmberRoutesProbe/CookingFacilities'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Index=require 'EmberRoutesProbe/Cooking/MealSupplyIndex'
+local Facilities=require 'EmberRoutesProbe/Cooking/CookingFacilities'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
 local previous=instanceof

@@ -1,6 +1,6 @@
 -- Presentation only. Pending quantities are unknown, never usable inventory.
 local Rows={}
-local PinyinHelper=require "EmberRoutesProbe/PinyinHelper"
+local PinyinHelper=require "EmberRoutesProbe/Warehouse/PinyinHelper"
 local sourceFields={"id","count","x","y","z","kind","displayType","customName","pending"}
 local function sameSources(a,b)
     if #a~=#b then return false end

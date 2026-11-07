@@ -7,7 +7,7 @@ local mockDeliveryHasWork = false
 local mockDeliveryClaimed = false
 
 -- Mock dependencies
-package.loaded['EmberRoutesProbe/DeliveryService'] = {
+package.loaded['EmberRoutesProbe/Logistics/DeliveryService'] = {
     discover = function(env) mockDeliveryDiscovered = true end,
     hasWork = function() return mockDeliveryHasWork end,
     claim = function(sel, npcId, jobId, env)
@@ -18,13 +18,13 @@ package.loaded['EmberRoutesProbe/DeliveryService'] = {
 }
 
 local mockOfferIntent = nil
-package.loaded['EmberRoutesProbe/LogisticsService'] = {
+package.loaded['EmberRoutesProbe/Logistics/LogisticsService'] = {
     publicOffer = function(actor, entry, npc)
         return mockOfferIntent
     end
 }
 
-package.loaded['EmberRoutesProbe/Work'] = {
+package.loaded['EmberRoutesProbe/Work/Work'] = {
     allowAutomation = function(npcId) end,
     assign = function(actor, npcId, intent)
         mockWorkAssigned = { npcId = npcId, intent = intent }
@@ -35,7 +35,7 @@ package.loaded['EmberRoutesProbe/Work'] = {
     end
 }
 
-package.loaded['EmberRoutesProbe/TaskRuntime'] = {
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime'] = {
     current = function()
         return {
             status = function(self, npcId, jobId) return false end
@@ -58,7 +58,7 @@ local mockDirectory = {
 }
 
 local HaulingProvider = require 'EmberRoutesProbe/Hauling/HaulingProvider'
-assert(package.loaded['EmberRoutesProbe/PublicWork'] == nil, "provider must load without its coordinator")
+assert(package.loaded['EmberRoutesProbe/Work/PublicWork'] == nil, "provider must load without its coordinator")
 
 -- Test 1: Provider contract definition
 assert(HaulingProvider.category == 'hauling', "Provider category must be hauling")
@@ -119,10 +119,10 @@ assert(releasedTicket == 'job_haul_1', "Released ticket matches jobId")
 assert(HaulingProvider.hasWork() == false, "hauling record was cleared")
 
 -- Test 6b: reconcile with missing record but persistent taskJob exists -> must NOT release obligations
-package.loaded['EmberRoutesProbe/ContainerRegistry'] = {
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'] = {
     data = function() return { taskJobs = { byId = { ['job_haul_suspect'] = { id = 'job_haul_suspect' } } } } end
 }
-package.loaded['EmberRoutesProbe/Log'] = { write = function() end }
+package.loaded['EmberRoutesProbe/Kernel/Log'] = { write = function() end }
 releasedKey = nil
 env.directory = mockDirectory
 HaulingProvider.claim(selected, 'npc_suspect', 'job_haul_suspect', env)

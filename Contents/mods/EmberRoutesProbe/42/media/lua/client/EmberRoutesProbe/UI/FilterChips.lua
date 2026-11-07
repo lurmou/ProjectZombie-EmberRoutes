@@ -3,10 +3,13 @@
     High-ergonomic horizontal toggle chips (capsules).
     Replaces bulky ISComboBox dropdowns with 1-click tactile filter chips.
     Zero-GC rendering, dynamic typography, responsive hover & alert badges.
+    Powered by SpringDriver for Motion-inspired shared layout kinetic sliding indicators.
 ]]
 
 require "ISUI/ISPanel"
 local Theme = require "EmberRoutesProbe/UI/Theme"
+local SpringDriver = require "EmberRoutesProbe/UI/SpringDriver"
+local Visual = require "EmberRoutesProbe/UI/StatusVisual"
 local quietBorder={r=0.20,g=0.25,b=0.30,a=0.6}
 local quietBadge={r=0.08,g=0.10,b=0.12,a=0.8}
 
@@ -17,6 +20,8 @@ local quietBadge={r=0.08,g=0.10,b=0.12,a=0.8}
 ---@field chips table[]
 ---@field selectedId string?
 ---@field hoveredIndex number?
+---@field indicator table
+---@field indicatorInitialized boolean
 ---@field onSelect fun(id:string, chip:table, widget:EmberRoutesFilterChips)
 local FilterChips = ISPanel:derive("EmberRoutesFilterChips")
 
@@ -37,6 +42,8 @@ function FilterChips:new(x, y, width, height, onSelect)
     o.hoveredIndex = nil
     o.onSelect = onSelect or function() end
     o.gap = 4
+    o.indicator = SpringDriver.create2D(0, 0, { stiffness = 320, damping = 28, precision = 0.5 })
+    o.indicatorInitialized = false
     o:initialise()
     return o
 end
@@ -46,12 +53,13 @@ function FilterChips:initialise()
 end
 
 ---Set or update chip options with zero-GC cached coordinates.
----@param options table[] Array of {id=string, label=string, count=number?, alert=boolean?, glyph=string?, tooltip=string?}
+---@param options table[] Array of {id=string, label=string, count=number?, alert=boolean?, mark=string?, tooltip=string?}
 ---@param selectedId string?
 function FilterChips:setOptions(options, selectedId)
     self.options = options or {}
     self.selectedId = selectedId or self.selectedId or (self.options[1] and self.options[1].id)
     self.chips = {}
+    self.indicatorInitialized = false
 
     local h, p = self.fontHeight, self.pad
     local gap = self.gap or 4
@@ -65,13 +73,14 @@ function FilterChips:setOptions(options, selectedId)
         local labelW = tm:MeasureStringX(UIFont.Small, label)
         local countStr = opt.count ~= nil and tostring(opt.count) or nil
         local countW = countStr and tm:MeasureStringX(UIFont.Small, countStr) or 0
-        local glyph = opt.glyph or ""
-        local glyphW = glyph ~= "" and (tm:MeasureStringX(UIFont.Small, glyph) + 2) or 0
+        -- Fixed slot for a geometric status mark; no text glyph is measured.
+        local mark = opt.mark or ""
+        local markW = mark ~= "" and 12 or 0
 
         local pillPadding = p * 1.4
         local extraBadgeW = countStr and (countW + p + 6) or 0
-        local chipW = math.ceil(labelW + glyphW + extraBadgeW + pillPadding)
-        local minW = math.ceil(labelW + glyphW + 12)
+        local chipW = math.ceil(labelW + markW + extraBadgeW + pillPadding)
+        local minW = math.ceil(labelW + markW + 12)
 
         rawChips[i] = {
             id = opt.id,
@@ -79,8 +88,8 @@ function FilterChips:setOptions(options, selectedId)
             labelW = labelW,
             countStr = countStr,
             countW = countW,
-            glyph = glyph,
-            glyphW = glyphW,
+            mark = mark,
+            markW = markW,
             alert = opt.alert or false,
             tooltip = opt.tooltip,
             targetW = chipW,
@@ -100,7 +109,7 @@ function FilterChips:setOptions(options, selectedId)
         local cellW=math.max(1,(self.width-gap*(cols-1))/cols)
         local cellH=self.height/rows
         for i,c in ipairs(rawChips) do
-            c.glyph='' c.glyphW=0
+            c.mark='' c.markW=0
             c.label=Text.wrapLimited(c.label,math.max(1,cellW-c.countW-p*3),UIFont.Small,1)[1] or ''
             c.labelW=tm:MeasureStringX(UIFont.Small,c.label)
             c.x=((i-1)%cols)*(cellW+gap) c.y=math.floor((i-1)/cols)*cellH
@@ -134,8 +143,18 @@ end
 
 ---Select a chip programmatically without necessarily re-triggering callback
 ---@param id string
-function FilterChips:setSelected(id)
+---@param immediate boolean? If true, instantly snaps the indicator without animation
+function FilterChips:setSelected(id, immediate)
     self.selectedId = id
+    if immediate and self.indicator then
+        for _, chip in ipairs(self.chips) do
+            if chip.id == id then
+                SpringDriver.snap2D(self.indicator, chip.x, chip.width)
+                self.indicatorInitialized = true
+                break
+            end
+        end
+    end
 end
 
 function FilterChips:chipAt(x, y)
@@ -177,38 +196,90 @@ end
 function FilterChips:prerender()
     ISPanel.prerender(self)
     local h, p = self.fontHeight, self.pad
+    local dossier = (self.variant == 'dossier')
+    local underline = (self.variant == 'underline')
 
+    if not dossier then
+        -- 1. Shared Layout Kinetic Indicator (SpringDriver)
+        local targetChip = nil
+        for i, chip in ipairs(self.chips) do
+            if chip.id == self.selectedId then
+                targetChip = chip
+                break
+            end
+        end
+
+        if targetChip then
+            if not self.indicatorInitialized then
+                SpringDriver.snap2D(self.indicator, targetChip.x, targetChip.width)
+                self.indicatorInitialized = true
+            else
+                local dt = 0.016
+                if UIManager and UIManager.getMillisSinceLastRender then
+                    local ms = UIManager.getMillisSinceLastRender()
+                    if ms and ms > 0 then dt = ms / 1000.0 end
+                end
+                SpringDriver.update2D(self.indicator, targetChip.x, targetChip.width, dt)
+            end
+        end
+
+        -- 2. Passive Chip Backgrounds
+        for i, chip in ipairs(self.chips) do
+            local isHovered = (i == self.hoveredIndex)
+            if underline then
+                if isHovered then
+                    Theme.rect(self, chip.x, chip.y, chip.width, chip.height, Theme.hover)
+                end
+            else
+                local bg = isHovered and Theme.hover or Theme.control
+                local border = isHovered and Theme.border or quietBorder
+                Theme.rect(self, chip.x, chip.y, chip.width, chip.height, bg)
+                Theme.rect(self, chip.x, chip.y, chip.width, chip.height, border, true)
+            end
+        end
+
+        -- 3. Render Kinetic Active Indicator (Gliding Capsule / Underline)
+        if targetChip and self.indicatorInitialized then
+            local indX = math.floor(self.indicator.a)
+            local indW = math.floor(self.indicator.b)
+            if underline then
+                Theme.rect(self, indX, self.height - 2, indW, 2, Theme.accent)
+            else
+                Theme.rect(self, indX, 0, indW, self.height, Theme.selected)
+                Theme.rect(self, indX, 0, indW, self.height, Theme.accent, true)
+                Theme.rect(self, indX, 0, math.max(2, math.floor(p / 3)), self.height, Theme.accent)
+            end
+        end
+    else
+        -- Dossier variant: static grid cards
+        for i, chip in ipairs(self.chips) do
+            local isSelected = (chip.id == self.selectedId)
+            local isHovered = (i == self.hoveredIndex)
+            if isHovered then
+                Theme.rect(self, chip.x, chip.y, chip.width, chip.height, Theme.dossier.panel)
+            end
+            if isSelected then
+                Theme.rect(self, chip.x, chip.y + chip.height - 2, chip.width, 2, Theme.dossier.gold)
+            end
+        end
+    end
+
+    -- 4. Foreground Content (Geometric Marks, Labels, Count Badges)
     for i, chip in ipairs(self.chips) do
         local isSelected = (chip.id == self.selectedId)
         local isHovered = (i == self.hoveredIndex)
 
-        local dossier=self.variant=='dossier'
-        -- Background capsule
-        local bg = isSelected and Theme.selected or (isHovered and Theme.hover or Theme.control)
-        local border = isSelected and Theme.accent or (isHovered and Theme.border or quietBorder)
-        if self.variant=='underline' or dossier then
-            if isHovered then Theme.rect(self,chip.x,chip.y,chip.width,chip.height,dossier and Theme.dossier.panel or Theme.hover) end
-        else
-            Theme.rect(self, chip.x, chip.y, chip.width, chip.height, bg)
-            Theme.rect(self, chip.x, chip.y, chip.width, chip.height, border, true)
-        end
-
-        -- Accent left indicator for selected chip
-        if isSelected then
-            if self.variant=='underline' or dossier then Theme.rect(self,chip.x,chip.y+chip.height-2,chip.width,2,dossier and Theme.dossier.gold or Theme.accent)
-            else Theme.rect(self, chip.x, chip.y, math.max(2, math.floor(p/3)), chip.height, Theme.accent) end
-        end
-
         local textCol = dossier and (isSelected and Theme.dossier.text or Theme.dossier.muted) or isSelected and Theme.textColor or (isHovered and Theme.textColor or Theme.muted)
-        local showCount = chip.countStr ~= nil and (chip.width >= chip.labelW + chip.glyphW + chip.countW + 18)
-        local contentW = chip.labelW + chip.glyphW + (showCount and (chip.countW + 10) or 0)
+        local showCount = chip.countStr ~= nil and (chip.width >= chip.labelW + chip.markW + chip.countW + 18)
+        local contentW = chip.labelW + chip.markW + (showCount and (chip.countW + 10) or 0)
         local drawX = chip.x + math.max(4, math.floor((chip.width - contentW) / 2))
 
-        -- Optional Glyph
-        if chip.glyph ~= "" then
-            local glyphCol = isSelected and Theme.accent or Theme.muted
-            Theme.text(self, chip.glyph, drawX, chip.textY, glyphCol)
-            drawX = drawX + chip.glyphW
+        -- Optional geometric status mark
+        if chip.mark ~= "" then
+            local markCol = isSelected and Theme.accent or Theme.muted
+            local ms = math.max(6, math.min(h - 4, 10))
+            Visual.mark(self, drawX, chip.textY + math.floor((h - ms) / 2), ms, chip.mark, markCol)
+            drawX = drawX + chip.markW
         end
 
         -- Main Label
@@ -223,7 +294,8 @@ function FilterChips:prerender()
             local badgeBg = chip.alert and Theme.status.ERROR or (isSelected and Theme.panel or quietBadge)
             local badgeTextCol = dossier and (chip.alert and Theme.dossier.alert or Theme.dossier.muted) or chip.alert and Theme.textColor or (isSelected and Theme.accent or Theme.muted)
 
-            if self.variant~='underline' and not dossier then
+            if not underline and not dossier then
+                local border = isSelected and Theme.accent or (isHovered and Theme.border or quietBorder)
                 Theme.rect(self, drawX, badgeY, badgeW, badgeH, badgeBg)
                 Theme.rect(self, drawX, badgeY, badgeW, badgeH, border, true)
             end

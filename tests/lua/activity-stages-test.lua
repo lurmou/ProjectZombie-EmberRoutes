@@ -1,5 +1,5 @@
 -- Pure finite protocol; no native actions or effects are simulated as success.
-local S=require 'EmberRoutesProbe/ActivityStages'
+local S=require 'EmberRoutesProbe/Activity/ActivityStages'
 local checks=0
 local function check(v,m) assert(v,m) checks=checks+1 end
 local function clone(t) if type(t)~='table' then return t end local r={} for k,v in pairs(t) do r[k]=clone(v) end return r end

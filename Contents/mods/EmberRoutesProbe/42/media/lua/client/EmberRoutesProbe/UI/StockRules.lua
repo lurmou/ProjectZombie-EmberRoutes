@@ -2,10 +2,10 @@ require "ISUI/ISPanel"
 require "ISUI/ISButton"
 require "ISUI/ISTextEntryBox"
 require "ISUI/ISComboBox"
-local Probe=require "EmberRoutesProbe/Boot"
-local StockService=require "EmberRoutesProbe/StockService"
-local StockStore=require "EmberRoutesProbe/StockStore"
-local CraftingService=require "EmberRoutesProbe/CraftingService"
+local Probe=require "EmberRoutesProbe/Kernel/Boot"
+local StockService=require "EmberRoutesProbe/Warehouse/StockService"
+local StockStore=require "EmberRoutesProbe/Warehouse/StockStore"
+local CraftingService=require "EmberRoutesProbe/Crafting/CraftingService"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local State=require "EmberRoutesProbe/UI/State"
 local Cached=require "EmberRoutesProbe/UI/CachedList"
@@ -13,10 +13,11 @@ local Theme=require "EmberRoutesProbe/UI/Theme"
 local Lifecycle=require "EmberRoutesProbe/UI/PageLifecycle"
 local Visual=require "EmberRoutesProbe/UI/StatusVisual"
 local Text=require "EmberRoutesProbe/UI/Text"
-local Recipes=require "EmberRoutesProbe/ProductionRecipe"
-local Surfaces=require "EmberRoutesProbe/CraftSurfaces"
-local Driver=require "EmberRoutesProbe/Driver"
-local Words=require "EmberRoutesProbe/CraftingText"
+local StepperInput=require "EmberRoutesProbe/UI/StepperInput"
+local Recipes=require "EmberRoutesProbe/Crafting/ProductionRecipe"
+local Surfaces=require "EmberRoutesProbe/Crafting/CraftSurfaces"
+local Driver=require "EmberRoutesProbe/Runtime/Driver"
+local Words=require "EmberRoutesProbe/Crafting/CraftingText"
 
 local function text(key)
     return getTextOrNull("IGUI_EmberRoutesProbe_Stock_"..key) or Words.get(key)
@@ -129,21 +130,19 @@ function EmberRoutesStockRules:buildDetailView(bounds)
     self.detailContainer.background=false
     self.rightPanel:addChild(self.detailContainer)
 
-    -- Stepper buttons for target
+    -- Target stock uses the shared stepper widget: bounds, direct typing,
+    -- wheel adjustment and delta buttons all live in one registered control.
     local rowY=h*3+p
-    local stepW=math.floor(h*2.5)
-    local steppers={{-5,"-5"},{-1,"-1"},{1,"+1"},{5,"+5"}}
-    self.stepButtons={}
-    for i,s in ipairs(steppers) do
-        local btn=ISButton:new(p*2+(i-1)*(stepW+p/2),rowY,stepW,h+p/4,s[2],self,function()
-            self:stepDraftTarget(s[1])
+    local rowH=h+p/4
+    local saveW=math.floor(h*4.5)
+    local stepperW=math.max(180,bounds.width-p*4-saveW)
+    self.targetStepper=StepperInput:new(p,rowY,stepperW,rowH,
+        self.store.value.targetDraft or 20,1,9999,{-5,-1,1,5},function(value)
+            if value then self.store:setState({targetDraft=value}) end
         end)
-        btn:initialise() Theme.button(btn)
-        self.detailContainer:addChild(btn)
-        self.stepButtons[#self.stepButtons+1]=btn
-    end
+    self.detailContainer:addChild(self.targetStepper)
 
-    self.saveTargetBtn=ISButton:new(p*2+4*(stepW+p/2)+p,rowY,h*4.5,h+p/4,text("btn_save"),self,function()
+    self.saveTargetBtn=ISButton:new(p*2+stepperW,rowY,saveW,rowH,text("btn_save"),self,function()
         self:commitTargetUpdate()
     end)
     self.saveTargetBtn:initialise() Theme.button(self.saveTargetBtn)
@@ -233,22 +232,19 @@ function EmberRoutesStockRules:buildNewFormView(bounds)
     self.newFormContainer:addChild(self.surfaceCombo)
     y=y+inputH+gapField
 
-    -- 5. Target stock stepper
+    -- 5. Target stock uses the same shared stepper as the detail view.
     self.formY.targetLabel=y
     y=y+h+gapLabel
-    local stepW=math.floor(h*2.5)
-    local steppers={{-5,"-5"},{-1,"-1"},{1,"+1"},{5,"+5"}}
-    for i,s in ipairs(steppers) do
-        local btn=ISButton:new(p+(i-1)*(stepW+gapField),y,stepW,inputH,s[2],self,function()
-            local cur=(self.store.value.newRule and self.store.value.newRule.minimum) or 20
-            local v=math.max(1,math.min(9999,cur+s[1]))
-            if not self.store.value.newRule then self.store.value.newRule={minimum=20} end
-            self.store.value.newRule.minimum=v
+    self.newRuleStepper=StepperInput:new(p,y,bounds.width-p*2,inputH,
+        20,1,9999,{-5,-1,1,5},function(value)
+            if not value then return end
+            if not self.store.value.newRule then
+                self.store.value.newRule={minimum=value,fullType=""}
+            end
+            self.store.value.newRule.minimum=value
             self:updateNewForm()
         end)
-        btn:initialise() Theme.button(btn)
-        self.newFormContainer:addChild(btn)
-    end
+    self.newFormContainer:addChild(self.newRuleStepper)
 
     -- Create submit button
     local botY=bounds.height-inputH-p
@@ -324,6 +320,7 @@ function EmberRoutesStockRules:selectRule(ruleId)
     end
     if rule then
         self.store:setState({selection=ruleId,mode="detail",targetDraft=rule.minimum})
+        if self.targetStepper then self.targetStepper:setValue(rule.minimum) end
     end
 end
 
@@ -335,12 +332,7 @@ function EmberRoutesStockRules:selectNewRuleMode(prefillFullType)
     self.formNotice=nil
     self:populateCombos(prefillFullType or "")
     self.store:setState({mode="new",selection=false,newRule=newR})
-end
-
-function EmberRoutesStockRules:stepDraftTarget(delta)
-    local cur=self.store.value.targetDraft or 20
-    cur=math.max(1,math.min(9999,cur+delta))
-    self.store:setState({targetDraft=cur})
+    if self.newRuleStepper then self.newRuleStepper:setValue(20) end
 end
 
 function EmberRoutesStockRules:populateCombos(filterFullType)
@@ -349,7 +341,7 @@ function EmberRoutesStockRules:populateCombos(filterFullType)
     local targetType=filterFullType or (self.itemInput and self.itemInput:getText()) or ""
 
     if targetType~="" then
-        local Catalog=require "EmberRoutesProbe/CraftingCatalog"
+        local Catalog=require "EmberRoutesProbe/Crafting/CraftingCatalog"
         local _,productionByType=Catalog.productionIndex()
         local matches=productionByType and productionByType[targetType]
         if matches then
@@ -527,6 +519,10 @@ end
 function EmberRoutesStockRules:updateNewForm()
     local min=self.store.value.newRule and self.store.value.newRule.minimum or 20
     self.createSubmitBtn:setTitle(string.format(text("btn_create_confirm_with_target"),min))
+    if self.newRuleStepper and self.newRuleStepper.entry then
+        local shown=tonumber(self.newRuleStepper.entry:getText())
+        if shown~=min then self.newRuleStepper:setValue(min) end
+    end
 end
 
 function EmberRoutesStockRules:prerender()
@@ -546,21 +542,49 @@ function EmberRoutesStockRules:prerender()
                 self._nameText=itemType and itemType:getDisplayName() or sel.fullType
             end
             local name=self._nameText
-            Theme.text(self,name.." ("..sel.fullType..")",x,y,Theme.textColor)
-            Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_targetStockFormat",self.store.value.targetDraft or sel.minimum),x,y+h+p/4,Theme.accent)
+            local draft=self.store.value.targetDraft or sel.minimum
+            local cycle=sel.activeCycle
+            local phase=cycle and cycle.phase
+            -- Format strings and badge tables allocate; derive them only when an
+            -- input actually changed instead of on every draw pass.
+            if self._detailSel~=sel or self._detailRevision~=sel.revision
+                or self._detailDraft~=draft or self._detailCount~=sel.knownCount
+                or self._detailDeficit~=sel.deficit or self._detailNpc~=sel.npcId
+                or self._detailRecipe~=sel.recipeId or self._detailCycle~=cycle
+                or self._detailPhase~=phase or self._detailState~=sel.state
+                or self._detailName~=name or self._detailH~=h then
+                self._detailSel=sel self._detailRevision=sel.revision
+                self._detailDraft=draft self._detailCount=sel.knownCount
+                self._detailDeficit=sel.deficit self._detailNpc=sel.npcId
+                self._detailRecipe=sel.recipeId self._detailCycle=cycle
+                self._detailPhase=phase self._detailState=sel.state
+                self._detailName=name self._detailH=h
+                local badgeInfo=stateBadge(sel.state)
+                self._detail={
+                    nameText=name.." ("..sel.fullType..")",
+                    targetText=getText("IGUI_EmberRoutesProbe_Stock_targetStockFormat",draft),
+                    physicalText=getText("IGUI_EmberRoutesProbe_Stock_physicalCountFormat",sel.knownCount or 0),
+                    deficitText=getText("IGUI_EmberRoutesProbe_Stock_deficitFormat",sel.deficit or 0),
+                    workerText=getText("IGUI_EmberRoutesProbe_Stock_workerFormat",sel.npcId),
+                    recipeText=getText("IGUI_EmberRoutesProbe_Stock_recipeFormat",sel.recipeId),
+                    cycleText=cycle and getText("IGUI_EmberRoutesProbe_Stock_cycleFormat",cycle.taskId,cycle.phase) or nil,
+                    badge=Visual.badge(badgeInfo[2],badgeInfo[1],math.floor(h*7),h,p/2)
+                }
+            end
+            local d=self._detail
+            Theme.text(self,d.nameText,x,y,Theme.textColor)
+            Theme.text(self,d.targetText,x,y+h+p/4,Theme.accent)
 
-            local badgeInfo=stateBadge(sel.state)
-            local badge=Visual.badge(badgeInfo[2],badgeInfo[1],math.floor(h*7),h,p/2)
-            Visual.drawBadge(self,x,y+h*2+p/2,badge)
+            Visual.drawBadge(self,x,y+h*2+p/2,d.badge)
 
             local infoY=y+h*4.5+p
-            Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_physicalCountFormat",sel.knownCount or 0),x,infoY,Theme.textColor)
-            Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_deficitFormat",sel.deficit or 0),x,infoY+h,Theme.muted)
-            Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_workerFormat",sel.npcId),x,infoY+h*2,Theme.muted)
-            Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_recipeFormat",sel.recipeId),x,infoY+h*3,Theme.muted)
+            Theme.text(self,d.physicalText,x,infoY,Theme.textColor)
+            Theme.text(self,d.deficitText,x,infoY+h,Theme.muted)
+            Theme.text(self,d.workerText,x,infoY+h*2,Theme.muted)
+            Theme.text(self,d.recipeText,x,infoY+h*3,Theme.muted)
 
-            if sel.activeCycle then
-                Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_cycleFormat",sel.activeCycle.taskId,sel.activeCycle.phase),x,infoY+h*4.5,Theme.accent)
+            if d.cycleText then
+                Theme.text(self,d.cycleText,x,infoY+h*4.5,Theme.accent)
             end
 
             local noteY=infoY+h*6
@@ -575,9 +599,15 @@ function EmberRoutesStockRules:prerender()
             Theme.text(self,text("lbl_item_type"),x,baseY+fy.itemLabel,Theme.textColor)
 
             local fullType=self.itemInput and self.itemInput:getText() or ""
-            local itemObj=fullType~="" and ScriptManager.instance:getItem(fullType)
-            if itemObj then
-                Theme.text(self,getText("IGUI_EmberRoutesProbe_Stock_selectedItemDisplay",itemObj:getDisplayName()),x,baseY+fy.itemHint,Theme.accent)
+            -- ScriptManager lookup plus display-name formatting is not a draw
+            -- operation; it repeats only when the typed full type changes.
+            if self._inputType~=fullType then
+                self._inputType=fullType
+                local itemObj=fullType~="" and ScriptManager.instance:getItem(fullType)
+                self._inputText=itemObj and getText("IGUI_EmberRoutesProbe_Stock_selectedItemDisplay",itemObj:getDisplayName()) or nil
+            end
+            if self._inputText then
+                Theme.text(self,self._inputText,x,baseY+fy.itemHint,Theme.accent)
             else
                 Theme.text(self,text("hint_select_from_storage"),x,baseY+fy.itemHint,Theme.muted)
             end
@@ -587,8 +617,11 @@ function EmberRoutesStockRules:prerender()
             Theme.text(self,text("lbl_surface"),x,baseY+fy.surfaceLabel,Theme.textColor)
 
             local minVal=self.store.value.newRule and self.store.value.newRule.minimum or 20
-            local targetLabel=getText("IGUI_EmberRoutesProbe_Stock_targetStockFormatLabel",minVal)
-            Theme.text(self,targetLabel,x,baseY+fy.targetLabel,Theme.textColor)
+            if self._targetLabelFor~=minVal then
+                self._targetLabelFor=minVal
+                self._targetLabel=getText("IGUI_EmberRoutesProbe_Stock_targetStockFormatLabel",minVal)
+            end
+            Theme.text(self,self._targetLabel,x,baseY+fy.targetLabel,Theme.textColor)
 
             if self.formNotice then
                 Theme.text(self,self.formNotice,x,baseY+self.createSubmitBtn.y-h-math.floor(p/4),Theme.accent)

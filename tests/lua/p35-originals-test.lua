@@ -8,7 +8,7 @@ local fire={uses=0.5,getID=function() return 2 end,getFullType=function() return
     getCurrentUsesFloat=function(self) return self.uses end,getUseDelta=function() return 0.1 end,getContainer=function() return inv end}
 values={item,fire}
 local npc={getInventory=function() return inv end}
-package.loaded['EmberRoutesProbe/LaborStore']={owner=function() end,validPersonal=function(_,_,key) return key=='item:2' end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={owner=function() end,validPersonal=function(_,_,key) return key=='item:2' end}
 package.loaded['TimedActions/ISEatFoodAction']=true
 ISEatFoodAction={new=function(_,who,food)
     return {start=function(self) local f=self:getRequiredItem() f.uses=f.uses-0.1 end,update=function() end,
@@ -22,7 +22,7 @@ local function context()
         body={retained=function() return live end,add=function(a) queued=a a:start() return true end,
             clear=function() if queued then queued:stop() end return true end}}
 end
-local Smoke=require 'EmberRoutesProbe/LeisureSmoke'
+local Smoke=require 'EmberRoutesProbe/Leisure/LeisureSmoke'
 local chosen,done=Smoke.find(npc,{scan=8},{}) assert(done and chosen.item==item and chosen.fire==fire)
 local c=context() local leaf=Smoke.new(c)
 assert(leaf.run()=='Running' and fire.uses==0.4,'native start consumes the selected real ignition source')

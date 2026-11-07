@@ -1,13 +1,13 @@
 -- Installed ISTakeWaterAction; Jobs/claims/receipts real, world/fluid effects mocked.
 local f=dofile('tests/lua/cooking-actions-test.lua')
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Facilities=require 'EmberRoutesProbe/SettlementFacilities'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
-local Fluids=require 'EmberRoutesProbe/CraftFluids'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local Fluids=require 'EmberRoutesProbe/Crafting/CraftFluids'
 local originalInstance=instanceof
 function instanceof(value,kind)
     if kind=='IsoWorldInventoryObject' or kind=='IsoThumpable' then return false end
@@ -54,7 +54,7 @@ local function source(x,amount)
     function object:transferFluidTo(target,amount)
         calls=calls+1
         local owner=assert(Store.owner(target.itemId))
-        local job=require('EmberRoutesProbe/TaskJobs').current():peek(owner.taskId)
+        local job=require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(owner.taskId)
         assert(job.effects=='UNKNOWN' and job.payload.attempt.state=='COMMITTING','durable progressive barrier')
         local n=math.min(amount,water.amount,target.capacity-target.amount)
         water.amount=water.amount-n target.amount=target.amount+n
@@ -74,8 +74,8 @@ local function setup(amount)
     c.body.snapshot=function() return {available=true,nativeStopped=f.queued()==nil} end
     return c,pot
 end
-local Water=require 'EmberRoutesProbe/CookingWater'
-local Sources=require 'EmberRoutesProbe/CookingWaterSources'
+local Water=require 'EmberRoutesProbe/Cooking/CookingWater'
+local Sources=require 'EmberRoutesProbe/Cooking/CookingWaterSources'
 local c,pot=setup() local tap=source(1,5)
 local leaf=assert(Water.take(c,1,pot,tap)) assert(leaf.run()=='Running')
 local action=f.queued() action:start() action.delta=.4 action:update()

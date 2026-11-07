@@ -2,7 +2,7 @@
 -- Models the bridge; does NOT verify Java or engine behaviour.
 local allowed={['field-work-test']=true,['field-tool-supply-test']=true,['field-continuous-batch-test']=true}
 local name=assert(arg[1],'FIELD regression name required') assert(allowed[name],'FIELD only')
-local Commit=require 'EmberRoutesProbe/LaborJobCommit'
+local Commit=require 'EmberRoutesProbe/Work/LaborJobCommit'
 local install=Commit.install
 Commit.install=function(Store,state,allocate,clean)
     local previous=EmberRoutesProbeJava or {}

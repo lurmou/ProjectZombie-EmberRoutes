@@ -1,13 +1,13 @@
 -- Full same-Job collection/addition/heat/delivery, including suspension mid-mixture.
 local h=dofile('tests/lua/cooking-heat-test.lua') local f=h.f local e=h.e
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Inventory=require 'EmberRoutesProbe/CookingInventory'
-local Evolved=require 'EmberRoutesProbe/CookingEvolved'
-local Agent=require 'EmberRoutesProbe/CookingAgent'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Inventory=require 'EmberRoutesProbe/Cooking/CookingInventory'
+local Evolved=require 'EmberRoutesProbe/Cooking/CookingEvolved'
+local Agent=require 'EmberRoutesProbe/Cooking/CookingAgent'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 -- Installed PotOfSoupRecipe script weight. A missing native output script is
 -- intentionally a production admission error, not a reason to weaken the gate.

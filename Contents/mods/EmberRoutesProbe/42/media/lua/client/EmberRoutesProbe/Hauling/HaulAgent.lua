@@ -1,17 +1,17 @@
 -- Autonomous hauling adapter. The existing TaskRuntime remains the sole body owner.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local View=require 'EmberRoutesProbe/InventoryView'
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
-local Producers=require 'EmberRoutesProbe/LaborProducers'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local View=require 'EmberRoutesProbe/Warehouse/InventoryView'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Routing=require 'EmberRoutesProbe/Hauling/HaulRouting'
-local Signals=require 'EmberRoutesProbe/LaborSignals'
-local Probe=require 'EmberRoutesProbe/Boot'
-local Log=require 'EmberRoutesProbe/Log'
-local Delivery=require 'EmberRoutesProbe/DeliveryTarget'
+local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
+local Probe=require 'EmberRoutesProbe/Kernel/Boot'
+local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Delivery=require 'EmberRoutesProbe/Logistics/DeliveryTarget'
 local A={}
 local JobExecution=require 'EmberRoutesProbe/Hauling/HaulJobs'
 function A.new(npcId)
@@ -38,9 +38,11 @@ function A.new(npcId)
     local function valid(c)
         local authorized=current==c and not c.stopping and not isClient() and not isServer() and Probe.ready
             and Store.valid(c.job,c.generation,c.token) and (not c.body or c.body.current())
-            and (c.job.producer=='DELIVERY' or not c.actor:isDead()) and EmberRoutesProbeJava.carrierPresent(c.npc)
+            and (c.job.producer=='DELIVERY' or not c.actor:isDead())
+            and (EmberRoutesProbeJava.carrierPresent(c.npc)
+                or require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc))
         if not authorized then return false,'DRIVER_UNAVAILABLE' end
-        return require('EmberRoutesProbe/HealthAssessment').canWork(c.npc)
+        return require('EmberRoutesProbe/SelfCare/HealthAssessment').canWork(c.npc)
     end
     local function knownTransfer(c,s)
         local r=c.job local a=s.attempt
@@ -113,11 +115,11 @@ function A.new(npcId)
     function api.stopAdapter(controller,ticket)
         local c=current if not c then return nil,'NO_ACTIVE_TRANSFER' end
         local r,world,generation=c.job,Registry.data(),c.job.generation
-        return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=c.npc,npcId=npcId,jobId=r.id,
+        return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=c.npc,npcId=npcId,jobId=r.id,
             same=function(paused)
 		if world~=Registry.data() then return false end
 		if c.completed then
-		    local saved=require('EmberRoutesProbe/TaskJobs').current():peek(r.id)
+		    local saved=require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(r.id)
 		    return saved and saved.state=='DONE' and r.generation==c.closedGeneration
 		end
 		if record()~=r then return false end
@@ -146,7 +148,7 @@ function A.new(npcId)
         end
         local b=binding(actor) if not b then return 'CARRIER_UNAVAILABLE' end
         local npc=b.handle
-        local healthy,healthReason=require('EmberRoutesProbe/HealthAssessment').canWork(npc)
+        local healthy,healthReason=require('EmberRoutesProbe/SelfCare/HealthAssessment').canWork(npc)
         if not healthy then return healthReason end
         local ok,why=upgrade(r,npc) if not ok then return why end
         if not npc:getCharacterActions():isEmpty() then return 'NATIVE_ACTION_BUSY' end
@@ -163,7 +165,7 @@ function A.new(npcId)
                     return Probe.ready and Registry.data()==world and record()==previous and r.generation==generation
                         and not r.controlUncertain and not current
                         and (r.producer=='DELIVERY' and Delivery.allowed(r) or r.producer~='DELIVERY' and not actor:isDead()
-                            and require('EmberRoutesProbe/MembershipService').check(npcId,'WORK',
+                            and require('EmberRoutesProbe/Settlement/MembershipService').check(npcId,'WORK',
                                 {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=r.settlementId}).allowed)
                 end,
                 start=function(granted)
@@ -188,7 +190,7 @@ function A.new(npcId)
         r.pathBackoff=c.backoff
         c.valid=function() return valid(c) end
         current=c r.state='RUNNING' r.reason='EXECUTING'
-        r.workerName=require('EmberRoutesProbe/DisplayNames').name(npcId,npc)
+        r.workerName=require('EmberRoutesProbe/Warehouse/DisplayNames').name(npcId,npc)
         local published,err=Store.publish(r) if not published then current=nil Store.finish(r) return err end
         changed(r) return 'STARTED'
     end
@@ -322,7 +324,7 @@ function A.new(npcId)
 	return Transfer.item(first.context,first.item,first.from,first.to,endpoint)
     end
     local function nextStep(c)
-        if c.job.producer=='DELIVERY' then return require('EmberRoutesProbe/DeliveryFlow').next(c,snapshotStep,withdraw) end
+        if c.job.producer=='DELIVERY' then return require('EmberRoutesProbe/Logistics/DeliveryFlow').next(c,snapshotStep,withdraw) end
         local r=c.job
         local source=not r.deliveryOnly and Registry.resolve(r.source,'take',r.scopeId) or nil
         if not c.scan then

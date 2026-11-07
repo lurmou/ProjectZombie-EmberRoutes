@@ -11,13 +11,13 @@ members.a.context='FOLLOW' members.b.context='FOLLOW'
 instanceof=function(it,kind) return kind=='Food' end
 local main={} local item={getID=function() return 9 end,getFullType=function() return 'Base.Apple' end,getHungChange=function() return -0.4 end,getHungerChange=function() return -0.4 end,getBaseHunger=function() return -0.4 end,isRotten=function() return false end,isBurnt=function() return false end,isPoison=function() return false end,getPoisonPower=function() return 0 end,isTainted=function() return false end,isCooked=function() return false end,isCookable=function() return false end,isbDangerousUncooked=function() return false end,isFrozen=function() return false end,isSpice=function() return false end,getRequireInHandOrInventory=function() return nil end,
     getContainer=function() return main end}
-local Probe={} package.loaded['EmberRoutesProbe/Boot']=Probe
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,
+local Probe={} package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,
     id=function() serial=serial+1 return 'care'..serial end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,
     crafts=function() return {a={id='craft',generation=1,state='RUNNING'}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end,resources=function() return {} end}
-local Store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end,resources=function() return {} end}
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local status={a={jobId='craft',kind='PRODUCTION',state='ACTIVE',started=true}}
 local rejected=true local submitted={} local stopReasons={}
 local runtime={accepting=function() return true end,owns=function(_,id) return status[id]~=nil end,
@@ -28,30 +28,30 @@ local runtime={accepting=function() return true end,owns=function(_,id) return s
         return h
     end,inspect=function(_,h) return h end,
     stopJob=function(_,id,jobId,reason) stopRequests=stopRequests+1 stopReasons[#stopReasons+1]=reason return true end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) return {id=id,handle=npcs[id]} end}
-package.loaded['EmberRoutesProbe/NeedsObserver']={sample=function(_,id,time)
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return runtime end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(_,id) return {id=id,handle=npcs[id]} end}
+package.loaded['EmberRoutesProbe/SelfCare/NeedsObserver']={sample=function(_,id,time)
     return {hunger=hunger,thirst=0,fatigue=0,endurance=1,safe=safe,externalSafe=safe,observedAt=time}
 end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='FOLLOW'} end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='FOLLOW'} end}
 local ownOnly
-package.loaded['EmberRoutesProbe/SelfCareResources']={
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareResources']={
     new=function(_,npc,kind,personal)
         ownOnly=personal
         return {kind=kind,step=function() return offered and {id=9,item=item,container=main,npc=npc},true end}
     end,revalidate=function() return not Store.owner(9) end}
 local contexts={}
-package.loaded['EmberRoutesProbe/SelfCareExecution']={new=function(_,binding,job,candidate)
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareExecution']={new=function(_,binding,job,candidate)
     local s={npcId=binding.id,jobId=job.id,kind='SELF_CARE'} contexts[#contexts+1]=s return s
 end}
 EmberRoutesProbeJava={workerCount=function() return 2 end,workerIdAt=function(i) return i==0 and 'a' or 'b' end}
 if ERLaborTestBridge then for name,method in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[name]=method end end
 local withdrawn,pendingChecks=0,0
-package.loaded['EmberRoutesProbe/SocialCoordinator']={withdraw=function(id)
+package.loaded['EmberRoutesProbe/Activity/SocialCoordinator']={withdraw=function(id)
     withdrawn=withdrawn+1
 end,pending=function() pendingChecks=pendingChecks+1 return 'pending-pair' end}
-local Service=require 'EmberRoutesProbe/SelfCare'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
+local Service=require 'EmberRoutesProbe/SelfCare/SelfCare'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 if ERMedicalServiceOnly then
     ERMedicalServiceOnly({check=check,Service=Service,Jobs=Jobs,npcs=npcs,submitted=submitted,status=status,item=item,
         advance=function(time) now=time Service.tick() end,
@@ -86,8 +86,8 @@ check(not Service.prepareRemoval('a'),'unknown consumption prevents deletion of 
 root={} hunger=0 safe=true now=20000
 members.a.context='SETTLEMENT' members.b.context='SETTLEMENT'
 EmberRoutesProbeJava.workerCount=function() return 1 end
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
-package.loaded['EmberRoutesProbe/StudyService']={candidate=function()
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Leisure/StudyService']={candidate=function()
     return {id=9,item=item,container=main,npc=npcs.a,entry={id='home'},study={version=0}},true
 end}
 local prior=#submitted
@@ -113,8 +113,8 @@ members.a.revision=members.a.revision+1
 EmberRoutesProbeJava.reposeWithControl=function() return true end
 EmberRoutesProbeJava.reposeAtWithControl=function() return true end
 EmberRoutesProbeJava.floorSleepSafe=function(_,x,y,z) return x==1 and y==1 and z==0 end
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/ReposeSites']={new=function() return {step=function() return nil,true,'SITE_UNAVAILABLE' end} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
+package.loaded['EmberRoutesProbe/SelfCare/ReposeSites']={new=function() return {step=function() return nil,true,'SITE_UNAVAILABLE' end} end}
 local beforeSleep=#submitted
 assert(Service.force('a','SLEEP')) Service.tick()
 local sleeping=Jobs.current():forNpc('a','SELF_CARE')[1]

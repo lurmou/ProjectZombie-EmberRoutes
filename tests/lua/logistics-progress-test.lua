@@ -2,12 +2,12 @@
 local world=dofile("tests/lua/multi-worker-test.lua")
 local f=world.fixture local actor,a,b=world.actor,world.a,world.b
 local Work=world.Work
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
-local Store=require "EmberRoutesProbe/LogisticsStore"
-local Service=require "EmberRoutesProbe/LogisticsService"
-local Claims=require "EmberRoutesProbe/LaborStore"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
+local Store=require "EmberRoutesProbe/Logistics/LogisticsStore"
+local Service=require "EmberRoutesProbe/Logistics/LogisticsService"
+local Claims=require "EmberRoutesProbe/Work/LaborStore"
 local count=0 local function check(value,message) count=count+1 assert(value,message) end
 local originalPrint=print print=function() end
 function actor:getIndex() return 0 end
@@ -75,7 +75,7 @@ for _=1,500 do
     if record and record.delivered>0 and record.delivered<#record.items then actualMiddle=actualMiddle+1 end
     if record and record.state=="RUNNING" and not checkedClaims then
         for _,id in ipairs(record.items) do assert(Claims.owner(id),"active manifest original must remain claimed") end
-        local planner=assert(require("EmberRoutesProbe/LogisticsPlanner").new(entry,Store.get(entry.id),b))
+        local planner=assert(require("EmberRoutesProbe/Logistics/LogisticsPlanner").new(entry,Store.get(entry.id),b))
         local intent,state
         for i=1,1000 do intent,state=planner:step(64) if state~="WAIT" then break end end
         if intent then for _,id in ipairs(intent.items) do assert(not Claims.owner(id),"planner stole a claimed original") end end

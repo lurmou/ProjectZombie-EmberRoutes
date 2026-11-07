@@ -4,17 +4,17 @@ local name=assert(arg[1],'ACTIVITY regression name required')
 assert(string.match(name,'^activity%-[%w%-]+%-test$'),'ACTIVITY tests only')
 -- Optional frozen HEAD oracle distinguishes pre-existing assertion failures.
 if arg[2]=='baseline' then
-    package.preload['EmberRoutesProbe/ActivityParticipant']=function()
+    package.preload['EmberRoutesProbe/Activity/ActivityParticipant']=function()
         return dofile('tests/lua/fixtures/dec003-pre-kernel-activity-participant.lua')
     end
-    local Adapters=require 'EmberRoutesProbe/LaborDomainAdapters'
+    local Adapters=require 'EmberRoutesProbe/Work/LaborDomainAdapters'
     local current=Adapters.install
     Adapters.install=function(...)
         current(...)
         dofile('tests/lua/fixtures/dec003-pre-kernel-activity-adapter.lua').install(...)
     end
 end
-local Commit=require 'EmberRoutesProbe/LaborJobCommit'
+local Commit=require 'EmberRoutesProbe/Work/LaborJobCommit'
 local install=Commit.install
 Commit.install=function(Store,state,allocate,clean)
     local previous=EmberRoutesProbeJava or {}

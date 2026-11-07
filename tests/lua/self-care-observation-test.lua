@@ -1,9 +1,9 @@
 local checks=0 local function check(v,s) checks=checks+1 assert(v,s) end
 local function list(t) return {size=function() return #t end,get=function(_,i) return t[i+1] end} end
 local root={} local claimed={}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,accepts=function() return true end}
-package.loaded['EmberRoutesProbe/LaborStore']={owner=function(id) return claimed[id] end}
-package.loaded['EmberRoutesProbe/CraftSupply']={}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,accepts=function() return true end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={owner=function(id) return claimed[id] end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
 CharacterStat={HUNGER='hunger',THIRST='thirst',FATIGUE='fatigue',ENDURANCE='endurance'}
 function instanceof(o,kind) return o and o.type==kind end
 Fluid={Water='water'}
@@ -14,7 +14,7 @@ local npc={getStats=function() return {get=function(_,k) return stats[k] end} en
     getSpottedList=function() return list(seen) end,getSurroundingAttackingZombies=function() return danger end,
     isOnFire=function() return false end,getX=function() return 0 end,getY=function() return 0 end,getZ=function() return 0 end,
     getBodyDamage=function() return {getOverallBodyHealth=function() return hp end} end}
-local Observer=require 'EmberRoutesProbe/NeedsObserver'
+local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
 check(Observer.sample(npc,'a',0).safe,'bounded native sample with known safety')
 danger=1 check(not Observer.sample(npc,'a',1).safe,'attacker prevents ordinary self-care') danger=0
 seen={{type='IsoZombie',isDead=function() return false end,getX=function() return 4 end,
@@ -34,7 +34,7 @@ local function food(id)
         getContainer=function() return container end}
 end
 objects={food(1),food(2)} claimed[1]={taskId='production'}
-local Resources=require 'EmberRoutesProbe/SelfCareResources'
+local Resources=require 'EmberRoutesProbe/SelfCare/SelfCareResources'
 local scan=Resources.new({},npc,'EAT',true)
 local found,done=scan:step(1)
 check(not found and not done,'one global scan unit cannot inspect more than one item')

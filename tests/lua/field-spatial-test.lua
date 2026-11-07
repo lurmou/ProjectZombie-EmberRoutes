@@ -2,28 +2,28 @@ local n=0 local function check(v,m) n=n+1 assert(v,m) end
 local entry={id='s',revision=1,factionId='f',areas={{x=0,y=0,w=8,h=8},{x=24,y=0,w=8,h=8}}}
 local root={entries={s=entry}}
 local zones={z={id='z',settlementId='s',enabled=true,revision=1,areas={{x=100,y=100,z=2,w=5,h=5}}}}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root end,get=function() return entry end}
-local G=require 'EmberRoutesProbe/SettlementGeometry'
-package.loaded['EmberRoutesProbe/SettlementZones']={get=function(id) return zones[id] end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return root end,get=function() return entry end}
+local G=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={get=function(id) return zones[id] end,
  contains=function(z,x,y,floor) for _,r in ipairs(z.areas) do if r.z==floor and G.contains(r,x,y) then return true end end return false end}
 local seen={}
 getCell=function() return {getChunk=function(_,x,y) seen[x..':'..y]=true return {x=x,y=y} end} end
-local S=require 'EmberRoutesProbe/FieldSpatial'
+local S=require 'EmberRoutesProbe/Field/FieldSpatial'
 check(S.inside(entry,nil,5,5,0),'first territory segment accepted')
 check(S.inside(entry,nil,25,5,0),'second territory segment accepted')
 check(not S.inside(entry,nil,15,5,0),'gap is not filled by a bounding box')
 check(S.inside(entry,'z',101,101,2),'offsite explicit zone accepted')
 check(not S.inside(entry,'z',101,101,0),'explicit zone retains floor')
 check(not S.inside(entry,'missing',1,1,0),'missing explicit zone never falls back')
-for i=0,8 do S.chunk(entry,nil,'cleaning',i*300) end
+for i=0,8 do S.chunk(entry,nil,'cleaning',i*1500) end
 check(seen['0:0'] and seen['3:0'] and not seen['1:0'] and not seen['2:0'],'8-square union traversal scans both components without gap chunks')
 entry.areas={{x=10911,y=10036,w=3,h=6}} entry.revision=2 seen={}
-for i=9,17 do S.chunk(entry,nil,'cleaning',i*300) end
+for i=9,17 do S.chunk(entry,nil,'cleaning',i*1500) end
 check(seen['1363:1254'] and seen['1364:1255'] and not seen['1091:1003'],'world coordinates scan actual B42 chunks across boundaries')
 local policy={spoilageStrategy='EXPIRE_SOON_FIRST',kitchenZoneId='z'}
-package.loaded['EmberRoutesProbe/JobPolicyService']={get=function() return policy end}
+package.loaded['EmberRoutesProbe/Work/JobPolicyService']={get=function() return policy end}
 instanceof=function(i,kind) return kind=='Food' and i.food end
-local D=require 'EmberRoutesProbe/CookingDirectives'
+local D=require 'EmberRoutesProbe/Cooking/CookingDirectives'
 local function food(id,remaining)
  return {food=true,getID=function() return id end,getAge=function() return 10-remaining end,getOffAgeMax=function() return 10 end}
 end
@@ -38,7 +38,7 @@ local object={getSquare=function() return square end}
 check(D.kitchen('s',object),'kitchen consumes selected zone')
 zones.z.enabled=false
 check(not D.kitchen('s',object),'disabled kitchen fails closed')
-local P=require 'EmberRoutesProbe/MembershipPolicy'
+local P=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
 local row={npcId='npc',settlementId='s',factionId='f',context='SETTLEMENT',revision=1}
 check(not P.evaluate(row,entry,'WORK',{x=101,y=101}).allowed,'ordinary work stays inside settlement')
 check(P.evaluate(row,entry,'FIELD_WORK',{x=101,y=101,scopeId='s'}).allowed,'field macro eligibility allows approved offsite execution')

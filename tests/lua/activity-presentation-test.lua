@@ -12,7 +12,7 @@ getText = getText or function(key, ...)
     return s
 end
 
-local Catalog = require 'EmberRoutesProbe/ActivityScenarioCatalog'
+local Catalog = require 'EmberRoutesProbe/Activity/ActivityScenarioCatalog'
 local Presentation = require 'EmberRoutesProbe/UI/ActivityPresentation'
 
 -- 1. Catalog Tests

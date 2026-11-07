@@ -2,8 +2,8 @@
 -- real farming discovery and public directory; native production effects mocked.
 dofile('tests/lua/public-work-test.lua')
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Public=require 'EmberRoutesProbe/PublicWork'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local actor=getSpecificPlayer(0) local root={}
 Registry.data=function() return root end
 Registry.resolve=function(id) return {id=id} end
@@ -11,13 +11,13 @@ local now=1000000 getTimestampMs=function() return now end
 EmberRoutesProbeJava.workerCount=function() return 0 end
 local recipes={craft={id='craft',name='Planks',product='Base.Plank',yield=3,surface=false,recipe={}},
     meal={id='meal',name='Meal',product='Base.Meal',yield=1,surface=false,recipe={},cooking=true}}
-package.loaded['EmberRoutesProbe/ProductionRecipe'].read=function(id) return recipes[id] end
-package.loaded['EmberRoutesProbe/CookingOrders'].describe=function(id) if id=='meal' then return recipes.meal end end
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe'].read=function(id) return recipes[id] end
+package.loaded['EmberRoutesProbe/Cooking/CookingOrders'].describe=function(id) if id=='meal' then return recipes.meal end end
 local cookingCount,craftCount=0,0
-package.loaded['EmberRoutesProbe/CookingService']={stock=function() return {state='READY',complete=true,knownCount=cookingCount} end}
-package.loaded['EmberRoutesProbe/WarehouseIndex']={watch=function() return function() end end,
+package.loaded['EmberRoutesProbe/Cooking/CookingService']={stock=function() return {state='READY',complete=true,knownCount=cookingCount} end}
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']={watch=function() return function() end end,
     candidates=function() return {state='READY',complete=true,knownCount=craftCount} end,refresh=function() end}
-package.loaded['EmberRoutesProbe/ProductionChain'].new=function() return {step=function() return {nodes={}} end} end
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain'].new=function() return {step=function() return {nodes={}} end} end
 Public.prepareRecovery()
 check(Public.saveRule(actor,'s','craft',5,4)=='RULE_SAVED','crafting independent threshold registered')
 check(Public.saveRule(actor,'s','meal',2,2)=='RULE_SAVED','cooking independent threshold registered')
@@ -33,7 +33,7 @@ check(Public.rule('s','Base.Plank').activeOrder==craftId and Public.rule('s','Ba
 local token=Public.requestId() local _,manualId=Public.create(actor,'s','craft',4,nil,token)
 check(Public.overlapReason(manualId)=='CYCLE_ACTIVE','first restock cycle suppresses later manual production')
 -- Cross-target evidence must suppress delivery for either actual destination.
-local business=package.loaded['EmberRoutesProbe/BusinessJobs']
+local business=package.loaded['EmberRoutesProbe/Work/BusinessJobs']
 local oldRecord=business.record
 local splitDone=false
 business.record=function(id) if id=='split-job' then return {state=splitDone and 'DONE' or 'RUNNING',released=splitDone,outputs={{fullType='Base.Plank',destination='D1'},
@@ -58,20 +58,20 @@ local nextMeal=Public.rule('s','Base.Meal').activeOrder root.publicWork.orders[n
 for _=1,4 do tick() end
 check(Public.rule('s','Base.Meal').activeOrder==nextMeal and Public.rule('s','Base.Meal').reason=='TASK_RECORD_MISSING','missing order is diagnostic, not settlement or a duplicate cycle')
 -- Farming demand is a physical plant condition, not an invented product order.
-package.loaded['EmberRoutesProbe/FieldDiscovery']=nil
-package.loaded['EmberRoutesProbe/FieldSpatial']={inside=function() return true end,
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']=nil
+package.loaded['EmberRoutesProbe/Field/FieldSpatial']={inside=function() return true end,
     identity=function() return 'plant-1' end,square=function() return {} end}
-package.loaded['EmberRoutesProbe/JobPolicyService']={get=function() return {} end}
-package.loaded['EmberRoutesProbe/SettlementZones']={revision=function() return 1 end}
+package.loaded['EmberRoutesProbe/Work/JobPolicyService']={get=function() return {} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={revision=function() return 1 end}
 local plant={x=2,y=3,z=0,state='seeded',typeOfSeed='Carrots',waterLvl=10,
     isAlive=function() return true end,canHarvest=function() return false end,getObject=function() return {} end}
 CFarmingSystem={instance={getLuaObjectCount=function() return 1 end,getLuaObjectByIndex=function() return plant end,getLuaObjectAt=function() return plant end}}
-local D=require 'EmberRoutesProbe/FieldDiscovery'
+local D=require 'EmberRoutesProbe/Field/FieldDiscovery'
 local env={entry={id='s',revision=1},npc={getX=function() return 2 end,getY=function() return 3 end},now=now}
 local rows=D.targets(env,'farming') check(#rows==1 and rows[1].kind=='WATER','farming independently observes real water demand')
 local selected=rows[1]
-local Directory=require 'EmberRoutesProbe/TaskDirectory' local directory=Directory.new()
-local Field=require 'EmberRoutesProbe/FieldWork'
+local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory' local directory=Directory.new()
+local Field=require 'EmberRoutesProbe/Field/FieldWork'
 env.directory=directory env.candidates={}
 check(Field.offer(env,'farming',selected),'farming demand enters existing public directory')
 local offer=env.candidates[1]

@@ -5,8 +5,8 @@ local actor={getIndex=function() return 0 end,isDead=function() return false end
 isClient=function() return false end isServer=function() return false end getSpecificPlayer=function() return actor end
 ModData={getOrCreate=function() return data end}
 getCell=function() return {getGridSquare=function() return loaded and {isFree=function() return free end} or nil end} end
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() return 'id' end}
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() return 'id' end}
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 data.entries.home={id='home',name='Home',format=1,factionId='f',revision=1,areas={{x=0,y=0,w=10,h=10}}}
 local point={x=3.5,y=4.5,z=0}
 assert(Ledger.setReturnPoint(actor,'home',point,1))

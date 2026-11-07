@@ -15,13 +15,13 @@ end
 function getScriptManager() return {getAllCraftRecipes=function() return list(natives) end} end
 function getTextOrNull() return nil end
 EmberRoutesProbeJava={recipeKey=function(recipe) return recipe.id end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-package.loaded['EmberRoutesProbe/ProductionRecipe']={read=function(id)
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={read=function(id)
     calls=calls+1
     if id=='Base.Recipe5' then return nil,'RECIPE_MECHANISM_UNSUPPORTED' end
     return {product='Base.Product',yield=1,surface=false,outputs={['Base.Product']=1}}
 end}
-local Catalog=require 'EmberRoutesProbe/CraftingCatalog'
+local Catalog=require 'EmberRoutesProbe/Crafting/CraftingCatalog'
 Catalog.step()
 local result=Catalog.query('',nil,false,1,12)
 check(calls==4 and result.loading and result.total==4,'first slice inspects only four native recipes and reports partial loading')

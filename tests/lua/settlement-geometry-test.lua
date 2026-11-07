@@ -1,7 +1,7 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local n=0
 local function check(value,why) n=n+1 assert(value,why) end
-local Geometry=require "EmberRoutesProbe/SettlementGeometry"
+local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
 
 -- 1. Test basic rectangle & totalTiles
 local r1 = assert(Geometry.rectangle(0, 0, 9, 9))

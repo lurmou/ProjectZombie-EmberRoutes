@@ -1,36 +1,39 @@
-local Probe=require "EmberRoutesProbe/Boot"
-local Companion=require "EmberRoutesProbe/Companion"
+local Probe=require "EmberRoutesProbe/Kernel/Boot"
+local Companion=require "EmberRoutesProbe/Settlement/Companion"
 -- Background lifecycle must exist before OnGameStart, even with every UI closed.
-require "EmberRoutesProbe/Persistence"
-require "EmberRoutesProbe/StockService"
-require "EmberRoutesProbe/PublicWork"
+require "EmberRoutesProbe/Runtime/Persistence"
+require "EmberRoutesProbe/Warehouse/StockService"
+require "EmberRoutesProbe/Work/PublicWork"
 -- Load eagerly: Boot registers Probe.tickDelivery once, so a lazy require from the
 -- first "call delivery" click would leave early orders without a ticker.
-require "EmberRoutesProbe/DeliveryService"
-require "EmberRoutesProbe/ActivityService"
-require('EmberRoutesProbe/TaskResume').install()
-require('EmberRoutesProbe/SelfCare').install()
-require('EmberRoutesProbe/TaskRetirement').install()
-require('EmberRoutesProbe/MembershipLifecycle').install()
-local ContainerMenu=require "EmberRoutesProbe/ContainerMenu"
-local Commands=require "EmberRoutesProbe/NpcCommands"
-require "EmberRoutesProbe/StorageTabs"
-local SettlementMenu=require "EmberRoutesProbe/SettlementMenu"
-require "EmberRoutesProbe/RecipeOrderEntry"
-require "EmberRoutesProbe/VanillaCraftingHook"
-local LogisticsMenu=require "EmberRoutesProbe/LogisticsMenu"
+require "EmberRoutesProbe/Logistics/DeliveryService"
+require "EmberRoutesProbe/Activity/ActivityService"
+require('EmberRoutesProbe/Runtime/TaskResume').install()
+require('EmberRoutesProbe/SelfCare/SelfCare').install()
+require('EmberRoutesProbe/Runtime/TaskRetirement').install()
+require('EmberRoutesProbe/Settlement/MembershipLifecycle').install()
+local SquadUI=require 'EmberRoutesProbe/UI/SquadUI'
+SquadUI.install()
+local ContainerMenu=require "EmberRoutesProbe/Integration/ContainerMenu"
+local Commands=require "EmberRoutesProbe/Integration/NpcCommands"
+require "EmberRoutesProbe/UI/StorageTabs"
+local SettlementMenu=require "EmberRoutesProbe/Integration/SettlementMenu"
+require "EmberRoutesProbe/Integration/RecipeOrderEntry"
+require "EmberRoutesProbe/Integration/VanillaCraftingHook"
+local LogisticsMenu=require "EmberRoutesProbe/Integration/LogisticsMenu"
 LogisticsMenu.initialize()
-require "EmberRoutesProbe/DebugMenu"
-require "EmberRoutesProbe/NpcDebugMenu"
-local ReposeMenu=require "EmberRoutesProbe/ReposeMenu"
-local MembershipMenu=require "EmberRoutesProbe/MembershipMenu"
-local DisplayNames=require "EmberRoutesProbe/DisplayNames"
-local Driver=require "EmberRoutesProbe/Driver"
-require "EmberRoutesProbe/CleaningPolicyDef"
-require "EmberRoutesProbe/CookingPolicyDef"
-require 'EmberRoutesProbe/FarmingPolicyDef'
-require 'EmberRoutesProbe/LumberjackPolicyDef'
-require 'EmberRoutesProbe/ForagerPolicyDef'
+require "EmberRoutesProbe/Integration/DebugMenu"
+require "EmberRoutesProbe/Integration/NpcDebugMenu"
+require "EmberRoutesProbe/SelfCare/NpcMedical"
+local ReposeMenu=require "EmberRoutesProbe/Integration/ReposeMenu"
+local MembershipMenu=require "EmberRoutesProbe/Integration/MembershipMenu"
+local DisplayNames=require "EmberRoutesProbe/Warehouse/DisplayNames"
+local Driver=require "EmberRoutesProbe/Runtime/Driver"
+require "EmberRoutesProbe/Field/CleaningPolicyDef"
+require "EmberRoutesProbe/Cooking/CookingPolicyDef"
+require 'EmberRoutesProbe/Field/FarmingPolicyDef'
+require 'EmberRoutesProbe/Field/LumberjackPolicyDef'
+require 'EmberRoutesProbe/Field/ForagerPolicyDef'
 
 local function fillMenu(playerIndex, context, worldobjects, test)
     if test then return end
@@ -48,6 +51,7 @@ local function fillMenu(playerIndex, context, worldobjects, test)
     context:addSubMenu(option, menu)
 
     -- 1. 据点与工单管理
+    menu:addOption(getText("IGUI_EmberRoutesProbe_Squad_show"),actor,SquadUI.show)
     SettlementMenu.fill(actor, menu)
     SettlementMenu.craftSurfaces(actor, menu, worldobjects)
 
@@ -88,7 +92,7 @@ local function fillMenu(playerIndex, context, worldobjects, test)
         for _, c in ipairs(containers) do
             local floorNum = c.square:getZ()
             local floorLabel = floorNum == 0 and getText("IGUI_EmberRoutesProbe_Floor_ground") or string.format(getText("IGUI_EmberRoutesProbe_Floor_level"), floorNum)
-            local label = c.label .. " · " .. floorLabel
+            local label = c.label .. "  " .. floorLabel
             local containerOption = settingsMenu:addOption(label, nil, nil)
             local containerMenu = ISContextMenu:getNew(settingsMenu)
             settingsMenu:addSubMenu(containerOption, containerMenu)
@@ -119,7 +123,7 @@ local function fillMenu(playerIndex, context, worldobjects, test)
                 local id = EmberRoutesProbeJava.workerIdAt(i)
                 local b = Driver.bindId(actor, id)
                 local name = DisplayNames.name(id, b and b.handle)
-                local prefix = (id == selected and "• " or "  ")
+                local prefix = (id == selected and "* " or "  ")
                 workerMenu:addOption(prefix .. name, actor, Commands.selectWorker, id)
             end
         else

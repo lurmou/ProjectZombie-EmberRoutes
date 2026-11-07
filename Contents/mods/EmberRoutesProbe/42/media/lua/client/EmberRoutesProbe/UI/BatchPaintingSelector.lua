@@ -1,10 +1,13 @@
 require "ISUI/ISCollapsableWindow"
 require "ISUI/ISButton"
 require "ISUI/ISContextMenu"
-local Geometry=require "EmberRoutesProbe/SettlementGeometry"
-local Batch=require "EmberRoutesProbe/BatchStoragePainting"
+local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
+local Batch=require "EmberRoutesProbe/Warehouse/BatchStoragePainting"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
+
+-- Static draw colour: prerender must not allocate.
+local SELECTED_STATUS_COLOR={r=0.3,g=0.95,b=0.45,a=1}
 
 ---@class EmberRoutesBatchPaintingSelector:ISCollapsableWindow
 ---@field actor IsoPlayer
@@ -223,7 +226,7 @@ function EmberRoutesBatchPaintingSelector:prerender()
     self:drawText(text("hintLine2"),p,y,0.8,0.8,0.8,1,UIFont.Small)
     y=y+h+p*0.5
     local col=Theme.accent
-    if #self.selectedContainers>0 then col={r=0.3,g=0.95,b=0.45,a=1} end
+    if #self.selectedContainers>0 then col=SELECTED_STATUS_COLOR end
     self:drawText(self.statusMessage,p,y,col.r or 0.8,col.g or 0.8,col.b or 0.8,1,UIFont.Small)
 end
 

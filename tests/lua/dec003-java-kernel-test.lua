@@ -1,17 +1,17 @@
 -- Run ONLY with KahluaLaborTest --java-labor; never a Lua kernel substitute.
 assert(ERLaborTestBridge,'Actual LaborCommitKernel bridge required')
-local Contracts=require 'EmberRoutesProbe/JobContracts'
+local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 assert(Contracts.register('DEC003_KERNEL',{capacityMutable=true,validate=function() return true end}))
-local Claims=require 'EmberRoutesProbe/LaborClaims'
-local Jobs=require 'EmberRoutesProbe/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
 local root={nextClaimSeq=0}
 local jobs=assert(Jobs.open(root))
 local state={root=root,claims=Claims.new(),tokens={}}
 local Store={data=function() return root end}
 Store.getToken=function(id) return state.claims.tokensByTaskId[id] end
 Store.quarantineResource=function() error('kernel must never quarantine') end
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
-require('EmberRoutesProbe/LaborJobCommit').install(Store,state,function(r,id)
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobs end}
+require('EmberRoutesProbe/Work/LaborJobCommit').install(Store,state,function(r,id)
     r.nextClaimSeq=r.nextClaimSeq+1 return id..':c'..r.nextClaimSeq
 end,function(id) state.tokens[id]=nil end)
 local n=0
@@ -89,7 +89,7 @@ check(not ok and why=='TASK_WRITE_FAILURE' and jobs:get(e.id).revision==1
     and state.claims.capacity.before.total==1,'pre-CAS restore leaves nothing applied')
 -- Terminal cleanup throw leaves the successful CAS intact, without compensation.
 local g=draft('cleanup-throw',60) assert(Store.createClaimedJob(g))
-require('EmberRoutesProbe/LaborJobCommit').install(Store,state,function() error('unused') end,
+require('EmberRoutesProbe/Work/LaborJobCommit').install(Store,state,function() error('unused') end,
     function() error('CLEANUP_THROW') end)
 local updates=0
 local originalCancel=jobs.cancel
@@ -105,7 +105,7 @@ check(not ok and why=='TASK_WRITE_FAILURE' and updates==1 and jobs:get(g.id).rev
 -- Restore failure returns a marker; prior revision/state remains untouched.
 local f=draft('restore-fail',50) f.payload.reservation={key='old',items={[50]=1},free=20}
 -- Restore the normal cleanup for subsequent fixtures.
-require('EmberRoutesProbe/LaborJobCommit').install(Store,state,function(r,id)
+require('EmberRoutesProbe/Work/LaborJobCommit').install(Store,state,function(r,id)
     r.nextClaimSeq=r.nextClaimSeq+1 return id..':c'..r.nextClaimSeq
 end,function(id) state.tokens[id]=nil end)
 assert(Store.createClaimedJob(f))

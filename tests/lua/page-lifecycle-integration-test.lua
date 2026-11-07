@@ -31,6 +31,14 @@ end
 -- ------------------------------------------------------------------------------
 -- 1. Minimal PZ Engine UI & Runtime Environment Setup (Self-Contained for Kahlua)
 -- ------------------------------------------------------------------------------
+local origEmberRoutesProbeJava = EmberRoutesProbeJava
+EmberRoutesProbeJava = {
+    carrierFor = function() return nil end,
+    controlledCarrier = function() return nil end,
+    carrierId = function() return nil end,
+    bindingValid = function() return false end,
+}
+
 local Base = {}
 function Base:derive(name)
     local cls = setmetatable({ Type = name }, { __index = self })
@@ -146,23 +154,28 @@ getTexture = getTexture or function(path) return {} end
 isMouseButtonDown = isMouseButtonDown or function() return false end
 getTimestampMs = getTimestampMs or function() return 1000 end
 getCell = getCell or function() return { getGridSquare = function() return nil end } end
-getRandomUUID = getRandomUUID or function() return "test-uuid-prod-1" end
+local prodUuid = 0
+getRandomUUID = function() prodUuid = prodUuid + 1 return "test-uuid-prod-" .. prodUuid end
+_G.getRandomUUID = getRandomUUID
 
 ModData = {
     getOrCreate = function(k) return { entries = {} } end,
     get = function(k) return { entries = {} } end
 }
 
-local Registry = package.loaded['EmberRoutesProbe/ContainerRegistry']
+local Registry = package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']
 if not Registry then
-    Registry = require 'EmberRoutesProbe/ContainerRegistry'
+    Registry = require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 end
+local origRegId = Registry.id
+local origRegData = Registry.data
 Registry.listeners = Registry.listeners or {}
 Registry.inventoryListeners = Registry.inventoryListeners or {}
-Registry.id = function() return "test-uuid-prod-1" end
+local regSeq = 0
+Registry.id = function() regSeq = regSeq + 1 return "test-uuid-prod-" .. regSeq end
 Registry.data = function() return { format = 1, containers = {} } end
 
-local Ledger = require 'EmberRoutesProbe/SettlementLedger'
+local Ledger = require 'EmberRoutesProbe/Settlement/SettlementLedger'
 Ledger.listeners = Ledger.listeners or {}
 
 -- ------------------------------------------------------------------------------
@@ -170,7 +183,8 @@ Ledger.listeners = Ledger.listeners or {}
 -- ------------------------------------------------------------------------------
 local warehouseWatchCalls = 0
 local warehouseReleaseCalls = 0
-package.loaded['EmberRoutesProbe/WarehouseIndex'] = {
+local origWarehouseIndex = package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex'] = {
     watch = function(id, cb)
         warehouseWatchCalls = warehouseWatchCalls + 1
         cb({ state = 'READY', rows = {}, counts = { loaded = 0, containers = 0, unloaded = 0, private = 0, missing = 0, limited = 0, items = 0 } })
@@ -181,19 +195,32 @@ package.loaded['EmberRoutesProbe/WarehouseIndex'] = {
     refresh = function() end
 }
 
-local Crafting = require 'EmberRoutesProbe/CraftingService'
+local Crafting = require 'EmberRoutesProbe/Crafting/CraftingService'
+local origCraftingWatch = Crafting.watch
+local origCraftingStatus = Crafting.status
 local craftingWatchCalls = 0
 local craftingReleaseCalls = 0
+local testWorkers = {
+    { id = "worker-alpha", name = "Alpha Worker" },
+    { id = "worker-1", name = "Test Worker" }
+}
 Crafting.watch = function(actor, id, cb)
     craftingWatchCalls = craftingWatchCalls + 1
-    cb({ state = 'READY', workers = {} })
+    cb({ state = 'READY', workers = testWorkers })
     return function()
         craftingReleaseCalls = craftingReleaseCalls + 1
     end
 end
 Crafting.status = function(actor, id)
-    return { workers = {} }
+    return { workers = testWorkers }
 end
+
+local origOrderQuery = package.loaded['EmberRoutesProbe/Work/OrderQuery']
+package.loaded['EmberRoutesProbe/Work/OrderQuery'] = {
+    priorities = function(id)
+        return { revision = 1, crafting = 3, hauling = 3, cleaning = 3, farming = 3, lumberjack = 3, foraging = 3, cooking = 3, toolReturn = 3 }
+    end
+}
 
 -- ------------------------------------------------------------------------------
 -- 3. Load Real Production Classes
@@ -411,6 +438,13 @@ do
     check(whPage.disposed == true, "whPage disposed cleanly")
     check(persPage.disposed == true, "persPage disposed cleanly")
     check(persPage.dossierDrawer == nil, "persPage dossier cleared on dispose")
+    Registry.id = origRegId
+    Registry.data = origRegData
+    package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex'] = origWarehouseIndex
+    package.loaded['EmberRoutesProbe/Work/OrderQuery'] = origOrderQuery
+    Crafting.watch = origCraftingWatch
+    Crafting.status = origCraftingStatus
+    EmberRoutesProbeJava = origEmberRoutesProbeJava
 end
 
 print("page-lifecycle-integration: " .. checks .. " PASS")

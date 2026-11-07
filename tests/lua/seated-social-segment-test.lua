@@ -8,19 +8,19 @@ getTimestampMs=function() return now end
 getGameTime=function() return {getWorldAgeHours=function() return hours end,getTimeOfDay=function() return 12 end} end
 ZombRand=function() return 0 end
 CharacterStat={PAIN='pain',BOREDOM='boredom',UNHAPPINESS='unhappy',STRESS='stress'}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-package.loaded['EmberRoutesProbe/LaborStore']=nil
-local Store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']=nil
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 f.resourceProxy.resourceOwner=Store.resourceOwner
-local Jobs=require 'EmberRoutesProbe/TaskJobs' local jobs=Jobs.current()
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs' local jobs=Jobs.current()
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 assert(jobs:create(Record.create('care-a','a'))) Store.data()
 local blocked=false local socialRule=1
-package.loaded['EmberRoutesProbe/ActivityService']={allowsPoint=function() return true end,policyAt=function(_,_,_,_,_,activity)
+package.loaded['EmberRoutesProbe/Activity/ActivityService']={allowsPoint=function() return true end,policyAt=function(_,_,_,_,_,activity)
  return activity=='SOCIAL' and socialRule or 1 end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {status=function(_,id,job)
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {status=function(_,id,job)
  return {kind='SELF_CARE',state='ACTIVE',jobId=job} end} end}
 local sitting,resting=false,false local exits,moves,adds,lines=0,0,0,0
 local stats={pain=0,boredom=20,unhappy=20,stress=0.5}
@@ -35,7 +35,7 @@ f.npc.faceLocationF=function() error('seated participant must not turn via stand
 f.npc.playEmote=function() error('no unverified standing emote on seat') end
 f.npc.getInventory=function() return {getItems=function() return f.list({}) end} end
 local partner={isDead=function() return false end,getX=function() return 1.5 end,getY=function() return 0.5 end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function(actor,id)
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(actor,id)
  check(actor==f.actor,'pair uses authorized actor') return {id=id,handle=id=='a' and f.npc or partner} end}
 EmberRoutesProbeJava.socialVisible=function() return true end
 for _,xy in ipairs({{0,0},{1,0},{0,1},{-1,0},{0,-1}}) do
@@ -46,13 +46,13 @@ for _,xy in ipairs({{0,0},{1,0},{0,1},{-1,0},{0,-1}}) do
 end
 local Sites=f.sites local view=Sites.view(f.actor,f.furniture)
 local proof=assert(Sites.prepare({object=f.furniture,revision=view.revision,key='fixture-seat',settlementId=f.entry.id},f.actor,f.npc,'a','REST'))
-local Service=require 'EmberRoutesProbe/LeisureService'
-local Social=require 'EmberRoutesProbe/SocialCoordinator'
+local Service=require 'EmberRoutesProbe/Leisure/LeisureService'
+local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
 local sample={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
 local body={retained=function() return true end,repose=function(_,enter)
  resting=enter if not enter then exits=exits+1 sitting=false end return true end,
  move=function() moves=moves+1 error('seated body moved') end,add=function() adds=adds+1 error('second action') end}
-package.loaded['EmberRoutesProbe/LeisurePosture']={new=function() return {enter=function() sitting=true return 'Success' end,
+package.loaded['EmberRoutesProbe/Leisure/LeisurePosture']={new=function() return {enter=function() sitting=true return 'Success' end,
  leave=function() sitting=false return true end} end}
 -- Isolation for the ordinary continuous SIT review: choose end only when asked.
 local finishSit=false
@@ -69,7 +69,7 @@ local function newSit()
   sample=function() return sample end,sameAttempt=function() return true end}
  c.valid=function() return Service.valid(f.actor,f.npc,'a',p) end
  c.persist=function() local live=jobs:get(job.id) return jobs:update(job.id,live.revision,{payload=p,effects=c.effects}) end
- local leaf=require('EmberRoutesProbe/LeisureSit').new(c)
+ local leaf=require('EmberRoutesProbe/Leisure/LeisureSit').new(c)
  check(leaf.run()=='Running' and leaf.run()=='Running','SIT enters and seats through original leaf')
  Service.workState('a',f.entry,'IDLE')
  return c,leaf
@@ -89,8 +89,8 @@ end
 local function releaseSit(c,leaf,reason)
  check(leaf.halt(),'normal SIT halt confirms exit')
  for _,name in ipairs({'ISInventoryTransferAction','ISEatFoodAction','ISDrinkFluidAction'}) do package.loaded['TimedActions/'..name]=true end
- package.loaded['EmberRoutesProbe/CraftSupply']={} package.loaded['EmberRoutesProbe/SelfCareResources']={}
- local spec=require('EmberRoutesProbe/SelfCareExecution').new(f.actor,{id='a',handle=f.npc},jobs:get(c.job.id),nil,function() return {} end)
+ package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={} package.loaded['EmberRoutesProbe/SelfCare/SelfCareResources']={}
+ local spec=require('EmberRoutesProbe/SelfCare/SelfCareExecution').new(f.actor,{id='a',handle=f.npc},jobs:get(c.job.id),nil,function() return {} end)
  check(spec.persistFailure({bodyStopped=true,effects='KNOWN'},reason),'normal SelfCare settlement succeeds')
  check(not Store.resourceOwner(c.payload.claims[1]) and #jobs:get(c.job.id).payload.claims==0,'seat released only by normal SIT settlement')
 end
@@ -140,7 +140,7 @@ releaseSit(c,leaf,'COMPLETED') Social.release(key,'b','stand-attempt',true)
 -- Standing may initiate against a seated advert through the same seek callback.
 c,leaf=newSit()
 check(not Service.seatedSocial(c),'seated side advertises before a partner is present')
-local def=require('EmberRoutesProbe/LeisureRegistry').get('SOCIAL')
+local def=require('EmberRoutesProbe/Leisure/LeisureRegistry').get('SOCIAL')
 local candidate=def.seek({actor=f.actor,npc=partner,id='b',entry=f.entry,point={x=1.5,y=0.5,z=0},
  now=now,hours=hours,cooling={},budget={scan=8,paths=1},state={}})
 check(candidate and candidate.leisure.activity=='SOCIAL','standing initiator uses original SOCIAL candidate')
@@ -164,7 +164,7 @@ for _,kind in ipairs({'READING','STROLL','FITNESS','SMOKE'}) do
 end
 p.leisure.activity='SIT' assert(c.persist())
 -- Membership changes invalidate pair formation.
-local member=require('EmberRoutesProbe/MembershipService').view('a') member.pending={}
+local member=require('EmberRoutesProbe/Settlement/MembershipService').view('a') member.pending={}
 check(not Service.seatedSocial(c),'pending membership denied') member.pending=nil
 -- Second actual claimed seat: two seated participants cannot pair.
 local otherProof=assert(Sites.prepare({object=f.other,revision=Sites.view(f.actor,f.other).revision,key='other-seat',settlementId=f.entry.id},f.actor,f.npc,'b','REST'))

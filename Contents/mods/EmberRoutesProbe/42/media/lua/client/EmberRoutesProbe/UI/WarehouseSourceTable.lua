@@ -44,6 +44,9 @@ function SourceTable.style(presentation,name,secondary)
                 height=p+block+#sub*h+4,
                 block=block,
                 icon=presentation and presentation:icon(value.fullType) or nil,
+                r=presentation and presentation.color and select(1,presentation:color(value.fullType)) or 1,
+                g=presentation and presentation.color and select(2,presentation:color(value.fullType)) or 1,
+                b=presentation and presentation.color and select(3,presentation:color(value.fullType)) or 1,
                 fullType=value.fullType,
                 pending=value.pending,
                 pinned=value.pinned==true,
@@ -70,7 +73,7 @@ function SourceTable.style(presentation,name,secondary)
                 Theme.rect(list,p,iconY,c.icon,c.icon,Theme.panel)
                 Theme.rect(list,p,iconY,c.icon,c.icon,slotBorder,true)
                 if v.icon then
-                    list:drawTextureScaledAspect(v.icon,p+2,iconY+2,c.icon-4,c.icon-4,1,1,1,1)
+                    list:drawTextureScaledAspect(v.icon,p+2,iconY+2,c.icon-4,c.icon-4,1,v.r or 1,v.g or 1,v.b or 1)
                 else
                     Theme.text(list,"?",p+c.icon/3,iconY+(c.icon-h)/2,Theme.muted)
                 end

@@ -1,15 +1,15 @@
 -- Directed Lua host parity only. Native selection/effects/body stop are explicit
 -- seams; real Service claim, Budget, SupplyService, Record, JobStore, Claims,
 -- Context, Agent.start and LaborJobCommit. No Java/game/disk/performance claim.
-local Jobs=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
-local Record=require 'EmberRoutesProbe/CookingRecord'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
 -- TEST ONLY capability switch, mirroring dec003-kernel-workcapacity-test.lua:
 -- production BuiltinJobContracts now registers COOKING capacityMutable=true
 -- (registered last, after the kernel extension); this file enables it for its
 -- own host-model runs and restores the original value at exit.
-local Contracts=require 'EmberRoutesProbe/JobContracts'
-require('EmberRoutesProbe/BuiltinJobContracts').install()
+local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
+require('EmberRoutesProbe/Kernel/BuiltinJobContracts').install()
 local cookingRule=Contracts.get('COOKING')
 local originalCapacityMutable=cookingRule.capacityMutable
 cookingRule.capacityMutable=true
@@ -85,29 +85,29 @@ local function setup(old)
         stub('CookingBudget',dofile('tests/lua/fixtures/dec003-pre-kernel-cooking-budget.lua'))
         EmberRoutesProbeJava={}
     else
-        require('EmberRoutesProbe/LaborDomainAdapters').install(S,st,identity,clean,function() return true end)
+        require('EmberRoutesProbe/Work/LaborDomainAdapters').install(S,st,identity,clean,function() return true end)
         -- Work-capacity host transaction model; only token bucket differs.
         -- It is the same model dec003-kernel-workcapacity-test.lua uses, not a
         -- second model invented for this file.
         st.fieldTokens=st.cookingTokens
         st.bridge=dofile('tests/lua/fixtures/dec003-workcapacity-kernel-host.lua')
         st.bridge.install(st,alloc,clean)
-        require('EmberRoutesProbe/LaborJobCommit').install(S,st,alloc,clean)
+        require('EmberRoutesProbe/Work/LaborJobCommit').install(S,st,alloc,clean)
     end
     EmberRoutesProbeJava.carrierId=function() return 'chef' end
     EmberRoutesProbeJava.carrierPresent=function() return true end
     -- Agent.new/start runs real code; effects/heat/delivery below are observations,
     -- not a claim of executing native cooking (work-capacity chain is OPEN).
-    local Agent=require 'EmberRoutesProbe/CookingAgent'
-    local Orders=require 'EmberRoutesProbe/CookingOrders'
+    local Agent=require 'EmberRoutesProbe/Cooking/CookingAgent'
+    local Orders=require 'EmberRoutesProbe/Cooking/CookingOrders'
     Orders.describe=function() return {kind='EVOLVED',recipeId='heat:Base.Carrot',recipe={}} end
-    local service=old and dofile('tests/lua/fixtures/dec003-pre-kernel-cooking-service.lua') or require 'EmberRoutesProbe/CookingService'
+    local service=old and dofile('tests/lua/fixtures/dec003-pre-kernel-cooking-service.lua') or require 'EmberRoutesProbe/Cooking/CookingService'
     local function admit(id,request)
         if request then root.publicWork={orders={order={id='order',category='cooking',state='WAITING',
             settlementId='base',recipeId='heat:Base.Carrot',sequence=1,revision=1}}} end
         -- REQUEST planning must not be preempted by meal deficit; use completed
         -- ready-stock observation while retaining the real SupplyService funnel.
-        local index=package.loaded['EmberRoutesProbe/MealSupplyIndex']
+        local index=package.loaded['EmberRoutesProbe/Cooking/MealSupplyIndex']
         index.new=function() return {step=function() return true end,
             result=function() return {complete=true,scopeId='base',ready=request and 1 or 0} end} end
         local env={actor=actor,npc=npc,npcId='chef',entry=entry,now=now,candidates={},
@@ -135,7 +135,7 @@ local function run(old)
     local agent,c=assert(f.Agent.new(f.actor,{id='chef',handle=f.npc},job,nil,function() return {nodes=16} end,function() return true end))
     check(agent.start({current=function() return true end,clear=function() return true end}),'agent start')
     check(c.job.state=='RUNNING' and c.job.revision==3,'start separate revision') snapshots[#snapshots+1]=copy(c.job)
-    local C=require 'EmberRoutesProbe/CookingContext'
+    local C=require 'EmberRoutesProbe/Cooking/CookingContext'
     local stale=copy(c.job) stale.payload.assets[#stale.payload.assets+1]={id=12,fullType='Base.Pot',custody='HELD'}
     stale.payload.claims[#stale.payload.claims+1]='item:12'
     local winner=copy(c.job.payload) winner.reason='CONCURRENT'
@@ -187,14 +187,14 @@ check(job.payload.cancelRequested and job.payload.reason=='USER_CANCEL' and #job
 local agent,c=assert(f.Agent.new(f.actor,{id='chef',handle=f.npc},job,nil,
     function() return {nodes=16} end,function() return true end,{settleOnly=true}))
 assert(agent.start({current=function() return true end,clear=function() return true end}))
-local C=require 'EmberRoutesProbe/CookingContext'
+local C=require 'EmberRoutesProbe/Cooking/CookingContext'
 local j=copy(c.job) j.state='SETTLING' j.payload.assets[1].custody='RETURNED' j.payload.claims={}
 assert(C.publish(c,j)) c.completed=true
 check(C.stopAdapter(c,{},{}).persist({bodyStopped=true}) and c.job.state=='CANCELLED',
     'command return -> session SETTLING -> kernel cancel and finish')
 check(f.st.bridge.calls[#f.st.bridge.calls]=='laborCancel','only kernel cancel terminal entry')
 -- SUSPENDED start must expose both revisions, never collapse to RUNNING.
-f=setup(false) job=f.admit('suspended',true) C=require 'EmberRoutesProbe/CookingContext'
+f=setup(false) job=f.admit('suspended',true) C=require 'EmberRoutesProbe/Cooking/CookingContext'
 assert(f.S.mutateJob(job.id,job.revision,job.payload,{state='SUSPENDED'})) job=f.jobs:get(job.id)
 agent,c=assert(f.Agent.new(f.actor,{id='chef',handle=f.npc},job,nil,function() return {} end,function() return true end))
 assert(agent.start({current=function() return true end}))
@@ -215,7 +215,7 @@ assert(C.publish(c,keep))
 check(#f.st.bridge.calls==keepCount+1 and f.st.bridge.calls[#f.st.bridge.calls]=='laborMutate'
     and f.st.claims.capacity.cold.total==4,'unchanged capacity publish also via kernel workCapacity, amount unchanged')
 -- A race after adapter admission reaches the kernel revision gate itself.
-f=setup(false) job=f.admit('race',true) C=require 'EmberRoutesProbe/CookingContext'
+f=setup(false) job=f.admit('race',true) C=require 'EmberRoutesProbe/Cooking/CookingContext'
 c={job=job,token=assert(f.S.claimCooking(job))}
 local proposal=copy(job) proposal.payload.assets[#proposal.payload.assets+1]={id=12,fullType='Base.Pot',custody='HELD'}
 proposal.payload.claims[#proposal.payload.claims+1]='item:12'

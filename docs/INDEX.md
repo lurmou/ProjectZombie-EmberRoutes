@@ -1,100 +1,143 @@
-# EmberRoutes 任务文档导航
+# EmberRoutes 全局架构地图与任务路由表
+# (Architecture Map & Task Routing Hub)
 
-> 更新：2026-10-24｜按本轮任务读取，不要求全文加载。当前进度只见[BACKLOG](BACKLOG.md)，本页仅维护文档职责与入口。
+> 更新：2026-11-06｜版本：v2.0.0 (五层 AI 工程上下文体系规范版)
+> 遵循规范：[docs/architecture/ai-engineering-context-system-spec.md](architecture/ai-engineering-context-system-spec.md)
+> 定位：Layer 2 全局导航中枢。**AI 在承接任何开发任务前，必须首先查阅本页的《核心任务路由表》**。
 
-## 先读与文档职责
+---
 
-| 文档 | 用途 |
+## 1. 核心准则与最高红线 (Layer 1 宪法索引)
+
+| 文档 | 职责与最高约束 |
 |---|---|
-| [AGENTS](../AGENTS.md)、[HANDOFF](HANDOFF.md) | 稳定约束、接手顺序 |
-| [BACKLOG](BACKLOG.md#npc-架构执行记录) | 当前阶段、阻塞、下一步、验证边界；每轮原位更新 |
-| [开发规则](development-rules.md) | 修改代码与交付检查要求 |
-| [在线需求](https://docs.google.com/document/d/1aTOBrzZvh_iCDkv045HNAV13i7vNf7OHk6E_sE7TWNM/edit) | 唯一需求来源；读取失败不能宣称已同步 |
-| [NPC唯一架构](superpowers/specs/2026-10-22-npc-behavior-architecture-design.md) | NPC行为工作的必读设计入口；架构变更需用户确认 |
-| [统一任务协议](superpowers/specs/2026-10-23-unified-task-dispatch-design.md) | 从属细化；公共/个人/责任候选、认领与UI契约 |
+| [AGENTS.md](../AGENTS.md) | **项目最高宪法**：专注单人模式、完全不要兼容代码与转发壳、资产唯一权威、UI 零 GC 与生命周期铁律 |
+| [anti-patching.md](../.agents/rules/anti-patching.md) | **反打补丁铁律**：严禁掩盖问题，必须自上而下追踪至数据模型与职责源头，方案权衡前置 |
+| [code-grounding-and-anti-sycophancy.md](../.agents/rules/code-grounding-and-anti-sycophancy.md) | **代码证据前置与反谄媚**：无行号不结论，必须出具创建认领、正常释放、异常打断闭环三要素代码位置 |
+| [provider-lifecycle.md](../.agents/rules/provider-lifecycle.md) | **工种生命周期铁律**：契约绝对一致、身体控制单点受控、原件责任四阶段闭环、零虚构降级、释放对称 |
+| [DECISIONS.md](../DECISIONS.md) | **核心架构决策日志**：DEC-001 ~ DEC-005 单一事实源与技术分工裁决 |
 
-设计说明契约，计划说明步骤，reviews说明证据，testing说明验收操作；都不能仅凭标题、日期或版本认定已完成。下列旧计划应结合BACKLOG及关联证据阅读，不能整份重跑。
+---
 
-## 按任务选择
+## 2. 系统分层与物理目录拓扑 (System Topology)
 
-分布式工作 UI：[2026-11-04 实施段与根因待办](reviews/2026-11-04/ui-distributed-work.md)。删除需求/工单页面、工作事实聚合与上下文制作；含基线失败对照及未验证边界。
+代码已全面完成**领域物理目录归拢**（根目录 0 平铺文件），源码分为 `shared`（跨端公共数据模型与规则）与 `client`（客户端独占执行与表现）：
 
-据点整体 UI：[v0.2 导航、工作分层与基础能力草案](superpowers/specs/2026-11-04-action-dossier-ui-design.md)。含 ProjectRemnants 当前参考、四主入口候选、需求/工单边界及直接复用/扩展/新增清单；待用户审阅，未实施。
+```text
+media/lua/
+├── shared/EmberRoutesProbe/          # 跨端公共领域层（数据模型、账本、规约）
+│   ├── Kernel/                       # 底层调度总线、时间轮、全局工具 (Boot, Log, TaskDirectory, LaborStore)
+│   ├── Settlement/                   # 据点几何、领地与成员策略
+│   ├── Work/                         # 工种契约、工单数据结构、调度选择器
+│   ├── Warehouse/                    # 仓库度量、查询、分类与过滤规则
+│   ├── Hauling/                      # 搬运工单与货单数据模型 (HaulJobRecord, HaulManifest)
+│   ├── Cooking/                      # 烹饪账本、热量/水资源预算与配方定义
+│   ├── Crafting/                     # 制造配方事实、流体与材料模型
+│   ├── Field/                        # 农业、伐木、采集的地块与产物记录
+│   ├── Activity/                     # 日程、出勤与生活阶段记录
+│   ├── Leisure/                      # 闲暇规则与姿态配置
+│   └── SelfCare/                     # 医疗、自理与睡眠床位记录
+│
+└── client/EmberRoutesProbe/          # 客户端执行与表现层（控制器、服务、动作）
+    ├── UI/                           # 【表现层】仪表盘、Widgets、卡片、小队 HUD
+    ├── Runtime/ & Kernel/            # 【驱动层】身体独占控制器 (Driver, TaskController, TaskRuntime)
+    ├── Settlement/                   # 【业务层】据点成员生命周期、小队服务 (SquadService)
+    ├── Work/                         # 【调度层】统一工种发现器 (PublicWorkProviders)、工单流水
+    ├── Warehouse/                    # 【仓储层】跨容器索引器 (WarehouseIndex)、货架定位器
+    ├── Logistics/                    # 【物流层】配送流水线 (DeliveryFlow, LogisticsService)
+    ├── Hauling/                      # 【搬运层】搬运状态机与身体动作执行 (Haul, HaulAgent)
+    ├── Cooking/                      # 【烹饪层】厨房设施、供水供热与备餐执行
+    ├── Crafting/                     # 【制造层】工作台交互、配方执行与产物交付
+    ├── Field/                        # 【野外层】农田打理、砍树、采集与产物入仓
+    ├── Activity/                     # 【活动层】日程事件泵、场景剧本与出勤仲裁
+    ├── Leisure/                      # 【闲暇层】散步、吸烟、健身、坐姿休息动作
+    ├── SelfCare/                     # 【自理层】卧床睡眠、急救包扎、自主进食执行
+    └── Integration/                  # 【适配层】第三方模组桥接与原生环境适配
+```
 
-领域目录与 Java 桥收敛：[设计](superpowers/specs/2026-11-04-domain-layout-design.md)、[实施计划](superpowers/plans/2026-11-04-domain-layout.md)、[等价与回归证据](reviews/2026-11-04/domain-layout.md)。首批仅搬运执行 10 模块，不改变任务、存档或原件责任。
+### 依赖流向单向铁律
+$$\text{UI (表现)} \longrightarrow \text{Domain Services (业务)} \longrightarrow \text{Kernel / Runtime (底层驱动与存储)}$$
+* **严禁反向依赖**：底层或业务域严禁 `require "EmberRoutesProbe/UI/..."`；
+* **严禁越权控制身体**：全库仅允许通过 `TaskController` / `Driver` 获取身体独占授权，严禁业务服务直调 `ISTimedActionQueue.add`。
 
-需求/工单展示整理：[0.29.37 展示事实、组件复用与验证边界](reviews/2026-11-04/monitor-presentation.md)。清洁只在需求页，展开技术细节；不代表视觉与原生玩法验收完成。
+---
 
-需求与工单分离、个人医疗：[实施计划](superpowers/plans/2026-11-04-demand-medical.md)、[0.29.36参考核对、集成及验证差额](reviews/2026-11-04/demand-medical.md)。基础需求只读汇总；个人包扎沿现有唯一Session和原件责任；专业医疗与实机验收尚未完成。
+## 3. 核心任务路由表 (Task Routing Table)
 
-NPC seated-social：[一坐一站实现、身体授权调查与验证](reviews/2026-11-04/seated-social-segment.md)；保持原 SIT Job/Session，实机未验证。
+> **AI 开发第一步**：根据用户任务意图，在下表中查找匹配项，**优先加载对应的 L3 契约文档与核心源码**，杜绝盲目漫游全库。
 
-NPC idle-sit：[实现、独立预算与社交取舍](reviews/2026-11-04/idle-sit-segment.md)，当前状态见 BACKLOG；实机未验证。
+| 开发任务意图 | 目标物理领域 | 必读契约文档 (L3) | 核心代码入口 (Code Grounding) | 必测用例与工具 (L5) |
+| :--- | :--- | :--- | :--- | :--- |
+| **新增/修改工作工种**<br>(Provider) | `Work/`<br>`Kernel/` | [provider-lifecycle.md](../.agents/rules/provider-lifecycle.md)<br>[domains/work.md](domains/work.md) | `client/.../Work/PublicWorkProviders.lua`<br>`client/.../Work/LaborStore.lua` | `KahluaLaborTest`<br>`tools/audit-npc-control.mjs` |
+| **调整仓储与物流配送**<br>(Warehouse & Delivery) | `Warehouse/`<br>`Logistics/` | [domains/logistics.md](domains/logistics.md)<br>[仓储架构](settlement-storage-architecture.md) | `client/.../Warehouse/WarehouseIndex.lua`<br>`client/.../Logistics/DeliveryService.lua` | `tests/lua/warehouse-*-test.lua`<br>`tests/lua/storage-panel-test.lua` |
+| **修改搬运状态机与货单**<br>(Hauling) | `Hauling/` | [domains/logistics.md](domains/logistics.md)<br>[领域收敛设计](superpowers/specs/2026-11-04-domain-layout-design.md) | `client/.../Hauling/Haul.lua`<br>`client/.../Hauling/HaulJobs.lua` | `tests/lua/work-transfer-*-test.lua`<br>`tests/lua/batch-test.lua` |
+| **修改烹饪/厨房/水源加注**<br>(Cooking & Water) | `Cooking/` | [domains/cooking.md](domains/cooking.md)<br>[P4 烹饪设计](superpowers/specs/2026-10-26-p4-cooking-and-supervision-design.md) | `client/.../Cooking/CookingActions.lua`<br>`client/.../Cooking/CookingService.lua` | `tests/lua/cooking-*-test.lua` |
+| **工坊制造与递归生产**<br>(Crafting & Production) | `Crafting/` | [domains/crafting.md](domains/crafting.md)<br>[递归生产链设计](superpowers/specs/2026-10-22-production-chain-design.md) | `client/.../Crafting/CraftingService.lua`<br>`client/.../Crafting/CraftStations.lua` | `tests/lua/crafting-*-test.lua` |
+| **调整农林与野外采集**<br>(Farming/Forage/Tree) | `Field/` | [domains/field.md](domains/field.md) | `client/.../Field/FieldOperations.lua`<br>`client/.../Field/FarmingProvider.lua` | `tests/lua/field-*-test.lua` |
+| **修改日程排班与集会事件**<br>(Activity & Schedule) | `Activity/` | [domains/activity.md](domains/activity.md)<br>[社区活动设计](superpowers/specs/2026-10-28-a3-a4-community-activities-design.md) | `client/.../Activity/ActivityService.lua`<br>`client/.../Activity/ActivityPump.lua` | `tests/lua/activity-*-test.lua` |
+| **生理自理、医疗与睡眠**<br>(SelfCare & Sleep) | `SelfCare/`<br>`Leisure/` | [domains/selfcare.md](domains/selfcare.md) | `client/.../SelfCare/SelfCare.lua`<br>`client/.../SelfCare/MedicalCare.lua` | `tests/lua/study-ui-boundary-test.lua` |
+| **调整据点成员与生活区**<br>(Settlement & Zones) | `Settlement/` | [domains/settlement.md](domains/settlement.md)<br>[据点归属设计](superpowers/specs/2026-10-25-npc-settlement-membership-design.md) | `client/.../Settlement/MembershipLifecycle.lua`<br>`shared/.../Settlement/SettlementGeometry.lua` | `tests/lua/membership-*-test.lua` |
+| **小队跟随与战术 HUD**<br>(Squad & Companion) | `Settlement/`<br>`UI/` | [小队跟随设计](superpowers/specs/2026-11-05-companion-squad-follow-design.md)<br>[小队 HUD 设计](superpowers/specs/2026-11-06-squad-command-ui-design.md) | `client/.../Settlement/SquadService.lua`<br>`client/.../UI/SquadHUD.lua` | `tests/lua/squad-*-test.lua`<br>`java/.../FollowLocomotionTest.java` |
+| **修改或开发 UI 页面**<br>(UI & Widgets) | `UI/` | [前端设计方向](architecture/frontend-design-principles.md)<br> [domains/ui.md](domains/ui.md)<br>[UI 运行时规范](architecture/ui-framework-architecture-spec.md) | `client/.../UI/SettlementDashboard.lua`<br>`client/.../UI/CachedList.lua` | `tools/test-ui-kahlua.ps1`<br>`tests/lua/settlement-overview-ui-test.lua` |
+| **修改底层驱动与身体控制**<br>(Driver & Controller) | `Runtime/`<br>`Kernel/` | [domains/kernel.md](domains/kernel.md)<br>[原生位移设计](superpowers/specs/2026-11-05-native-npc-movement-design.md) | `client/.../Runtime/Driver.lua`<br>`client/.../Runtime/TaskController.lua` | `tests/lua/task-controller-test.lua`<br>`tests/lua/task-driver-control-test.lua` |
+| **新增/修改双语翻译文本**<br>(Translate & i18n) | `Translate/` | [architecture/i18n-invariants.md](architecture/i18n-invariants.md) | `shared/Translate/CN/IG_UI.json`<br>`shared/Translate/EN/IG_UI.json` | `python tools/check-i18n.py`<br>`tools/build-probe.ps1` |
 
-DEC-003 SELF_CARE 第6段：[迁移、逐点证据与开放项](reviews/2026-11-04/dec003-selfcare-migration.md)；真实 Java/实机/磁盘/性能未验证。
+---
 
-DEC-003 单一 Java 提交内核：[Phase 0 入口盘点](reviews/2026-11-04/dec003-entry-inventory.md)、[本轮执行与明确开放项](reviews/2026-11-04/dec003-execution.md)。尚未切换生产路径，不是实施完成或 parity 证明；当前状态见 BACKLOG。
+## 4. 模块职责与数据权威矩阵 (Module Authority Matrix)
 
-公共调度Java计算：[实施计划](superpowers/plans/2026-11-02-java-dispatch-kernel.md)、[0.29.25证据](reviews/2026-11-02/java-dispatch-kernel.md)。候选仲裁/失效索引/名册窗口已接Java；目录迁移因补测反向而撤回，领域策略与物理协议不变，实机性能未验证。
-资源与记录提交Java计算：[实施计划](superpowers/plans/2026-11-02-java-labor-commit-kernel.md)、[0.29.26证据](reviews/2026-11-02/java-labor-commit-kernel.md)。大批量容量提交粗粒度下沉；小型提交、通用Job CAS和恢复保留Lua，Runtime尚未迁移。
+| 领域模块 | 核心职责 | 持久化数据权威 (Single Source of Truth) | 严禁行为 (Anti-Patterns) |
+| :--- | :--- | :--- | :--- |
+| **Kernel / Runtime** | 物理身体独占控制、任务生命周期分发、心跳轮询 | `TaskJobs` / `JobStore` / `ExecutionSessions`（Job与会话分开） | 严禁跳过授权直接向 `ISTimedActionQueue` 塞动作 |
+| **Settlement** | 据点边界、生活子区、成员资格与床位分配 | `SettlementLedger.data()` / `MembershipService` | 严禁无据点归属的角色执行据点公共维护 |
+| **Work** | 公共工作工单管理、工种可用性判定与候选派发 | `LaborStore.lua`<br>`JobStore.lua` | 严禁不具备工具/地块条件时伪造完成 |
+| **Warehouse** | 跨容器物品读写、空间度量、分类规则过滤 | `ContainerRegistry` / `StorageFilter`配置与世界容器实体 | 严禁未申请认领（Claim）直接扣减/传送物品 |
+| **Logistics / Haul**| 物流需求呼叫、货单生成、物理搬运执行 | `HaulJobRecord.lua`<br>`HaulManifest.lua` | 严禁产物滞留个人背包；动作结束不等于结清 |
+| **Cooking** | 厨房监管、食谱计算、水源与热量供给 | `CookingRecord.lua` | 严禁无水源/容器时虚构产物 |
+| **Field** | 农作物打理、成熟收获、树木砍伐、野外采集 | `FieldRecord.lua`<br>原生植物/树木实体 | 严禁砍倒树后直接标记 DONE（木材必须交付入库） |
+| **Activity** | 社区集会、角色轮值、场景剧本与出勤仲裁 | `ActivityRecord.lua` | 严禁强制打断正在进行的紧急自理/重伤治疗 |
+| **Leisure** | NPC 闲暇行为（吸烟、看书、闲聊、散步） | `SelfCareRecord`中的闲暇事实 + 瞬态观察 | 严禁在有紧急工作或警报时强行占用身体 |
+| **SelfCare** | 饥饿进食、重伤卧床急救、疲劳睡眠 | `SelfCareRecord.lua`<br>角色原生健康状态 | 不得用睡眠动画代替姿态准入与真实需求效果证据 |
+| **UI** | 纯只读数据投影、用户操作意图提交 | **无业务数据权威**（消费Service；显示偏好由专用服务保存） | 严禁直接写入 ModData；严禁在 render 阶段分配 table |
 
+---
 
-Java优先搬运/配送：[实施计划](superpowers/plans/2026-11-02-java-haul-read-paths.md)、[0.29.24参考核对与证据](reviews/2026-11-02/java-haul-read-paths.md)。库存索引、选货匹配与计数已接Java；复用原Job/Claims/Session，真实NPC Java选货未实机。
+## 5. 现行架构规格与历史档案索引 (Specs & Plans)
 
-配送跨源集货：[0.29.23证据](reviews/2026-11-02/delivery-multisource.md)；同一Job按清单跨箱收集、逐原件来源归还及计数；配送单批最多256件，实机未验收。
+### 5.1 NPC 行为与任务基础设施
+- [统一任务调度协议 (2026-10-23)](superpowers/specs/2026-10-23-unified-task-dispatch-design.md)
+- [Phase 3A 任务标准化主规格 (2026-10-31)](superpowers/specs/2026-10-31-phase3a-job-contract-standardization-design.md)
+- [工作流领域边界拆分设计 (2026-11-02)](superpowers/specs/2026-11-02-workflow-domain-boundaries-design.md)
+- [领域目录与 Java 桥收敛设计 (2026-11-04)](superpowers/specs/2026-11-04-domain-layout-design.md)
+- [原生 NPC 位移执行设计 (2026-11-05)](superpowers/specs/2026-11-05-native-npc-movement-design.md)
+- [能力闭环逐项补全设计 (2026-11-05)](superpowers/specs/2026-11-05-capability-closure-design.md)
 
-搬运连续动作与闲暇让位：[0.29.22实施证据](reviews/2026-11-02/haul-continuity-and-leisure-yield.md)。同一原版动作逐件确认后续接，复用现有单件意图；闲暇busy门禁修复。必要回归通过，实机待用户验收。
+### 5.2 小队与随从系统
+- [小队跟随核心设计 (2026-11-05)](superpowers/specs/2026-11-05-companion-squad-follow-design.md)
+- [小队 HUD 命令交互设计 (2026-11-06)](superpowers/specs/2026-11-06-squad-command-ui-design.md)
 
-公共内核与领域边界收敛：用户已批准并授权实施；[实施计划](superpowers/plans/2026-11-02-public-kernel-domain-cutover.md)、[0.29.21证据](reviews/2026-11-02/public-kernel-domain-cutover.md)。领域契约与恢复委托、资源提交拆分及Java任务记录复制已接；保留现役兼容入口，实机未验收。
+### 5.3 据点业务与领域系统
+- [据点归属设计 (2026-10-25)](superpowers/specs/2026-10-25-npc-settlement-membership-design.md)
+- [仓储配送重构设计 (2026-10-27)](superpowers/specs/2026-10-27-delivery-rebuild-design.md)
+- [P4 烹饪与设施监管设计 (2026-10-26)](superpowers/specs/2026-10-26-p4-cooking-and-supervision-design.md)
+- [P3 人员研习设计 (2026-10-24)](superpowers/specs/2026-10-24-p3-personnel-study-design.md)
+- [P3.5 闲暇与社交设计 (2026-10-24)](superpowers/specs/2026-10-24-p3.5-leisure-social-fitness-design.md)
+- [社区活动设计 (2026-10-28)](superpowers/specs/2026-10-28-a3-a4-community-activities-design.md)
 
-显式据点归属B已按用户决定接入0.27.0，不兼容旧档；[成员设计§2.1](superpowers/specs/2026-10-25-npc-settlement-membership-design.md)固定与闲暇共享接口，唯一架构v1.2登记。[实施计划](superpowers/plans/2026-10-25-npc-settlement-membership.md)、[实际开发证据与闲暇交接](reviews/2026-10-25/npc-settlement-membership.md)、[集中实机验收（未运行）](testing/membership-runtime-acceptance.md)分别维护步骤、事实与验收；不重构闲暇策略，不因宿主通过宣称实机完成。
+### 5.4 UI 基础设施与仓储底层
+- [LayoutHost 与仓储工具栏试点证据](reviews/2026-11-07/layout-host.md)：显式叶子适配、求解/应用失败重试、原生 CN/EN 截图；旧仓储测试失败与实机差额分别记录。
+- [声明式布局 Phase 1 收口证据](reviews/2026-11-07/declarative-layout.md)：固定根归属、统一销毁、136 项安装版 Kahlua 定向检查及最终构建；原生与性能未验证。
+- [全项目前端视觉与交互设计方向](architecture/frontend-design-principles.md)：适用于所有界面，基础交互与视觉验收不后置。
+- [原版 UI 实时调试工具](tools/native-ui-preview.md)：真实控件/页面源码、保存自动重建、鼠标定位与同代截图；业务夹具、输入/中文/像素一致性边界见说明。
+- [UI 表现层领域契约 (Layer 3)](domains/ui.md)
+- [UI 运行时框架规范](architecture/ui-framework-architecture-spec.md)
+- [据点 UI 收敛主规格 (2026-11-05)](superpowers/specs/2026-11-05-ui-consolidation-design.md)
+- [仓储读取基础架构](settlement-storage-architecture.md)
+- [国际化双语闭环铁律](architecture/i18n-invariants.md)
 
-2026-10-24用户确认的跨阶段执行顺序与验收标准见[BACKLOG可靠性与扩展任务](BACKLOG.md#可靠性与扩展任务优先级2026-10-24用户确认)：搬运恢复/状态机边界优先，其次性能尖峰与P2/P3收口，再进行长任务准备；流水线和宏微观交接保留为独立设计/原型。该表调整任务优先级，不以评审风险替代实现证据。
-
-| 任务 | 设计/约束 | 实施与验证入口 |
-|---|---|---|
-| Phase 3A 收敛与业务切换 | [主规格 v1.5](superpowers/specs/2026-10-31-phase3a-job-contract-standardization-design.md)、[勘误](superpowers/specs/2026-10-31-phase3a-v14-final-errata.md)：取消旧档迁移，完成业务后集中验收 | [进度](BACKLOG.md#npc-架构执行记录)、[切换计划](superpowers/plans/2026-11-01-production-job-cutover.md)、[实施证据](reviews/2026-11-01/production-haul-cutover.md)、[格式门禁](reviews/2026-11-01/phase3a-format-admission.md)。B.5 未关闭，实机未通过；外部 AI 独立审核。 |
-| 普通工作协议与 FIELD 职责拆分 | [确认范围](superpowers/specs/2026-11-02-workflow-domain-boundaries-design.md)：公共安全契约、领域自主流程；沿用 Phase 3A | [首批拆分](reviews/2026-11-02/fieldwork-responsibility-split.md)、[领域推进](reviews/2026-11-02/field-domain-progression.md)、[0.29.20闭环与监控证据](reviews/2026-11-02/workflow-closure-and-monitor.md)；对应[工具归还](superpowers/plans/2026-11-02-tool-return-closure.md)、[清洁需求/UI](superpowers/plans/2026-11-02-cleaning-demand-monitor.md)、[跨业务投影](superpowers/plans/2026-11-02-business-workflow-projection.md)计划。已构建未实机，剩余及失败见证据 |
-| 公共生活子区与行为规则 | [最小子区设计](superpowers/specs/2026-10-28-public-life-zones-design.md)，日常生活与聚会稀疏覆盖共用禁用/允许/优先规则 | [实现证据](reviews/2026-10-28/public-life-zones.md)：CRUD/规则UI、主动赴场和FREE聚会接通；原生位置/动作与磁盘保存未实机 |
-| A3/A4 多人活动框架与出席仲裁 | [从属设计0.4](superpowers/specs/2026-10-28-a3-a4-community-activities-design.md)，FREE自主选择与SCRIPTED共同环节分开 | [计划](superpowers/plans/2026-10-28-a3-a4-community-activities.md)、[参考评审](reviews/2026-10-28/activity-framework-source-review.md)、[实现证据](reviews/2026-10-28/public-life-zones.md)：FREE首版正式参与/开场/退出/保存、制作让位恢复、定时与标题区UI源码已接；SCRIPTED、新动作及实机未完成 |
-| 仓储呼叫配送重构 | [配送执行链设计](superpowers/specs/2026-10-27-delivery-rebuild-design.md)、[配送 UI 局部重构](superpowers/specs/2026-10-28-delivery-ui-design.md)，服从 NPC 唯一架构及统一任务协议 | [实施计划](superpowers/plans/2026-10-27-delivery-rebuild.md)、[实现与验证证据](reviews/2026-10-28/delivery-rebuild.md)；0.29.14 执行链/UI 已接并本地打包，真实鼠标/动作/重进尚未验收，当前状态见 BACKLOG |
-| P4 自主厨师与设施监管 | [详细设计0.4（已授权实施）](superpowers/specs/2026-10-26-p4-cooking-and-supervision-design.md)，在线v4.0及用户全员持续计入、按成品饱食度的决定 | [执行计划](superpowers/plans/2026-10-26-p4-cooking.md)、[原版接缝与实现证据](reviews/2026-10-26/p4-cooking-foundation.md)。首批自主备餐/指定请求/BOM关联工单/研习/消费、公共派发与恢复接班、持久容量及渐进倒液体/外接供水代码已接。当前验证状态以BACKLOG为准；物理效果、磁盘重进和规模性能未实机，不宣称完整P4验收通过；区域随对应工种接入 |
-| P1身体控制、停止、保存 | 唯一架构第3～5节、统一任务协议 | [运行接入计划](superpowers/plans/2026-10-23-p1-runtime-integration.md)、[保存接线证据](reviews/2026-10-23/p1-unified-save.md)、[已通过的约定验收](testing/p1-runtime-acceptance.md) |
-| 公共工单、逐NPC认领 | 统一任务协议 | [共享Job切换计划](superpowers/plans/2026-10-23-shared-job-cutover.md)、[公共工作证据](reviews/2026-10-23/shared-public-work.md)、[交接契约六项建议评审](reviews/2026-10-25/work-handover-contract-improvement-review.md)（认领失败退避/身体预约/类型化结果债务，静态） |
-| 搬运途中拒收、可变交付路线 | 唯一架构§3.5/4/5、统一任务协议；[原件责任与可变交付路线设计0.2](superpowers/specs/2026-10-26-haul-routing-and-custody-design.md) | 用户已确认R1及当前有效任务有界升级；[实施计划](superpowers/plans/2026-10-26-haul-routing-r1.md)、[0.29.6实施与验证证据](reviews/2026-10-26/haul-routing-r1.md)。R2与人工核销延期；实机未验证 |
-| P2吃喝、休息、恢复 | 唯一架构P2与资源/恢复契约 | [P2计划](superpowers/plans/2026-10-24-p2-self-care.md)、[计划评审](reviews/2026-10-24/p2-plan-review.md)、[实现证据](reviews/2026-10-24/p2-living-loop.md)、[集中验收](testing/p2-runtime-acceptance.md) |
-| 床/沙发、据点选床 | 唯一架构第5.3节；范围修订见BACKLOG | [全据点共享发现计划](superpowers/plans/2026-10-24-settlement-repose-discovery.md)、[0.25.1实现与边界](reviews/2026-10-24/settlement-repose-discovery.md)、[初版家具策略](reviews/2026-10-24/repose-sites.md)、[集中实机验收](testing/p2-runtime-acceptance.md) |
-| P3人员、矩阵、实体书研习 | 唯一架构P3、统一任务协议第10/16/17节；[P3实施细化](superpowers/specs/2026-10-24-p3-personnel-study-design.md) | [实施计划](superpowers/plans/2026-10-24-p3-personnel-study.md)、[核心实现证据与剩余项](reviews/2026-10-24/p3-personnel-study.md)、[集中实机验收（未运行）](testing/p3-runtime-acceptance.md)、[当前缺口与顺序](BACKLOG.md#p2收口与p3待办) |
-| P3.5闲暇、锻炼与双人社交 | [P3.5设计1.4](superpowers/specs/2026-10-24-p3.5-leisure-social-fitness-design.md)、[设计审查与来源复核](reviews/2026-10-24/p3.5-leisure-design-review.md) | [实施计划](superpowers/plans/2026-10-24-p35-leisure-social-fitness.md)、[0.28.2连续性计划](superpowers/plans/2026-10-25-p35-leisure-continuity.md)、[0.28.1家具/坐读修正](reviews/2026-10-25/p35-seating-reading.md)、[坐读计划](superpowers/plans/2026-10-25-p35-seating-reading.md)、[0.28.0闲暇重构](reviews/2026-10-25/p35-leisure-refactor.md)、[重构计划](superpowers/plans/2026-10-25-p35-leisure-refactor.md)、[0.26.0开发接入与验证边界](reviews/2026-10-24/p35-leisure-implementation.md)、[实机问题诊断与交接核验](reviews/2026-10-25/p35-runtime-fixes-and-handoff-review.md)、[集中实机验收（未运行）](testing/p35-runtime-acceptance.md)；4.5活动延伸与坐姿缺口见[BACKLOG活动系统延伸](BACKLOG.md#p3545-活动系统延伸2026-10-25-交接登记未开工) |
-| UI产品交互 | [据点UI设计](superpowers/specs/2026-10-23-settlement-ui-design.md)、统一任务协议第16/17节 | [UI基础契约](ui-architecture.md)、[可用性计划](superpowers/plans/2026-10-24-ui-usability.md)及[证据](reviews/2026-10-24/ui-usability.md)、[视口计划](superpowers/plans/2026-10-24-ui-visual-boundaries.md)及[证据](reviews/2026-10-24/ui-visual-boundaries.md) |
-| UI 运行时架构与基础设施 | [UI 运行时规范](architecture/ui-framework-architecture-spec.md)、[现状核验](architecture/ui-framework-current-state.md)、[阶段零审查与纠偏](architecture/ui-framework-phase1-review.md) | [阶段一计划](architecture/ui-framework-phase1-plan.md)；四层解耦、双层生命周期、统一调度器与零 GC 渲染 |
-| UI调研建议 | [UI/UX调研指南](superpowers/specs/2026-10-24-settlement-ui-ux-master-guide.md) | 从属参考，不单独批准功能扩张或覆盖产品/工程契约 |
-| 仓储、库存、据点身份 | [仓储读取与权威边界](settlement-storage-architecture.md)、统一任务协议、[Health Gate B 连续验收与本轮证据](testing/single-player-health-gate-b.md)、[Gate C / B.5 验收与证据](testing/gate-c-b5-acceptance.md) | [容器配置旧计划](superpowers/plans/2026-10-20-container-config.md)、[仓储脏更新旧计划](superpowers/plans/2026-10-20-warehouse-dirty-ui.md)，仅查原模块背景，不表示仍待整份实施 |
-| 生产负重、原件与结清清理 | 唯一架构第5.2节 | [负重旧计划](superpowers/plans/2026-10-22-production-carry.md)、[持续更新的负重证据](reviews/2026-10-22/production-carry.md)、[清理计划](superpowers/plans/2026-10-24-settled-task-retirement.md)及[证据](reviews/2026-10-24/settled-task-retirement.md) |
-| 性能、扫描、批读取 | 唯一架构第6节、开发规则 | [调度证据](reviews/2026-10-24/dispatch-performance.md)、[常驻证据](reviews/2026-10-24/runtime-performance.md)、[原生读取](reviews/2026-10-24/native-read-performance.md)、[任务读取](reviews/2026-10-24/task-read-performance.md)、[协调优化](reviews/2026-10-24/coordinator-performance.md)、[最新实采](reviews/2026-10-24/live-performance-and-haul-interruption.md) |
-| P4/P5及宏微观扩展 | 唯一架构阶段表；先读在线需求 | [A-Life参考](superpowers/specs/2026-10-23-alife-ecosystem-and-settlement-architecture.md)为approved-reference，不表示功能已实现；[综合架构整理](ember-routes-comprehensive-architecture.md)不能作为第二NPC实施入口 |
-| 原版API、可行性 | 当前安装JAR/原版Lua；基线变化须复核 | [引擎对齐审查](reviews/2026-10-23/vanilla-engine-interface-alignment.md)、[初始可行性证据](reviews/2026-10-18/feasibility-review.md)、[架构审查](reviews/2026-10-24/architecture-audit/review.md)、[2026-10-28 架构一致性与复用静态审查](reviews/2026-10-28/architecture-audit.md)（仅静态，未跑测试/未进游戏） |
-| 需求一致性、开发流程与框架适配 | 在线需求+唯一架构+全量文档的总检查点；2026-10-27在线正文为v4.0；与仓库[v3.3快照](reviews/2026-10-25/online-requirements-v3.3-export.txt)的P3.5相关差异及未确认项见[P3.5复核](reviews/2026-10-24/p3.5-leisure-design-review.md#2026-10-27-在线-v40-与仓库-v33-复核)，审计中旧版本和"待粘贴"记录为历史 | [2026-10-25需求与框架一致性审计](reviews/2026-10-25/requirements-framework-consistency-audit.md)、[P3.5诊断证据中的在线复核](reviews/2026-10-25/p35-runtime-fixes-and-handoff-review.md) |
-
-## 历史与维护规则
-
-本轮性能：[分级降频方案](superpowers/specs/2026-10-25-performance-cadence-design.md)、[实施计划](superpowers/plans/2026-10-25-performance-cadence.md)、[0.28.4实施证据](reviews/2026-10-25/performance-cadence.md)。含监控器3秒累计口径及旧入口开销推论的修正，50ms目标未实机验证，不覆盖唯一NPC架构。
-
-- [旧HANDOFF](history/2026-10-24-handoff-before-navigation-cleanup.md)、[旧BACKLOG](history/2026-10-24-backlog-before-navigation-cleanup.md)、[旧README](history/2026-10-24-readme-before-navigation-cleanup.md)完整保留整理前内容，相对链接已换算到原目标。旧分支、旧下一步和旧“当前”只用于追溯。
-- requirements中的本地正文为历史快照；history中的聊天、reviews中的旧实现结论都不自动成为当前授权。
-- 新增有效设计、实施计划或重要证据时，在对应任务行补链接，并原位更新BACKLOG；替代旧方案时说明替代关系，保留原文追溯。
-- doclink检查引用是否有效，不能证明内容一致或不存在遗漏；续接仍须核查源码与相关证据。
-
-DEC-003 当前 kernel core 契约与定向验证：[Phase 1（修订范围）](reviews/2026-11-04/dec003-phase1-contract.md)；无领域迁移，Java/实机验证仍未运行。
-
-R1/R2 IDLE 回退与轮转座位窗口：[实施、门禁与验证证据](reviews/2026-11-04/r1r2-segment.md)。
-
-DEC-003 CRAFT/Production 迁移 2/7：[七项决定、引用漂移、宿主 parity 与开放项](reviews/2026-11-04/dec003-craft-migration.md)；父任务待复核，Java/实机未验证。
-
-DEC-003 FIELD_WORK 迁移 3/7：[逐入口证据、宿主 parity、预发布恢复硬停止与开放项](reviews/2026-11-04/dec003-fieldwork-migration.md)；运行时链已转换，分段仍 OPEN，Java/实机未验证。
-
-DEC-003 COOKING 迁移 4/7：[逐入口证据、48项宿主 parity 与硬停止项](reviews/2026-11-04/dec003-cooking-migration.md)；仅无 work-capacity 链已迁移，容量/transfer/recovery 等开放，Java/实机未验证。
-
-DEC-003 工作容量：[Java 扩展、断言迁移与回归停止证据](reviews/2026-11-04/dec003-kernel-workcapacity.md)；COOKING 回归要求 legacy 路径而失败，未启用容量 contract，未完成。
-
-DEC-003 ACTIVITY 迁移 5/7：[运行时迁移、六项歧义、宿主验证与开放项](reviews/2026-11-04/dec003-activity-migration.md)；预发布恢复/shared identity 仍 OPEN，Java/实机未验证。
+### 5.5 活跃实施计划
+- [声明式布局后续任务与最终方案（待确认）](superpowers/plans/2026-11-07-declarative-layout-followup.md)：Phase 1 收口、Host 显式适配、仓储工具栏试点与验收；Phase 2 接口待确认，尚未实施。
+- [工程上下文校准](superpowers/plans/2026-11-06-context-calibration.md)：现行契约/手册/静态门禁已对齐，见[0.29.54检查与失败边界](reviews/2026-11-06/context-calibration.md)。
+- [能力缺口补全计划 (2026-11-05)](superpowers/plans/2026-11-05-capability-gap-closure.md)
+- [小队跟随实施计划 (2026-11-05)](superpowers/plans/2026-11-05-companion-squad-follow.md)
+- [小队 HUD 基础计划 (2026-11-06)](superpowers/plans/2026-11-06-squad-hud-foundation.md)

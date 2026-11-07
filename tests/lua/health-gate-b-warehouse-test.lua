@@ -14,17 +14,17 @@ Events={}
 for _,name in ipairs({'OnContainerUpdate','OnTick','OnTickEvenPaused','OnGameStart'}) do
     events[name]={} Events[name]={Add=function(fn) events[name][#events[name]+1]=fn end}
 end
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local squares={}
 local function key(x,y,z) return x..":"..y..":"..z end
 function getCell() return {getGridSquare=function(_,x,y,z) return squares[key(x,y,z)] end} end
-local Geometry=require "EmberRoutesProbe/SettlementGeometry"
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
-local Membership=require "EmberRoutesProbe/SettlementMembership"
-local Index=require "EmberRoutesProbe/WarehouseIndex"
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Query=require "EmberRoutesProbe/WarehouseQuery"
+local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
+local Membership=require "EmberRoutesProbe/Settlement/SettlementMembership"
+local Index=require "EmberRoutesProbe/Warehouse/WarehouseIndex"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Query=require "EmberRoutesProbe/Warehouse/WarehouseQuery"
 local function box(x,y,z)
     local object={data={}}
     local list={values={}}
@@ -100,17 +100,24 @@ Registry.inventoryChanged(source.container) Registry.inventoryChanged(destinatio
 ledger(0,0,5)
 -- Native fast-path deliberately lies about unresolved statuses. The real Lua
 -- index must fall back before using that result for private/removed containers.
+-- Endpoints are resolved before the native mount, so an unresolvable id never
+-- reaches the bridge at all.
 local fastCalls=0
 local cached=latest
-EmberRoutesProbeJava={warehouseFastScan=function()
-    fastCalls=fastCalls+1 return {state='READY',rows=cached.rows,counts=cached.counts,containers={}}
-end}
+EmberRoutesProbeJava={
+    warehouseMountSettlement=function()
+        fastCalls=fastCalls+1 return {state='READY',rows=cached.rows,counts=cached.counts,containers={}}
+    end,
+    warehouseApplyContainer=function() error('unresolved endpoint must never reach native apply') end,
+    warehouseUnmountContainer=function(_,id) error('unexpected unmount '..tostring(id)) end}
 Index.refresh(settlement.id,false) ready()
 check(fastCalls==1,'accessible snapshot uses the native branch')
 local returned=table.remove(destination.list.values,1)
 source.list.values[#source.list.values+1]=returned returned.container=source.container
 Registry.inventoryChanged(source.container)
-EmberRoutesProbeJava.warehouseFastScan=function() error('unresolved endpoint must never reach native fast scan') end
+EmberRoutesProbeJava.warehouseMountSettlement=function() error('unresolved endpoint must never reach native mount') end
+EmberRoutesProbeJava.warehouseApplyContainer=function() error('unresolved endpoint must never reach native apply') end
+EmberRoutesProbeJava.warehouseUnmountContainer=function(_,id) error('unexpected unmount '..tostring(id)) end
 destination.config.private=true configure(destination)
 Index.refresh(settlement.id,false) ready()
 check(fastCalls==1 and latest.counts.private==1 and latest.counts.items==1,'private endpoint preserves actual reason, not UNLOADED')

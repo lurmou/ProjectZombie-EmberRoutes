@@ -7,3 +7,6 @@
 *.iml
 /.workbuddy/
 /scratch/
+__pycache__/
+*.pyc
+

@@ -58,6 +58,13 @@ public final class ProbeMovement {
     }
 
     public boolean active() { return active; }
+    /** Keep the animation's direction (including backwards motion), shortening
+     * only its length at a path endpoint. Never rotate it toward the waypoint. */
+    public static float rootMotionScale(float motionX,float motionY,float remainingX,float remainingY) {
+        double length=Math.hypot(motionX,motionY), remaining=Math.hypot(remainingX,remainingY);
+        if (!Double.isFinite(length) || !Double.isFinite(remaining)) return 0;
+        return length>remaining ? (float)(remaining/length) : 1;
+    }
     public long steps() { return steps; }
     public double targetX() { return targetX; }
     public double targetY() { return targetY; }

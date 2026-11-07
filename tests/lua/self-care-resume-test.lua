@@ -1,21 +1,21 @@
 local checks=0
 local function check(value,label) checks=checks+1 assert(value,label) end
 local root={}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
 local status={jobId='craft',kind='PRODUCTION',state='ACTIVE',started=true}
 local owns=true local submits=0
 local runtime={accepting=function() return true end,status=function() return status end,owns=function() return owns end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return runtime end}
 local work={id='craft',generation=3,state='RUNNING'}
-package.loaded['EmberRoutesProbe/BusinessJobs']={crafts=function() return {a=work} end}
-package.loaded['EmberRoutesProbe/Production']={execute=function(_,command,_,id,options)
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={crafts=function() return {a=work} end}
+package.loaded['EmberRoutesProbe/Crafting/Production']={execute=function(_,command,_,id,options)
     assert(command=='resume' and id=='a' and options.nonPreemptive)
     submits=submits+1 owns=true status={jobId='craft',kind='PRODUCTION',state='PENDING',started=false}
     return 'QUEUED'
 end}
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Resume=require 'EmberRoutesProbe/TaskResume'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
 local jobs=Jobs.current()
 assert(jobs:create(Record.create('care','a')))
 local function attempt()
@@ -71,8 +71,8 @@ check(Resume.prepareRecovery({state='CAPTURED',byNpc={a={jobId='craft',kind='PRO
 check(jobs:get('care').payload.resume.generation==9 and jobs:get('care').payload.step=='STOP_CONFIRMED',
     'repaired relation uses persisted stopped business facts')
 local haul={id='haul',state='RUNNING',generation=10}
-package.loaded['EmberRoutesProbe/Work']={record=function() return haul end}
-package.loaded['EmberRoutesProbe/LaborStore']={recoveryGeneration=function() return {before=11,after=12} end}
+package.loaded['EmberRoutesProbe/Work/Work']={record=function() return haul end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={recoveryGeneration=function() return {before=11,after=12} end}
 attempt() status={jobId='haul',kind='TRANSFER',state='ACTIVE',started=true}
 assert(Resume.prepare({},'a','care')) haul.state='PAUSED' haul.generation=11 haul.reason='SELF_CARE'
 assert(Resume.stopped({npcId='a',jobId='haul',kind='TRANSFER',state='CLOSED',reason='SELF_CARE',effects='KNOWN'}))
@@ -96,7 +96,7 @@ assert(jobs:update(loan.id,loan.revision,{payload=p,obligations={RETURN_ORIGINAL
 status={jobId='craft',kind='PRODUCTION',state='ACTIVE',started=true} owns=true
 check(not Resume.prepare({},'a','care'),'retained loan cannot use settlement recovery to preempt ordinary work')
 local restored=0
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {id='a',jobId='follow',mode='FOLLOW'} end,
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {id='a',jobId='follow',mode='FOLLOW'} end,
     restoreState=function(_,intent) assert(intent.mode=='FOLLOW' and intent.jobId=='follow') restored=restored+1 return true end}
 status={jobId='follow',kind='COMPANION',state='ACTIVE',started=true}
 check(Resume.prepare({},'a','care'),'retained loan can capture the newer active companion intent for survival relief')

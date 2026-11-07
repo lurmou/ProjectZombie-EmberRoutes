@@ -4,16 +4,17 @@ require "ISUI/ISButton"
 require "ISUI/ISModalDialog"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
+local UICache=require "EmberRoutesProbe/UI/UICache"
 local Cached=require "EmberRoutesProbe/UI/CachedList"
 local Layout=require "EmberRoutesProbe/UI/Layout"
-local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
-local Words=require "EmberRoutesProbe/CraftingText"
+local Words=require "EmberRoutesProbe/Crafting/CraftingText"
 local text=Words.get
 local Draft={}
 function Draft.new(owner,bounds)
     local h,p=owner.fontHeight,owner.pad
-    local self={owner=owner,bounds=bounds,presentation=Presentation.new(),expanded={},workerIds={},surfaceIds={}}
+    local self={owner=owner,bounds=bounds,presentation=Presentation.new(),expanded={},surfaceIds={}}
 
     function self:activate(row)
         if not row then return end
@@ -222,14 +223,26 @@ function Draft.new(owner,bounds)
 
             if row.isTool then
                 local badgeText=text("toolBadge")
-                local bw=getTextManager():MeasureStringX(UIFont.Small,badgeText)+p
+                local bw=UICache.measure(UIFont.Small,badgeText)+p
                 local bx=list.width-p-bw
                 safeRect(bx,titleY,bw,h,Theme.control,false)
                 safeRect(bx,titleY,bw,h,borderColor,true)
                 safeText(badgeText,bx+math.floor(p/2),titleY,borderColor)
             elseif row.choices and #row.choices>1 then
-                local altText=text("altBadge").." "..#row.choices..(self.expanded[row.slot] and " ▲" or " ▼")
-                local bw=getTextManager():MeasureStringX(UIFont.Small,altText)+p
+                -- Badge label is rebuilt only when its two inputs change; the
+                -- old code concatenated and re-measured it on every draw.
+                local expanded=self.expanded[row.slot] and true or false
+                local cache=self._altTextCache
+                if not cache then cache={} self._altTextCache=cache end
+                local entry=cache[row.slot]
+                local altText
+                if entry and entry.count==#row.choices and entry.expanded==expanded then
+                    altText=entry.text
+                else
+                    altText=text("altBadge").." "..#row.choices..(expanded and " ^" or " v")
+                    cache[row.slot]={count=#row.choices,expanded=expanded,text=altText}
+                end
+                local bw=UICache.measure(UIFont.Small,altText)+p
                 local bx=list.width-p-bw
                 safeRect(bx,titleY,bw,h,Theme.control,false)
                 safeRect(bx,titleY,bw,h,Theme.accent,true)
@@ -252,7 +265,7 @@ function Draft.new(owner,bounds)
 
             local textX=slotX+slotSize+p
             local titleY=slotY+math.floor((slotSize-h)/2)
-            safeText("• "..(v.title or ""),textX,titleY,Theme.accent)
+            safeText("* "..(v.title or ""),textX,titleY,Theme.accent)
             return y+entry.height
         end
 
@@ -326,13 +339,9 @@ function Draft.new(owner,bounds)
 
     local function button(label,callback)
         local b=ISButton:new(bounds.x,bounds.y,bounds.width,h+p,label,owner,callback)
-        b:initialise() Theme.button(b) Tooltip.attach(b,"prerender",owner) owner:addChild(b) return b
+        b:initialise() Theme.button(b) Tooltip.register(b,{method="prerender",owner=owner}) owner:addChild(b) return b
     end
     self.run=button(text("button_run"),function() owner:command("run") end)
-    self.teach=button(text("button_teach"),function()
-        local blocker=self.preview and self.preview.blocker
-        owner:command("teach",blocker and blocker.recipeId,blocker and blocker.surfaceId)
-    end)
     self.surfaceHelp=button(text("registerSurface"),function()
         if self.helpModal then return end
         local width=math.min(owner.width,h*30)
@@ -345,131 +354,61 @@ function Draft.new(owner,bounds)
     self.platform=ISComboBox:new(bounds.x,bounds.y,bounds.width,h+p,owner,function()
         if not self.syncing then owner:change({surface=self.surfaceIds[self.platform.selected] or false}) end
     end)
-    self.worker=ISComboBox:new(bounds.x,bounds.y,bounds.width,h+p,owner,function()
-        if not self.syncing then owner:change({npcId=self.workerIds[self.worker.selected] or false}) end
-    end)
-    for _,box in ipairs({self.platform,self.worker}) do box:initialise() owner:addChild(box) end
+    self.platform:initialise() owner:addChild(self.platform)
 
-    local function step(delta)
-        local cur=tonumber(self.quantity:getText()) or 1
-        local nextVal=math.max(1,math.min(9999,cur+delta))
-        self.quantity:setText(tostring(nextVal))
-        owner:change({quantity=nextVal})
-    end
-    self.btnMinus10=button("-10",function() step(-10) end)
-    self.btnMinus1=button("-1",function() step(-1) end)
-    self.btnPlus1=button("+1",function() step(1) end)
-    self.btnPlus10=button("+10",function() step(10) end)
-    self.btnMax=button(text("stepperMax"),function()
-        if not self.recipe or not self.preview or not self.preview.counts then return end
-        local maxBatches=9999
-        local hasMaterial=false
-        for _,input in ipairs(self.recipe.inputs or {}) do
-            if not input.keep then
-                hasMaterial=true
-                local count=self.preview.counts[input.slot]
-                local avail=count and count.available or 0
-                local needPerBatch=input.count or 1
-                local possible=math.floor(avail/needPerBatch)
-                if possible<maxBatches then maxBatches=possible end
-            end
-        end
-        if not hasMaterial or maxBatches<=0 or maxBatches==9999 then maxBatches=1 end
-        local target=math.max(1,math.min(9999,maxBatches*(self.recipe.yield or 1)))
-        self.quantity:setText(tostring(target))
-        owner:change({quantity=target})
+    self.stepper=require('EmberRoutesProbe/UI/StepperInput'):new(bounds.x,bounds.y,bounds.width,h+p,1,1,9999,nil,function(value)
+        owner:change({quantity=value and value==math.floor(value) and value>=1 and value<=9999 and value or false})
     end)
-
-    self.quantity=ISTextEntryBox:new("1",bounds.x,bounds.y,h*4,h+p)
-    self.quantity:initialise() self.quantity.target=owner
-    self.quantity.onTextChangeFunction=function()
-        local n=tonumber(self.quantity:getText())
-        owner:change({quantity=n and n==math.floor(n) and n>=1 and n<=9999 and n or false})
-    end
-    self.quantity.tooltip=text("quantityHint") Tooltip.attach(self.quantity,"prerender",owner) owner:addChild(self.quantity)
+    owner:addChild(self.stepper)
+    self.quantity=self.stepper.entry
+    self.quantity.tooltip=text("quantityHint") Tooltip.register(self.quantity,{method="prerender",owner=owner})
 
     local function position(control,r)
         control:setX(r.x) control:setY(r.y) control:setWidth(r.width) control:setHeight(r.height)
     end
     function self:set(recipe,preview,snapshot,value)
         self.recipe=recipe self.preview=preview self.syncing=true
+        if type(value.quantity)=="number" and tonumber(self.quantity:getText())~=value.quantity then self.stepper:setValue(value.quantity) end
         local needsSurface=recipe and recipe.supported and recipe.surface==true
         local compact=bounds.height<h*22
-        local tracks={{basis=compact and h*2+p or h*3+p},{grow=1}}
-        if needsSurface then tracks[#tracks+1]={basis=h+p} end
-        for _,track in ipairs({{basis=h+p},{basis=h+p},{basis=compact and h*1.5 or h*2},{basis=h+p}}) do tracks[#tracks+1]=track end
+        local rowH=compact and math.floor(h*1.2) or (h+p)
+        local tracks={{basis=compact and (h*2+math.floor(p/2)) or (h*3+p)},{grow=1}}
+        if needsSurface then tracks[#tracks+1]={basis=rowH} end
+        for _,track in ipairs({{basis=rowH},{basis=compact and math.floor(h*1.3) or (h*2)},{basis=rowH}}) do tracks[#tracks+1]=track end
         local regions=assert(Layout.axis(bounds,tracks,{direction="column",gap=p/2}))
         self.header=regions[1] position(self.list,regions[2])
         local index=3
-        local hasSurfaces=#snapshot.surfaces>0
-        self.platform:setVisible(needsSurface==true and hasSurfaces)
+        local hasSurfaces=snapshot and snapshot.surfaces and #snapshot.surfaces>0 or false
+        self.platform:setVisible(needsSurface==true)
         self.surfaceHelp:setVisible(needsSurface==true and not hasSurfaces)
         local surfaceKeys={}
-        for _,surface in ipairs(snapshot.surfaces) do surfaceKeys[#surfaceKeys+1]=surface.id..":"..surface.x..":"..surface.y..":"..surface.z end
+        for _,surface in ipairs(snapshot.surfaces or {}) do surfaceKeys[#surfaceKeys+1]=surface.id..":"..surface.x..":"..surface.y..":"..surface.z end
         local surfaceKey=table.concat(surfaceKeys,"\n")
         if self.surfaceKey~=surfaceKey then
-            self.surfaceKey=surfaceKey self.platform:hidePopup() self.platform:clear() self.surfaceIds={false} self.platform:addOption(text("selectSurface"))
-            for _,surface in ipairs(snapshot.surfaces) do
+            self.surfaceKey=surfaceKey self.platform:hidePopup() self.platform:clear() self.surfaceIds={false} self.platform:addOption(text("autoNearestSurface"))
+            for _,surface in ipairs(snapshot.surfaces or {}) do
                 self.surfaceIds[#self.surfaceIds+1]=surface.id
                 self.platform:addOption(text("surface").." ("..surface.x..", "..surface.y..", "..surface.z..")")
             end
         end
         self.platform.selected=1 for i,id in ipairs(self.surfaceIds) do if id==value.surface then self.platform.selected=i end end
         if needsSurface then position(self.platform,regions[index]) position(self.surfaceHelp,regions[index]) index=index+1 end
-        position(self.worker,regions[index]) index=index+1
-        local workerKeys={} for _,worker in ipairs(snapshot.workers) do workerKeys[#workerKeys+1]=worker.id..":"..worker.name end
-        local workerKey=table.concat(workerKeys,"\n")
-        if self.workerKey~=workerKey then
-            self.workerKey=workerKey self.worker:hidePopup() self.worker:clear() self.workerIds={false} self.worker:addOption(text("noWorker"))
-            for _,worker in ipairs(snapshot.workers) do self.workerIds[#self.workerIds+1]=worker.id self.worker:addOption(worker.name) end
-        end
-        self.worker.selected=1 for i,id in ipairs(self.workerIds) do if id==value.npcId then self.worker.selected=i end end
 
         local q=regions[index] index=index+1
         self.quantityLabel={x=q.x,y=q.y+p/2}
-        local labelW=getTextManager():MeasureStringX(UIFont.Small,text("quantity"))+p
-        local available=q.width-labelW
-        local slotW=math.floor((available-p)/6)
-        if slotW>=math.floor(h*0.9) then
-            self.btnMinus10:setVisible(true)
-            self.btnMinus1:setVisible(true)
-            self.btnPlus1:setVisible(true)
-            self.btnPlus10:setVisible(true)
-            self.btnMax:setVisible(true)
-            local stepW=slotW
-            local entryW=math.max(10,available-stepW*5-math.floor(p/4)*5)
-            local stepperTracks={{basis=stepW},{basis=stepW},{basis=entryW},{basis=stepW},{basis=stepW},{basis=stepW}}
-            local sRegions=Layout.axis({x=q.x+labelW,y=q.y,width=available,height=q.height},stepperTracks,{gap=math.floor(p/4)})
-            if sRegions then
-                position(self.btnMinus10,sRegions[1])
-                position(self.btnMinus1,sRegions[2])
-                position(self.quantity,sRegions[3])
-                position(self.btnPlus1,sRegions[4])
-                position(self.btnPlus10,sRegions[5])
-                position(self.btnMax,sRegions[6])
-            else
-                position(self.quantity,{x=q.x+q.width-h*4,y=q.y,width=h*4,height=q.height})
-            end
-        else
-            self.btnMinus10:setVisible(false)
-            self.btnMinus1:setVisible(false)
-            self.btnPlus1:setVisible(false)
-            self.btnPlus10:setVisible(false)
-            self.btnMax:setVisible(false)
-            position(self.quantity,{x=q.x+q.width-h*4,y=q.y,width=h*4,height=q.height})
-        end
+        local labelW=math.min(q.width*0.35,getTextManager():MeasureStringX(UIFont.Small,text("quantity"))+p)
+        self.stepper:setX(q.x+labelW) self.stepper:setY(q.y)
+        self.stepper:layoutCompact(math.max(1,q.width-labelW),q.height)
 
         self.conditionBounds=regions[index] index=index+1
-        local action=assert(Layout.axis(regions[index],{{grow=2},{grow=1}},{gap=p/2}))
-        position(self.run,action[1]) position(self.teach,action[2])
+        position(self.run,regions[index])
         local conditions=preview and preview.conditions or {}
-        local reasons={} local canTeach=false local hard=false local shortage=false local limited=false
+        local reasons={} local hard=false local shortage=false local limited=false
         for _,reason in ipairs(conditions) do
             reasons[#reasons+1]=Words.reason(reason)
-            if reason=="NPC_RECIPE_UNKNOWN" then canTeach=true
-            elseif reason=="PREVIEW_LIMIT" then limited=true
+            if reason=="PREVIEW_LIMIT" then limited=true
             elseif reason=="MATERIALS_UNAVAILABLE" or reason=="TOOLS_UNAVAILABLE" then shortage=true
-            else hard=true end
+            elseif reason~="NPC_RECIPE_UNKNOWN" then hard=true end
         end
         local state=preview and preview.state or "CHECKING"
         if state=="CHECKING" then self.hint=text("checking")
@@ -478,11 +417,9 @@ function Draft.new(owner,bounds)
         else self.hint=text("executionRecheck") end
         if preview and preview.blocker then self.hint=preview.blocker.recipeName..": "..self.hint end
         self.conditionLines=Text.wrapLimited(self.hint,self.conditionBounds.width,UIFont.Small,2)
-        self.run.tooltip=self.hint self.teach.tooltip=preview and preview.blocker and preview.blocker.recipeName or Words.reason("NPC_RECIPE_UNKNOWN")
-        self.teach:setVisible(canTeach and not hard)
-        Theme.enable(self.teach,canTeach and not hard)
-        Theme.enable(self.run,recipe and recipe.supported and value.quantity~=false and value.npcId~=false
-            and state~="CHECKING" and not hard and not canTeach and (state=="READY" or shortage or limited) or false,true)
+        self.run.tooltip=self.hint
+        Theme.enable(self.run,recipe and recipe.supported and value.quantity~=false
+            and state~="CHECKING" and not hard and (state=="READY" or shortage or limited) or false,true)
         self.run:setTitle(text(shortage and "createWaiting" or "button_run"))
         local rows={} local function add(row) rows[#rows+1]=row end
         local units=recipe and recipe.yield and recipe.yield>0 and math.ceil((value.quantity or 1)/recipe.yield) or 1
@@ -531,7 +468,7 @@ function Draft.new(owner,bounds)
                     else
                         stockSub=tostring(availNum).." / "..need
                     end
-                    if precursor then stockSub=stockSub.."  → "..text("chainSupply") end
+                    if precursor then stockSub=stockSub.."  > "..text("chainSupply") end
                     local itemName=first and first.name or input.names[1] or "?"
                     add({
                         kind="input",
@@ -539,7 +476,7 @@ function Draft.new(owner,bounds)
                         fullType=first and first.fullType,
                         title=itemName,
                         sub=stockSub,
-                        label=itemName.." "..(count and tostring(availNum) or "?").." / "..need..(precursor and " →" or ""),
+                        label=itemName.." "..(count and tostring(availNum) or "?").." / "..need..(precursor and " >" or ""),
                         known=count~=nil,
                         missing=isMissing and not precursor,
                         precursor=precursor,
@@ -600,8 +537,8 @@ function Draft.new(owner,bounds)
     end
     function self:hide()
         if self.helpModal then self.helpModal:destroy() self.helpModal=nil end
-        self.platform:hidePopup() self.worker:hidePopup() self.quantity:unfocus()
-        for _,control in ipairs({self.platform,self.surfaceHelp,self.worker,self.quantity,self.btnMinus10,self.btnMinus1,self.btnPlus1,self.btnPlus10,self.btnMax,self.list,self.run,self.teach}) do
+        self.platform:hidePopup() self.quantity:unfocus()
+        for _,control in ipairs({self.platform,self.surfaceHelp,self.quantity,self.stepper,self.list,self.run}) do
             Tooltip.clear(control)
         end
     end

@@ -16,7 +16,7 @@ local npc={getFitness=function() return fitness end,getCurrentState=function() r
     isAiming=function() return false end,isClimbing=function() return false end,
     setVariable=function(_,k,v) variables[k]=v end,setMetabolicTarget=function() end}
 local s={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
-package.loaded['EmberRoutesProbe/LeisureService']={sample=function() return {safe=true,hunger=0,thirst=0,
+package.loaded['EmberRoutesProbe/Leisure/LeisureService']={sample=function() return {safe=true,hunger=0,thirst=0,
     fatigue=0,endurance=1,pain=0,healthy=true,handsFree=true,fitnessKnown=true,stiff=false} end}
 ISBaseTimedAction={stop=function() queued=nil end,perform=function() queued=nil end}
 ISFitnessAction={new=function(_,character,exercise)
@@ -29,7 +29,7 @@ local c={npc=npc,payload={leisure={activity='FITNESS'}},sample=function() return
     valid=function() return live end,sameAttempt=function() return live end,
     body={retained=function() return live end,add=function(a) queued=a a:start() return true end,
         clear=function() if queued then queued:stop() end return true end}}
-local F=require 'EmberRoutesProbe/LeisureFitness'
+local F=require 'EmberRoutesProbe/Leisure/LeisureFitness'
 local leaf=F.new(c)
 assert(constructed==0,'construction waits for authorized run')
 assert(leaf.run()=='Running' and constructed==1)

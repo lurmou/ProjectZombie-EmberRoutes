@@ -1,6 +1,6 @@
 -- Unit test for shared Validate primitives
 package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
-local V = require 'EmberRoutesProbe/Validate'
+local V = require 'EmberRoutesProbe/Kernel/Validate'
 
 -- 1. Finite checks
 if not V.finite(0) then error('0 should be finite') end

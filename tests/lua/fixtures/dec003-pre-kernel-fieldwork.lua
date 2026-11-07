@@ -1,14 +1,14 @@
 -- TEST-ONLY frozen HEAD 7a36667 oracle. Never loaded by production.
 -- Composed field providers. TaskRuntime owns bodies; JobStore/LaborStore own facts/claims.
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Probe=require 'EmberRoutesProbe/Boot'
-local Signals=require 'EmberRoutesProbe/LaborSignals'
-local Context=require 'EmberRoutesProbe/FieldContext'
-local Session=require 'EmberRoutesProbe/FieldSession'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Probe=require 'EmberRoutesProbe/Kernel/Boot'
+local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
+local Context=require 'EmberRoutesProbe/Field/FieldContext'
+local Session=require 'EmberRoutesProbe/Field/FieldSession'
 local F={}
 local definitions,live={},{}
 local world,nextAdvance

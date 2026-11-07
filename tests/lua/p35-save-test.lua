@@ -1,4 +1,4 @@
-local R=require 'EmberRoutesProbe/SelfCareRecord'
+local R=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 local job=R.create('j','npc')
 job.payload=assert(R.begin(job,'LEISURE'))
 job.payload.settlementId='home'

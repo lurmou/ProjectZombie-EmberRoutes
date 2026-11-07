@@ -9,10 +9,12 @@ for _, name in ipairs({"OnGameStart", "OnServerStarted", "OnTick", "OnTickEvenPa
     Events[name] = { Add = function(fn) callbacks[name] = fn end }
 end
 SandboxVars = { EmberRoutes = { CarrierProbe = true } }
-package.loaded["EmberRoutesProbe/Build"] = { version = "test", prefix = "TEST" }
+package.loaded["EmberRoutesProbe/Kernel/Build"] = { version = "test", prefix = "TEST" }
 function getText(key) return key end
 local function stub() end
 EmberRoutesProbeJava = {moveSeatWithControl=stub,reachedSeat=stub,
+    followWithControl=stub,followMetrics=stub,moveBedWithControl=stub,bedPoseReady=stub,
+    furniturePoseWithControl=stub,moveSleepSeatWithControl=stub,floorSleepSafe=stub,
     begin = function() return "READY" end, version = function() return "test" end,
     tick = function() normal = normal + 1 end,
     retirementTick = function() paused = paused + 1 end,
@@ -31,7 +33,7 @@ local Probe = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRo
 Probe.controlledExecution=false -- Explicit legacy lifecycle fixture; activation has a separate regression.
 Probe.tickActions = function() jobs = jobs + 1 end
 Probe.tickHaul = Probe.tickActions
-Probe.tickCompanion = Probe.tickActions
+Probe.tickTasks = Probe.tickActions
 Probe.cancelActions = function() cancelled = cancelled + 1 end
 Probe.cancelHaul, Probe.cancelCompanion = Probe.cancelActions, Probe.cancelActions
 tickPaused()

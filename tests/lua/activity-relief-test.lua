@@ -2,10 +2,10 @@
 -- and body callbacks substituted. No native disk/gameplay acceptance claim.
 _ERActivityReliefFixtureOnly=true
 local s=dofile('tests/lua/activity-scripted-test.lua')
-local f=s.fixture local Effects=require 'EmberRoutesProbe/ActivityRelief'
-local Record=require 'EmberRoutesProbe/ActivityReliefRecord'
-local Service=require 'EmberRoutesProbe/ActivityService'
-local Store=require 'EmberRoutesProbe/ActivityStore'
+local f=s.fixture local Effects=require 'EmberRoutesProbe/Activity/ActivityRelief'
+local Record=require 'EmberRoutesProbe/Activity/ActivityReliefRecord'
+local Service=require 'EmberRoutesProbe/Activity/ActivityService'
+local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
 local checks=0
 local function check(v,m) assert(v,m) checks=checks+1 end
 local function near(a,b) return math.abs(a-b)<.000001 end

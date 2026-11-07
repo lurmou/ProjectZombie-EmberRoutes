@@ -2,7 +2,7 @@ require "ISUI/ISPanel"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
-local Words=require "EmberRoutesProbe/CraftingText"
+local Words=require "EmberRoutesProbe/Crafting/CraftingText"
 local RecipeGrid={}
 function RecipeGrid.new(owner,bounds,select)
     ---@type any

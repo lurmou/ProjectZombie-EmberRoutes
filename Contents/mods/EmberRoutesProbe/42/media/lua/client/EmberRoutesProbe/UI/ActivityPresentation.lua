@@ -2,7 +2,7 @@
 -- Translates raw engine facts, attendance reasons and relief records into
 -- truthful, non-medicalized player view-models. Does not invent fake ETAs or progress.
 
-local Catalog = require 'EmberRoutesProbe/ActivityScenarioCatalog'
+local Catalog = require 'EmberRoutesProbe/Activity/ActivityScenarioCatalog'
 
 local P = {}
 

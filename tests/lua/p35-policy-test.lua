@@ -1,4 +1,4 @@
-local P=require 'EmberRoutesProbe/LeisurePolicy'
+local P=require 'EmberRoutesProbe/Leisure/LeisurePolicy'
 local s={safe=true,hunger=0.05,thirst=0.05,fatigue=0.1,endurance=0.9,pain=0,
     healthy=true,handsFree=true,fitnessKnown=true,stiff=false,smoker=true}
 assert(P.allowed('FITNESS',s,{hold=true}))
@@ -12,7 +12,7 @@ assert(P.choose({{activity='FITNESS',weight=10}},m,13,0).activity=='FITNESS')
 assert(P.choose({},m,13,0.5)==nil)
 print('P3.5 policy: body guards, retained cooldown, no eligible activity')
 
-local Config=require 'EmberRoutesProbe/LeisureConfig'
+local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
 assert(Config.weights.STROLL<Config.weights.OBSERVE and Config.strollMinutes>=2)
 local settled=P.remember(nil,'STROLL',10,true) settled.moveAfter=10+Config.movementIntervalHours
 local options={{activity='OBSERVE',moving=true,weight=10},{activity='OBSERVE',weight=1}}

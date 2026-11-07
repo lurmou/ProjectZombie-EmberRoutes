@@ -4,7 +4,7 @@ getTimestampMs=function() return now end
 local callbacks={}
 Events={OnTickEvenPaused={Add=function(fn) callbacks.paused=fn end}}
 local count=0
-local Even=require 'EmberRoutesProbe/EvenPaused'
+local Even=require 'EmberRoutesProbe/Kernel/EvenPaused'
 Even.add(function() count=count+1 end)
 for i=0,999 do now=i callbacks.paused() end
 assert(count==20,'background readers run at 20Hz independently of render count')
@@ -13,9 +13,9 @@ assert(count==21,'missed intervals do not create a catch-up burst')
 now=0 callbacks.paused()
 assert(count==22,'clock reset does not strand background readers')
 
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 EmberRoutesProbeJava={diagnosticTimeNanos=function() return nanos end}
-local Perf=require 'EmberRoutesProbe/RuntimeMetrics'
+local Perf=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 assert(Perf.start())
 for _=1,20000 do Perf.measure('test',function() nanos=nanos+100000 end) end
 local start=Perf.now() nanos=21000000000 Perf.finishTick(start)
@@ -26,13 +26,13 @@ assert(row.max>0.099 and row.max<0.101,'single-call maximum remains exact')
 
 local root={} local pending
 local public,jobs=0,0
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-package.loaded['EmberRoutesProbe/Boot']={ready=true,runtimeReady=true}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {accepting=function() return true end} end}
-package.loaded['EmberRoutesProbe/LaborSignals']={watch=function(fn) pending=fn end,changed=function() end}
-package.loaded['EmberRoutesProbe/PublicWork']={retireSettled=function() public=public+1 end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={retireSettled=function() jobs=jobs+1 return 0 end}
-local Retirement=require 'EmberRoutesProbe/TaskRetirement'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={ready=true,runtimeReady=true}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return true end} end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={watch=function(fn) pending=fn end,changed=function() end}
+package.loaded['EmberRoutesProbe/Work/PublicWork']={retireSettled=function() public=public+1 end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={retireSettled=function() jobs=jobs+1 return 0 end}
+local Retirement=require 'EmberRoutesProbe/Runtime/TaskRetirement'
 now=0 Retirement.tick()
 for i=1,1999 do now=i Retirement.tick() end
 assert(public==1 and jobs==1,'unchanged ledgers do not trigger full retirement scans')
@@ -43,7 +43,7 @@ now=2250 Retirement.tick() assert(public==3,'changed work wakes before the next 
 root.executionSave={state='BLOCKED'} pending() now=2500 Retirement.tick()
 assert(public==3,'save barrier still prevents retirement')
 print('PASS cadence, bounded metrics, dirty retirement and save-barrier checks; native world mocked')
-local Idle=require 'EmberRoutesProbe/IdleDiscovery'
+local Idle=require 'EmberRoutesProbe/Work/IdleDiscovery'
 local discovery=Idle.new() local checks=0
 local function changed(w) checks=checks+1 return w.changed end
 local watch={changed=false}

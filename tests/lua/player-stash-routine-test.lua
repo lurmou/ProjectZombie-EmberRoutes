@@ -1,8 +1,8 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Filter = require "EmberRoutesProbe/StorageFilter"
-local ItemLock = require "EmberRoutesProbe/ItemLock"
-local PlayerStashRoutine = require "EmberRoutesProbe/PlayerStashRoutine"
-local BatchStoragePainting = require "EmberRoutesProbe/BatchStoragePainting"
+local Filter = require "EmberRoutesProbe/Warehouse/StorageFilter"
+local ItemLock = require "EmberRoutesProbe/Warehouse/ItemLock"
+local PlayerStashRoutine = require "EmberRoutesProbe/Warehouse/PlayerStashRoutine"
+local BatchStoragePainting = require "EmberRoutesProbe/Warehouse/BatchStoragePainting"
 
 local count = 0
 local function check(val, msg)

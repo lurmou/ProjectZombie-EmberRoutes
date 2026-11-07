@@ -1,5 +1,32 @@
 if not ISCollapsableWindow then dofile('tests/lua/storage-panel-test.lua') end
 local Base=ISCollapsableWindow
+-- Native hierarchy contract required by LayoutHost. Actual JNI is covered by native preview.
+function Base:instantiate()
+    self.instantiated=true
+    self.javaObject={getParent=function() return self.nativeParent and self.nativeParent.javaObject end}
+end
+function Base:getParent() return self.parent end
+function Base:getIsVisible() return self.visible~=false end
+function Base:setVisible(value) self.visible=value end
+function Base:setX(value) self.x=value end
+function Base:setY(value) self.y=value end
+function Base:setWidth(value) self.width=value end
+function Base:setHeight(value) self.height=value end
+function Base:update() end
+function Base:addChild(child)
+    assert(child.initialised, 'uninitialised child')
+    if not self.javaObject then self:instantiate() end
+    if not child.javaObject then child:instantiate() end
+    self.children[#self.children+1]=child
+    child.parent=self; child.nativeParent=self
+end
+function Base:removeChild(child)
+    for i=#self.children,1,-1 do
+        if self.children[i]==child then table.remove(self.children,i) end
+    end
+    child.nativeParent=nil
+end
+package.loaded['ISUI/ISScrollBar']=true
 ISPanel=Base package.loaded['ISUI/ISPanel']=true
 function Base:unfocus() self.focused=false end
 ISTextEntryBox=Base:derive('TestTextEntry')
@@ -39,7 +66,8 @@ function getTextManager() return {getFontHeight=function() return fh end,Measure
 local saves,watches,refreshes=0,0,0
 local entry={id='settlement-ui-test',name='Test settlement',revision=1,areas={{x=0,y=0,w=20,h=20}}}
 local actor={getX=function() return 1 end,getY=function() return 1 end,getZ=function() return 0 end,
-    getIndex=function() return 0 end,getPlayerNum=function() return 0 end,getJoypadBind=function() return -1 end}
+    isDead=function() return false end,getIndex=function() return 0 end,getPlayerNum=function() return 0 end,getJoypadBind=function() return -1 end}
+function getSpecificPlayer() return actor end
 local entries={[entry.id]=entry}
 local ledger={authorized=function(a) return a==actor end,list=function() return {entry} end,
     get=function(id) return entries[id] end,view=function(_,id) return entries[id] end,
@@ -47,13 +75,13 @@ local ledger={authorized=function(a) return a==actor end,list=function() return 
         if not id and not area then return nil,'INVALID_BOUNDS' end
         saves=saves+1 return entry,'SETTLEMENT_SAVED'
     end}
-package.loaded['EmberRoutesProbe/SettlementLedger']=ledger
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']=ledger
 local rows={}
 for i=1,135 do rows[i]={fullType=i==1 and 'Base.Hammer' or 'Mod.Item'..i,node=i==1 and 'tools' or 'other',count=i,
     sources={{id='source-one',x=5,y=6,z=1,count=i}}} end
 local snapshot={state='READY',rows=rows,counts={loaded=1,containers=2,unloaded=1,private=0,missing=0,limited=0,items=100},revision=1}
 local listener
-package.loaded['EmberRoutesProbe/WarehouseIndex']={watch=function(_,fn)
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']={watch=function(_,fn)
     watches=watches+1 listener=fn fn(snapshot)
     return function() watches=watches-1 end
 end,refresh=function() refreshes=refreshes+1 end}
@@ -63,6 +91,7 @@ function screenToIsoX(_,x) return x end function screenToIsoY(_,_,y) return y en
 function getCell() return {getGridSquare=function() return {} end} end
 local highlight=0
 function addAreaHighlightForPlayer() highlight=highlight+1 end
+package.loaded['EmberRoutesProbe/UI/SettlementSelector']=nil
 local Selector=require 'EmberRoutesProbe/UI/SettlementSelector'
 -- Content regression only; settlement-tabs-test exercises the real owning shell.
 local Page=require 'EmberRoutesProbe/UI/WarehousePage'
@@ -85,6 +114,7 @@ mouseX,mouseY=selector.x+selector.nameEntry.x+1,selector.y+selector.nameEntry.y+
 selector:onMouseDownOutside() selector:onMouseMoveOutside() selector:onMouseUpOutside()
 check(selector.area==selected and not selector.dragging,'clicking name field cannot replace world selection')
 selector:prerender()
+if selector.renderWorldHighlights then selector:renderWorldHighlights() end
 check(saves==0 and highlight==1,'preview highlights one rectangle and does not commit')
 selector:close() check(saves==0,'cancel does not create settlement')
 selector=Selector.open(actor,nil)
@@ -277,13 +307,13 @@ if ERTestRuntime then
         sw,sh,fh=w,h,font return Dashboard.open(actor,entry.id)
     end}
 end
-package.loaded['EmberRoutesProbe/LogisticsStore']={view=function() return {intake=true,tidy=true,workers={}} end}
+package.loaded['EmberRoutesProbe/Logistics/LogisticsStore']={view=function() return {intake=true,tidy=true,workers={}} end}
 ISContextMenu={getNew=function()
     return {options={},setOptionChecked=function(_,option,value) option.checkMark=value end,addOption=function(self,label,actor,callback,...)
         local option={label=label,callback=callback,args={...}} self.options[#self.options+1]=option return option
     end}
 end}
-local Menu=require 'EmberRoutesProbe/SettlementMenu'
+local Menu=require 'EmberRoutesProbe/Integration/SettlementMenu'
 entry.factionId='local-faction'
 ledger.data=function() return {entries=entries,factionId='local-faction'} end
 local options={}

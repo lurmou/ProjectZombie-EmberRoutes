@@ -30,17 +30,33 @@ public final class ProbeNpc extends IsoPlayer {
     private long nextExitCheck,nextExitLog;
     private boolean attached;
     private boolean failed;
+    // A carrier whose chunk is unloaded is not broken: it is parked until the
+    // world comes back. Only a real contract violation sets `failed`.
+    private boolean suspended;
+    // Target of the interrupted move, re-issued on resume. The native path is
+    // gone with the chunk, so resuming means re-requesting, not un-freezing.
+    private boolean resumeMove;
+    private float resumeX, resumeY, resumeZ;
     private boolean retiring;
     private String failure = "";
     private long updates;
     private final ProbeMovement movement = new ProbeMovement();
+    private CompanionNavigation companionNavigation;
     private String pathResult = "IDLE";
     private String moveResult = "IDLE";
     private long nextProgressLog;
     private float moveStartX, moveStartY;
+    // Path failures are not free: every failed or timed-out request re-runs the
+    // engine pathfinder. Back off exponentially so a stuck carrier cannot spin.
+    private static final long MOVE_BACKOFF_BASE_NANOS = 1_500_000_000L;
+    private static final long MOVE_BACKOFF_MAX_NANOS = 8_000_000_000L;
+    private int moveFailureCount;
+    private long moveBlockedUntilNanos;
     private zombie.iso.IsoObject requestedFurniture, reachedFurniture;
     private double furniturePathLimit;
     private boolean furniturePathChecked;
+    private boolean advancingPath;
+    private boolean consumingPathRootMotion;
     private static final java.util.List<String> SLEEP_QUALITIES=java.util.List.of(
             "floor","goodBed","averageBed","badBed","goodBedPillow","averageBedPillow","badBedPillow");
     private static final zombie.iso.IsoDirections[] EXIT_DIRECTIONS={
@@ -70,13 +86,15 @@ public final class ProbeNpc extends IsoPlayer {
     void markDetached() { attached = false; }
     boolean attached() { return attached; }
     boolean failed() { return failed; }
+    /** Parked because its chunk is unloaded; the body record is still intact. */
+    boolean suspended() { return suspended; }
     long updates() { return updates; }
     String failure() { return failure; }
     boolean retiring() { return retiring; }
     boolean moving() { return movement.active(); }
     boolean furniturePoseOwned() { return furnitureExit.active(); }
     int stopMask() {
-        return (movement.active() ? 1 : 0) | (isMoving() ? 2 : 0)
+        return (companionNavigation!=null ? 8192 : 0) | (movement.active() ? 1 : 0) | (isMoving() ? 2 : 0)
             | (!getCharacterActions().isEmpty() ? 4 : 0) | (getPath2() != null ? 8 : 0)
             | (!getPathFindBehavior2().isGoalNone() && !getPathFindBehavior2().getIsCancelled() ? 16 : 0)
             | (getPathFindBehavior2().pathNextIsSet ? 32 : 0)
@@ -521,8 +539,79 @@ public final class ProbeNpc extends IsoPlayer {
         furnitureExit.finish(); poseFurniture=null; poseTiles.clear(); bedExitRequested=false;
         ProbeRuntime.log("FURNITURE_EXIT_READY pos="+getX()+","+getY()+","+getZ());
     }
-    String lastMoveResult() { return moveResult; }
-    void pauseMovementClock(long now) { movement.pause(now); }
+    String lastMoveResult() { return companionNavigation!=null ? companionNavigation.status() : moveResult; }
+    void pauseMovementClock(long now) {
+        movement.pause(now);
+        if (companionNavigation!=null) companionNavigation.pause(now);
+    }
+
+    void beginFollow(IsoPlayer leader,String id,String key,int rank) {
+        requestedFurniture=null; reachedFurniture=null;
+        closeFollow();
+        companionNavigation=new CompanionNavigation(this,leader,id,key,rank);
+    }
+    CompanionNavigation companionNavigation() { return companionNavigation; }
+    /** True once the pathfinder has produced a route or already moved along one;
+     *  a pending search is not a stall and must not be cancelled by the probe. */
+    boolean pathReady() {
+        return getPath2()!=null || getPathFindBehavior2().pathNextIsSet;
+    }
+    boolean followTraversal() { return nativeTraversal(); }
+    /** At most three loaded tiles; this is a posture brake, not a path search. */
+    boolean followPrecision() {
+        if (nativeTraversal() || !getPathFindBehavior2().shouldBeMoving()) return true;
+        PathFindBehavior2 path=getPathFindBehavior2();
+        float dx=path.pathNextX-getX(),dy=path.pathNextY-getY();
+        float length=(float)Math.hypot(dx,dy);
+        if (!path.pathNextIsSet || length<0.001f) return true;
+        dx/=length; dy/=length;
+        int floor=(int)Math.floor(getZ()+0.001f);
+        for (int i=0;i<3;i++) {
+            var square=getCell().getGridSquare((int)Math.floor(getX()+dx*i*0.4f),
+                    (int)Math.floor(getY()+dy*i*0.4f),floor);
+            if (square==null || square.HasStairs()) return true;
+        }
+        return false;
+    }
+    /** Called only by this body's granted companion navigation or its close path. */
+    void followPosture(boolean running,boolean sneaking) {
+        AIComponent ai=getECSComponent(AIComponent.class);
+        if (ai!=null) ai.getHumanControlVars().running=running;
+        setRunning(running); setSprinting(false); setSneaking(sneaking);
+    }
+    /** Releases the shared squad trail and drops the session navigation. */
+    private void closeFollow() {
+        CompanionNavigation previous=companionNavigation;
+        companionNavigation=null;
+        if (previous!=null) {
+            previous.close();
+            followPosture(false,false);
+        }
+    }
+    /** Same-session route update: never clear timed actions or exit furniture. */
+    void retargetFollow(float x,float y,int z,long now) {
+        getPathFindBehavior2().cancel();
+        getPathFindBehavior2().pathNextIsSet=false;
+        setPath2(null);
+        movement.begin(x,y,z,now);
+        moveResult="MOVING"; pathResult="REQUESTED";
+        moveStartX=getX(); moveStartY=getY(); nextProgressLog=now+1_000_000_000L;
+        getPathFindBehavior2().pathToLocationF(x,y,z);
+    }
+    /** Locomotion-only halt while the follow session keeps its body grant. */
+    void holdFollowMovement() {
+        if (!movement.active() && getPath2()==null && !isMoving()) return;
+        movement.cancel();
+        getPathFindBehavior2().cancel(); getPathFindBehavior2().pathNextIsSet=false;
+        setPath2(null); setVariable("bPathfind",false); setMoving(false);
+        isPlayerMoving=false; playerMoveDir.set(0,0); setJustMoved(false);
+        setRunning(false); setSprinting(false); discardRootMotion();
+        AIComponent ai=getECSComponent(AIComponent.class);
+        if (ai!=null) {
+            var vars=ai.getHumanControlVars(); vars.justMoved=false; vars.running=false;
+            vars.strafeX=0; vars.strafeY=0;
+        }
+    }
 
     void beginRetirement() {
         retiring = true;
@@ -536,10 +625,20 @@ public final class ProbeNpc extends IsoPlayer {
 
     void moveTo(float x, float y, float z) {
         if (failed || retiring || !attached) throw new IllegalStateException("carrier not active");
+        if (suspended) {
+            pathResult = "SUSPENDED"; moveResult = "BLOCKED";
+            return;
+        }
+        long now = System.nanoTime();
+        if (now < moveBlockedUntilNanos) {
+            pathResult = "COOLDOWN"; moveResult = "BLOCKED";
+            ProbeRuntime.log("MOVE_BLOCKED " + motionStatus()
+                    + " retryInMs=" + ((moveBlockedUntilNanos - now) / 1_000_000L));
+            return;
+        }
         stopProbe();
         requestedFurniture=null; reachedFurniture=null;
         moveStartX = getX(); moveStartY = getY();
-        long now = System.nanoTime();
         double distance=Math.hypot(Math.hypot(x-getX(),y-getY()),z-getZ());
         long timeout=(long)Math.min(180_000_000_000.0,10_000_000_000.0+distance*3_000_000_000.0);
         movement.begin(x,y,z,now,timeout);
@@ -547,11 +646,20 @@ public final class ProbeNpc extends IsoPlayer {
         pathResult = "REQUESTED";
         moveResult = "MOVING";
         // The player action group has no PathFindState. Set only the native
-        // request here; doDeferredMovement below must advance it every update.
+        // request here; doDeferredMovement below supplies its movement intent.
         getPathFindBehavior2().pathNextIsSet = false;
         getPathFindBehavior2().pathToLocationF(x, y, z);
         ProbeRuntime.log("MOVE_TARGET origin=" + getX() + "," + getY() + "," + getZ()
                 + " target=" + x + "," + y + "," + z + " distance=" + movement.distance(getX(), getY(), getZ()));
+    }
+
+    /** Exponential path-request backoff: 1.5s, 3s, 6s, capped at 8s. */
+    private void registerMoveFailure(long now) {
+        moveFailureCount = Math.min(moveFailureCount + 1, 6);
+        long backoff = MOVE_BACKOFF_BASE_NANOS << Math.min(moveFailureCount - 1, 3);
+        moveBlockedUntilNanos = now + Math.min(backoff, MOVE_BACKOFF_MAX_NANOS);
+        ProbeRuntime.log("MOVE_BACKOFF count=" + moveFailureCount
+                + " waitMs=" + ((moveBlockedUntilNanos - now) / 1_000_000L));
     }
 
     String moveToCorpse(zombie.iso.objects.IsoDeadBody corpse) {
@@ -615,6 +723,7 @@ public final class ProbeNpc extends IsoPlayer {
     }
 
     void stopProbe() {
+        closeFollow();
         furnitureExit.request();
         StopAllActionQueue();
         setHeadLookAroundDirection(0,0); setHeadLookAround(false);
@@ -667,14 +776,56 @@ public final class ProbeNpc extends IsoPlayer {
         ProbeRuntime.log("CARRIER_STOPPED " + failure + "; use remove");
     }
 
+    /** Park the carrier until its chunk is loaded again. Not a failure. */
+    private void suspendCarrier(String reason) {
+        if (suspended) return;
+        suspended = true;
+        if (movement.active()) {
+            resumeMove = true;
+            resumeX = (float)movement.targetX();
+            resumeY = (float)movement.targetY();
+            resumeZ = (float)movement.targetZ();
+        }
+        try { stopProbe(); }
+        catch (RuntimeException | LinkageError error) {
+            ProbeRuntime.log("CARRIER_SUSPEND_STOP_FAILED " + reason + ": " + error);
+        }
+        // Deliberately keep moveResult unchanged: a task that already observed
+        // MOVING must not suddenly read SUSPENDED and fail. Parked state is
+        // reported separately through suspended(), not through the motion string.
+        ProbeRuntime.log("CARRIER_SUSPENDED " + reason + "; resumes when the world is available");
+    }
+
     @Override public void update() {
         if (!attached || failed || retiring) return;
+        if (suspended) {
+            if (getCurrentSquare() == null) return;
+            suspended = false;
+            // Re-issue the interrupted move: the native path died with the chunk.
+            if (resumeMove) {
+                resumeMove = false;
+                // Parking is not a path failure; never let its backoff block recovery.
+                moveFailureCount = 0;
+                moveBlockedUntilNanos = 0L;
+                try { moveTo(resumeX, resumeY, resumeZ); }
+                catch (RuntimeException | LinkageError error) {
+                    ProbeRuntime.log("CARRIER_RESUME_MOVE_FAILED " + error);
+                }
+            }
+            ProbeRuntime.log("CARRIER_RESUMED " + motionStatus());
+        }
         if (!ProbeRules.canSimulate(GameClient.client, GameServer.server)) {
             freeze("DRIVER_UNAVAILABLE multiplayer simulation not implemented");
             return;
         }
-        if (getCurrentSquare() == null || isDead()) {
-            freeze("WORLD_UNAVAILABLE_OR_DEAD");
+        if (isDead()) {
+            freeze("CARRIER_DEAD");
+            return;
+        }
+        // Unloaded chunk is a temporary condition, never a permanent failure.
+        // The carrier stays attached and resumes when the square reappears.
+        if (getCurrentSquare() == null) {
+            suspendCarrier("WORLD_UNLOADED");
             return;
         }
         // IsoPlayer.updateInternal2 temporarily assigns both globals even for NPCs.
@@ -708,14 +859,14 @@ public final class ProbeNpc extends IsoPlayer {
         }
     }
 
-    /** Single root-motion owner: replace forward-only consumption with the
-     * native path follower. Do not also call super.doDeferredMovement(), which
-     * would submit a second displacement while a route is pending. */
+    /** PathFindBehavior2 still owns route progress, obstacle interaction and
+     * facing. Only the native character root-motion consumer moves the body. */
     @Override protected void doDeferredMovement() {
         boolean nativeFurnitureMotion=false;
         try {
             if (!attached || failed || retiring || !ProbeRules.canSimulate(GameClient.client, GameServer.server)) return;
             if (bedMotion!=null) return; // the captured seat anchor owns the sleep clip's displacement
+            if (companionNavigation!=null) companionNavigation.tick(System.nanoTime());
             // Furniture transitions use authored root motion after the native
             // approach has ended. Discarding it leaves the model beside the
             // chair. Never run this alongside the path follower.
@@ -730,23 +881,41 @@ public final class ProbeNpc extends IsoPlayer {
             }
             ProbeMovement.Outcome outcome = movement.tick(this::advancePath,
                     getX(), getY(), getZ(), System.nanoTime());
+            if (outcome==ProbeMovement.Outcome.MOVING && getPath2()!=null) {
+                PathFindBehavior2 path=getPathFindBehavior2();
+                if ((path.pathNextIsSet && (path.shouldBeMoving() || path.stopping)) || nativeTraversal()) {
+                    consumePathRootMotion();
+                }
+            }
             if (outcome != ProbeMovement.Outcome.IDLE && outcome != ProbeMovement.Outcome.MOVING) {
-                stopProbe();
+                if (companionNavigation!=null) {
+                    // A completed segment hands off to the next one without
+                    // clearing velocity; only a failed segment is held.
+                    if (companionNavigation.ended(outcome,System.nanoTime())) holdFollowMovement();
+                } else stopProbe();
                 moveResult = outcome.name();
+                if (outcome == ProbeMovement.Outcome.FAILED || outcome == ProbeMovement.Outcome.TIMEOUT) {
+                    registerMoveFailure(System.nanoTime());
+                } else {
+                    moveFailureCount = 0;
+                    moveBlockedUntilNanos = 0L;
+                }
                 ProbeRuntime.log("MOVE_" + outcome.name() + " " + motionStatus()
                         + " displacement=" + Math.hypot(getX() - moveStartX, getY() - moveStartY));
             }
         } finally {
-            // PathFindBehavior2 reads deferred movement without consuming it.
-            // Consume once, including idle/pending/stopped frames, to prevent
-            // residual forward movement or accumulation across later commands.
+            // Also discard pending/idle/stopped frames and any unconsumed
+            // remainder; no displacement can leak into the next command.
             if (!nativeFurnitureMotion) discardRootMotion();
         }
     }
 
     private ProbeMovement.PathResult advancePath() {
         PathFindBehavior2 path = getPathFindBehavior2();
-        PathFindBehavior2.BehaviorResult result = path.update();
+        PathFindBehavior2.BehaviorResult result;
+        advancingPath=true;
+        try { result=path.update(); }
+        finally { advancingPath=false; }
         if (requestedFurniture!=null && result==PathFindBehavior2.BehaviorResult.Succeeded) {
             zombie.iso.IsoObject goal=path.getGoalSitOnFurnitureObject();
             if (goal!=requestedFurniture) return ProbeMovement.PathResult.FAILED;
@@ -764,10 +933,50 @@ public final class ProbeNpc extends IsoPlayer {
             getECSComponent(AIComponent.class).getHumanControlVars().justMoved = walking;
             setMoving(walking);
             isPlayerMoving = walking;
+            if (walking) playerMoveDir.set(getForwardDirectionX(),getForwardDirectionY());
+            else playerMoveDir.set(0,0);
             return ProbeMovement.PathResult.WORKING;
         }
         return result == PathFindBehavior2.BehaviorResult.Failed
                 ? ProbeMovement.PathResult.FAILED : ProbeMovement.PathResult.SUCCEEDED;
+    }
+    /** Suppress only the path follower's synchronous direct displacement.
+     * Native animation/physics calls outside that scope retain their behavior. */
+    @Override public void moveUnmodded(float x,float y) {
+        if (!advancingPath) super.moveUnmodded(x,y);
+    }
+
+    private void consumePathRootMotion() {
+        var route=getPath2();
+        // The installed native consumer returns early when path2 is present:
+        // it assumes the path follower already submitted the displacement.
+        setPath2(null);
+        consumingPathRootMotion=true;
+        try { super.doDeferredMovement(); }
+        finally {
+            consumingPathRootMotion=false;
+            if (movement.active() && !getPathFindBehavior2().getIsCancelled() && getPath2()==null)
+                setPath2(route);
+        }
+    }
+
+    @Override protected zombie.iso.Vector2 getDeferredMovement(zombie.iso.Vector2 result,boolean reset) {
+        super.getDeferredMovement(result,reset);
+        if (consumingPathRootMotion && !nativeTraversal()) {
+            PathFindBehavior2 path=getPathFindBehavior2();
+            if (path.pathNextIsSet) {
+                float scale=ProbeMovement.rootMotionScale(result.x,result.y,
+                        path.pathNextX-getX(),path.pathNextY-getY());
+                if (scale==0) result.set(0,0);
+                else result.scale(scale);
+            }
+        }
+        return result;
+    }
+    private boolean nativeTraversal() {
+        return isCurrentState(zombie.ai.states.ClimbOverFenceState.instance())
+                || isCurrentState(zombie.ai.states.ClimbThroughWindowState.instance())
+                || isCurrentState(zombie.ai.states.ClimbOverWallState.instance());
     }
     private boolean sameFurnitureRoom(zombie.iso.IsoGridSquare a,zombie.iso.IsoGridSquare b) {
         return a!=null && b!=null && a.getZ()==b.getZ() && a.getRoom()==b.getRoom() && a.isOutside()==b.isOutside();

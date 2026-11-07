@@ -1,4 +1,4 @@
-local Controller=require 'EmberRoutesProbe/TaskController'
+local Controller=require 'EmberRoutesProbe/Runtime/TaskController'
 local stopped=false
 local handle={}
 local key,issuedGeneration

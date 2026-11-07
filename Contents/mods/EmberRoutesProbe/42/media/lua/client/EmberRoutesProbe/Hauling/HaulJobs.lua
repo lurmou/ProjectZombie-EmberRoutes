@@ -1,8 +1,8 @@
 -- Haul execution drafts and verified manifest settlement. Persistent facts
 -- remain in JobStore; all claims/capacity changes use LaborStore.mutateJob.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/LaborStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Record=require 'EmberRoutesProbe/Hauling/HaulJobRecord'
 local M={}
@@ -112,7 +112,7 @@ function M.claim(r)
     if not e then
 	for _,job in ipairs(Jobs.current():forNpc(r.npcId)) do
 	    if job.providerType=='CRAFT' and job.state~='DONE' and job.state~='CANCELLED'
-		and not require('EmberRoutesProbe/ProductionYield').assetFree(job.payload) then return nil,'OTHER_TASK_RETAINED' end
+		and not require('EmberRoutesProbe/Crafting/ProductionYield').assetFree(job.payload) then return nil,'OTHER_TASK_RETAINED' end
 	end
 	r.generation=(r.generation or 0)+1 r.sequence=r.generation r.claims=Record.activeClaims(r)
 	local ok,why=Store.createClaimedJob({id=r.id,npcId=r.npcId,providerType='HAUL',scopeId=r.settlementId or r.scopeId,

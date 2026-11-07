@@ -4,7 +4,7 @@ function A.install(Store,state,ensureEntityClaimId,cleanToken,scopeAllowed)
 function Store.claimActivity(job)
     Store.data()
     local saved=state.root.taskJobs.byId[job.id]
-    if not require('EmberRoutesProbe/ActivityRecord').valid(saved) or saved.npcId~=job.npcId
+    if not require('EmberRoutesProbe/Activity/ActivityRecord').valid(saved) or saved.npcId~=job.npcId
 	or saved.effects~='KNOWN' or saved.payload.sequence~=job.payload.sequence then return nil,'STALE_ACTIVITY_ATTEMPT' end
     local claimId = ensureEntityClaimId(state.root, saved, job.id)
     local token,why=state.claims:acquire(job.id,job.payload.sequence,saved.payload.claims, { claimId = claimId })
@@ -16,7 +16,7 @@ function Store.settleActivityWedged(job)
     if not (saved.state=='RECONCILE_REQUIRED' or saved.effects=='UNKNOWN') then return false end
     for _ in pairs(saved.obligations) do return false end
     local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={} p.stopped=true
-    if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,
+    if not require('EmberRoutesProbe/Runtime/TaskJobs').current():update(job.id,saved.revision,
         {payload=p,state='SETTLING',effects='KNOWN'}) then return false end
     local token=state.activityTokens[job.id]
     if token then state.claims:release(token) cleanToken(job.id) end
@@ -34,7 +34,7 @@ function Store.finishActivity(job,token)
     if saved.effects~='KNOWN' then return false,'ACTIVITY_EFFECT_UNKNOWN' end
     for _ in pairs(saved.obligations) do return false,'ACTIVITY_OBLIGATION_RETAINED' end
     local p={} for k,v in pairs(saved.payload) do p[k]=v end p.claims={}
-    if not require('EmberRoutesProbe/TaskJobs').current():update(job.id,saved.revision,{payload=p}) then return false,'JOB_CHANGED' end
+    if not require('EmberRoutesProbe/Runtime/TaskJobs').current():update(job.id,saved.revision,{payload=p}) then return false,'JOB_CHANGED' end
     state.claims:release(token) cleanToken(job.id) return true
 end
 end

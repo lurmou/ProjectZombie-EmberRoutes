@@ -1,11 +1,11 @@
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {forNpc=function() return {} end} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return {forNpc=function() return {} end} end}
 local root={} local seq=0
 local home={id='home'}
-package.loaded['EmberRoutesProbe/MembershipService']={view=function(id)
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function(id)
     if id=='a' or id=='b' then return {npcId=id,context='SETTLEMENT',settlementId='home',revision=1} end
 end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() seq=seq+1 return 'pair'..seq end}
-local S=require 'EmberRoutesProbe/SocialCoordinator'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() seq=seq+1 return 'pair'..seq end}
+local S=require 'EmberRoutesProbe/Activity/SocialCoordinator'
 S.advertise('a',home,{x=0,y=0,z=0},0) S.advertise('b',home,{x=1,y=0,z=0},0)
 local function geometry(a,b) return a,b end
 local id=S.invite('a',home,1,geometry)

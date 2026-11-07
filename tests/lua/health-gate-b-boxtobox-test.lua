@@ -1,12 +1,12 @@
 -- Directed main-chain host: real PublicWork/DeliveryService/DeliveryTarget/DeliveryFlow.
 -- Native motion, physical transfers and disk are substitutes, never in-game evidence.
 dofile('tests/lua/public-work-test.lua')
-local Public=require 'EmberRoutesProbe/PublicWork'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Members=require 'EmberRoutesProbe/MembershipService'
-local Work=require 'EmberRoutesProbe/Work'
-local Business=require 'EmberRoutesProbe/BusinessJobs'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Work=require 'EmberRoutesProbe/Work/Work'
+local Business=require 'EmberRoutesProbe/Work/BusinessJobs'
 local actor=getSpecificPlayer(0)
 local now=100000
 function getTimestampMs() return now end
@@ -38,7 +38,7 @@ Registry.revalidate=function(e) return e and boxes[e.id]==e and e end
 Registry.describe=function(id) if boxes[id] then return {x=1,y=1,z=0} end end
 Registry.logistics=function(e) return e.role end
 Registry.accepts=function(e) return not e.reject end
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'S','D','D2'} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'S','D','D2'} end}
 local own=container()
 local npc={getInventory=function() return own end,getMaxWeight=function() return 100 end}
 local serial=0
@@ -52,11 +52,11 @@ local function item(kind,c)
 end
 local goods={item('Base.Plank',boxes.S.container),item('Base.Plank',boxes.S.container)}
 local producers={freeCarry=function() return 100 end,eligible=function() return true end,register=function() end}
-package.loaded['EmberRoutesProbe/LaborProducers']=producers
-local store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Work/LaborProducers']=producers
+local store=require 'EmberRoutesProbe/Work/LaborStore'
 store.owner=function() end
 store.availableFor=function(_,_,_,free) return free end
-local Delivery=require 'EmberRoutesProbe/DeliveryService'
+local Delivery=require 'EmberRoutesProbe/Logistics/DeliveryService'
 local function create(token,destination,quantity)
     return Delivery.createOrder(actor,'s',{{fullType='Base.Plank',quantity=quantity or 2,sourceId='S'}},token,destination)
 end
@@ -104,18 +104,18 @@ local _,general=Delivery.createOrder(actor,'s',{{fullType='Base.Plank',quantity=
 check(not offer() and Delivery.order(general).reason=='STOCK_OR_CAPACITY_WAIT','ordinary scan never expands into INPUT')
 Delivery.order(general).cancelled=true Delivery.order(general).state='CANCELLED'
 local moves=0
-package.loaded['EmberRoutesProbe/WorkTransfer']={reachable=function() return true end,move=function()
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={reachable=function() return true end,move=function()
     moves=moves+1 return {start=function() return 'FAILED','PATH_BLOCKED' end,poll=function() return 'FAILED','PATH_BLOCKED' end}
 end}
-package.loaded['EmberRoutesProbe/InventoryView']={scan=function(containers)
+package.loaded['EmberRoutesProbe/Warehouse/InventoryView']={scan=function(containers)
     return {step=function() return containers end}
 end,find=function(containers,id)
     for index,c in ipairs(containers) do for _,v in ipairs(c.items) do if v.id==id then return v,index end end end
     return nil,nil,'ITEM_MISSING'
 end}
 package.loaded['EmberRoutesProbe/Hauling/HaulRouting']={}
-local Target=require 'EmberRoutesProbe/DeliveryTarget'
-local Flow=require 'EmberRoutesProbe/DeliveryFlow'
+local Target=require 'EmberRoutesProbe/Logistics/DeliveryTarget'
+local Flow=require 'EmberRoutesProbe/Logistics/DeliveryFlow'
 local c={job=job,npc=npc,actor=actor,token={},generation=1,body={stop=function() return true end,
     snapshot=function() return {available=true,nativeStopped=true} end}}
 local puts=0
@@ -142,7 +142,7 @@ step,why=nextLine() check(not step and why=='DESTINATION_UNREGISTERED' and puts=
 boxes.D=destination
 nextLine() -- remaining TAKE, same order
 check(goods[2].container==own,'restored destination resumes same order and pending original')
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 Transfer.reachable=function() return false end
 local move=nextLine()
 check(move and move.start()=='FAILED' and Target.failureReason(c,goods[1])=='DESTINATION_UNREACHABLE'

@@ -2,12 +2,12 @@
 local world=dofile("tests/lua/multi-worker-test.lua")
 local f=world.fixture local actor,a,b=world.actor,world.a,world.b
 local Work=world.Work
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
-local Store=require "EmberRoutesProbe/LogisticsStore"
-local Service=require "EmberRoutesProbe/LogisticsService"
-local Claims=require "EmberRoutesProbe/LaborStore"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
+local Store=require "EmberRoutesProbe/Logistics/LogisticsStore"
+local Service=require "EmberRoutesProbe/Logistics/LogisticsService"
+local Claims=require "EmberRoutesProbe/Work/LaborStore"
 local count=0 local function check(value,message) count=count+1 assert(value,message) end
 local originalPrint=print print=function() end
 function actor:getIndex() return 0 end
@@ -110,7 +110,7 @@ check(heldNpc~=nil,"batch has multiple held originals")
 local record=Work.record(heldNpc.id)
 check(record.reservation and record.reservation.format==2,"durable capacity manifest contains per-original batch reservation")
 local taskId,phase=record.id,record.phase
-require("EmberRoutesProbe/Persistence").save()
+require("EmberRoutesProbe/Runtime/Persistence").save()
 check(record.state=="PAUSED" and record.phase==phase and record.id==taskId,"normal save captures paused multi-item phase without creating replacement task")
 for _=1,40 do tick(1) if record.state=="RUNNING" then break end end
 check(Work.record(heldNpc.id)==record and record.state=="RUNNING","running service resumes exact saved batch after normal in-game save")
@@ -140,7 +140,7 @@ tick(20)
 Service.stop(actor,entry.id)
 -- Planner slices and batch sizing are bounded by physical weight, not NPC count.
 tag.logisticsRole="INPUT" Registry.changed(tag.id)
-local Planner=require "EmberRoutesProbe/LogisticsPlanner"
+local Planner=require "EmberRoutesProbe/Logistics/LogisticsPlanner"
 for i=1,35 do f.item("food",input.container) end
 function a.root:getFreeCapacity() return 100-#self.items end
 a.maxWeight=2

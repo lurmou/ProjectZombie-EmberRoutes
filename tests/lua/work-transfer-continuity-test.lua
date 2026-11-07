@@ -45,11 +45,11 @@ ISInventoryTransferAction.new=function(_,npc,value,from,to,time)
     function a:stopLoopingSound() end
     return a
 end
-package.loaded['EmberRoutesProbe/LaborProducers']={eligible=function() return true end,transfer=function() return true end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={inventoryChanged=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Work/LaborProducers']={eligible=function() return true end,transfer=function() return true end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={inventoryChanged=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 EmberRoutesProbeJava={carrierActive=function() return true end}
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 Transfer.reachable=function() return true end
 local function run(interrupt)
     queued=nil ends=0 receipts={} allowed=true active=1

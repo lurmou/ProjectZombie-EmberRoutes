@@ -1,4 +1,4 @@
-local R=require 'EmberRoutesProbe/ActivityRegistry'
+local R=require 'EmberRoutesProbe/Activity/ActivityRegistry'
 local checks=0
 local function check(v,m) assert(v,m) checks=checks+1 end
 local function definition(id)

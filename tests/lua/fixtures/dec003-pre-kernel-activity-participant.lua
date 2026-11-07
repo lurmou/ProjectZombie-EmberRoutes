@@ -1,16 +1,16 @@
 -- One participant Job, short Runtime wait Session, then FREE personal Sessions.
 -- This module observes those personal attempts; it never drives their bodies.
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Store=require 'EmberRoutesProbe/ActivityStore'
-local Stages=require 'EmberRoutesProbe/ActivityStages'
-local Duties=require 'EmberRoutesProbe/ActivityDuties'
-local Relief=require 'EmberRoutesProbe/ActivityReliefRecord'
-local Record=require 'EmberRoutesProbe/ActivityRecord'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Assets=require 'EmberRoutesProbe/LaborStore'
-local Tile=require 'EmberRoutesProbe/LeisureRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
+local Stages=require 'EmberRoutesProbe/Activity/ActivityStages'
+local Duties=require 'EmberRoutesProbe/Activity/ActivityDuties'
+local Relief=require 'EmberRoutesProbe/Activity/ActivityReliefRecord'
+local Record=require 'EmberRoutesProbe/Activity/ActivityRecord'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Assets=require 'EmberRoutesProbe/Work/LaborStore'
+local Tile=require 'EmberRoutesProbe/Leisure/LeisureRecord'
 local P={}
 local world,handles,samples,ready,assessments=nil,{},{},{},{}
 local function load()
@@ -19,22 +19,22 @@ local function load()
 end
 local function empty(t) for _ in pairs(t or {}) do return false end return true end
 local function personal(id) return Jobs.current():peekPersonal(id) end
-local Responsibilities=require 'EmberRoutesProbe/ActivityResponsibilities'
+local Responsibilities=require 'EmberRoutesProbe/Activity/ActivityResponsibilities'
 local associated=Responsibilities.associated
 local associatedPending=Responsibilities.personalPending
 local function current(id) local rt=Runtime.current() return rt,rt and rt:status(id) end
 local function safe(binding)
     if binding.handle:isDead() then return false,'ACTIVITY_CARRIER_UNAVAILABLE' end
     local now=getTimestampMs()
-    local sample=require('EmberRoutesProbe/NeedsObserver').sample(binding.handle,binding.id,now)
+    local sample=require('EmberRoutesProbe/SelfCare/NeedsObserver').sample(binding.handle,binding.id,now)
     if not sample or not sample.safe or now-sample.observedAt>2000 then return false,'ACTIVITY_UNSAFE' end
-    local need=require('EmberRoutesProbe/NeedsPolicy').choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true})
+    local need=require('EmberRoutesProbe/SelfCare/NeedsPolicy').choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true})
     return need==nil,need and 'ACTIVITY_NEEDS_CARE' or nil
 end
 function P.prepare(event)
     local api=Jobs.current() local count=0
     for _,member in pairs(event.roster) do if not member.jobId and not member.withdrawn then count=count+1 end end
-    if api:ordinaryCount()+count>require('EmberRoutesProbe/JobStore').LIMIT then return false,'JOB_LIMIT' end
+    if api:ordinaryCount()+count>require('EmberRoutesProbe/Kernel/JobStore').LIMIT then return false,'JOB_LIMIT' end
     for id,member in pairs(event.roster) do
         if not member.jobId and not member.withdrawn then
             local job=Record.create(Registry.id(),id,event)
@@ -108,12 +108,12 @@ function P.collectOne(event,id,applyEffects)
         local before=event.stage and event.stage.exitCount
         if settled and Stages.participantExit(event,id,member.jobId,member.participantEpoch or 1)
             and event.stage and before~=event.stage.exitCount then Store.touch(event,true) end
-        if settled and event.reliefPrepared then return require('EmberRoutesProbe/ActivityRelief').step(event,id,applyEffects) end
+        if settled and event.reliefPrepared then return require('EmberRoutesProbe/Activity/ActivityRelief').step(event,id,applyEffects) end
         return settled
     end
     if associatedPending(id,event) then return false end
     if not member.settled then member.settled=true Store.touch(event) end
-    if event.reliefPrepared then return require('EmberRoutesProbe/ActivityRelief').step(event,id,applyEffects) end
+    if event.reliefPrepared then return require('EmberRoutesProbe/Activity/ActivityRelief').step(event,id,applyEffects) end
     return true
 end
 function P.finishCollection(event,all)
@@ -175,7 +175,7 @@ local function waitingEvidence(event,id)
     local evidence=ready[job.id]
     local now=getTimestampMs()
     if not evidence or now<evidence.at or now-evidence.at>2000 then return false end
-    local ref=require('EmberRoutesProbe/ActivityService').context(id)
+    local ref=require('EmberRoutesProbe/Activity/ActivityService').context(id)
     local handle=handles[job.id]
     if not ref or ref.participantEpoch~=(job.payload.participantEpoch or 1) or not handle or not Assets.validActivity(job,handle.token) then return false end
     return evidence,job
@@ -193,8 +193,8 @@ function P.proof(event,id)
     local npc=binding.handle
     local point={x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())}
     local valid=job.payload.claims[1]==Tile.tileKey(point)
-        and require('EmberRoutesProbe/ActivityService').allowsPoint(event.settlementId,id,point)
-        and require('EmberRoutesProbe/LeisureService').standable(require('EmberRoutesProbe/MembershipService').entry(id,event.settlementId),point,{npc})~=nil
+        and require('EmberRoutesProbe/Activity/ActivityService').allowsPoint(event.settlementId,id,point)
+        and require('EmberRoutesProbe/Leisure/LeisureService').standable(require('EmberRoutesProbe/Settlement/MembershipService').entry(id,event.settlementId),point,{npc})~=nil
     return valid==true,evidence.at
 end
 function P.present(event,id)
@@ -203,13 +203,13 @@ function P.present(event,id)
     local binding=Driver.bindId(getSpecificPlayer(0),id)
     if not binding or not Driver.valid(binding) or not safe(binding) then return false end
     local npc=binding.handle
-    return require('EmberRoutesProbe/SettlementZones').location(event.settlementId,event.zone,
+    return require('EmberRoutesProbe/Settlement/SettlementZones').location(event.settlementId,event.zone,
         {x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())})==true
 end
 local function submit(actor,binding,event,member)
     local job=Jobs.current():peek(member.jobId) local rt=Runtime.current()
     if not job or job.effects~='KNOWN' or job.state~='PREPARING' or not rt or not rt:accepting() or rt:owns(binding.id) then return end
-    local Service=require 'EmberRoutesProbe/ActivityService'
+    local Service=require 'EmberRoutesProbe/Activity/ActivityService'
     local ref=Service.context(binding.id)
     if #job.payload.claims>0 then
         local old=handles[job.id] local outcome=old and old.runtime:inspect(old.handle)
@@ -218,9 +218,9 @@ local function submit(actor,binding,event,member)
     end
     if not ref or not Service.allowsPoint(event.settlementId,binding.id,
         {x=binding.handle:getX(),y=binding.handle:getY(),z=math.floor(binding.handle:getZ())}) then return end
-    if require('EmberRoutesProbe/ActivityAttendance').inspect(actor,binding.id,ref)~='READY' or not safe(binding) then return end
+    if require('EmberRoutesProbe/Activity/ActivityAttendance').inspect(actor,binding.id,ref)~='READY' or not safe(binding) then return end
     if not Service.arrived(actor,binding,ref) then return end
-    require('EmberRoutesProbe/SocialCoordinator').withdraw(binding.id)
+    require('EmberRoutesProbe/Activity/SocialCoordinator').withdraw(binding.id)
     local p=Store.copy(job.payload)
     p.sequence=p.sequence+1 p.point={x=binding.handle:getX(),y=binding.handle:getY(),z=math.floor(binding.handle:getZ())}
     p.claims={Tile.tileKey(p.point)}
@@ -246,7 +246,7 @@ local function submit(actor,binding,event,member)
         return same() and live and live.controlEpoch==ref.controlEpoch and live.participantEpoch==ref.participantEpoch and event.state=='GATHERING'
             and Assets.validActivity(job,token) and placement==Tile.tileKey(point)
             and Service.allowsPoint(event.settlementId,binding.id,point) and safe(binding)==true
-            and require('EmberRoutesProbe/LeisureService').standable(require('EmberRoutesProbe/MembershipService').entry(binding.id,event.settlementId),point,{binding.handle})~=nil
+            and require('EmberRoutesProbe/Leisure/LeisureService').standable(require('EmberRoutesProbe/Settlement/MembershipService').entry(binding.id,event.settlementId),point,{binding.handle})~=nil
     end
     function spec.start(body)
         if not spec.validate() then return false,'ACTIVITY_CHANGED','UNCHANGED' end
@@ -268,7 +268,7 @@ local function submit(actor,binding,event,member)
     end
     function spec.finished() return stopping or free end
     function spec.stopAdapter(controller,ticket)
-        return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,
+        return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,
             npc=binding.handle,npcId=binding.id,jobId=key,same=same,
             pause=function()
                 stopping=true if ready[key] then ready[key]=nil Store.touch(event) end return true
@@ -312,18 +312,18 @@ function P.advance(actor,event,id)
     end
     local binding=Driver.bindId(actor,id)
     if not binding or not Driver.valid(binding) then
-        require('EmberRoutesProbe/ActivityService').leave(id,'ACTIVITY_CARRIER_UNAVAILABLE') return
+        require('EmberRoutesProbe/Activity/ActivityService').leave(id,'ACTIVITY_CARRIER_UNAVAILABLE') return
     end
     if event.state=='GATHERING' and job.payload.step=='INVITED' then
         local now=getTimestampMs() local previous=assessments[id]
         if not previous or previous.event~=event.id or now<previous.at or now-previous.at>=1000 then
             local care=personal(id)
-            local ref=require('EmberRoutesProbe/ActivityService').context(id)
-            local state,reason=require('EmberRoutesProbe/ActivityAttendance').inspect(actor,id,ref,care and care.id)
+            local ref=require('EmberRoutesProbe/Activity/ActivityService').context(id)
+            local state,reason=require('EmberRoutesProbe/Activity/ActivityAttendance').inspect(actor,id,ref,care and care.id)
             if state=='READY' then
                 local allowed,why=safe(binding)
                 if not allowed then state,reason='WAIT',why else
-                    state=require('EmberRoutesProbe/ActivityService').allowsPoint(event.settlementId,id,
+                    state=require('EmberRoutesProbe/Activity/ActivityService').allowsPoint(event.settlementId,id,
                         {x=binding.handle:getX(),y=binding.handle:getY(),z=math.floor(binding.handle:getZ())}) and 'ADMITTED' or 'TRAVELLING'
                 end
             end
@@ -335,12 +335,12 @@ function P.advance(actor,event,id)
     end
     if event.state=='GATHERING' and job.payload.step=='INVITED' then submit(actor,binding,event,member) return end
     if event.state~='RUNNING' or not member.joined or job.payload.step~='FREE' and job.payload.step~='PERSONAL' then return end
-    local live=require('EmberRoutesProbe/ActivityService').context(id)
+    local live=require('EmberRoutesProbe/Activity/ActivityService').context(id)
     if not live or live.eventId~=event.id or not live.joined then samples[id]=nil return end
     local ok,reason=safe(binding)
-    if not ok then require('EmberRoutesProbe/ActivityService').leave(id,reason) return end
+    if not ok then require('EmberRoutesProbe/Activity/ActivityService').leave(id,reason) return end
     local p=personal(id) local rt,status=current(id) local npc=binding.handle
-    local inside=require('EmberRoutesProbe/ActivityService').allowsPoint(event.settlementId,id,
+    local inside=require('EmberRoutesProbe/Activity/ActivityService').allowsPoint(event.settlementId,id,
         {x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())})
     local active=inside and Responsibilities.activeParticipation(p,event,status)
     local now,hours=getTimestampMs(),getGameTime():getWorldAgeHours()

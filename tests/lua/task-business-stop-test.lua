@@ -1,4 +1,4 @@
-local Stop=require 'EmberRoutesProbe/TaskBusinessStop'
+local Stop=require 'EmberRoutesProbe/Runtime/TaskBusinessStop'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
 local npc={}

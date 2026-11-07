@@ -1,19 +1,19 @@
 -- TEST ONLY: frozen a16eb0b SELF_CARE baseline, never loaded by production.
 -- Personal candidates use the same Runtime as work/follow, never Public Orders.
-local Probe=require 'EmberRoutesProbe/Boot'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Resume=require 'EmberRoutesProbe/TaskResume'
-local Resources=require 'EmberRoutesProbe/SelfCareResources'
-local Observer=require 'EmberRoutesProbe/NeedsObserver'
-local Policy=require 'EmberRoutesProbe/NeedsPolicy'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Facilities=require 'EmberRoutesProbe/SettlementFacilities'
-local Performance=require 'EmberRoutesProbe/RuntimeMetrics'
-local Log=require 'EmberRoutesProbe/Log'
+local Probe=require 'EmberRoutesProbe/Kernel/Boot'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Resources=require 'EmberRoutesProbe/SelfCare/SelfCareResources'
+local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
+local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
+local Performance=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
+local Log=require 'EmberRoutesProbe/Kernel/Log'
 local cached={}
 local function use(name)
     if not cached[name] then cached[name]=require('EmberRoutesProbe/'..name) end
@@ -118,7 +118,7 @@ local function settle(actor,binding,job,row)
     local current=Runtime.current():status(binding.id)
     local interruptCompanion=current and current.kind=='COMPANION' and current.state=='ACTIVE' and current.started and not current.pending
     if current and not interruptCompanion then return end
-    local member=use('MembershipService').view(binding.id)
+    local member=use('Settlement/MembershipService').view(binding.id)
     -- Recovery is not a new study candidate. In particular pending transfer MUST be able to return a borrowed original.
     local reliefOnly=p.kind=='STUDY' and member and member.context=='FOLLOW' and not member.pending
     if reliefOnly then
@@ -254,7 +254,7 @@ local function advance(actor,binding,row,now)
     end
     local repose=EmberRoutesProbeJava.reposeWithControl~=nil
     local ref=job and job.payload.resume
-    local eligibility=use('MembershipService').check(id,'SELF_CARE',
+    local eligibility=use('Settlement/MembershipService').check(id,'SELF_CARE',
         {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ()})
     local ownOnly=not eligibility.sharedResources
     local offers={EAT=true,DRINK=true,REST=repose,SLEEP=repose and (forcedSleep or (not ownOnly
@@ -275,7 +275,7 @@ local function advance(actor,binding,row,now)
     -- the no-result rescan of standable/social/facility paths at 200ms cadence.
     local discoverReady=now>=(row.discoverAt or 0)
     local studyAttempted,leisureAttempted,leisureSettled=false,false,true
-    local idleEligible=use('MembershipService').check(id,'LEISURE',
+    local idleEligible=use('Settlement/MembershipService').check(id,'LEISURE',
         {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ()}).allowed
     if discoverReady and not gathering and not kind and idleEligible
         and not (job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint) and (not job or not job.payload.resume or job.payload.resume.state=='RESTORED'
@@ -312,7 +312,7 @@ local function advance(actor,binding,row,now)
                 local q=point.point p.claims={'leisureTile:'..math.floor(q.x)..':'..math.floor(q.y)..':'..q.z}
             end
             if p.leisure.zoneVisit then
-                p.claims={use('LifeZoneVisits').tileKey(p.leisure.point)}
+                p.claims={use('Settlement/LifeZoneVisits').tileKey(p.leisure.point)}
             end
             if candidate.site then p.site=candidate.site p.claims=candidate.claims end
             local updated,why=Jobs.current():update(job.id,job.revision,{payload=p})
@@ -352,7 +352,7 @@ local function advance(actor,binding,row,now)
         local site,floorSite
         if not row.floorScan and (not ownOnly or forcedSleep) and EmberRoutesProbeJava.reposeAtWithControl then
             if not row.reposeScan or row.reposeKind~=kind then
-                row.reposeScan=require('EmberRoutesProbe/ReposeSites').new(actor,binding.handle,id,kind,row.siteUnavailable)
+                row.reposeScan=require('EmberRoutesProbe/SelfCare/ReposeSites').new(actor,binding.handle,id,kind,row.siteUnavailable)
                 row.reposeKind=kind
             end
             if budget.scan<1 then return end
@@ -362,7 +362,7 @@ local function advance(actor,binding,row,now)
             if not done and reason=='SITE_OBSERVING' then return end
             row.reposeScan=nil
             if candidate then
-                site=require('EmberRoutesProbe/ReposeSites').prepare(candidate,actor,binding.handle,id,kind)
+                site=require('EmberRoutesProbe/SelfCare/ReposeSites').prepare(candidate,actor,binding.handle,id,kind)
                 if not site then row.retryAt=now+1000 return end
             end
         else row.reposeScan=nil end
@@ -384,7 +384,7 @@ local function advance(actor,binding,row,now)
         row.scan=nil job=job or personal(id,true) if not job then return end
         local before=job.payload
         local p=Record.begin(job,kind,before.resume) if not p then return end
-        if site then p.site=site p.claims=require('EmberRoutesProbe/ReposeSites').keys(site,kind) end
+        if site then p.site=site p.claims=require('EmberRoutesProbe/SelfCare/ReposeSites').keys(site,kind) end
         if floorSite then
             p.floorSite=floorSite p.settlementId=floorSite.settlementId p.claims={use('FloorSleep').key(floorSite)}
         end
@@ -430,7 +430,7 @@ local function advance(actor,binding,row,now)
         p.study=candidate.study p.membershipRevision=candidate.membershipRevision row.studyReviewAt=now+30000
         p.settlementRevision=candidate.settlementRevision
     else
-        local food=kind=='EAT' and require('EmberRoutesProbe/CookingFood').read(candidate.item)
+        local food=kind=='EAT' and require('EmberRoutesProbe/Cooking/CookingFood').read(candidate.item)
         local available=food and food.meal and food.effective or kind=='EAT' and -candidate.item:getHungChange() or 0
         p.fraction=kind=='EAT' and math.min(1,math.max(.05,(sample.hunger-.08)/math.max(.001,available))) or .5
     end
@@ -505,7 +505,7 @@ function Service.prepareRecovery(receipt)
     for _,saved in pairs(world.taskJobs and world.taskJobs.byId or {}) do
         if saved.providerType=='SELF_CARE' then
             if not Record.valid(saved) then error('PERSONAL_RECORD_INVALID') end
-            local member=use('MembershipService').view(saved.npcId)
+            local member=use('Settlement/MembershipService').view(saved.npcId)
             if not member or member.retired then
                 Store.settleDeadPersonal(Jobs.current():get(saved.id))
             elseif saved.payload.kind=='LEISURE' and saved.effects=='KNOWN' and saved.payload.step~='IDLE'
@@ -532,7 +532,7 @@ function Service.install()
     -- Reuse that notification; no roster/death polling is added here.
     use('LaborSignals').watch(function(id)
         if type(id)~='string' then return end
-        local member=use('MembershipService').view(id)
+        local member=use('Settlement/MembershipService').view(id)
         if not member or member.retired then
             local job=personal(id,false)
             if job then Store.settleDeadPersonal(job) end
@@ -559,7 +559,7 @@ function Service.install()
         if not row or row.entry~=entry.id or now-row.at>=10000 then
             Service.offerLogged=Service.offerLogged or {}
             Service.offerLogged[id]={entry=entry.id,at=now}
-            require "EmberRoutesProbe/Log".write("LEISURE","OFFER npc="..tostring(id).." entry="..tostring(entry.id))
+            require "EmberRoutesProbe/Kernel/Log".write("LEISURE","OFFER npc="..tostring(id).." entry="..tostring(entry.id))
         end
     end
     Probe.careProbeWork=function(id) return use('LeisureService').probeable(id) end

@@ -1,4 +1,4 @@
-local P=require 'EmberRoutesProbe/WorkOverviewPresenter'
+local P=require 'EmberRoutesProbe/Work/WorkOverviewPresenter'
 local n=0
 local function check(v,m) assert(v,m) n=n+1 end
 local rows={
@@ -22,14 +22,14 @@ check(not P.visible({state='waiting'},'idle') and not P.visible({state='paused'}
 check(P.state({id='x',npcId='n',state='SUSPENDED',bucket='waiting'})=='waiting','waiting duration is not blocking evidence')
 check(P.state({id='FIELD_WORK:user',kind='FIELD_WORK',npcId='n',state='SUSPENDED',bucket='waiting',reason='USER'})=='waiting','user body stop is not a fabricated blocker')
 local commandCalls={}
-package.loaded['EmberRoutesProbe/OrderMonitorService']={command=function(_,_,id,generation,action)
+package.loaded['EmberRoutesProbe/Warehouse/OrderMonitorService']={command=function(_,_,id,generation,action)
  commandCalls[#commandCalls+1]={id,generation,action} return 'QUEUED' end}
 local job={providerType='FIELD_WORK',id='j',npcId='n',scopeId='s',revision=7}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {get=function() return job end} end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return {} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return {get=function() return job end} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() return {} end}
 local stopped
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {stopJob=function(_,npc,id,reason) stopped={npc,id,reason} return true end} end}
-local A=require 'EmberRoutesProbe/WorkCommandAdapter'
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {stopJob=function(_,npc,id,reason) stopped={npc,id,reason} return true end} end}
+local A=require 'EmberRoutesProbe/Work/WorkCommandAdapter'
 local field={id='FIELD_WORK:j',jobId='j',npcId='n',generation=7,kind='FIELD_WORK',bucket='active',carrierAvailable=true,readOnly=true}
 check(A.capabilities(field).stopBody and not A.capabilities(field).resume,'field has body stop, no durable pause/resume')
 check(A.command({},'s',field,'stopBody')=='STOP_REQUESTED' and stopped[2]=='j','field routes through stopJob')

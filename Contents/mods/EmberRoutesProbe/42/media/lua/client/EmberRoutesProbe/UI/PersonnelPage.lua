@@ -6,11 +6,10 @@ local State=require 'EmberRoutesProbe/UI/State'
 local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Lifecycle=require 'EmberRoutesProbe/UI/PageLifecycle'
-local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
 local Text=require 'EmberRoutesProbe/UI/Text'
-local Public=require 'EmberRoutesProbe/PublicWork'
-local Crafting=require 'EmberRoutesProbe/CraftingService'
-local Badge=require 'EmberRoutesProbe/UI/SemanticBadge'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
+local Crafting=require 'EmberRoutesProbe/Crafting/CraftingService'
 local DossierDrawer=require 'EmberRoutesProbe/UI/PersonnelDossierDrawer'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..key,...) end
@@ -63,7 +62,7 @@ function EmberRoutesPersonnelPage:createChildren()
     local h,p=self.fontHeight,self.pad
 
     local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},
-        {{basis=h*2+p},{grow=1},{basis=h+p}},
+        {{basis=h+p},{grow=1},{basis=h}},
         {direction='column',padding=p,gap=p/2}))
 
     local top=assert(Layout.axis(regions[1],{{grow=1},{basis=h*6}},{gap=p}))
@@ -79,75 +78,43 @@ function EmberRoutesPersonnelPage:createChildren()
         self:refresh()
     end)
     self.refreshButton:initialise()
-    Theme.button(self.refreshButton,true)
+    Theme.button(self.refreshButton)
     self.refreshButton.onclick=function()
         local sel=self.store.value.selected
-        if sel then require('EmberRoutesProbe/PersonnelService').invalidate(sel.id) end
+        if sel then require('EmberRoutesProbe/Settlement/PersonnelService').invalidate(sel.id) end
         self:refresh()
     end
     self:addChild(self.refreshButton)
 
-    local mainCols=assert(Layout.axis(regions[2],{{grow=65},{grow=35}},{gap=p}))
+    local mainCols=assert(Layout.axis(regions[2],{{grow=74},{grow=26}},{gap=p}))
     self.matrixBounds=mainCols[1]
     self.detailsBounds=mainCols[2]
 
+    local rightParts=assert(Layout.axis(self.detailsBounds,{{basis=h+p},{grow=1},{basis=(h+p)*2+p/2}},{direction='column',gap=p/2}))
+    self.infoBounds=rightParts[2]
+    self.dossierButton=ISButton:new(rightParts[1].x,rightParts[1].y,rightParts[1].width,rightParts[1].height,
+        text('viewDossier'),self,function() self:toggleDossierDrawer() end)
+    self.dossierButton:initialise() Theme.button(self.dossierButton) self:addChild(self.dossierButton)
+    self.info=require('EmberRoutesProbe/UI/InfoList').new(self,self.infoBounds)
     self.workCommands={}
-    local commands=assert(Layout.axis(regions[3],{{grow=1},{grow=1},{grow=1},{grow=1}},{gap=p/2}))
+    local actionRows=assert(Layout.axis(rightParts[3],{{grow=1},{grow=1}},{direction='column',gap=p/2}))
+    local commands={}
+    for _,row in ipairs(actionRows) do
+        for _,b in ipairs(assert(Layout.axis(row,{{grow=1},{grow=1}},{gap=p/2}))) do commands[#commands+1]=b end
+    end
     for i,key in ipairs({'stop','resume','return','stopBody'}) do
-        local r=commands[i]
-        local b=ISButton:new(r.x,r.y,r.width,r.height,getText('IGUI_EmberRoutesProbe_Distributed_'..key),self,function()
+        local b=commands[i]
+        local button=ISButton:new(b.x,b.y,b.width,b.height,getText('IGUI_EmberRoutesProbe_Distributed_'..key),self,function()
             if not self.active or not self.activationScope:isCurrent() then return end
-            local result=require('EmberRoutesProbe/WorkCommandAdapter').command(self.actor,self.entry.id,self.currentWork and self.currentWork.row,key)
+            local result=require('EmberRoutesProbe/Work/WorkCommandAdapter').command(self.actor,self.entry.id,self.currentWork and self.currentWork.row,key)
             self.store:setState({notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)}) self:refresh()
         end)
-        b:initialise() Theme.button(b) b:setVisible(false) self:addChild(b) self.workCommands[key]=b
+        button:initialise() Theme.button(button) button:setVisible(false) self:addChild(button) self.workCommands[key]=button
     end
-    -- Right column: split into Holographic Colonist Avatar Card and Physiological Inspector list
-    local cardH=math.min(math.floor(self.detailsBounds.height*0.35),math.max(76,math.floor(h*4.8)))
-    local rightParts=assert(Layout.axis(self.detailsBounds,{{basis=cardH},{basis=h+p},{grow=1}},{direction='column',gap=p/2}))
-    self.avatarBounds=rightParts[1]
-    self.infoBounds=rightParts[3]
-    self.dossierButton=ISButton:new(rightParts[2].x,rightParts[2].y,rightParts[2].width,rightParts[2].height,
-        text('viewDossier'),self,function() self:toggleDossierDrawer() end)
-    self.dossierButton:initialise() Theme.button(self.dossierButton,true) self:addChild(self.dossierButton)
-
-    local Avatar3DView=require 'EmberRoutesProbe/UI/Avatar3DView'
-    self.avatarCard=ISPanel:new(self.avatarBounds.x,self.avatarBounds.y,self.avatarBounds.width,self.avatarBounds.height)
-    self.avatarCard:initialise()
-    self:addChild(self.avatarCard)
-
-    local boxSize=math.max(16,self.avatarBounds.height-p*2)
-    local boxX,boxY=p,p
-    self.avatar3D=Avatar3DView:new(boxX,boxY,boxSize,boxSize)
-    self.avatarCard:addChild(self.avatar3D)
-    self.avatarCard.prerender=function(card)
-        ISPanel.prerender(card)
-        Theme.rect(card,0,0,card.width,card.height,Theme.panel)
-        Theme.rect(card,0,0,card.width,card.height,Theme.border,true)
-        local data=self.avatarData
-
-        if not data or not data.hasWorker then
-            Theme.text(card,text('noWorkers'),boxX+boxSize+p,p+(card.height-p*2-h)/2,Theme.muted)
-            return
-        end
-
-        local textX=boxX+boxSize+p
-        Theme.text(card,data.nameText or '',textX,p,Theme.gold)
-        Theme.text(card,data.roleText or '',textX,p+h,Theme.accent)
-
-        local badgeY=p+h*2
-        Badge.draw(card,textX,badgeY,data.memberWidth,h+2,data.memberBadge)
-        Badge.draw(card,textX+data.memberWidth+p/3,badgeY,data.activityWidth,h+2,data.activityBadge)
-
-        if data.locationText and data.locationText~='' then
-            Theme.text(card,data.locationText,textX,p+h*3+2,Theme.muted)
-        end
-    end
-
-    self.info=require('EmberRoutesProbe/UI/InfoList').new(self,self.infoBounds)
 
     local matrixParts=assert(Layout.axis(self.matrixBounds,{{basis=h*2+p/2},{grow=1}},{direction='column',gap=p/4}))
     self.headerBounds=matrixParts[1]
+    self.headerBounds.width=math.max(1,self.headerBounds.width-16)
 
     self.workCategories=Public.categories()
     self.matrixNameRatio=#self.workCategories>4 and .22 or .4
@@ -171,7 +138,7 @@ function EmberRoutesPersonnelPage:createChildren()
                 Theme.text(btn,label,(btn.width-tw)/2,(btn.height-#lines*h)/2+(line-1)*h,Theme.textColor)
             end
         end
-        Tooltip.attach(button,'prerender',self) self:addChild(button) self.priorityHeaders[#self.priorityHeaders+1]=button
+        Tooltip.register(button,{method='prerender',owner=self}) self:addChild(button) self.priorityHeaders[#self.priorityHeaders+1]=button
     end
     local listBounds=matrixParts[2]
     local listStyle={emptyColor=Theme.muted,
@@ -235,7 +202,7 @@ function EmberRoutesPersonnelPage:createChildren()
         else
             list.tooltip=nil
         end
-        if list.tooltipUI then list.tooltipUI.description=list.tooltip end
+        if list.tooltipUI then list.tooltipUI.name=nil list.tooltipUI.description=list.tooltip end
         return origMouseMove and origMouseMove(list,dx,dy) or false
     end
     self.matrixList.onRightMouseDown=function(list,x,y)
@@ -244,12 +211,7 @@ function EmberRoutesPersonnelPage:createChildren()
         if row then self.store:setState({selected=row.item.value}) self:onListActivate() return true end
         return false
     end
-    local origWheel=self.matrixList.onMouseWheel
-    self.matrixList.onMouseWheel=function(list,delta)
-        local row=list.items[list:rowAt(list:getMouseX(),list:getMouseY())] local key=categoryAt(list,list:getMouseX())
-        if row and key then self:cycleWorkerPriority(row.item.value,key,delta<0 and 1 or -1) return true end
-        return origWheel and origWheel(list,delta) or false
-    end
+    -- Wheel scrolls the roster; priority changes require an explicit left/right click.
 
     self.bottomNoticeBounds=regions[3]
 end
@@ -271,9 +233,11 @@ function EmberRoutesPersonnelPage:cycleWorkerPriority(worker,category,delta)
     self:refresh()
 end
 function EmberRoutesPersonnelPage:batchCycle(category)
+    if not self.active or not self.activationScope or not self.activationScope:isCurrent() then return end
     local menu=ISContextMenu.get(self.actor:getIndex(),self.colHeaders[2].x+self:getAbsoluteX(),self.headerBounds.y+self:getAbsoluteY())
+    self.activationScope:own(menu,function(m) m:hideSelfAndChildren2() end)
     for value=0,4 do
-        menu:addOption(text('setAll',text(category),pubText('priority_'..value)),self,function()
+        menu:addOption(text('setAll',pubText(category),pubText('priority_'..value)),self,function()
             if not self.active or self.disposed or not self.owner:valid() then return end
             local ok,failed=0,{}
             for _,worker in ipairs(self.store.value.workers or {}) do
@@ -282,7 +246,7 @@ function EmberRoutesPersonnelPage:batchCycle(category)
                     failed[#failed+1]=worker.name..': '..require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)
                 end
             end
-            self.store:setState({notice=text('batchResult',ok,#failed)..(#failed>0 and (' · '..table.concat(failed,'; ')) or '')})
+            self.store:setState({notice=text('batchResult',ok,#failed)..(#failed>0 and (' | '..table.concat(failed,'; ')) or '')})
             self:refresh()
         end)
     end
@@ -313,7 +277,7 @@ end
 function EmberRoutesPersonnelPage:activate()
     local mounted=Lifecycle.mount(self,function(callback)
         if Crafting.watch then
-            return require('EmberRoutesProbe/WorkOverviewService').watch(self.actor,self.entry.id,callback)
+            return require('EmberRoutesProbe/Work/WorkOverviewService').watch(self.actor,self.entry.id,callback)
         end
         return function() end
     end,function(snapshot)
@@ -321,22 +285,6 @@ function EmberRoutesPersonnelPage:activate()
         self:refresh()
     end)
     if mounted and self.active then
-        local scope=self.activationScope
-        self.avatar3D.activationScope=scope
-        local changed=scope:wrapCallback(function(character)
-            if character and character==self.avatar3D.character then self.avatar3D:invalidatePortrait() end
-        end)
-        for _,key in ipairs({'OnClothingUpdated','OnEquipPrimary','OnEquipSecondary'}) do
-            local event=Events and Events[key]
-            if event and event.Add and event.Remove then
-                event.Add(changed)
-                scope:defer(function() event.Remove(changed) end)
-            end
-        end
-        scope:defer(function()
-            self.avatar3D:setCharacter(nil,nil)
-            self.avatar3D.activationScope=nil
-        end)
         self:refresh()
     end
 end
@@ -346,7 +294,7 @@ function EmberRoutesPersonnelPage:deactivate()
     self.batchResults=nil self.memberMenu=nil
     Tooltip.dismissOwner(self)
     if self.dossierDrawer then self.dossierDrawer:close() end
-    if self.detailNpc then require('EmberRoutesProbe/PersonnelService').release(self.detailNpc) self.detailNpc=nil end
+    if self.detailNpc then require('EmberRoutesProbe/Settlement/PersonnelService').release(self.detailNpc) self.detailNpc=nil end
 end
 
 function EmberRoutesPersonnelPage:dispose()
@@ -360,17 +308,17 @@ function EmberRoutesPersonnelPage:refresh()
     if not self.active or self.disposed then return end
     local status=Crafting.status(self.actor,self.entry.id)
     local rawWorkers=status.workers or {}
-    local enriched=require('EmberRoutesProbe/PersonnelService').enrichWorkers(self.actor,self.entry.id,rawWorkers)
-    self.overview=require('EmberRoutesProbe/WorkOverviewService').status(self.actor,self.entry.id)
+    local enriched=require('EmberRoutesProbe/Settlement/PersonnelService').enrichWorkers(self.actor,self.entry.id,rawWorkers)
+    self.overview=require('EmberRoutesProbe/Work/WorkOverviewService').status(self.actor,self.entry.id)
     for _,w in ipairs(enriched) do
         local work=self.overview.byNpc[w.id]
         local state=work and work.state or 'idle'
         local title=work and work.title or ''
         if not work then
-            local idle=require('EmberRoutesProbe/LeisureService').status(w.id)
+            local idle=require('EmberRoutesProbe/Leisure/LeisureService').status(w.id)
             title=idle and idle.reason and (getTextOrNull('IGUI_EmberRoutesProbe_Leisure_'..idle.reason) or '') or ''
         end
-        w.workLine=title..' · '..getText('IGUI_EmberRoutesProbe_Distributed_'..state)
+        w.workLine=title..' | '..getText('IGUI_EmberRoutesProbe_Distributed_'..state)
     end
     local selected=self.store.value.selected
     if selected then
@@ -378,219 +326,53 @@ function EmberRoutesPersonnelPage:refresh()
         for _,w in ipairs(enriched) do
             if w.id==selected.id then selected=w found=true break end
         end
-        if not found then selected=enriched[1] or nil end
-    else
-        selected=enriched[1] or nil
+        if not found then selected=false end
+    elseif not self.selectionInitialized then
+        selected=enriched[1] or false
     end
-    local batchLines=require('EmberRoutesProbe/MembershipMenu').batchLines(self.batchResults)
+    self.selectionInitialized=true
+    local batchLines=require('EmberRoutesProbe/Integration/MembershipMenu').batchLines(self.batchResults)
     self.store:setState({workers=enriched,selected=selected,batchLines=batchLines,revision=self.store.value.revision+1})
 end
 
 function EmberRoutesPersonnelPage:project(value)
-    if not self.active or self.disposed or not self.avatarCard or not self.matrixList or not self.info then return end
+    if not self.active or self.disposed or not self.matrixList or not self.info then return end
     local rows={}
     for _,w in ipairs(value.workers or {}) do
-        if require('EmberRoutesProbe/WorkOverviewPresenter').visible(self.overview.byNpc[w.id],self.workFilter) then rows[#rows+1]=w end
+        if require('EmberRoutesProbe/Work/WorkOverviewPresenter').visible(self.overview.byNpc[w.id],self.workFilter) then rows[#rows+1]=w end
     end
     local noticeW=self.bottomNoticeBounds and self.bottomNoticeBounds.width or (self.width or 400)
     self.noticeLine=Text.wrapLimited(value.notice or '',noticeW,UIFont.Small,1)[1] or ''
     local sel=value.selected
-    local Personnel=require 'EmberRoutesProbe/PersonnelService'
+    local Personnel=require 'EmberRoutesProbe/Settlement/PersonnelService'
     if self.detailNpc~=(sel and sel.id) then
         Personnel.release(self.detailNpc) self.detailNpc=sel and sel.id self.knowledgePage=1
-    end
-
-    -- 1. Prepare Holographic Colonist Avatar Card data
-    local h,p=self.fontHeight,self.pad
-    if sel then
-        local initials=''
-        if sel.name and sel.name~='' then
-            initials=string.sub(sel.name,1,2):upper()
-        end
-        local role=sel.profTitle or (sel.priorities and (sel.priorities.crafting<sel.priorities.hauling and text('crafting') or text('hauling'))) or text('roleResident')
-        local activity=sel.activity and sel.activity~='HOLD' and (getTextOrNull('IGUI_EmberRoutesProbe_Monitor_body_'..sel.activity) or sel.activity)
-            or (sel.busy and text('statusBusy') or text('statusIdle'))
-        if not sel.busy then
-            local idleStatus=require('EmberRoutesProbe/LeisureService').status(sel.id)
-            if idleStatus then activity=getTextOrNull('IGUI_EmberRoutesProbe_Leisure_'..tostring(idleStatus.reason)) or activity end
-        end
-        local memberText=text('badgeVisitor')
-        if sel.membership and (sel.membership.settlementId or sel.membership.settlementName) then
-            memberText=sel.membership.settlementName or text('badgeResident')
-        end
-        local activity=text('statusIdle')
-        if sel.busy then
-            activity=(sel.order and (sel.order.title or sel.order.recipeName)) or text('statusBusy')
-        else
-            local idleStatus=require('EmberRoutesProbe/LeisureService').status(sel.id)
-            if idleStatus and idleStatus.reason then
-                activity=getTextOrNull('IGUI_EmberRoutesProbe_Leisure_'..tostring(idleStatus.reason))
-                    or getTextOrNull('IGUI_EmberRoutesProbe_Monitor_body_'..tostring(idleStatus.reason))
-                    or activity
-            elseif sel.activity and sel.activity~='HOLD' and sel.activity~='IDLE' then
-                activity=getTextOrNull('IGUI_EmberRoutesProbe_Monitor_body_'..sel.activity) or sel.activity
-            end
-        end
-        local statusColor=sel.busy and Theme.gold or Theme.status.READY
-        local initialsW=initials~='' and getTextManager():MeasureStringX(UIFont.Small,initials) or 0
-
-        local locText=''
-        local handle=sel.character
-        local actor=self.actor
-        if handle and actor and handle.getX and actor.getX then
-            local hx,hy,hz=handle:getX(),handle:getY(),handle:getZ()
-            local ax,ay=actor:getX(),actor:getY()
-            if hx and hy and hz and ax and ay then
-                local dx=hx-ax
-                local dy=hy-ay
-                local dist=math.floor(math.sqrt(dx*dx+dy*dy))
-                local floorStr=EmberRoutesPersonnelPage.floorLabel(hz)
-                local dir=''
-                if math.abs(dx)>1 or math.abs(dy)>1 then
-                    local deg=math.atan2(dy,dx)*180/math.pi
-                    if deg>=-22.5 and deg<22.5 then dir=getText("IGUI_EmberRoutesProbe_dir_E")
-                    elseif deg>=22.5 and deg<67.5 then dir=getText("IGUI_EmberRoutesProbe_dir_SE")
-                    elseif deg>=67.5 and deg<112.5 then dir=getText("IGUI_EmberRoutesProbe_dir_S")
-                    elseif deg>=112.5 and deg<157.5 then dir=getText("IGUI_EmberRoutesProbe_dir_SW")
-                    elseif deg>=-67.5 and deg<-22.5 then dir=getText("IGUI_EmberRoutesProbe_dir_NE")
-                    elseif deg>=-112.5 and deg<-67.5 then dir=getText("IGUI_EmberRoutesProbe_dir_N")
-                    elseif deg>=-157.5 and deg<-112.5 then dir=getText("IGUI_EmberRoutesProbe_dir_NW")
-                    else dir=getText("IGUI_EmberRoutesProbe_dir_W") end
-                end
-                local dirPart=(dir~='') and (' ('..dir..')') or ''
-                locText=floorStr..' · '..getText("IGUI_EmberRoutesProbe_Personnel_distance",tostring(dist))..dirPart
-            end
-        end
-
-        activity=sel.workLine or activity
-        local memberBadge=Badge.resolve('READY',memberText)
-        local activityBadge=Badge.resolve(sel.busy and 'RUNNING' or 'READY',activity)
-        memberBadge.fontHeight=h memberBadge.textWidth=getTextManager():MeasureStringX(UIFont.Small,memberBadge.displayText)
-        activityBadge.fontHeight=h activityBadge.textWidth=getTextManager():MeasureStringX(UIFont.Small,activityBadge.displayText)
-        self.avatarData={
-            memberBadge=memberBadge,activityBadge=activityBadge,
-            memberWidth=memberBadge.textWidth+8,
-            activityWidth=activityBadge.textWidth+8,
-            hasWorker=true,
-            texture=sel.profTexture,
-            initials=initials,
-            initialsW=initialsW,
-            nameText=Text.wrapLimited(sel.name or text('unknownMember'),math.max(1,(self.avatarCard and self.avatarCard.width or 200)-h*5-p*2),UIFont.Small,1)[1] or '',
-            roleText='['..role..']',
-            memberText=memberText,
-            activityText=activity,
-            statusColor=statusColor,
-            locationText=locText
-        }
-        if self.avatar3D then
-            self.avatar3D:setCharacter(sel.character, sel.desc, {
-                texture=sel.profTexture,
-                initials=initials,
-                injury=(sel.isBleeding or sel.isInfected or sel.hasInjury)
-            })
-            self.avatar3D:setVisible(true)
-        end
-    else
-        self.avatarData={
-            hasWorker=false
-        }
-        if self.avatar3D then
-            self.avatar3D:setCharacter(nil, nil)
-            self.avatar3D:setVisible(false)
-        end
     end
 
     -- 2. Prepare Colonist Inspector detail items for self.info
     local detail={}
     if sel then
-        detail[#detail+1]={text=require('EmberRoutesProbe/MembershipText').summary(sel.membership),color=Theme.muted}
         local work=self.overview.byNpc[sel.id]
-        detail[#detail+1]={text=sel.workLine or '',color=Theme.accent}
+        detail[#detail+1]={text=sel.name,color=Theme.accent}
         if work then
-            local row=work.row
-            if row.targetLocation then local t=row.targetLocation detail[#detail+1]={text=t.x..', '..t.y..', '..t.z,color=Theme.muted} end
-            if row.produced~=nil and row.target then detail[#detail+1]={text=row.produced..' / '..row.target,color=Theme.muted} end
-            if row.delivered~=nil and row.target and row.target>0 then detail[#detail+1]={text=getText('IGUI_EmberRoutesProbe_Monitor_delivered',row.delivered,row.target),color=Theme.muted} end
-            if work.state=='blocked' and (row.reasonText or row.reason) then detail[#detail+1]={text=row.reasonText or row.reason,color=Theme.danger} end
+            for _,line in ipairs(require('EmberRoutesProbe/UI/OrderMonitorCards').detailRows(work.row,false)) do detail[#detail+1]=line end
+        else
+            detail[#detail+1]={text=sel.workLine or '',color=Theme.muted}
         end
         self.currentWork=work
-        local caps=require('EmberRoutesProbe/WorkCommandAdapter').capabilities(work and work.row)
+        local caps=require('EmberRoutesProbe/Work/WorkCommandAdapter').capabilities(work and work.row)
         for key,button in pairs(self.workCommands or {}) do button:setVisible(caps[key]==true) end
-        -- 2a. Health Bar (Compact single line)
-        if sel.health~=nil then
-            local healthFraction=math.max(0,math.min(1,sel.health/100))
-            local healthColor=sel.health>=80 and Theme.status.READY or (sel.health>=50 and Theme.gold or Theme.status.ERROR)
-            detail[#detail+1]={
-                text=text('statHealth'),
-                color=healthColor,
-                fraction=healthFraction,
-                compact=true,
-                meterMode="health",
-                meterLabel=sel.health.."%"
-            }
-        end
-
-        -- 2b. Injury Badges (only if injured)
-        local conditions={}
-        if sel.isBleeding then conditions[#conditions+1]=tr('IGUI_health_Bleeding',null) end
-        if sel.isInfected then conditions[#conditions+1]=tr('IGUI_health_Infected',null) end
-        if sel.hasInjury and not sel.isBleeding and not sel.isInfected then
-            conditions[#conditions+1]=tr('IGUI_health_Injured',null)
-        end
-        if #conditions>0 then
-            detail[#detail+1]={text='⚠ '..table.concat(conditions,' · '),color=Theme.status.ERROR}
-        end
-
-        -- 2c. Energy (100% - fatigue, compact single line)
-        if sel.fatigue~=nil then
-            local energyFraction=math.max(0,math.min(1,1-sel.fatigue))
-            local energyPct=math.floor(energyFraction*100)
-            local energyColor=energyFraction<=0.3 and Theme.status.ERROR or (energyFraction<=0.6 and Theme.gold or Theme.status.READY)
-            detail[#detail+1]={
-                text=text('statEnergy'),
-                color=energyColor,
-                fraction=energyFraction,
-                compact=true,
-                meterMode="health",
-                meterLabel=energyPct.."%"
-            }
-        end
-
-        -- 2d. Fullness (100% - hunger, compact single line)
-        if sel.hunger~=nil then
-            local fullnessFraction=math.max(0,math.min(1,1-sel.hunger))
-            local fullnessPct=math.floor(fullnessFraction*100)
-            local fullnessColor=fullnessFraction<=0.3 and Theme.status.ERROR or (fullnessFraction<=0.6 and Theme.gold or Theme.status.READY)
-            detail[#detail+1]={
-                text=text('statFullness'),
-                color=fullnessColor,
-                fraction=fullnessFraction,
-                compact=true,
-                meterMode="health",
-                meterLabel=fullnessPct.."%"
-            }
-        end
-
-        -- 2e. Hydration (100% - thirst, compact single line)
-        if sel.thirst~=nil then
-            local hydrationFraction=math.max(0,math.min(1,1-sel.thirst))
-            local hydrationPct=math.floor(hydrationFraction*100)
-            local hydrationColor=hydrationFraction<=0.3 and Theme.status.ERROR or (hydrationFraction<=0.6 and Theme.gold or Theme.status.READY)
-            detail[#detail+1]={
-                text=text('statHydration'),
-                color=hydrationColor,
-                fraction=hydrationFraction,
-                compact=true,
-                meterMode="health",
-                meterLabel=hydrationPct.."%"
-            }
+        if sel.isBleeding or sel.isInfected or sel.hasInjury then
+            detail[#detail+1]={text=getText('IGUI_EmberRoutesProbe_Layout_injury'),color=Theme.status.ERROR}
         end
 
     else
+        self.currentWork=nil
+        for _,button in pairs(self.workCommands or {}) do button:setVisible(false) end
         detail[#detail+1]={text=text('noWorkers'),color=Theme.muted}
     end
     if sel then
-        local extra=Personnel.rows(Personnel.details(self.actor,self.entry.id,sel.id),self.detailMode,self.knowledgePage)
+        local extra=require('EmberRoutesProbe/UI/PersonnelPresentation').rows(Personnel.details(self.actor,self.entry.id,sel.id),self.detailMode,self.knowledgePage)
         if self.detailMode=='skills' or self.detailMode=='knowledge' then detail={} end
         for _,row in ipairs(extra) do detail[#detail+1]=row end
     end
@@ -649,21 +431,16 @@ function EmberRoutesPersonnelPage:toggleDossierDrawer(forceState)
     local sel=self.store.value.selected
     if newState and sel then
         local dash=self.owner
-        local w=math.min(380,math.max(320,math.floor(dash.width*0.40)))
-        local h=dash.height
-        local x=dash:getX()+dash.width+4
-        local screenW=getCore():getScreenWidth()
-        if x+w>screenW then x=math.max(4,dash:getX()-w-4) end
-        local y=dash:getY()
-
+        local w=math.min(380,math.max(320,math.floor(dash.width*0.35)))
+        local x,y,drawerW,drawerH=Layout.dockDrawer(dash,w,8)
         if not self.dossierDrawer then
-            self.dossierDrawer=DossierDrawer:new(self,x,y,w,h)
+            self.dossierDrawer=DossierDrawer:new(self,x,y,drawerW,drawerH)
             self.dossierDrawer:addToUIManager()
         else
             self.dossierDrawer:setX(x)
             self.dossierDrawer:setY(y)
-            self.dossierDrawer:setWidth(w)
-            self.dossierDrawer:setHeight(h)
+            self.dossierDrawer:setWidth(drawerW)
+            self.dossierDrawer:setHeight(drawerH)
             if not self.dossierDrawer:isVisible() then
                 self.dossierDrawer:addToUIManager()
             end
@@ -691,7 +468,7 @@ function EmberRoutesPersonnelPage:onListActivate()
     self.memberMenu=self.activationScope:own(menu,function(value) value:hideSelfAndChildren2() end)
     local activation=self.activation
     local function guard() return self.active and not self.disposed and self.activation==activation and self.owner:valid() end
-    local members=require 'EmberRoutesProbe/MembershipMenu'
+    local members=require 'EmberRoutesProbe/Integration/MembershipMenu'
     members.posting(self.actor,menu,worker.id,guard)
     members.batch(self.actor,menu,self.entry.id,self.store.value.workers,guard,function(results)
         if not guard() then return end

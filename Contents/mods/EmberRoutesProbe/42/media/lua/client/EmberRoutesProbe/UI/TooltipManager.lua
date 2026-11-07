@@ -274,19 +274,6 @@ function Manager.register(widget, config)
     return widget
 end
 
----Backward-compatible TooltipAnchor.attach.
----@param widget table
----@param method string?
----@param owner table?
-function Manager.attach(widget, method, owner)
-    if not widget then return nil end
-    return Manager.register(widget, {
-        method = method or "prerender",
-        owner = owner
-    })
-end
-
-----------------------------------------------------------------
 -- Tooltip content
 ----------------------------------------------------------------
 
@@ -424,19 +411,6 @@ function Manager.unregisterOwner(owner)
     return #widgets
 end
 
-----------------------------------------------------------------
--- Compatibility
-----------------------------------------------------------------
-
----Legacy API.
----
----Historically clearOwner meant temporary tooltip cleanup.
----Keep that behavior to avoid breaking page deactivate callers.
-function Manager.clearOwner(owner)
-    return Manager.dismissOwner(owner)
-end
-
-----------------------------------------------------------------
 -- Global shutdown / world teardown
 ----------------------------------------------------------------
 

@@ -1,8 +1,8 @@
 -- TEST ONLY frozen HEAD 47de22c; never loaded by production.
 -- Admission quotas are derived from the SAME Jobs that own originals.
 -- There is no second persistent quota ledger to drift during save/load.
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Policy=require 'EmberRoutesProbe/CookingPolicy'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Policy=require 'EmberRoutesProbe/Cooking/CookingPolicy'
 local B={}
 function B.open(root,jobs)
     if type(root)~='table' or not root.taskJobs or type(root.taskJobs.byId)~='table' then return nil,'JOB_ROOT_INVALID' end

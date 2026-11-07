@@ -12,8 +12,9 @@ public final class ProbeBridgeSurfaceTest {
         blockAllCheckpoints blockCheckpoint bodyStopMask cachedModData captureCheckpointFor
         carrierActive carrierFor carrierId carrierPresent checkpointHasHome checkpointHomeX
         checkpointHomeY checkpointHomeZ checkpointMode cleaningScanCorpses cleaningScanStains
-        cleaningSquareHasStains clearForSave command commandFor controlledCarrier deliveryReceived
-        deliverySelectSlice diagnosticTimeNanos dispatchChoose floorSleepSafe freezeBodyControl
+        cleaningScanTargets cleaningScanTargetsSlice cleaningSquareHasStains clearForSave command commandFor controlledCarrier
+        deliveryReceived
+        deliverySelectSlice diagnosticTimeNanos dispatchChoose floorSleepSafe followMetrics followWithControl freezeBodyControl
         furniturePoseWithControl getPortraitTexture inventoryIndex inventoryIndexBegin inventoryIndexStep
         inventoryReadSlice jobDataCopy laborCancel laborCreate laborMutate lumberjackScanTrees
         motionResult moveBedWithControl moveCorpseWithControl moveSeatWithControl moveSleepSeatWithControl
@@ -23,14 +24,16 @@ public final class ProbeBridgeSurfaceTest {
         releaseBodyControl removeIdleCarrier reportCheckpoint reposeAtWithControl reposeWithControl
         reset restoreCheckpoint restoreCheckpointFor retireBodyControl retirementTick saveBodyReady
         saveCheckpoint saveCheckpointFor selectCarrier selectedId socialVisible spawnAdditional
-        stopCarrier stopWithControl thawBodyControl tick verifySaveReceipt version warehouseFastScan
-        warehouseResetCache waterSourceBacking workFreeCarry workItemEligible workerCount
+        stopCarrier stopWithControl thawBodyControl tick verifySaveReceipt version warehouseApplyContainer
+        warehouseFastScan warehouseHasType warehouseMountSettlement warehouseResetCache
+        warehouseTickDue warehouseTypeCount warehouseUnmountContainer
+        waterSourceBacking workFreeCarry workItemEligible workerCount
         workerDecisionWindow workerIdAt
         """;
 
     public static void main(String[] args) throws Exception {
         Set<String> expected = new TreeSet<>(Arrays.asList(CONTRACT.trim().split("\\s+")));
-        if (expected.size() != 94) throw new AssertionError("invalid contract fixture");
+        if (expected.size() != 104) throw new AssertionError("invalid contract fixture");
         Class<?> runtime = Class.forName("emberroutes.probe.ProbeRuntime", false,
                 ClassLoader.getSystemClassLoader());
         Set<String> actual = new TreeSet<>();
@@ -51,6 +54,6 @@ public final class ProbeBridgeSurfaceTest {
         for (var method : runtime.getDeclaredMethods())
             if (method.getName().equals("lumberjackSquareHasTree"))
                 throw new AssertionError("unused bridge forwarding method retained");
-        System.out.println("PASS 94 public bridge methods; dynamic kernel entries retained; metadata only, game NOT RUN");
+        System.out.println("PASS 104 public bridge methods; dynamic kernel entries retained; metadata only, game NOT RUN");
     }
 }

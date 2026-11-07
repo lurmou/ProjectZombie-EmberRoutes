@@ -1,6 +1,6 @@
 -- Evidence facts only; no PZ disk codec or native game execution is exercised.
 package.path='./Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;./Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;'..package.path
-local E=require 'EmberRoutesProbe/QuarantineEvidence'
+local E=require 'EmberRoutesProbe/Warehouse/QuarantineEvidence'
 local count=0
 local function check(value,message) count=count+1 assert(value,message) end
 local function eq(a,b,message) check(a==b,message..' expected='..tostring(b)..' actual='..tostring(a)) end
@@ -59,11 +59,11 @@ local _,bounded=E.snapshot(errors)
 eq(#bounded.errors,E.MAX_ERRORS,'Diagnostic list is capped')
 check(bounded.omittedErrors>0,'Excess diagnostics counted without storing raw values')
 
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local function boot(world)
     Registry.data=function() return world end
     for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
-    local s=require('EmberRoutesProbe/LaborStore');s.data();return s
+    local s=require('EmberRoutesProbe/Work/LaborStore');s.data();return s
 end
 local function worldWithItem(item)
     local world={containers={},taskJobs={format=1,byId={}}}
@@ -114,7 +114,7 @@ check(s.createClaimedJob({id='durable',npcId='npc',providerType='CRAFT',scopeId=
     payload={format=4,sequence=0,recipeId='Base.MakeAxe',target=1,produced=0,materials={{id=27300}},
 	tools={},outputs={},claims={'item:27300'},reservation={key='evidence-bin',items={[27300]=3},free=100}}}),
     'Create real CRAFT Job through authority')
-check(require('EmberRoutesProbe/TaskJobs').current():update('durable',1,
+check(require('EmberRoutesProbe/Runtime/TaskJobs').current():update('durable',1,
     {state='RECONCILE_REQUIRED',effects='UNKNOWN'}),'Record durable reconciliation responsibility')
 check(s.quarantineResource('item:27300','VALID',{proof=true}),'Valid original evidence')
 for _,case in ipairs(invalid) do
@@ -229,7 +229,7 @@ check(s.createClaimedJob({id='duplicate-add',npcId='npc',providerType='CRAFT',sc
     revision=1,state='PREPARING',effects='KNOWN',obligations={},payload={format=4,sequence=0,
 	recipeId='Base.MakeAxe',target=1,produced=0,materials={{id=28200}},tools={},outputs={},claims={'item:28200'}}}),
     'Create duplicate-add fixture through authority')
-local jobs=require('EmberRoutesProbe/TaskJobs').current()
+local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 local proposal=jobs:get('duplicate-add').payload
 proposal.materials[#proposal.materials+1]={id=28201};proposal.claims[#proposal.claims+1]='item:28201'
 local duplicateKeys={} for i=1,9 do duplicateKeys[i]='item:28201' end

@@ -7,6 +7,8 @@
 
 local Theme = require "EmberRoutesProbe/UI/Theme"
 local Text = require "EmberRoutesProbe/UI/Text"
+local UICache = require "EmberRoutesProbe/UI/UICache"
+local Visual = require "EmberRoutesProbe/UI/StatusVisual"
 
 local SemanticBadge = {}
 
@@ -15,125 +17,140 @@ local function text(key)
     return value or key
 end
 
-local function makeStr(codepoints, fallback)
-    local ok, str = pcall(string.char, unpack(codepoints))
-    if ok and str and #str == #codepoints then return str end
-    return fallback
-end
-
-local GLYPH_CHECK = makeStr({10004}, "✔")
-local GLYPH_DOT = makeStr({9679}, "●")
-local GLYPH_CIRCLE = makeStr({9675}, "○")
-local GLYPH_TRIANGLE = makeStr({9650}, "▲")
-local GLYPH_DIAMOND = makeStr({9670}, "◆")
-local GLYPH_PAUSE = "❚❚"
-local GLYPH_ARROW = makeStr({8594}, "→")
-local GLYPH_SQUARE = makeStr({9632}, "■")
-local GLYPH_RETURN = makeStr({8617}, "⮌")
-local GLYPH_DASH = "—"
-
-local function isChinese()
-    local resolve = _G.getTextOrNull
-    if type(resolve) == "function" then
-        local t = resolve("IGUI_EmberRoutesProbe_Monitor_crafting")
-        if t and t ~= "Crafting job" and t ~= "IGUI_EmberRoutesProbe_Monitor_crafting" then
-            return true
-        end
-    end
-    local q = getText("IGUI_EmberRoutesProbe_Settlement_quantity")
-    return q == "数量"
-end
+-- Status marks are drawn geometrically by StatusVisual (UI master guide 5.2:
+-- no text or texture glyphs). Each definition maps to one distinct silhouette.
+-- Each DEFINITIONS entry carries its own markState (one unique silhouette).
+-- Width reserved for the geometric mark inside a badge capsule.
+SemanticBadge.ICON_SLOT = 16
 
 local DEFINITIONS = {
     RECONCILE = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_reconcile", glyph = GLYPH_TRIANGLE,
+        markState = "reconcile",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_reconcile",
         color = {r = 1.00, g = 0.78, b = 0.25, a = 1.0},
         bg = {r = 0.25, g = 0.20, b = 0.08, a = 0.90},
         border = {r = 0.70, g = 0.55, b = 0.18, a = 0.85}
     },
     STORED = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_stored", glyph = GLYPH_CHECK,
+        markState = "done",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_stored",
         color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     },
     PROCESSING = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_processing", glyph = GLYPH_DOT,
+        markState = "active",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_processing",
         color = {r = 1.00, g = 0.78, b = 0.25, a = 1.0},
         bg = {r = 0.25, g = 0.20, b = 0.08, a = 0.90},
         border = {r = 0.70, g = 0.55, b = 0.18, a = 0.85}
     },
     MISSING = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_missing", glyph = GLYPH_TRIANGLE,
+        markState = "blocked",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_missing",
         color = {r = 1.00, g = 0.42, b = 0.38, a = 1.0},
         bg = {r = 0.28, g = 0.10, b = 0.10, a = 0.90},
         border = {r = 0.75, g = 0.30, b = 0.28, a = 0.85}
     },
     TRANSIT = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_transit", glyph = GLYPH_ARROW,
+        markState = "transit",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_transit",
         color = {r = 0.25, g = 0.75, b = 1.00, a = 1.0},
         bg = {r = 0.08, g = 0.18, b = 0.26, a = 0.90},
         border = {r = 0.20, g = 0.52, b = 0.75, a = 0.85}
     },
     WAITING = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_waiting", glyph = GLYPH_CIRCLE,
+        markState = "waiting",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_waiting",
         color = {r = 0.50, g = 0.64, b = 0.75, a = 1.0},
         bg = {r = 0.12, g = 0.15, b = 0.18, a = 0.90},
         border = {r = 0.35, g = 0.42, b = 0.50, a = 0.75}
     },
+    IN_STORAGE = {
+        markState = "waiting",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_inStorage",
+        color = {r = 0.55, g = 0.70, b = 0.85, a = 1.0},
+        bg = {r = 0.12, g = 0.16, b = 0.22, a = 0.90},
+        border = {r = 0.30, g = 0.45, b = 0.60, a = 0.75}
+    },
     WITHDRAWN = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_staged", glyph = GLYPH_DOT,
+        markState = "neutral",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_staged",
         color = {r = 0.60, g = 0.70, b = 0.80, a = 1.0},
         bg = {r = 0.14, g = 0.16, b = 0.20, a = 0.90},
         border = {r = 0.40, g = 0.48, b = 0.55, a = 0.75}
     },
     PAUSED = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_paused", glyph = GLYPH_PAUSE,
+        markState = "paused",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_paused",
         color = {r = 0.94, g = 0.73, b = 0.36, a = 1.0},
         bg = {r = 0.22, g = 0.18, b = 0.10, a = 0.90},
         border = {r = 0.65, g = 0.50, b = 0.25, a = 0.85}
     },
     STOPPING = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_stopping", glyph = GLYPH_SQUARE,
+        markState = "handoff",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_stopping",
         color = {r = 1.00, g = 0.60, b = 0.20, a = 1.0},
         bg = {r = 0.25, g = 0.15, b = 0.08, a = 0.90},
         border = {r = 0.70, g = 0.42, b = 0.15, a = 0.85}
     },
     RETURNING = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_returning", glyph = GLYPH_RETURN,
+        markState = "return",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_returning",
         color = {r = 0.65, g = 0.55, b = 0.85, a = 1.0},
         bg = {r = 0.16, g = 0.14, b = 0.22, a = 0.90},
         border = {r = 0.45, g = 0.38, b = 0.60, a = 0.85}
     },
     COMPLETED = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_delivered", glyph = GLYPH_CHECK,
+        markState = "done",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_delivered",
         color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     },
     DISCREPANCY = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_discrepancy", glyph = GLYPH_DIAMOND,
+        markState = "reconcile",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_discrepancy",
         color = {r = 1.00, g = 0.42, b = 0.38, a = 1.0},
         bg = {r = 0.28, g = 0.10, b = 0.10, a = 0.90},
         border = {r = 0.75, g = 0.30, b = 0.28, a = 0.85}
     },
     SATISFIED = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_satisfied", glyph = GLYPH_CHECK,
+        markState = "done",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_satisfied",
         color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     },
     RESTOCKING = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_restocking", glyph = GLYPH_DOT,
+        markState = "active",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_restocking",
         color = {r = 0.25, g = 0.75, b = 1.00, a = 1.0},
         bg = {r = 0.08, g = 0.18, b = 0.26, a = 0.90},
         border = {r = 0.20, g = 0.52, b = 0.75, a = 0.85}
     },
     DISABLED = {
-        labelKey = "IGUI_EmberRoutesProbe_Badge_disabled", glyph = GLYPH_DASH,
+        markState = "neutral",
+        labelKey = "IGUI_EmberRoutesProbe_Badge_disabled",
         color = {r = 0.50, g = 0.55, b = 0.60, a = 1.0},
         bg = {r = 0.12, g = 0.13, b = 0.14, a = 0.80},
         border = {r = 0.30, g = 0.32, b = 0.35, a = 0.70}
+    },
+    WORK = {
+        markState = "active",
+        glyph = "hammer",
+        labelKey = "IGUI_EmberRoutesProbe_Overview_workBadge",
+        color = {r = 0.25, g = 0.75, b = 1.00, a = 1.0},
+        bg = {r = 0.08, g = 0.18, b = 0.26, a = 0.90},
+        border = {r = 0.20, g = 0.52, b = 0.75, a = 0.85}
+    },
+    LEISURE = {
+        markState = "waiting",
+        glyph = "moon",
+        labelKey = "IGUI_EmberRoutesProbe_Overview_leisureBadge",
+        color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
+        bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
+        border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     }
 }
 
@@ -141,7 +158,7 @@ local DEFINITIONS = {
 for key,tone in pairs({STATION='PROCESSING',RETURNED='STORED',CONSUMED='DISABLED'}) do
     local base=DEFINITIONS[tone]
     DEFINITIONS[key]={labelKey='IGUI_EmberRoutesProbe_Badge_'..string.lower(key),
-        glyph=base.glyph,color=base.color,bg=base.bg,border=base.border}
+        markState=base.markState,color=base.color,bg=base.bg,border=base.border}
 end
 
 ---Clean raw strings containing [DEBUG_KEY/文案] into pure clean badges
@@ -151,9 +168,7 @@ end
 ---@return table
 function SemanticBadge.resolve(key, customLabel)
     local def = DEFINITIONS[key]
-    local zh = isChinese()
     local label = customLabel or (def and def.labelKey and text(def.labelKey)) or key or ""
-    local glyph = def and def.glyph or ""
     local color = def and def.color or Theme.textColor
     local bg = def and def.bg or Theme.control
     local border = def and def.border or Theme.border
@@ -161,11 +176,12 @@ function SemanticBadge.resolve(key, customLabel)
     return {
         id = key,
         label = label,
-        glyph = glyph,
+        markState = def and def.markState or "neutral",
+        glyph = def and def.glyph or nil,
         color = color,
         bg = bg,
         border = border,
-        displayText = (glyph ~= "" and (glyph .. " ") or "") .. label
+        displayText = label
     }
 end
 
@@ -184,14 +200,24 @@ function SemanticBadge.draw(owner, x, y, width, height, descriptor)
     Theme.rect(owner, x, y, width, height, d.bg)
     Theme.rect(owner, x, y, width, height, d.border, true)
 
-    -- Glyph & Label
+    -- Geometric status mark + label only (never a text glyph).
     local h = d.fontHeight or getTextManager():getFontHeight(UIFont.Small)
-    local fullText = d.displayText or d.label
-    local tw = d.textWidth or getTextManager():MeasureStringX(UIFont.Small, fullText)
-    local tx = x + math.max(2, math.floor((width - tw) / 2))
+    local label = d.displayText or d.label
+    local tw = d.textWidth or UICache.measure(UIFont.Small, label)
+    local slot = SemanticBadge.ICON_SLOT
+    local markSize = math.max(6, math.min(height - 6, slot - 4))
+    local startX = x + math.max(2, math.floor((width - slot - tw) / 2))
     local ty = y + math.floor((height - h) / 2)
-
-    Theme.text(owner, fullText, tx, ty, d.color)
+    -- Semantic glyph when defined (shape = meaning), else the state mark.
+    -- The larger 16px slot lets a 6x6 glyph render at 12px (2px grid pitch).
+    if d.glyph and Visual.glyph(owner, startX, y + math.floor((height - markSize) / 2),
+        markSize, d.glyph, d.color) then
+        -- glyph drawn
+    else
+        Visual.mark(owner, startX, y + math.floor((height - markSize) / 2),
+            markSize, d.markState, d.color)
+    end
+    Theme.text(owner, label, startX + slot, ty, d.color)
 end
 
 return SemanticBadge

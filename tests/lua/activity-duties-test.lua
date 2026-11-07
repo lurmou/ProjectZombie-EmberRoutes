@@ -1,4 +1,4 @@
-local D=require 'EmberRoutesProbe/ActivityDuties'
+local D=require 'EmberRoutesProbe/Activity/ActivityDuties'
 local n=0 local function check(v,m) assert(v,m) n=n+1 end
 check(not D.valid({epoch=1}) and not D.valid({epoch=1,serial='bad'}),'invalid saved fields fail without arithmetic errors')
 local d=D.new()

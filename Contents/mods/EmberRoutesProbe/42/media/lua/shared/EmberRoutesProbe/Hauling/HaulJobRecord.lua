@@ -1,7 +1,7 @@
 -- Standard Haul Job Record Validator.
 -- Validates format=3 HAUL jobs within the standard Job Envelope.
 -- Fully defensive: any corrupted structure returns false without throwing exceptions.
-local Validate = require 'EmberRoutesProbe/Validate'
+local Validate = require 'EmberRoutesProbe/Kernel/Validate'
 local R = {}
 
 local validCustodyStates = {

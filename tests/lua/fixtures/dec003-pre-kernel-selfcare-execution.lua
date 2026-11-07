@@ -1,12 +1,12 @@
 -- TEST ONLY: frozen a16eb0b SELF_CARE baseline, never loaded by production.
 -- One personal attempt under TaskRuntime. The BT is transient; only original-ID
 -- custody, observed effects and the predecessor relation survive save/reload.
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Tree=require 'EmberRoutesProbe/BehaviorTree'
-local Actions=require 'EmberRoutesProbe/SelfCareActions'
-local Custody=require 'EmberRoutesProbe/SelfCareCustody'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Tree=require 'EmberRoutesProbe/Activity/BehaviorTree'
+local Actions=require 'EmberRoutesProbe/SelfCare/SelfCareActions'
+local Custody=require 'EmberRoutesProbe/SelfCare/SelfCareCustody'
 local Execution={}
 -- Cold classification operates on a detached Job. No body capability, native
 -- action construction or persist callback is available to replay an effect.
@@ -26,12 +26,12 @@ function Execution.reconcile(job,npc,items)
         p.consumption.effects='KNOWN' p.consumption.stopped=true
     end
     if p.reading then
-        if require('EmberRoutesProbe/StudyActions').reconcile(c,items[p.reading.itemId],p.reading)~='KNOWN' then
+        if require('EmberRoutesProbe/Leisure/StudyActions').reconcile(c,items[p.reading.itemId],p.reading)~='KNOWN' then
             return false,'READING_UNCONFIRMED'
         end
         p.reading.effects='KNOWN' p.reading.stopped=true
     end
-    if p.repose and require('EmberRoutesProbe/SelfCareRepose').observe(c,p.repose)~='KNOWN' then return false,'REPOSE_UNCONFIRMED' end
+    if p.repose and require('EmberRoutesProbe/SelfCare/SelfCareRepose').observe(c,p.repose)~='KNOWN' then return false,'REPOSE_UNCONFIRMED' end
     -- Relief uses a distinct attempt identity; share the same observers rather
     -- than treating a stopped book session as proof of its survival effects.
     if p.relief then
@@ -42,7 +42,7 @@ function Execution.reconcile(job,npc,items)
             if Actions.reconcile(rc,items[r.fact.itemId],r.fact)~='KNOWN' then return false,'RELIEF_CONSUMPTION_UNCONFIRMED' end
             r.fact.effects='KNOWN' r.fact.stopped=true
         end
-        if r.repose and require('EmberRoutesProbe/SelfCareRepose').observe(rc,r.repose)~='KNOWN' then
+        if r.repose and require('EmberRoutesProbe/SelfCare/SelfCareRepose').observe(rc,r.repose)~='KNOWN' then
             return false,'RELIEF_REPOSE_UNCONFIRMED'
         end
         r.finished=true
@@ -55,7 +55,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         obligations=job.obligations,items=items or {},origin=candidate and candidate.container,
         leisureTarget=candidate and candidate.leisureTarget,leisureKey=candidate and candidate.targetKey}
     if candidate and candidate.id then c.items[candidate.id]=candidate.item end
-    function c.sample() return require('EmberRoutesProbe/NeedsObserver').sample(c.npc,job.npcId,getTimestampMs()) end
+    function c.sample() return require('EmberRoutesProbe/SelfCare/NeedsObserver').sample(c.npc,job.npcId,getTimestampMs()) end
     function c.sameAttempt()
         if Registry.data()~=world then return false end
         -- peek is the live read view; detached get() stays the fallback for
@@ -94,7 +94,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
             and Store.validPersonal(job,c.token) and not c.npc:isDead() and safeRecent()
     end
     function c.canConsume(item,kind)
-        return require('EmberRoutesProbe/SelfCareResources').eligible(item,kind)
+        return require('EmberRoutesProbe/SelfCare/SelfCareResources').eligible(item,kind)
     end
     function c.claimOutputs(ids)
         for _,id in ipairs(ids) do
@@ -114,22 +114,22 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         if c.payload.readingSite and fact.bodyStopped then
             local seated=c.npc:isSittingOnFurniture() or c.npc:getSitOnFurnitureObject()~=nil
             if not seated then
-                if not require('EmberRoutesProbe/StudySeat').release(c) then return false end
+                if not require('EmberRoutesProbe/Leisure/StudySeat').release(c) then return false end
             end
         end
         local hint=c.payload.leisureMemory and c.payload.leisureMemory.resumeHint
         local returningInterruptedBook=settle and hint and hint.activity=='READING' and hint.itemId==c.payload.itemId
         if c.payload.study and (c.payload.study.leisure or not c.payload.study.orderId)
-            and not returningInterruptedBook and not require('EmberRoutesProbe/LeisureService').interrupted(c) then
-            c.payload.leisureMemory=require('EmberRoutesProbe/LeisurePolicy').remember(c.payload.leisureMemory,
+            and not returningInterruptedBook and not require('EmberRoutesProbe/Leisure/LeisureService').interrupted(c) then
+            c.payload.leisureMemory=require('EmberRoutesProbe/Leisure/LeisurePolicy').remember(c.payload.leisureMemory,
                 'READING',getGameTime():getWorldAgeHours(),c.payload.reading and (c.payload.reading.completed or c.payload.reading.windowEnded))
             if c.payload.reading and (c.payload.reading.completed or c.payload.reading.windowEnded) then
-                c.payload.leisureMemory=require('EmberRoutesProbe/LeisureService').pause(c.payload.leisureMemory)
+                c.payload.leisureMemory=require('EmberRoutesProbe/Leisure/LeisureService').pause(c.payload.leisureMemory)
             end
         end
         if c.payload.leisure then
             if c.payload.leisure.applying then c.effects='UNKNOWN' end
-            require('EmberRoutesProbe/LeisureService').finished(c,fact.bodyStopped==true)
+            require('EmberRoutesProbe/Leisure/LeisureService').finished(c,fact.bodyStopped==true)
         end
         if c.effects=='UNKNOWN' then c.payload.step='RECONCILE_REQUIRED'
         else
@@ -168,10 +168,10 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
             if settle then status=(l and l.finished or r and (r.completed or r.windowEnded)) and 'SUCCEEDED' or 'CANCELLED' end
             -- The activity may retain an unconfirmed reference, but projection
             -- rejection cannot revoke already proven physical cleanup.
-            require('EmberRoutesProbe/ActivityOwners').result(job.npcId,job.id,c.payload.attemptId,
+            require('EmberRoutesProbe/Activity/ActivityOwners').result(job.npcId,job.id,c.payload.attemptId,
                 c.payload.activityRef,fact,status,settle==true)
         end
-        local member=require('EmberRoutesProbe/MembershipService').view(job.npcId)
+        local member=require('EmberRoutesProbe/Settlement/MembershipService').view(job.npcId)
         if not member or member.retired then Store.settleDeadPersonal(Jobs.current():get(job.id),fact.bodyStopped==true) end
         return true
     end
@@ -180,18 +180,18 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
     function spec.validate()
         if not c.sameAttempt() or c.effects~='KNOWN' or c.npc:isDead() or not safeRecent() then return false end
         if settle then return true end
-        if c.payload.activityRef and not require('EmberRoutesProbe/ActivityService').validRef(job.npcId,c.payload.activityRef) then return false end
+        if c.payload.activityRef and not require('EmberRoutesProbe/Activity/ActivityService').validRef(job.npcId,c.payload.activityRef) then return false end
         if c.payload.activityRef and c.payload.activityRef.dutyId
-            and not require('EmberRoutesProbe/ActivityOwners').canStart(job.npcId,job.id,c.payload.attemptId) then return false end
-        if c.payload.kind=='STUDY' and not require('EmberRoutesProbe/StudyService').valid(actor,c.npc,job.npcId,c.payload) then return false end
-        if c.payload.kind=='LEISURE' then return require('EmberRoutesProbe/LeisureService').valid(actor,c.npc,job.npcId,c.payload) end
+            and not require('EmberRoutesProbe/Activity/ActivityOwners').canStart(job.npcId,job.id,c.payload.attemptId) then return false end
+        if c.payload.kind=='STUDY' and not require('EmberRoutesProbe/Leisure/StudyService').valid(actor,c.npc,job.npcId,c.payload) then return false end
+        if c.payload.kind=='LEISURE' then return require('EmberRoutesProbe/Leisure/LeisureService').valid(actor,c.npc,job.npcId,c.payload) end
         if c.payload.kind=='REST' or c.payload.kind=='SLEEP' then
-            if c.payload.floorSite then return require('EmberRoutesProbe/FloorSleep').valid(c) end
-            return not c.payload.site or require('EmberRoutesProbe/ReposeSites').resolve(c.payload.site,
+            if c.payload.floorSite then return require('EmberRoutesProbe/SelfCare/FloorSleep').valid(c) end
+            return not c.payload.site or require('EmberRoutesProbe/SelfCare/ReposeSites').resolve(c.payload.site,
                 actor,binding.handle,job.npcId,c.payload.kind,job.id)~=nil
         end
         -- Admission is checked before claiming the item, then again after claim.
-        return candidate and require('EmberRoutesProbe/SelfCareResources').revalidate(candidate,c.payload.kind,job.id)
+        return candidate and require('EmberRoutesProbe/SelfCare/SelfCareResources').revalidate(candidate,c.payload.kind,job.id)
             and (candidate.container==c.npc:getInventory() or c.npc:getInventory():hasRoomFor(c.npc,candidate.item)) or false
     end
     function spec.start(body)
@@ -209,36 +209,36 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         if c.payload.kind=='STUDY' then c.payload.reliefOnly=reliefOnly==true end
         if not c.persist() then return false,'PERSONAL_RECORD_CHANGED','UNCHANGED' end
         if not settle and c.payload.activityRef and c.payload.activityRef.dutyId
-            and not require('EmberRoutesProbe/ActivityOwners').started(job.npcId,job.id,c.payload.attemptId) then
+            and not require('EmberRoutesProbe/Activity/ActivityOwners').started(job.npcId,job.id,c.payload.attemptId) then
             return false,'ACTIVITY_CHANGED','UNCHANGED'
         end
         local leaves={}
         if not settle and c.payload.kind=='LEISURE' then
-            leaves[#leaves+1]=require('EmberRoutesProbe/LeisureActions').new(c)
+            leaves[#leaves+1]=require('EmberRoutesProbe/Leisure/LeisureActions').new(c)
         elseif not settle and (c.payload.kind=='REST' or c.payload.kind=='SLEEP') then
-            if c.payload.site then leaves[#leaves+1]=require('EmberRoutesProbe/SelfCareFurniture').move(c) end
-            if c.payload.floorSite then leaves[#leaves+1]=require('EmberRoutesProbe/FloorSleep').move(c) end
-            leaves[#leaves+1]=require('EmberRoutesProbe/SelfCareRepose').new(c)
+            if c.payload.site then leaves[#leaves+1]=require('EmberRoutesProbe/SelfCare/SelfCareFurniture').move(c) end
+            if c.payload.floorSite then leaves[#leaves+1]=require('EmberRoutesProbe/SelfCare/FloorSleep').move(c) end
+            leaves[#leaves+1]=require('EmberRoutesProbe/SelfCare/SelfCareRepose').new(c)
         elseif not settle then
             leaves[#leaves+1]=Custody.take(c,candidate)
             if c.payload.kind=='STUDY' then
-                leaves[#leaves+1]=require('EmberRoutesProbe/StudySeat').new(c,candidate.item)
+                leaves[#leaves+1]=require('EmberRoutesProbe/Leisure/StudySeat').new(c,candidate.item)
             else leaves[#leaves+1]=Actions.consumption(c,c.payload.kind,candidate.item,c.payload.fraction or 0.25) end
         end
         if settle and c.payload.kind=='STUDY' then
-            leaves[#leaves+1]=require('EmberRoutesProbe/StudySeat').exit(c)
-            leaves[#leaves+1]=require('EmberRoutesProbe/StudyRelief').new(c)
+            leaves[#leaves+1]=require('EmberRoutesProbe/Leisure/StudySeat').exit(c)
+            leaves[#leaves+1]=require('EmberRoutesProbe/Leisure/StudyRelief').new(c)
         end
         if not reliefOnly then leaves[#leaves+1]=Custody.returns(c) end
         c.tree=assert(Tree.new({kind='Sequence',children=leaves}))
         if not settle and c.payload.leisure then
-            require('EmberRoutesProbe/LeisureService').started(job.npcId,c.payload.leisure.activity,c.payload.leisure.brief,c.payload.leisure.zoneVisit)
+            require('EmberRoutesProbe/Leisure/LeisureService').started(job.npcId,c.payload.leisure.activity,c.payload.leisure.brief,c.payload.leisure.zoneVisit)
         end
         return true
     end
     function spec.tick()
         c.budget=budgets()
-        if not settle and c.payload.activityRef and not require('EmberRoutesProbe/ActivityService').validRef(job.npcId,c.payload.activityRef) then
+        if not settle and c.payload.activityRef and not require('EmberRoutesProbe/Activity/ActivityService').validRef(job.npcId,c.payload.activityRef) then
             c.done=true c.reason='ACTIVITY_END' return
         end
         if safe and not safe() then c.done=true c.reason='SELF_CARE_UNSAFE' return end
@@ -256,7 +256,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         return finish(fact)
     end
     function spec.stopAdapter(controller,ticket)
-        return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,
+        return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,
             jobId=job.id,npcId=job.npcId,npc=c.npc,same=function() return c.sameAttempt() end,
             pause=function(reason)
                 c.stopping=true c.reason=c.reason or reason

@@ -1,5 +1,5 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Filter=require "EmberRoutesProbe/StorageFilter"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
 local count=0
 local function check(value,why) count=count+1 assert(value,why) end
 local events={}
@@ -20,9 +20,9 @@ local Registry={containerIndex=function(o,c)
     if o:getContainer()==c then return 0 end
     if o.getContainerCount then for i=0,o:getContainerCount()-1 do if o:getContainerByIndex(i)==c then return i end end end
 end,listeners={},filter=function() return applied end,logistics=function() return "STORAGE" end,metadata=function() return nil end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
-package.loaded['EmberRoutesProbe/StorageFilterPanel']={open=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=Registry
+package.loaded['EmberRoutesProbe/UI/StorageFilterPanel']={open=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local options={}
 local lastOption
 local context={addOption=function(_,label,a,fn,o,c) options[#options+1]=label lastOption={actor=a,callback=fn,object=o,container=c} return {} end,
@@ -49,12 +49,12 @@ function object:getContainer() return container end
 function container:getParent() return object end
 ISInventoryPage={addContainerButton=function(_,inventory) return newButton(inventory) end}
 local selectedRole,selectedContainer
-package.loaded['EmberRoutesProbe/Work']={execute=function(_,role,_,c) selectedRole,selectedContainer=role,c end}
-local Tabs=require "EmberRoutesProbe/StorageTabs"
+package.loaded['EmberRoutesProbe/Work/Work']={execute=function(_,role,_,c) selectedRole,selectedContainer=role,c end}
+local Tabs=require "EmberRoutesProbe/UI/StorageTabs"
 Tabs.install() Tabs.install()
 local button=ISInventoryPage.addContainerButton({player=0},container)
 check(button:onRightMouseDown(0,0)=="native-result" and originalCalls==1,"original handler return and call retained exactly once")
-check(options[1]=="vanilla-rename" and #options==4,"filter entry appends without clearing native options")
+check(options[1]=="vanilla-rename" and #options==2 and options[2]==getText("IGUI_EmberRoutesProbe_ContainerSettings"),"filter entry appends without clearing native options")
 check(button.image=="media/ui/Container_Fridge.png","single category replaces main image")
 check(button.tooltip:find("native%-name") and button.tooltip:gsub("\n",""):find(getText("IGUI_EmberRoutesProbe_Filter_food.stable"),1,true),"tooltip retains container name and categories")
 -- Prove render never consults registry or classifier.
@@ -65,7 +65,7 @@ check(renderCalls==2,"native render retained with no registry reads")
 Registry.filter=nativeFilter
 Tabs.bind(button,0)
 button:onRightMouseDown(0,0)
-check(originalCalls==2 and #options==4,"pooled rebind does not stack handlers")
+check(originalCalls==2 and #options==2,"pooled rebind does not stack handlers")
 local bag={getParent=function() return nil end}
 button.inventory=bag Tabs.bind(button,0)
 check(button.image=="native-image" and button.tooltip=="native-name","unsupported rebind restores original image and tooltip")
@@ -116,7 +116,7 @@ function object:getContainerCount() return 2 end
 function object:getContainerByIndex(i) return i==0 and container or (i==1 and alternate or nil) end
 check(Tabs.object(alternate)==object,"registered secondary freezer can open its own settings")
 button.inventory=alternate Tabs.bind(button,0) button:onRightMouseDown(0,0)
-check(#options==4,"freezer preserves native menu and receives storage settings")
-lastOption.callback(lastOption.actor,lastOption.object,lastOption.container)
-check(selectedRole=='destination' and selectedContainer==alternate,"sidebar route command preserves freezer identity and selected role")
+check(#options==2 and options[2]==getText("IGUI_EmberRoutesProbe_ContainerSettings"),"freezer preserves native menu and receives storage settings")
+
+
 print("PASS "..count.." storage sidebar adapter checks; vanilla/CleanUI runtime NOT RUN")

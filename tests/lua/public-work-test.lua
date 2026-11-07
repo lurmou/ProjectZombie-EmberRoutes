@@ -15,56 +15,56 @@ local studyTargets={}
 -- Scheduling fixture supplies a healthy worker capability; medical facts have
 -- their own native-observation integration suite.
 local healthy=true
-package.loaded['EmberRoutesProbe/HealthAssessment']={canWork=function() return healthy,'HEALTH_NEEDS_CARE' end}
-package.loaded['EmberRoutesProbe/Boot']={ready=true,runtimeReady=true,hasJava=function() return true end,
+package.loaded['EmberRoutesProbe/SelfCare/HealthAssessment']={canWork=function() return healthy,'HEALTH_NEEDS_CARE' end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={ready=true,runtimeReady=true,hasJava=function() return true end,
     idleStudy=function(id,_,target) if target then studyTargets[id]=target end end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'id-'..serial end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() if allowed then return entry end return nil,'ACCESS_DENIED' end,at=function() return {entry} end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function(_,id) return {handle=handles[id]} end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {accepting=function() return accepting end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'id-'..serial end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() if allowed then return entry end return nil,'ACCESS_DENIED' end,at=function() return {entry} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(_,id) return {handle=handles[id]} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return accepting end,
  status=function(_,id,job) return busy[id] and {jobId=job} or nil end} end}
-package.loaded['EmberRoutesProbe/Work']={busy=function(id) return busy[id] end,hasCargo=function(_,id) return cargo[id] end,
+package.loaded['EmberRoutesProbe/Work/Work']={busy=function(id) return busy[id] end,hasCargo=function(_,id) return cargo[id] end,
  record=function(id) return records[id] end,
  resumeFor=function(_,id) records[id].reason='RESUMED' calls[#calls+1]={kind='resume',npc=id} return 'QUEUED' end,
  allowAutomation=function(id) manual[id]=nil end,
  assign=function(_,id,intent) if manual[id] then return 'MANUAL_OVERRIDE' end busy[id]=true calls[#calls+1]={kind='haul',npc=id,jobId=intent.jobId} return 'QUEUED' end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
 local known={alice=false,bob=true}
-package.loaded['EmberRoutesProbe/ProductionRecipe']={read=function() return recipe end,inspect=function(_,n)
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={read=function() return recipe end,inspect=function(_,n)
  if known[n.id] then return recipe end return nil,'NPC_RECIPE_UNKNOWN' end}
-package.loaded['EmberRoutesProbe/CraftSurfaces']={resolve=function() return {} end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSurfaces']={resolve=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local craftRecords={}
-package.loaded['EmberRoutesProbe/BusinessJobs']={records=function() return craftRecords end,crafts=function() return {} end,flush=function() end}
-package.loaded['EmberRoutesProbe/ProductionChain']={new=function() return {step=function() return {nodes={}} end,cancel=function() end} end}
-package.loaded['EmberRoutesProbe/Production']={execute=function(_,_,_,id,o)
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={records=function() return craftRecords end,crafts=function() return {} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain']={new=function() return {step=function() return {nodes={}} end,cancel=function() end} end}
+package.loaded['EmberRoutesProbe/Crafting/Production']={execute=function(_,_,_,id,o)
  busy[id]=true calls[#calls+1]={kind='craft',npc=id,jobId=o.taskId,orderId=o.orderId}
  craftRecords[o.taskId]={id=o.taskId,npcId=id,state='RUNNING',orderId=o.orderId}
  return 'QUEUED' end}
 local recoveryPrepared=0
-package.loaded['EmberRoutesProbe/LogisticsService']={publicOffer=function(_,_,n) return offers[n.id] end,
+package.loaded['EmberRoutesProbe/Logistics/LogisticsService']={publicOffer=function(_,_,n) return offers[n.id] end,
  preparePublic=function() recoveryPrepared=recoveryPrepared+1 return true end}
 function isClient() return false end function isServer() return false end
 function getTimestampMs() return now end function getSpecificPlayer() return actor end
 EmberRoutesProbeJava={workerCount=function() return #workers end,workerIdAt=function(i) return workers[i+1] end}
 if ERDispatchTestBridge then for key,value in pairs(ERDispatchTestBridge) do EmberRoutesProbeJava[key]=value end end
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'crate'} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'crate'} end}
 -- This dispatch fixture contains no tool custody or return work. Model that
 -- business fact explicitly; do not load native transfer actions as a side effect.
-package.loaded['EmberRoutesProbe/LaborStore']={custodyForNpc=function() return {} end}
-package.loaded['EmberRoutesProbe/ToolReturnService']={canInterrupt=function() return false end,
+package.loaded['EmberRoutesProbe/Work/LaborStore']={custodyForNpc=function() return {} end}
+package.loaded['EmberRoutesProbe/Field/ToolReturnService']={canInterrupt=function() return false end,
  reconcile=function() end,returnResult=function() end,liveTask=function() end,
  forgetResult=function() error('no tracked tool return in dispatch-only fixture') end,
  startFor=function() error('unexpected tool return in dispatch-only fixture') end}
-local Public=require 'EmberRoutesProbe/PublicWork'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local rawCreate=Public.create local requestTokens={}
 Public.create=function(a,s,r,n,surface,label,preferences)
  if not requestTokens[label] or not root.publicWork then requestTokens[label]=Public.requestId() end
  return rawCreate(a,s,r,n,surface,requestTokens[label],preferences)
 end
-local function tick() now=now+require('EmberRoutesProbe/TickConfig').discoveryMs+1 Public.tick() end
+local function tick() now=now+require('EmberRoutesProbe/Kernel/TickConfig').discoveryMs+1 Public.tick() end
 local status,order=Public.create(actor,'s','saw',4,nil,'once')
 check(status=='ORDER_CREATED' and root.publicWork.orders[order].npcId==nil,'unclaimed demand does not name an NPC')
 check(Public.orders('s')[1].target==6,'requested finished count rounds to complete native batches')
@@ -104,11 +104,11 @@ check(#calls==before,'explicit user pause is never automatically resumed')
 records.alice.reason='LOAD_RECOVERY' records.alice.controlUncertain=true tick()
 check(#calls==before,'unknown effects never automatically resume')
 -- Selector semantics are independent of discovery order and exclude priority 0.
-local Selector=require 'EmberRoutesProbe/WorkSelector'
+local Selector=require 'EmberRoutesProbe/Work/WorkSelector'
 local options={{key='a',category='crafting',allowed=true,score=100},{key='b',category='hauling',allowed=true,score=0}}
 check(Selector.choose(options,{crafting=4,hauling=1}).key=='b','work priority outranks business score')
 check(Selector.choose(options,{crafting=0,hauling=0})==nil,'disabled categories never enter arbitration')
-local d=require('EmberRoutesProbe/TaskDirectory').new()
+local d=require('EmberRoutesProbe/Kernel/TaskDirectory').new()
 d:upsert('clean:tile',1,'cleaning','s')
 check(d:claim('clean:tile',1,'alice','job-a'),'stable target offer can be claimed')
 check(not d:claim('clean:tile',1,'bob','job-b'),'competing worker cannot double claim')
@@ -125,7 +125,7 @@ local previous=root root={} records={} craftRecords={} cargo={} busy={} workers=
 tick() check(previous.publicWork.orders[order].jobId~=nil and root.publicWork.sequence==0,'world switch preserves old facts and resets transient discovery')
 -- An unavailable craft never reserves an NPC; a lower ordinary job remains possible.
 workers={'alice'} known.alice=true
-package.loaded['EmberRoutesProbe/ProductionChain'].new=function() return {step=function() return nil,'MATERIALS_UNAVAILABLE' end,cancel=function() end} end
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain'].new=function() return {step=function() return nil,'MATERIALS_UNAVAILABLE' end,cancel=function() end} end
 Public.setPriorities(actor,'s','alice',{crafting=1,hauling=2},0)
 Public.create(actor,'s','saw',1,nil,'missing-materials')
 tick() tick()
@@ -136,9 +136,9 @@ tick() check(calls[#calls].kind=='haul','missing materials and an ended manual o
 offers={} busy={} workers={}
 for _,o in pairs(root.publicWork.orders) do o.state='CANCELLED' end
 local physical,complete=50,true local watches=0
-package.loaded['EmberRoutesProbe/WarehouseIndex']={watch=function() watches=watches+1 return function() watches=watches-1 end end,
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']={watch=function() watches=watches+1 return function() watches=watches-1 end end,
  candidates=function() return {state='READY',complete=complete,knownCount=physical} end,refresh=function() end}
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'crate'} end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'crate'} end}
 Public.saveRule(actor,'s','saw',50,12,nil)
 tick() local total=#Public.orders('s')
 check(total==1,'stock at threshold causes no refill; reservations are not subtracted')
@@ -150,7 +150,7 @@ now=now+1000 tick()
 check(#Public.orders('s')==total+1,'one active stock order suppresses duplicate refill')
 Public.saveRule(actor,'s','saw',0,12,nil) tick()
 check(watches==0 and #Public.orders('s')==total+1,'disabling policy releases inventory watch without removing its order')
-check(package.loaded['EmberRoutesProbe/Boot'].runtimeReady,'normal dispatch has no hidden backend fault')
+check(package.loaded['EmberRoutesProbe/Kernel/Boot'].runtimeReady,'normal dispatch has no hidden backend fault')
 -- More than the old total-history cap: each unclaimed cancellation retires;
 -- small intent receipts reject expired submissions rather than recreating them.
 root={} busy={} cargo={} records={} craftRecords={} workers={}
@@ -174,7 +174,7 @@ check(repeated=='ORDER_CREATED' and repeatedId==pendingId,'active order retry su
 -- Capacity is a worker property: a failed weak candidate must not cool down
 -- the shared demand for a stronger worker.
 root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'}
-package.loaded['EmberRoutesProbe/ProductionChain'].new=function(_,n)
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain'].new=function(_,n)
  return {step=function() if n.id=='alice' then return nil,'CAPACITY_UNAVAILABLE' end return {nodes={}} end,cancel=function() end}
 end
 local _,capacityOrder=Public.create(actor,'s','saw',1,nil,'capacity')
@@ -188,9 +188,9 @@ check(#calls==1 and calls[1].npc=='bob' and calls[1].orderId==capacityOrder,
 -- body controllers or disable the save authority.
 root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'} known.alice=true
 Public.prepareRecovery()
-local driver=package.loaded['EmberRoutesProbe/Driver'] local oldBind=driver.bindId local binds=0
+local driver=package.loaded['EmberRoutesProbe/Runtime/Driver'] local oldBind=driver.bindId local binds=0
 driver.bindId=function(...) binds=binds+1 return oldBind(...) end
-local business=package.loaded['EmberRoutesProbe/BusinessJobs'] local oldRecords,oldFlush=business.records,business.flush
+local business=package.loaded['EmberRoutesProbe/Work/BusinessJobs'] local oldRecords,oldFlush=business.records,business.flush
 local scans,flushes=0,0
 business.records=function(...) scans=scans+1 return oldRecords(...) end
 business.flush=function(...) flushes=flushes+1 return oldFlush(...) end
@@ -200,7 +200,7 @@ check(scans==0,'unlinked/empty orders do not build a complete crafting index')
 check(Public.retireSettled(8)==0 and flushes==0,'no public orders means no redundant business flush in public retirement')
 driver.bindId=oldBind business.records,business.flush=oldRecords,oldFlush
 -- No craft orders must not skip releasing a finished hauling offer.
-local Directory=require 'EmberRoutesProbe/TaskDirectory' local originalNew=Directory.new local released=0
+local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory' local originalNew=Directory.new local released=0
 Directory.new=function(...)
  local directory=originalNew(...) local release=directory.release
  directory.release=function(self,...) released=released+1 return release(self,...) end
@@ -215,8 +215,8 @@ Directory.new=originalNew
 -- P3.5: public planning may observe through an idle native action, but must
 -- stop that owner's leisure before a real claim/production is submitted.
 root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'} known.alice=true
-package.loaded['EmberRoutesProbe/ProductionChain'].new=function() return {step=function() return {nodes={}} end,cancel=function() end} end
-local boot=package.loaded['EmberRoutesProbe/Boot'] local interrupted=0 local probing=true
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain'].new=function() return {step=function() return {nodes={}} end,cancel=function() end} end
+local boot=package.loaded['EmberRoutesProbe/Kernel/Boot'] local interrupted=0 local probing=true
 boot.careBlocksWork=function() return probing end
 boot.careProbeWork=function() return probing end
 busy.alice=true -- A real leisure Session owns the body even though no work is executing.
@@ -230,7 +230,7 @@ boot.careBlocksWork=nil boot.careProbeWork=nil boot.leisureWorkReady=nil
 -- A fully planned candidate can still lose a resource at real admission.
 -- Failure must cool this NPC/offer instead of cancelling leisure every round.
 root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'}
-local production=package.loaded['EmberRoutesProbe/Production']
+local production=package.loaded['EmberRoutesProbe/Crafting/Production']
 local originalExecute=production.execute local failedStarts=0
 production.execute=function() failedStarts=failedStarts+1 return 'RESOURCE_CHANGED' end
 boot.leisureWorkState=function() end
@@ -240,7 +240,7 @@ for i=1,5 do tick() end
 check(failedStarts==1,'failed NPC/offer is backed off while world evidence is unchanged')
 production.execute=originalExecute boot.leisureWorkState=nil
 root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'}
-local logistics=package.loaded['EmberRoutesProbe/LogisticsService']
+local logistics=package.loaded['EmberRoutesProbe/Logistics/LogisticsService']
 local oldOffer=logistics.publicOffer local discoveries=0
 logistics.publicOffer=function(...) discoveries=discoveries+1 return oldOffer(...) end
 for _=1,35 do tick() end
@@ -288,10 +288,10 @@ check(discoveredCooking>0 and claimedCooking==1 and calls[#calls].kind=='cook',
     'provider discover and claim are executed for registered category')
 
 -- Gate A posting passes through the real decide/eligibility/selector chain.
-local memberService=package.loaded['EmberRoutesProbe/MembershipService']
+local memberService=package.loaded['EmberRoutesProbe/Settlement/MembershipService']
 local postingReason
 memberService.notePosting=function(_,reason) postingReason=reason end
-package.loaded['EmberRoutesProbe/SettlementZones']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={
     get=function() return {id='posted',settlementId='s',enabled=true} end,
     coveredZone=function() return true end,
     contains=function(_,x,y,z) return x>=0 and x<4 and y>=0 and y<4 and z==0 end}
@@ -320,7 +320,7 @@ healthy=false -- explicit untreated injury, not the retired 95-total-health rule
 tick() tick() check(#calls==0,'posting never bypasses existing health guard')
 healthy=true
 postedScenario(1)
-local jobs=package.loaded['EmberRoutesProbe/BusinessJobs'] local oldCrafts=jobs.crafts
+local jobs=package.loaded['EmberRoutesProbe/Work/BusinessJobs'] local oldCrafts=jobs.crafts
 jobs.crafts=function() return {alice={released=false}} end
 tick() tick() check(#calls==0,'posting never bypasses retained-job eligibility') jobs.crafts=oldCrafts
 postedScenario(1) busy.alice=true tick() tick()
@@ -343,27 +343,28 @@ check(result=='ORDER_CREATED' and root.publicWork.orders[childId].parentOrderId=
 local _,sameChild=Public.createPrerequisite(actor,parent.id,{recipeId='saw',requested=3})
 check(sameChild==childId and root.publicWork.sequence==2,'repeated planning joins its active predecessor instead of duplicating demand')
 parent.state='PAUSED'
-check(not require('EmberRoutesProbe/CookingOrders').parentAllows(root.publicWork.orders[childId]),
+check(not require('EmberRoutesProbe/Cooking/CookingOrders').parentAllows(root.publicWork.orders[childId]),
     'paused parent prevents an unclaimed associated order from starting')
 check(Public.createPrerequisite(actor,parent.id,{recipeId='saw',requested=3})=='TASK_CHANGED',
     'paused requests cannot create more predecessor work')
 actor.isRecipeKnown=function() return true end
 workers={'alice'} root={} busy={} cargo={} records={} craftRecords={}
-local savedDemand=package.loaded['EmberRoutesProbe/FieldDemand']
+local savedDemand=package.loaded['EmberRoutesProbe/Field/FieldDemand']
 local observedWithoutWorkers=false
-package.loaded['EmberRoutesProbe/FieldDemand']={advance=function() observedWithoutWorkers=true end}
+package.loaded['EmberRoutesProbe/Field/FieldDemand']={advance=function() observedWithoutWorkers=true end}
 local savedWorkers=workers workers={}
 tick()
 check(observedWithoutWorkers,'independent demand observation runs before zero-worker return')
-workers=savedWorkers package.loaded['EmberRoutesProbe/FieldDemand']=savedDemand
-package.loaded['EmberRoutesProbe/ProductionChain'].new=function() error('provider fixture failure') end
+workers=savedWorkers package.loaded['EmberRoutesProbe/Field/FieldDemand']=savedDemand
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain'].new=function() error('provider fixture failure') end
 Public.create(actor,'s','saw',1,nil,'fault') tick()
-check(package.loaded['EmberRoutesProbe/Boot'].runtimeReady,'provider failure does not disable existing body/save runtime')
+check(package.loaded['EmberRoutesProbe/Kernel/Boot'].runtimeReady,'provider failure does not disable existing body/save runtime')
 local available,why=Public.available()
-check(not available and why=='DISPATCH_BLOCKED','provider failure blocks further public mutation without retries')
+check(not available and why=='DISPATCH_BLOCKED',
+    'provider failure isolates public mutation for a cooldown instead of locking the world on the first fault')
 
 -- Delivery composes with the existing hauling provider; it cannot replace logistics.
-local delivery=require 'EmberRoutesProbe/DeliveryService'
+local delivery=require 'EmberRoutesProbe/Logistics/DeliveryService'
 local oldDiscover,oldClaim,oldAdvance=delivery.discover,delivery.claim,delivery.advance
 local discovered,advanced=false,false
 local provider=Public.provider('hauling')
@@ -373,7 +374,7 @@ delivery.advance=function() advanced=true end
 offers.alice={source='box',items={17}}
 local candidates={}
 provider.discover({actor=actor,npc=handles.alice,entry=entry,candidates=candidates,
-    directory=require('EmberRoutesProbe/TaskDirectory').new()})
+    directory=require('EmberRoutesProbe/Kernel/TaskDirectory').new()})
 check(discovered and #candidates==2 and candidates[1].delivery and candidates[2].intent.source=='box',
     'same hauling provider contributes delivery and existing logistics offers')
 check(provider.claim({delivery=true},'alice','job',{})=='DELIVERY_CLAIM_MARKER','delivery selected through existing provider claim')

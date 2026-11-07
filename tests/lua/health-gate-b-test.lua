@@ -1,8 +1,8 @@
 -- Reuse the repository's public-work host and its complete domain substitutes.
 -- Native movement, transfer, renderer and disk are NOT exercised here.
 dofile('tests/lua/public-work-test.lua')
-local Public=require 'EmberRoutesProbe/PublicWork'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local root={}
 Registry.data=function() return root end
 Public.prepareRecovery() -- A new test world clears the prior fixture's deliberate dispatch fault.
@@ -11,7 +11,7 @@ local metadata={}
 function actor:getModData() return metadata end
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
-local Draft=require 'EmberRoutesProbe/PublicOrderDraft'
+local Draft=require 'EmberRoutesProbe/Work/PublicOrderDraft'
 local d=Draft.update(actor,'s','saw',5,nil,{})
 local token=d.requestId
 local result,id=Public.create(actor,'s','saw',5,nil,'gate-b-first')
@@ -21,8 +21,8 @@ local again,same=Public.create(actor,'s','saw',5,nil,'gate-b-first')
 check(again=='ORDER_CREATED' and same==id,'same receipt never creates a second order')
 Draft.result(actor,'s',token,'ORDER_CREATED')
 check(Draft.update(actor,'s','saw',5,nil,{}).requestId==token,'refresh preserves the intent token')
-package.loaded['EmberRoutesProbe/PublicOrderDraft']=nil
-Draft=require 'EmberRoutesProbe/PublicOrderDraft'
+package.loaded['EmberRoutesProbe/Work/PublicOrderDraft']=nil
+Draft=require 'EmberRoutesProbe/Work/PublicOrderDraft'
 check(Draft.read(actor,'s').result=='ORDER_CREATED' and Draft.update(actor,'s','saw',5,nil,{}).requestId==token,
     'reopening/reloading UI module restores submitted result and unchanged intent')
 local changed=Draft.update(actor,'s','saw',6,nil,{})
@@ -58,17 +58,17 @@ root={deliveryOrders={format=1,orders={cargo={id='cargo',format=1,revision=1,
     settlementId='s',requesterId='owner',state='ASSIGNED',jobId='held-job',npcId='alice',
     items={{fullType='Base.Plank',quantity=2,delivered=0}}}}}}
 Registry.data=function() return root end
-local members=require 'EmberRoutesProbe/MembershipService'
+local members=require 'EmberRoutesProbe/Settlement/MembershipService'
 members.character=function() return 'owner' end
-local work=require 'EmberRoutesProbe/Work'
+local work=require 'EmberRoutesProbe/Work/Work'
 local pauses,resumes=0,0
 work.pause=function(reason,npcId) check(reason=='USER' and npcId=='alice','cancel routes to the existing owner stop') pauses=pauses+1 end
 work.resumeFor=function() resumes=resumes+1 end
-local business=require 'EmberRoutesProbe/BusinessJobs'
+local business=require 'EmberRoutesProbe/Work/BusinessJobs'
 local manifest={{itemId=1,custodyState='CARRIED'},{itemId=2,custodyState='UNCOLLECTED'}}
 local retained={id='held-job',producer='DELIVERY',state='PAUSED',reason='LOAD_RECOVERY',manifest=manifest}
 business.record=function() return retained end
-local Delivery=require 'EmberRoutesProbe/DeliveryService'
+local Delivery=require 'EmberRoutesProbe/Logistics/DeliveryService'
 check(Delivery.cancel(actor,'cargo',0)=='ORDER_CHANGED' and pauses==0,'stale cancellation cannot stop a worker')
 check(Delivery.cancel(actor,'cargo',1)=='CANCEL_REQUESTED' and pauses==1,'accepted cancel requests owner stop exactly once')
 local o=Delivery.order('cargo')
@@ -78,8 +78,8 @@ check(resumes==0 and retained.manifest==manifest and manifest[1].custodyState=='
     and manifest[2].custodyState=='UNCOLLECTED','cancel never settles cargo or automatically resumes retained job')
 local function copy(t) if type(t)~='table' then return t end local r={} for k,v in pairs(t) do r[k]=copy(v) end return r end
 root=copy(root) -- A host serialization stand-in, not disk save evidence.
-package.loaded['EmberRoutesProbe/DeliveryService']=nil
-Delivery=require 'EmberRoutesProbe/DeliveryService'
+package.loaded['EmberRoutesProbe/Logistics/DeliveryService']=nil
+Delivery=require 'EmberRoutesProbe/Logistics/DeliveryService'
 check(Delivery.order('cargo').cancelled and Delivery.order('cargo').jobId=='held-job','cancel and owner link survive supported record reload')
 Delivery.advance({actor=actor,now=200000})
 local candidates={}

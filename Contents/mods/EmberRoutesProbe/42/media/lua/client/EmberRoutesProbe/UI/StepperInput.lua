@@ -91,7 +91,10 @@ function StepperInput:createChildren()
     -- Center Input
     local entryBox = ISTextEntryBox:new(tostring(self.value), cols[3].x, cols[3].y, cols[3].width, cols[3].height)
     entryBox:initialise()
-    entryBox:setOnlyNumbers(true)
+    entryBox:instantiate()
+    if entryBox.setOnlyNumbers and entryBox.javaObject then
+        entryBox:setOnlyNumbers(true)
+    end
     entryBox.target = self
     entryBox.backgroundColor = Theme.panel
     entryBox.borderColor = Theme.border
@@ -99,9 +102,8 @@ function StepperInput:createChildren()
         if self.syncing then return end
         local text = entryBox:getText()
         local n = tonumber(text)
-        if n then
-            local clamped = math.max(self.min, math.min(self.max, n))
-            self.value = clamped
+        if n and n==math.floor(n) and n>=self.min and n<=self.max then
+            self.value = n
             if self.onChange then self.onChange(self.value, self) end
         else
             self.value = nil
@@ -132,6 +134,19 @@ function StepperInput:createChildren()
     self.stepButtons[4] = b4
 end
 
+-- Compact layout uses the same controls and change callback, with no second stepper implementation.
+function StepperInput:layoutCompact(width,height)
+    self:setWidth(width) self:setHeight(height)
+    self.stepButtons[1]:setVisible(false) self.stepButtons[4]:setVisible(false)
+    local buttonW=math.min(height,math.max(1,width/4))
+    local gap=math.max(2,math.floor(self.pad/3))
+    local cols=assert(Layout.axis({x=0,y=0,width=width,height=height},{{basis=buttonW},{grow=1},{basis=buttonW}},{gap=gap}))
+    for i,control in ipairs({self.stepButtons[2],self.entry,self.stepButtons[3]}) do
+        local b=cols[i]
+        control:setX(b.x) control:setY(b.y) control:setWidth(b.width) control:setHeight(b.height)
+    end
+end
+
 function StepperInput:applyDelta(delta)
     local cur = tonumber(self.entry:getText()) or self.value or self.min
     local nextVal = math.max(self.min, math.min(self.max, cur + delta))
@@ -152,6 +167,7 @@ function StepperInput:setValue(n)
 end
 
 function StepperInput:onMouseWheel(del)
+    if not self.entry or not self.entry:isFocused() then return false end
     -- Scrolling up (del < 0) increments, scrolling down (del > 0) decrements
     local delta = (del < 0) and 1 or -1
     self:applyDelta(delta)

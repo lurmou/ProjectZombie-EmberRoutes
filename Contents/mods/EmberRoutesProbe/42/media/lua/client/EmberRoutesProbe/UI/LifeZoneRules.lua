@@ -1,8 +1,8 @@
 require 'ISUI/ISCollapsableWindow'
 require 'ISUI/ISComboBox'
 require 'ISUI/ISButton'
-local Zones=require 'EmberRoutesProbe/SettlementZones'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Text=require 'EmberRoutesProbe/UI/Text'
@@ -60,8 +60,14 @@ function Dialog:prerender()
     end
     if self.noticeBounds then
         local r=self.noticeBounds
-        local lines=Text.wrapLimited(self.notice or text('ruleHint'),r.width,UIFont.Small,3)
-        for i,line in ipairs(lines) do Theme.text(self,line,r.x,r.y+(i-1)*self.fontHeight,Theme.muted) end
+        -- Text.wrapLimited measures every character through the font manager.
+        -- Repeat it only when the source text or the wrap width changes.
+        local source=self.notice or text('ruleHint')
+        if self.wrappedSource~=source or self.wrappedWidth~=r.width then
+            self.wrappedSource=source self.wrappedWidth=r.width
+            self.wrappedLines=Text.wrapLimited(source,r.width,UIFont.Small,3)
+        end
+        for i,line in ipairs(self.wrappedLines) do Theme.text(self,line,r.x,r.y+(i-1)*self.fontHeight,Theme.muted) end
     end
 end
 function Dialog:update()

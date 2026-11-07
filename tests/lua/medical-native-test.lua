@@ -52,11 +52,11 @@ local npc={getInventory=function() return root end,getBodyDamage=function() retu
 ISTimedActionQueue={hasAction=function(a) return queued==a end}
 dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/TimedActions/ISApplyBandage.lua')
 package.loaded['TimedActions/ISApplyBandage']=true
-package.loaded['EmberRoutesProbe/SelfCareCustody']={located=function(c,id)
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareCustody']={located=function(c,id)
     return c.items[id] and c.items[id]:getContainer()==root
 end}
-local Actions=require 'EmberRoutesProbe/MedicalActions'
-local Record=require 'EmberRoutesProbe/MedicalRecord'
+local Actions=require 'EmberRoutesProbe/SelfCare/MedicalActions'
+local Record=require 'EmberRoutesProbe/SelfCare/MedicalRecord'
 local function context(item,replace)
     local c={npc=npc,items={[item.id]=item},effects='KNOWN',payload={kind='MEDICAL',itemId=item.id,attemptId='job:1'}}
     c.payload.medical={version=1,partIndex=1,itemId=item.id,fullType=item:getFullType(),attemptId='job:1',

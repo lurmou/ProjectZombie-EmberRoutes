@@ -60,7 +60,7 @@ Events={OnRenderTick={Add=function(fn) events[#events+1]=fn end,Remove=function(
     for i=#events,1,-1 do if events[i]==fn then table.remove(events,i) end end
 end}}
 
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 function getTextManager()
     return {
         getFontHeight=function() return 16 end,
@@ -99,8 +99,8 @@ function addAreaHighlightForPlayer(playerNum,x1,y1,x2,y2,z,r,g,b,a)
 end
 
 local Selector=require "EmberRoutesProbe/UI/SettlementSelector"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
-local Geometry=require "EmberRoutesProbe/SettlementGeometry"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
+local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
 
 -- Test 1: Open selector for new settlement
 local panel = Selector:new(actor, nil, nil)

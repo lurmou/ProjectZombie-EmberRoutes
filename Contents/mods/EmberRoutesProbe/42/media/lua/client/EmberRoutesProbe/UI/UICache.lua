@@ -34,6 +34,26 @@ function UICache.measureCount(countText)
     return val
 end
 
+---Memoized MeasureStringX for draw-loop text. Width depends only on font and
+---string, so a repeat measurement is never needed inside render/prerender.
+---@param font any
+---@param text string?
+---@return number
+function UICache.measure(font, text)
+    if text == nil then return 0 end
+    local byFont = measureCache[font]
+    if not byFont then
+        byFont = {}
+        measureCache[font] = byFont
+    end
+    local width = byFont[text]
+    if width == nil then
+        width = getTextManager():MeasureStringX(font, text)
+        byFont[text] = width
+    end
+    return width
+end
+
 function UICache.clear()
     measureCache = {}
     countWidthCache = {}

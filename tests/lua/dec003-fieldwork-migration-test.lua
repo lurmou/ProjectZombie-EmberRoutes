@@ -1,6 +1,6 @@
 -- Lua host parity, not Java/bridge/game execution. Old implementation is test-only.
-local Jobs=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
 local function copy(v) if type(v)~='table' then return v end local r={} for k,x in pairs(v) do r[k]=copy(x) end return r end
@@ -44,37 +44,37 @@ local function setup(old)
     local runtime={accepting=function() return true end,owns=function() return false end,
         submit=function(_,spec) specs[#specs+1]=spec return spec end,status=function() return nil end,
         inspect=function() return {state='REJECTED',reason='HOST_REJECT'} end}
-    package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
-    package.loaded['EmberRoutesProbe/LaborStore']=S
-    package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() return 'attempt' end,
+    package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobs end}
+    package.loaded['EmberRoutesProbe/Work/LaborStore']=S
+    package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() return 'attempt' end,
         inventoryChanged=function() end,revalidate=function() return true end,accepts=function() return true end,
         logistics=function() return 'STORAGE' end}
-    package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
-    package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle=npc} end,valid=function() return true end}
-    package.loaded['EmberRoutesProbe/Boot']={}
-    package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
-    package.loaded['EmberRoutesProbe/MembershipService']={view=function() return nil end}
-    package.loaded['EmberRoutesProbe/FieldSpatial']={}
-    package.loaded['EmberRoutesProbe/CraftSupply']={returnRoute=function() return {step=function() return endpoint,true end} end}
-    package.loaded['EmberRoutesProbe/WorkTransfer']={reachable=function() return true end}
-    package.loaded['EmberRoutesProbe/LaborProducers']={eligible=function() return true end}
+    package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return runtime end}
+    package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {handle=npc} end,valid=function() return true end}
+    package.loaded['EmberRoutesProbe/Kernel/Boot']={}
+    package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end}
+    package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function() return nil end}
+    package.loaded['EmberRoutesProbe/Field/FieldSpatial']={}
+    package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={returnRoute=function() return {step=function() return endpoint,true end} end}
+    package.loaded['EmberRoutesProbe/Work/WorkTransfer']={reachable=function() return true end}
+    package.loaded['EmberRoutesProbe/Work/LaborProducers']={eligible=function() return true end}
     package.loaded['TimedActions/ISInventoryTransferAction']=true
     package.loaded['TimedActions/ISGrabItemAction']=true
-    package.loaded['EmberRoutesProbe/FieldActions']={new=function(c,hooks)
+    package.loaded['EmberRoutesProbe/Field/FieldActions']={new=function(c,hooks)
         return {run=function()
             assert(hooks.valid()) location='stock'
             local ok=hooks.observe(true,true) return ok and 'Success' or 'Failure'
         end,settle=function() return true end}
     end}
-    package.loaded['EmberRoutesProbe/TaskBusinessStop']={new=function(options) return options end}
+    package.loaded['EmberRoutesProbe/Runtime/TaskBusinessStop']={new=function(options) return options end}
     for _,m in ipairs({'FieldWork','FieldContext','FieldSession','FieldCargo','FieldWorkflow','FieldSupplies'}) do
         package.loaded['EmberRoutesProbe/'..m]=nil
     end
-    require('EmberRoutesProbe/LaborDomainAdapters').install(S,st,function(_,j) return assert(j.claimId) end,clean,function() return true end)
+    require('EmberRoutesProbe/Work/LaborDomainAdapters').install(S,st,function(_,j) return assert(j.claimId) end,clean,function() return true end)
     if old then
         -- Frozen HEAD 7a36667 FIELD replace; oracle only, no production fallback.
         function S.replaceField(j,t,p)
-            if not S.validField(j,t) or not require('EmberRoutesProbe/FieldRecord').valid(p) then return false,'FIELD_JOB_CHANGED' end
+            if not S.validField(j,t) or not require('EmberRoutesProbe/Field/FieldRecord').valid(p) then return false,'FIELD_JOB_CHANGED' end
             local before=j.payload.claims
             local ok,why=st.claims:replace(t,p.payload.claims) if not ok then return false,why end
             ok,why=jobs:update(j.id,j.revision,{state=p.state,effects=p.effects,obligations=p.obligations,payload=p.payload})
@@ -84,10 +84,10 @@ local function setup(old)
     else
         st.bridge=dofile('tests/lua/fixtures/dec003-field-kernel-host.lua')
         st.bridge.install(st,alloc,clean)
-        require('EmberRoutesProbe/LaborJobCommit').install(S,st,alloc,clean)
+        require('EmberRoutesProbe/Work/LaborJobCommit').install(S,st,alloc,clean)
     end
-    if old then package.loaded['EmberRoutesProbe/FieldCargo']=dofile('tests/lua/fixtures/dec003-pre-kernel-fieldcargo.lua') end
-    local F=old and dofile('tests/lua/fixtures/dec003-pre-kernel-fieldwork.lua') or require 'EmberRoutesProbe/FieldWork'
+    if old then package.loaded['EmberRoutesProbe/Field/FieldCargo']=dofile('tests/lua/fixtures/dec003-pre-kernel-fieldcargo.lua') end
+    local F=old and dofile('tests/lua/fixtures/dec003-pre-kernel-fieldwork.lua') or require 'EmberRoutesProbe/Field/FieldWork'
     local def={category='lumberjack',claim=function()
         return {kind='TREE',x=1,y=1,z=0,identity='tree',toolSupply={requirements={
             {role='axe',itemId=22,custodyId='tool',containerId='warehouse'}}}},{'field:tree'}
@@ -111,7 +111,7 @@ local function setup(old)
         -- c is captured through the real context factory; keep domain admission out of native host proof.
         return context
     end
-    local Context=require 'EmberRoutesProbe/FieldContext'
+    local Context=require 'EmberRoutesProbe/Field/FieldContext'
     local original=Context.new
     Context.new=function(...)
         local c=original(...) if c then context=c c.valid=function() return c.same() end end return c
@@ -217,7 +217,7 @@ check(not spec.stopAdapter({},{}).persist({bodyStopped=true}) and terminalAttemp
     and t.custody.state=='HELD','terminal failure keeps visible custody release; reload required')
 t.J.cancel=cancel
 -- Pre-publication restore aliases Registry root: evidence of hard-stopped commit path.
-local recovery=require 'EmberRoutesProbe/FieldJobRecovery'
+local recovery=require 'EmberRoutesProbe/Field/FieldJobRecovery'
 local revision=t.J:get('field').revision
 recovery.restore({current=t.st.root,rebuilt=t.st.claims,hasConflict=function() return true end,rebuiltField={}})
 check(t.J:get('field').effects=='UNKNOWN' and t.J:get('field').revision==revision,'OPEN pre-publication UNKNOWN write reaches root without revision')

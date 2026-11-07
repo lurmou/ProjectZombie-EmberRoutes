@@ -23,7 +23,7 @@ function Info.new(owner,bounds,options)
                 badge.fontHeight=h
                 badge.displayText=Text.wrapLimited(badge.displayText,math.max(1,width-p*2),UIFont.Small,1)[1] or ''
                 badge.textWidth=getTextManager():MeasureStringX(UIFont.Small,badge.displayText)
-                badgeW=badge.textWidth+p*2
+                badgeW=badge.textWidth+SemanticBadge.ICON_SLOT+p*2
             end
             local below=badge and width-p*3-badgeW<h*6
             local title=Text.wrap(row.title or '',math.max(1,width-p*2-(row.portrait and h*3+p or 0)-(below and 0 or badgeW+p)),titleFont)
@@ -76,7 +76,7 @@ function Info.new(owner,bounds,options)
             local slots={}
             for i,asset in ipairs(row.slots) do
                 slots[i]=Slot.prepare({icon=icons:icon(asset.fullType),name=asset.name,
-                    countText='× '..tostring(asset.count or 1),status=asset.status},
+                    countText='x '..tostring(asset.count or 1),status=asset.status},
                     {x=p+((i-1)%cols)*(cellW+p),y=math.floor((i-1)/cols)*cellH,width=cellW,height=cellH},Theme.revision)
             end
             return {slots=slots,height=math.ceil(#slots/cols)*cellH}
@@ -87,9 +87,9 @@ function Info.new(owner,bounds,options)
             local rowH=math.max(26,math.floor(h*1.6))
             local badgeDesc=SemanticBadge.resolve(row.status or 'STORED',row.statusText)
             local tm=getTextManager()
-            local badgeW=tm:MeasureStringX(UIFont.Small,badgeDesc.displayText or badgeDesc.label or '')+12
-            badgeDesc.fontHeight=h badgeDesc.textWidth=badgeW-12
-            local countStr='× '..tostring(row.count or 1)
+            local badgeW=tm:MeasureStringX(UIFont.Small,badgeDesc.displayText or badgeDesc.label or '')+SemanticBadge.ICON_SLOT+12
+            badgeDesc.fontHeight=h badgeDesc.textWidth=badgeW-SemanticBadge.ICON_SLOT-12
+            local countStr='x '..tostring(row.count or 1)
             local countW=tm:MeasureStringX(UIFont.Small,countStr)
             local cardW=math.max(10,list.width-owner.pad*2)
             local iconSize=rowH-6
@@ -106,9 +106,12 @@ function Info.new(owner,bounds,options)
         local icon=icons:icon(row.fullType)
         local offset=icon and owner.fontHeight*1.5+owner.pad or 0
         if row.compact then
-            local labelW=row.labelW or math.max(36,getTextManager():MeasureStringX(UIFont.Small,row.text or '')+8)
-            local meterH=math.max(12,math.floor(owner.fontHeight*0.85))
-            return {lines={},icon=nil,offset=0,labelW=labelW,meterH=meterH,compact=true,
+            local tm=getTextManager()
+            local labelW=row.labelW or math.max(36,tm:MeasureStringX(UIFont.Small,row.text or '')+8)
+            local meterH=math.max(10,math.floor(owner.fontHeight*0.65))
+            local pctStr=row.meterLabel or (row.fraction and (math.floor(row.fraction*100)..'%') or '')
+            local pctW=pctStr~='' and (tm:MeasureStringX(UIFont.Small,pctStr)+8) or 0
+            return {lines={},icon=nil,offset=0,labelW=labelW,meterH=meterH,pctStr=pctStr,pctW=pctW,compact=true,
                     height=owner.fontHeight+math.max(4,math.floor(owner.pad*0.4))}
         end
         local lines=Text.wrap(row.text or '',math.max(1,list.width-owner.pad*3-offset),UIFont.Small)
@@ -180,15 +183,17 @@ function Info.new(owner,bounds,options)
             local top=y+(rowH-owner.fontHeight)/2
             Theme.text(list,row.text or '',pad,top,row.color or Theme.textColor)
             local barX=pad+labelW
-            local barW=math.max(10,list.width-barX-pad*2)
+            local barW=math.max(10,list.width-barX-pad*2-(v.pctW or 0))
             local barY=y+(rowH-v.meterH)/2
             StatMeter.draw(list,barX,barY,barW,v.meterH,row.fraction or 0,{
                 mode=row.meterMode or 'health',
                 color=row.barColor or row.color,
-                showPercent=(row.showPercent~=false),
-                label=row.meterLabel,
-                labelW=row.meterLabelW
+                showPercent=false,
+                label=nil
             })
+            if v.pctStr and v.pctStr~='' then
+                Theme.text(list,v.pctStr,barX+barW+6,top,Theme.textColor)
+            end
             return y+entry.height
         end
         if v.icon then list:drawTextureScaledAspect(v.icon,owner.pad,y,owner.fontHeight*1.5,owner.fontHeight*1.5,1,1,1,1) end

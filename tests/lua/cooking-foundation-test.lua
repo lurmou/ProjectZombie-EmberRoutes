@@ -1,8 +1,8 @@
--- Real shared admission/Jobs/Claims; native objects remain the existing host fixture.
-local Policy=require 'EmberRoutesProbe/CookingPolicy'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local JobStore=require 'EmberRoutesProbe/JobStore'
-local Budget=require 'EmberRoutesProbe/CookingBudget'
+-- Real admission/Jobs/Claims; native objects remain the existing host fixture.
+local Policy=require 'EmberRoutesProbe/Cooking/CookingPolicy'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
+local Budget=require 'EmberRoutesProbe/Cooking/CookingBudget'
 local checks=0
 local function check(v,message) checks=checks+1 assert(v,message) end
 local function near(a,b) return math.abs(a-b)<0.000001 end
@@ -82,7 +82,7 @@ cleared.state='DONE' cleared.payload.phase='SETTLED'
 check(Record.valid(cleared),'verified shutdown receipt survives clearing furnace obligation')
 -- Raw depletion and effective meal coverage must never be confused.
 function instanceof(value,kind) return kind=='Food' and value.food==true end
-local Food=require 'EmberRoutesProbe/CookingFood'
+local Food=require 'EmberRoutesProbe/Cooking/CookingFood'
 local function dish(raw,effective)
     local item={food=true}
     function item:getID() return 77 end

@@ -33,7 +33,7 @@ ERMedicalLoopOnly=function(h)
     -- A different personal Job cannot reserve the same original.
     local other=h.Record.create('other-care','b')
     other.payload=assert(h.Record.begin(other,'MEDICAL')) other.payload.itemId=item.id other.payload.claims={'item:'..item.id}
-    assert(require('EmberRoutesProbe/MedicalCare').begin(other.payload,{medical=facts},item))
+    assert(require('EmberRoutesProbe/SelfCare/MedicalCare').begin(other.payload,{medical=facts},item))
     assert(h.jobs:create(other))
     h.check(not h.Store.claimPersonal(h.jobs:get(other.id)),'two NPCs cannot claim one bandage')
     h.native() h.tick(spec)
@@ -63,10 +63,10 @@ ERMedicalLoopOnly=function(h)
     saved=h.jobs:get('care')
     h.check(saved.payload.step=='SETTLING' and h.Store.owner(900),'blocked meal original remains a real obligation')
     item=bandage(h.main) part.covered=false
-    package.loaded['EmberRoutesProbe/NeedsObserver']={sample=function()
+    package.loaded['EmberRoutesProbe/SelfCare/NeedsObserver']={sample=function()
         return {hunger=0,thirst=0,fatigue=0,endurance=1,safe=false,externalSafe=true}
     end}
-    package.loaded['EmberRoutesProbe/SelfCareResources'].new=function()
+    package.loaded['EmberRoutesProbe/SelfCare/SelfCareResources'].new=function()
         return {step=function() return {id=item.id,item=item,container=h.main,npc=h.npc},true end}
     end
     local recovery,rc=h.recover(saved,{[900]=meal})

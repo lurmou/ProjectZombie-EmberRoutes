@@ -9,6 +9,33 @@ local Presentation = require 'EmberRoutesProbe/UI/ActivityPresentation'
 
 local Board = {}
 
+-- Static draw tables and text widths: these functions run inside the draw
+-- loop every frame, so they must not allocate tables or call the font manager
+-- for strings that repeat.
+local COLORS = {
+    RUNNING    = { r = 0.25, g = 0.75, b = 0.45, a = 1 },
+    GATHERING  = { r = 0.85, g = 0.65, b = 0.25, a = 1 },
+    IDLE       = { r = 0.45, g = 0.55, b = 0.65, a = 1 },
+    BAR_TRACK  = { r = 0.15, g = 0.18, b = 0.22, a = 1 },
+    BENEFIT    = { r = 0.45, g = 0.75, b = 0.55, a = 0.9 },
+    READY      = { r = 0.35, g = 0.75, b = 0.45, a = 1 },
+    ADMITTED   = { r = 0.25, g = 0.65, b = 0.85, a = 1 },
+    TRAVELLING = { r = 0.35, g = 0.55, b = 0.75, a = 1 },
+    ALERT      = { r = 0.85, g = 0.35, b = 0.25, a = 1 },
+    BADGE_BG   = { r = 0.12, g = 0.16, b = 0.20, a = 0.9 },
+    HOURS      = { r = 0.45, g = 0.85, b = 0.55, a = 1 }
+}
+
+local measureCache = {}
+local function measureSmall(text)
+    local width = measureCache[text]
+    if not width then
+        width = (getTextManager and getTextManager():MeasureStringX(UIFont.Small, text)) or (#text * 8)
+        measureCache[text] = width
+    end
+    return width
+end
+
 
 local function t(key, ...)
     if _G.getText then
@@ -36,9 +63,9 @@ function Board.drawStrip(owner, x, y, width, height, detail)
     local hoursNow = getGameTime():getWorldAgeHours()
 
     -- 1. Phase Header & Badge
-    local badgeCol = state == 'RUNNING' and { r = 0.25, g = 0.75, b = 0.45, a = 1 }
-        or state == 'GATHERING' and { r = 0.85, g = 0.65, b = 0.25, a = 1 }
-        or state == 'CLOSED' and Theme.muted or { r = 0.45, g = 0.55, b = 0.65, a = 1 }
+    local badgeCol = state == 'RUNNING' and COLORS.RUNNING
+        or state == 'GATHERING' and COLORS.GATHERING
+        or state == 'CLOSED' and Theme.muted or COLORS.IDLE
 
     Theme.rect(owner, x, y, 4, height, badgeCol)
     Theme.text(owner, t('currentPhase') .. ': ' .. phaseName, x + pad + 4, y + pad / 2, Theme.textColor, UIFont.Medium or UIFont.Small)
@@ -57,7 +84,7 @@ function Board.drawStrip(owner, x, y, width, height, detail)
     end
 
     if #timeText > 0 then
-        local tw = (getTextManager and getTextManager():MeasureStringX(UIFont.Small, timeText) or (#timeText * 8)) + 12
+        local tw = measureSmall(timeText) + 12
         Theme.text(owner, timeText, x + width - tw, y + pad / 2, badgeCol, UIFont.Small)
     end
 
@@ -65,7 +92,7 @@ function Board.drawStrip(owner, x, y, width, height, detail)
     local barY = y + fh + pad / 2 + 2
     local barW = width - (pad * 2) - 8
     local barH = 6
-    Theme.rect(owner, x + pad + 4, barY, barW, barH, { r = 0.15, g = 0.18, b = 0.22, a = 1 })
+    Theme.rect(owner, x + pad + 4, barY, barW, barH, COLORS.BAR_TRACK)
 
     local ratio = 0
     if state == 'GATHERING' then
@@ -89,9 +116,9 @@ function Board.drawStrip(owner, x, y, width, height, detail)
 
     -- 3. Benefit Status Strip (Strictly truthful)
     local noteY = barY + barH + 4
-    local benefitNote = state == 'CLOSED' and (Presentation.outcomeText(detail.outcome) .. ' · ' .. t('benefitDebriefNotice'))
+    local benefitNote = state == 'CLOSED' and (Presentation.outcomeText(detail.outcome) .. ' | ' .. t('benefitDebriefNotice'))
         or Presentation.benefitText(nil, state, nil)
-    Theme.text(owner, benefitNote, x + pad + 4, noteY, { r = 0.45, g = 0.75, b = 0.55, a = 0.9 }, UIFont.Small)
+    Theme.text(owner, benefitNote, x + pad + 4, noteY, COLORS.BENEFIT, UIFont.Small)
 end
 
 ---Draws a single resident card inside the live presence grid.
@@ -117,10 +144,10 @@ function Board.drawResidentCard(owner, x, y, width, height, name, role, member, 
     local badge = Presentation.statusBadge(state, member.reason)
 
     -- Status accent line
-    local col = badge.badgeType == 'READY' and { r = 0.35, g = 0.75, b = 0.45, a = 1 }
-        or badge.badgeType == 'ADMITTED' and { r = 0.25, g = 0.65, b = 0.85, a = 1 }
-        or badge.badgeType == 'TRAVELLING' and { r = 0.35, g = 0.55, b = 0.75, a = 1 }
-        or badge.badgeType == 'ALERT' and { r = 0.85, g = 0.35, b = 0.25, a = 1 }
+    local col = badge.badgeType == 'READY' and COLORS.READY
+        or badge.badgeType == 'ADMITTED' and COLORS.ADMITTED
+        or badge.badgeType == 'TRAVELLING' and COLORS.TRAVELLING
+        or badge.badgeType == 'ALERT' and COLORS.ALERT
         or Theme.muted
     Theme.rect(owner, x, y, 3, height, col)
 
@@ -128,14 +155,14 @@ function Board.drawResidentCard(owner, x, y, width, height, name, role, member, 
     local cy = y + 4
 
     -- 1. Name & Role
-    local roleTag = isSpeaker and (' · ' .. t('speaker')) or isOrganizer and (' · ' .. t('organizer')) or (role and (' · ' .. role) or '')
+    local roleTag = isSpeaker and (' | ' .. t('speaker')) or isOrganizer and (' | ' .. t('organizer')) or (role and (' | ' .. role) or '')
     Theme.text(owner, name .. roleTag, cx, cy, Theme.textColor, UIFont.Small)
 
     -- Badge pill
     local badgeText = badge.text or ''
-    local bw = (getTextManager and getTextManager():MeasureStringX(UIFont.Small, badgeText) or (#badgeText * 8)) + 8
+    local bw = measureSmall(badgeText) + 8
     local bx = x + width - bw - pad
-    Theme.rect(owner, bx, cy, bw, fh, { r = 0.12, g = 0.16, b = 0.20, a = 0.9 })
+    Theme.rect(owner, bx, cy, bw, fh, COLORS.BADGE_BG)
     Theme.rect(owner, bx, cy, bw, fh, col, true)
     Theme.text(owner, badgeText, bx + 4, cy, col, UIFont.Small)
 
@@ -151,7 +178,7 @@ function Board.drawResidentCard(owner, x, y, width, height, name, role, member, 
     -- 3. Accrued participation hours
     local minutes = math.floor((member.participationHours or 0) * 60 + 0.5)
     if minutes > 0 or member.joined then
-        Theme.text(owner, t('participationHoursLabel', minutes), cx, cy, { r = 0.45, g = 0.85, b = 0.55, a = 1 }, UIFont.Small)
+        Theme.text(owner, t('participationHoursLabel', minutes), cx, cy, COLORS.HOURS, UIFont.Small)
     end
 end
 

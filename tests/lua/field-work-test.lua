@@ -10,14 +10,14 @@ local now=0
 getTimestampMs=function() return now end
 ISTimedActionQueue={queues={},clear=function() end}
 local registry={data=function() return root end,id=function() return 'random' end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=registry
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
-local macro=require 'EmberRoutesProbe/MembershipPolicy'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=registry
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
+local macro=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
 local pendingByNpc,contextByNpc={},{}
 local entry={id='scope',factionId='f',revision=1,areas={{x=0,y=0,w=10,h=10}}}
-package.loaded['EmberRoutesProbe/MembershipService']={
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={
  check=function(id,purpose,observation)
   return macro.evaluate({settlementId='scope',factionId='f',context=contextByNpc[id] or 'SETTLEMENT',revision=(pendingByNpc[id] or contextByNpc[id]) and 2 or 1,
    pendingCommand=pendingByNpc[id]},entry,purpose,observation)
@@ -25,25 +25,25 @@ package.loaded['EmberRoutesProbe/MembershipService']={
  entry=function(_,scope) return entry,nil,1 end,
  view=function(id) return {settlementId='scope',context=contextByNpc[id] or 'SETTLEMENT',pending=pendingByNpc[id]} end}
 
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root end}
-package.loaded['EmberRoutesProbe/SettlementZones']={revision=function() return 1 end}
-package.loaded['EmberRoutesProbe/ActivityAttendance']={blocksOrdinary=function() return false end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={}} end,legacyCrafts=function() return {} end,flush=function() end}
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={revision=function() return 1 end}
+package.loaded['EmberRoutesProbe/Activity/ActivityAttendance']={blocksOrdinary=function() return false end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={}} end,legacyCrafts=function() return {} end,flush=function() end}
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 Jobs.current()
 local controls={}
-package.loaded['EmberRoutesProbe/Driver']={valid=function() return true end,
+package.loaded['EmberRoutesProbe/Runtime/Driver']={valid=function() return true end,
  bindId=function(_,id) return {id=id,handle=npc} end,
  acquireControl=function(binding,job,generation) local c={binding=binding,job=job,generation=generation} controls[job]=c return c end,
  releaseControl=function(c) controls[c.job]=nil return true end,
  stopControlled=function() return true end,
  stopEvidence=function() return {available=true,nativeStopped=true,nativeMask=0} end}
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-package.loaded['EmberRoutesProbe/FieldCargo']={step=function(c) c.change(function(j) for _,a in ipairs(j.payload.assets) do a.custody='DELIVERED' end end) return 'Success' end}
-local Field=require 'EmberRoutesProbe/FieldWork'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Directory=require 'EmberRoutesProbe/TaskDirectory'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+package.loaded['EmberRoutesProbe/Field/FieldCargo']={step=function(c) c.change(function(j) for _,a in ipairs(j.payload.assets) do a.custody='DELIVERED' end end) return 'Success' end}
+local Field=require 'EmberRoutesProbe/Field/FieldWork'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory'
 local dir=Directory.new()
 local contexts={}
 local fail=false local continuations=0
@@ -77,10 +77,10 @@ local j=Jobs.current():get('j1')
 check(j.state=='SUSPENDED' and j.effects=='KNOWN','known stop persisted')
 check(Store.resourceOwner('field-target:target1').taskId=='j1','pause retains responsibility')
 local pausedRevision=j.revision
-package.loaded['EmberRoutesProbe/Boot'].careBlocksWork=function() return true end
+package.loaded['EmberRoutesProbe/Kernel/Boot'].careBlocksWork=function() return true end
 Field.advance({actor=actor,now=now+1000,directory=dir})
 check(Jobs.current():get('j1').revision==pausedRevision,'retry pacing does not invalidate the durable self-care resume relation')
-package.loaded['EmberRoutesProbe/Boot'].careBlocksWork=nil
+package.loaded['EmberRoutesProbe/Kernel/Boot'].careBlocksWork=nil
 check(Field.wake(actor,'npc1','j1','care'),'resume same job') step(8)
 local c=contexts.j1
 check(c.change(function(v) v.payload.testDone=true end),'publish actual effect') step(12)
@@ -99,7 +99,7 @@ check(unknown.state=='RECONCILE_REQUIRED' and unknown.effects=='UNKNOWN','unknow
 check(Store.resourceOwner('field-target:target1').taskId=='j2','unknown keeps shared claims')
 check(not Field.wake(actor,'npc2','j2'),'unknown cannot replay')
 -- Re-open save envelope rejects nonserializable facts and retains field claims.
-local reopened=assert(require('EmberRoutesProbe/JobStore').open(root))
+local reopened=assert(require('EmberRoutesProbe/Kernel/JobStore').open(root))
 check(reopened:get('j2').payload.target.identity=='target1','field survives store reload')
 -- Changing settlement waits on custody, but cannot prohibit that custody's recovery.
 fail=false
@@ -125,9 +125,9 @@ end
 -- Provider limit counts eligible offers, not deferred offers rejected later by the selector.
 local points={}
 for i=1,4 do points[i]={kind='STAIN',x=i,y=0,z=0,identity='target'..i} end
-package.loaded['EmberRoutesProbe/FieldDiscovery']={targets=function() return points end,allowed=function() return true end}
-package.loaded['EmberRoutesProbe/FieldOperations']={supplies=function() return {} end}
-local provider=require('EmberRoutesProbe/FieldProviders').get('cleaning')
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']={targets=function() return points end,allowed=function() return true end}
+package.loaded['EmberRoutesProbe/Field/FieldOperations']={supplies=function() return {} end}
+local provider=require('EmberRoutesProbe/Field/FieldProviders').get('cleaning')
 local discovery={npc=npc,npcId='other',entry={id='scope',revision=1},now=now+1000,directory=Directory.new(),candidates={},
     candidateReady=function(key) return string.find(key,'target4',1,true)~=nil end}
 provider.discover(discovery)

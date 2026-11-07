@@ -17,29 +17,29 @@ local token={}
 local Store={record=function() return record end,valid=function() return true end,
     claim=function() claims=claims+1 return token end,publish=function() return true end,
     pause=function() return token end,releaseCapacity=function() return true end,capacity=function() return true end}
-package.loaded['EmberRoutesProbe/LaborStore']=Store
-package.loaded['EmberRoutesProbe/ContainerRegistry']={resolve=function(id) return id=='source' and source or destination end,
+package.loaded['EmberRoutesProbe/Work/LaborStore']=Store
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={resolve=function(id) return id=='source' and source or destination end,
     revalidate=function(ep) return ep end}
 package.loaded['EmberRoutesProbe/Hauling/HaulManifest']={valid=function(r) return r==record end,
     pending=function(l) return l.custodyState=='UNCOLLECTED' end,claimItemIds=function() return {1} end}
-package.loaded['EmberRoutesProbe/InventoryView']={scan=function() return {step=function() return {} end} end,
+package.loaded['EmberRoutesProbe/Warehouse/InventoryView']={scan=function() return {step=function() return {} end} end,
     find=function() return item,2 end}
-package.loaded['EmberRoutesProbe/LaborProducers']={transfer=function() return true end,freeCarry=function() return 20 end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {id='npc',handle=npc} end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={}
+package.loaded['EmberRoutesProbe/Work/LaborProducers']={transfer=function() return true end,freeCarry=function() return 20 end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {id='npc',handle=npc} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={}
 package.loaded['EmberRoutesProbe/Hauling/HaulRouting']={accept=function() return true end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end}
 local Probe={ready=true,controlledExecution=false}
-package.loaded['EmberRoutesProbe/Boot']=Probe
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/DeliveryTarget']={}
-package.loaded['EmberRoutesProbe/DisplayNames']={name=function() return 'Worker' end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Logistics/DeliveryTarget']={}
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function() return 'Worker' end}
 package.loaded['EmberRoutesProbe/Hauling/HaulJobs']={commit=function() commits=commits+1 return true end}
-package.loaded['EmberRoutesProbe/HealthAssessment']={canWork=function() return true end}
+package.loaded['EmberRoutesProbe/SelfCare/HealthAssessment']={canWork=function() return true end}
 ISTimedActionQueue={clear=function() end}
 EmberRoutesProbeJava={carrierPresent=function() return true end,stopCarrier=function() end}
 local failAtStart=false
-package.loaded['EmberRoutesProbe/WorkTransfer']={reachable=function() return false end,move=function()
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={reachable=function() return false end,move=function()
     return {start=function() moves=moves+1 if failAtStart then return 'FAILED','NO_WALKABLE_ADJACENT_TILE' end end,
         poll=function() return 'FAILED','PATH_FAILED' end}
 end}

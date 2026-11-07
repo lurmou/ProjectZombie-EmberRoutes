@@ -1,8 +1,8 @@
 -- PersonnelService enrichWorkers and caching test
 package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local root={}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
 
 local mockNpc={
     getPerkLevel=function(_,perk)
@@ -47,18 +47,18 @@ Perks={
     Tailoring='Tailoring'
 }
 
-package.loaded['EmberRoutesProbe/Driver']={
+package.loaded['EmberRoutesProbe/Runtime/Driver']={
     bindId=function(_,id)
         if id=='worker1' then return {id=id,handle=mockNpc} end
         return nil
     end,
     valid=function() return true end
 }
-package.loaded['EmberRoutesProbe/PublicWork']={
+package.loaded['EmberRoutesProbe/Work/PublicWork']={
     priorities=function(id) return {crafting=2,hauling=1,revision=1} end
 }
 
-local Service=require 'EmberRoutesProbe/PersonnelService'
+local Service=require 'EmberRoutesProbe/Settlement/PersonnelService'
 
 local rawWorkers={
     {id='worker1',name='Alice',busy=false}

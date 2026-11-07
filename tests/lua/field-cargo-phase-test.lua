@@ -2,12 +2,12 @@
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
 package.loaded['TimedActions/ISInventoryTransferAction']=true
 package.loaded['TimedActions/ISGrabItemAction']=true
-package.loaded['EmberRoutesProbe/ContainerRegistry']={}
-package.loaded['EmberRoutesProbe/LaborStore']={}
-package.loaded['EmberRoutesProbe/FieldSpatial']={square=function() return nil end}
-package.loaded['EmberRoutesProbe/CraftSupply']={}
-package.loaded['EmberRoutesProbe/WorkTransfer']={}
-local C=require 'EmberRoutesProbe/FieldCargo'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={}
+package.loaded['EmberRoutesProbe/Field/FieldSpatial']={square=function() return nil end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={}
+local C=require 'EmberRoutesProbe/Field/FieldCargo'
 local c={job={effects='KNOWN',payload={phase='COLLECT',assets={{id=1,fullType='Base.Log',custody='HELD'}}}},
     npc={getInventory=function() return {getItems=function() return {size=function() return 0 end} end} end}}
 c.change=function(fn) fn(c.job) return true end

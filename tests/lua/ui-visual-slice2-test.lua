@@ -117,17 +117,17 @@ Theme.applyPreset('classic')
 check(not scope:isCurrent() and #page.details.list.items==count and not page.activation,'old token and theme listener released')
 shell:close()
 -- Bounded stable-ID portrait cache with actual service and fake engine binding.
-package.loaded['EmberRoutesProbe/PersonnelService']=nil
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return ERPortraitWorld end}
+package.loaded['EmberRoutesProbe/Settlement/PersonnelService']=nil
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return ERPortraitWorld end}
 ERPortraitWorld={}
 local handle={}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle=handle} end,valid=function() return true end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return {} end}
-package.loaded['EmberRoutesProbe/Boot']={}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {handle=handle} end,valid=function() return true end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() return {} end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
 local gets=0 local clock=0
 getTimestampMs=function() return clock end
 EmberRoutesProbeJava={getPortraitTexture=function() gets=gets+1 return 'texture' end}
-local Personnel=require 'EmberRoutesProbe/PersonnelService'
+local Personnel=require 'EmberRoutesProbe/Settlement/PersonnelService'
 local owner={}
 local shot=Personnel.portrait({},'home','npc',false,owner)
 check(shot.texture=='texture' and gets==1,'activation fetches a detached snapshot')

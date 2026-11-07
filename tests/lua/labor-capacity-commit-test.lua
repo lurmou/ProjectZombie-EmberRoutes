@@ -1,9 +1,9 @@
 -- Actual Job/Labor authority; no engine effects or disk codec.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local root={format=1,taskJobs={format=1,byId={}},containers={},quarantineResources={}}
 Registry.data=function() return root end
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local n=0 local function check(value,label) n=n+1 assert(value,label) end
 local nativeCalls=0
 if ERLaborTestBridge then

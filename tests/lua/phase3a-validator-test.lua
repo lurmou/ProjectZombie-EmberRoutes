@@ -1,9 +1,9 @@
 -- Phase 3A: JobStore and CRAFT/HAUL validator integration tests (v1.4 Errata Revision).
 -- Tests defensive structure validation, assetFree compatibility, legacy format support, and Store.validate.
-local Store = require 'EmberRoutesProbe/JobStore'
-local CraftJobRecord = require 'EmberRoutesProbe/CraftJobRecord'
+local Store = require 'EmberRoutesProbe/Kernel/JobStore'
+local CraftJobRecord = require 'EmberRoutesProbe/Crafting/CraftJobRecord'
 local HaulJobRecord = require 'EmberRoutesProbe/Hauling/HaulJobRecord'
-local ProductionYield = require 'EmberRoutesProbe/ProductionYield'
+local ProductionYield = require 'EmberRoutesProbe/Crafting/ProductionYield'
 
 local function assertEq(actual, expected, msg)
     if actual ~= expected then

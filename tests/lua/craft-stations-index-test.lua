@@ -1,7 +1,7 @@
 local f=dofile('tests/lua/repose-sites-test.lua')
-local Index=require 'EmberRoutesProbe/SettlementFacilities'
-local Stations=require 'EmberRoutesProbe/CraftStations'
-local Config=require 'EmberRoutesProbe/TickConfig'
+local Index=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
+local Stations=require 'EmberRoutesProbe/Crafting/CraftStations'
+local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 ComponentType={CraftBench='CraftBench'}
 local recipe={}

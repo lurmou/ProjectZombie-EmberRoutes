@@ -1,11 +1,11 @@
 -- TEST ONLY: host Lua model of NEW Java work-capacity logic, NOT Java proof.
 -- COOKING capability is a test-only switch, restored and asserted at exit; production stays OFF.
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local JobStore=require 'EmberRoutesProbe/JobStore'
-local Budget=require 'EmberRoutesProbe/CookingBudget'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
-local Contracts=require 'EmberRoutesProbe/JobContracts'
-require('EmberRoutesProbe/BuiltinJobContracts').install()
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
+local Budget=require 'EmberRoutesProbe/Cooking/CookingBudget'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
+local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
+require('EmberRoutesProbe/Kernel/BuiltinJobContracts').install()
 local model=dofile('tests/lua/fixtures/dec003-workcapacity-kernel-host.lua')
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
@@ -24,12 +24,12 @@ local function setup(root)
     function S.getToken(id) return st.tokens[id] or st.cookingTokens[id] end
     function S.owner(id) return st.claims.owners['item:'..id] end
     function S.availableCapacity(key,free) return st.claims:available(key,free) end
-    package.loaded['EmberRoutesProbe/LaborStore']=S
-    package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
-    require('EmberRoutesProbe/LaborDomainAdapters').install(S,st,identity,clean,function() return true end)
-    require('EmberRoutesProbe/LaborJobCommit').install(S,st,alloc,clean)
+    package.loaded['EmberRoutesProbe/Work/LaborStore']=S
+    package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobs end}
+    require('EmberRoutesProbe/Work/LaborDomainAdapters').install(S,st,identity,clean,function() return true end)
+    require('EmberRoutesProbe/Work/LaborJobCommit').install(S,st,alloc,clean)
     model.install(st,alloc,clean)
-    require('EmberRoutesProbe/CookingJobRecovery').restore({current=root,rebuilt=st.claims,
+    require('EmberRoutesProbe/Cooking/CookingJobRecovery').restore({current=root,rebuilt=st.claims,
         hasConflict=function() return false end,ensureEntityClaimId=identity,rebuiltCooking=st.cookingTokens})
     return S,st,jobs
 end
@@ -244,11 +244,11 @@ check(restored.availableCapacity('foundation-cold',6)==2,
 
 -- Real Capacity -> Context -> replaceCooking -> LaborJobCommit -> host model.
 local Store,state,storeJobs=setup()
-package.loaded['EmberRoutesProbe/CookingContext']=nil
-package.loaded['EmberRoutesProbe/CookingCapacity']=nil
-package.loaded['EmberRoutesProbe/ContainerRegistry']={revalidate=function() return true end}
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Capacity=require 'EmberRoutesProbe/CookingCapacity'
+package.loaded['EmberRoutesProbe/Cooking/CookingContext']=nil
+package.loaded['EmberRoutesProbe/Cooking/CookingCapacity']=nil
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={revalidate=function() return true end}
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Capacity=require 'EmberRoutesProbe/Cooking/CookingCapacity'
 local j=job('capacity-chain','chain-chef') assert(Store.createClaimedJob(j))
 local c={job=storeJobs:get(j.id),token=assert(Store.claimCooking(storeJobs:get(j.id))),npc={},
     body={current=function() return true end},valid=function() return true end}

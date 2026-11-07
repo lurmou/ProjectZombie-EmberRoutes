@@ -1,10 +1,6 @@
 # 据点与仓储读取基础
 
-0.9.1更新展示契约：[脏行修复](reviews/2026-10-20/probe-0.9.1-warehouse-dirty-ui.md)。业务UPDATING快照仍不提供旧库存；新增retain/dirtySources/dirtyAll，仅允许UI保留行结构，受影响数量必须标未知。权限/范围/错误立即清理；READY按稳定key修补，页码/选择/滚动不因存取重置。该补充覆盖下文“撤下旧可见行”的视觉策略，候选和资产边界不变。
-
-日期：2026-10-20；状态：0.8.0实现，本地检查完成后仍须实机验收。依据[本阶段设计](superpowers/specs/2026-10-20-settlement-storage-design.md)。用户明确基础架构的性能、扩展和维护性优先；以下是可核查契约，不是未测性能承诺。
-
-0.9.0收口依据[新设计](superpowers/specs/2026-10-20-warehouse-contracts-design.md)和[实施计划](superpowers/plans/2026-10-20-warehouse-contracts.md)，覆盖下文原有预算/通知细节；[集中复测](testing/single-player-warehouse-contracts.md)。
+> 状态：正式实现，包含跨容器只读盘点、脏行修补、标量推进预算与候选定位。UI 订阅快照采用版本化机制，READY 按稳定 key 修补，页码与选择不因存取重置。
 
 ## 模块与依赖方向
 
@@ -33,7 +29,7 @@
 
 format=1；settlementId、settlementRevision、revision（读取视图代次）、coverage=ROOT_ONLY、state、rows、counts、reason、readAt。readAt是本服务推进计数，不是现实时间或可结算时钟。rows按fullType汇总，保留分类node、原实例件数和各source的稳定ID/XYZ/数量/容器名称元数据；不发布或持久化userdata。订阅者按只读契约使用共享快照，派生UI行自行复制。
 
-数量表示InventoryItem实例件数，不是液体体积、重量、配方份数或可支配余额。只覆盖已登记容器的直接物品（0.8.1起包含独立登记的冰柜副格），不含包内、NPC身上或未加载库存。错放物品仍是实际存量：过滤规则限制NPC存入，不把已存在的物品从盘点隐藏。私人/停用或未配置不读其库存；未配置容器不会为了计数而被全地图发现。
+数量表示InventoryItem实例件数，不是液体体积、重量、配方份数或可支配余额。只覆盖已登记容器的直接物品（包含独立登记的冰柜副格），不含包内、NPC身上或未加载库存。错放物品仍是实际存量：过滤规则限制NPC存入，不把已存在的物品从盘点隐藏。私人/停用或未配置不读其库存；未配置容器不会为了计数而被全地图发现。
 
 状态将loaded/unloaded/private/missing/limited区分；READY表示本次已知成员完成检查，不表示未加载仓库为零。ERROR不给部分结果冒充总量。新盘点/撤权立即撤下旧可见行；重复物品ID拒绝该轮汇总。普通世界保存不等于跨文件崩溃原子性。
 
@@ -54,13 +50,11 @@ OnContainerUpdate本身不足以证明所有物品变更都有通知。当前NPC
 
 下一阶段可基于这些接口增加多仓分拣；多NPC并行之前必须先增加物品/容量/任务预留与仲裁。BOM、宏观商队、嵌套库存访问器和账本合并迁移均另验，不能复用“只读汇总通过”作为结算正确证据。
 
-实现和证据：[0.8.0记录](reviews/2026-10-20/probe-0.8.0-settlement-storage.md)。
-
-## 0.8.1容器身份兼容
+## 容器身份与定位
 
 旧主容器仍使用对象EmberRoutesContainer及原ID；副容器在EmberRoutesContainers中以0基容器索引独立登记。坐标记录追加containerIndex/containerType；旧记录缺省索引0，无需批量迁移。执行和读取同时重验对象标记、实际容器索引与类型；副格消失不得回退到主格。索引/类型不能识别第三方在同对象同槽位同类型的原位替换，遇到此类兼容应补验证，不能宣称支持任意容器重排。配置、隐私、实际搬运通知和盘点均按实际端点处理，界面不靠缓存库存身份裁决。
 
-## 0.9.0候选与执行接口
+## 候选与执行接口
 
 `Index.candidates(actor,settlementId,{fullType,origin?,limit?})`先经Ledger.view验证本地角色、归属与位置。fullType为精确类型字符串；origin是有限XYZ数值，limit为1..256整数、默认32。调用方持有watch订阅及release，查询本身不隐式启动后台作业。未请求返回NOT_REQUESTED；更新/错误返回状态而没有旧数量。READY才有knownCount（已知可读成员中的原实例件数）、complete和脱离缓存的sources；部分范围中某类型knownCount=0不代表全据点为零。
 

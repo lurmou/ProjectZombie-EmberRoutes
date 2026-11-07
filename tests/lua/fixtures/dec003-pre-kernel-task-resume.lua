@@ -1,7 +1,7 @@
 -- TEST ONLY: frozen a16eb0b SELF_CARE baseline, never loaded by production.
 -- Durable cross-session relation. Never owns a body or reclaims public work.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Resume={}
 local kinds={PRODUCTION='CRAFT',TRANSFER='HAUL',COMPANION='COMPANION',COOKING='COOKING',FIELD_WORK='FIELD_WORK'}
 local function epochs()
@@ -45,8 +45,8 @@ local function business(ref,id)
         if j and j.npcId==id then return {id=j.id,generation=j.revision,
             state=j.state=='SUSPENDED' and 'PAUSED' or j.state,reason=j.payload.reason,uncertain=j.effects~='KNOWN'} end
     end
-    if ref.kind=='PRODUCTION' then return require('EmberRoutesProbe/BusinessJobs').crafts()[id] end
-    if ref.kind=='TRANSFER' then return require('EmberRoutesProbe/Work').record(id) end
+    if ref.kind=='PRODUCTION' then return require('EmberRoutesProbe/Work/BusinessJobs').crafts()[id] end
+    if ref.kind=='TRANSFER' then return require('EmberRoutesProbe/Work/Work').record(id) end
 end
 function Resume.prepare(actor,id,careId)
     local receipt=Registry.data().executionSave
@@ -55,7 +55,7 @@ function Resume.prepare(actor,id,careId)
     local borrowed=job and job.payload.kind=='STUDY' and job.payload.step=='SETTLING'
     if not job or job.npcId~=id or job.providerType~='SELF_CARE'
         or job.payload.step~='REQUESTED' and not borrowed then return false,'PERSONAL_ATTEMPT_INVALID' end
-    local runtime=require('EmberRoutesProbe/TaskRuntime').current()
+    local runtime=require('EmberRoutesProbe/Runtime/TaskRuntime').current()
     if not runtime or not runtime:accepting() then return false,'ADMISSION_CLOSED' end
     local current=runtime:status(id)
     local p=job.payload
@@ -74,7 +74,7 @@ function Resume.prepare(actor,id,careId)
     if borrowed and current.kind~='COMPANION' then return false,'PREDECESSOR_NOT_READY' end
     local ref={jobId=current.jobId,kind=current.kind,epoch=Resume.epoch(id),state='REQUESTED'}
     if current.kind=='COMPANION' then
-        ref.intent=require('EmberRoutesProbe/Companion').exportState(id)
+        ref.intent=require('EmberRoutesProbe/Settlement/Companion').exportState(id)
         if ref.intent.jobId~=ref.jobId then return false,'PREDECESSOR_CHANGED' end
     else
         local r=business(ref,id)
@@ -123,7 +123,7 @@ function Resume.resume(actor,id,careId)
     if ref.state=='INVALIDATED' or ref.epoch~=Resume.epoch(id) then return true,'INTENT_SUPERSEDED' end
     if ref.state=='RESTORED' then return true,'RESTORED' end
     if ref.state~='STOP_CONFIRMED' and ref.state~='RESTORE_QUEUED' then return false,ref.reason or 'PREDECESSOR_NOT_CONFIRMED' end
-    local runtime=require('EmberRoutesProbe/TaskRuntime').current()
+    local runtime=require('EmberRoutesProbe/Runtime/TaskRuntime').current()
     if not runtime or not runtime:accepting() then return false,'WAIT' end
     if runtime:owns(id) then
         local active=runtime:status(id)
@@ -136,7 +136,7 @@ function Resume.resume(actor,id,careId)
         return false,'WAIT'
     end
     if ref.kind=='COMPANION' then
-        local accepted,why=require('EmberRoutesProbe/Companion').restoreState(actor,ref.intent)
+        local accepted,why=require('EmberRoutesProbe/Settlement/Companion').restoreState(actor,ref.intent)
         if not accepted then return false,why end
         ref.state='RESTORE_QUEUED'
         local ok,reason=jobs:update(job.id,job.revision,{payload=job.payload})
@@ -150,7 +150,7 @@ function Resume.resume(actor,id,careId)
             local ok,why=jobs:update(job.id,job.revision,{payload=job.payload}) return ok,why or 'INTENT_SUPERSEDED'
         end
         if not r or r.generation~=ref.generation or r.state~='PAUSED' or r.uncertain then return false,'PREDECESSOR_CHANGED' end
-        local service=ref.kind=='COOKING' and require('EmberRoutesProbe/CookingService') or require('EmberRoutesProbe/FieldWork')
+        local service=ref.kind=='COOKING' and require('EmberRoutesProbe/Cooking/CookingService') or require('EmberRoutesProbe/Field/FieldWork')
         if not service.wake(actor,id,ref.jobId,job.id) then return false,'WAIT' end
         ref.state='RESTORE_QUEUED'
         local ok,why=jobs:update(job.id,job.revision,{payload=job.payload}) return false,ok and 'QUEUED' or why
@@ -159,8 +159,8 @@ function Resume.resume(actor,id,careId)
         or r.uncertain or r.controlUncertain then return false,'PREDECESSOR_CHANGED' end
     local result
     if ref.kind=='PRODUCTION' then
-        result=require('EmberRoutesProbe/Production').execute(actor,'resume',nil,id,{nonPreemptive=true})
-    else result=require('EmberRoutesProbe/Work').resumeFor(actor,id) end
+        result=require('EmberRoutesProbe/Crafting/Production').execute(actor,'resume',nil,id,{nonPreemptive=true})
+    else result=require('EmberRoutesProbe/Work/Work').resumeFor(actor,id) end
     if result=='QUEUED' or result=='STARTED' then
         ref.state='RESTORE_QUEUED'
         local ok,reason=jobs:update(job.id,job.revision,{payload=job.payload})
@@ -173,7 +173,7 @@ function Resume.prepareRecovery(receipt)
     local rows=Registry.data().taskJobs and Registry.data().taskJobs.byId or {}
     for _,job in pairs(rows) do
         if job.providerType=='SELF_CARE' then
-            if not require('EmberRoutesProbe/SelfCareRecord').valid(job) then error('PERSONAL_RECORD_INVALID') end
+            if not require('EmberRoutesProbe/SelfCare/SelfCareRecord').valid(job) then error('PERSONAL_RECORD_INVALID') end
             local ref=job.payload.resume
             if ref and (type(ref)~='table' or not kinds[ref.kind] or type(ref.jobId)~='string'
                 or not states[ref.state] or type(ref.epoch)~='number' or ref.epoch<0
@@ -198,7 +198,7 @@ function Resume.prepareRecovery(receipt)
         if saved.providerType=='SELF_CARE' then
             local job=Jobs.current():get(saved.id) local ref=job.payload.resume
             if ref and ref.kind=='TRANSFER' and (ref.state=='STOP_CONFIRMED' or ref.state=='RESTORE_QUEUED') then
-                local Store=require 'EmberRoutesProbe/LaborStore'
+                local Store=require 'EmberRoutesProbe/Work/LaborStore'
                 local stamp=Store.recoveryGeneration(ref.jobId) local r=business(ref,job.npcId)
                 if stamp and r and r.id==ref.jobId and r.state=='PAUSED' and r.reason=='SELF_CARE'
                     and ref.generation==stamp.before and r.generation==stamp.after then
@@ -211,7 +211,7 @@ function Resume.prepareRecovery(receipt)
     return true
 end
 function Resume.install()
-    local Probe=require 'EmberRoutesProbe/Boot'
+    local Probe=require 'EmberRoutesProbe/Kernel/Boot'
     if Probe.careProtocolInstalled then return end
     local previous=Probe.taskStopped
     Probe.taskStopped=function(fact)

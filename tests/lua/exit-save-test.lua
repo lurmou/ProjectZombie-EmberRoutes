@@ -17,21 +17,21 @@ function ToggleEscapeMenu() visible=false end
 local start
 Events={OnGameStart={Add=function(fn) start=fn end}}
 local Probe={enabled=true,ready=true,controlledExecution=true,hasJava=function() return true end}
-package.loaded['EmberRoutesProbe/Boot']=Probe
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 for _,name in ipairs({'Companion','Actions','PersistenceSamples','TaskDiagnostic'}) do
     package.loaded['EmberRoutesProbe/'..name]={}
 end
 local failures=0
-package.loaded['EmberRoutesProbe/TaskPersistence']={
+package.loaded['EmberRoutesProbe/Runtime/TaskPersistence']={
     prepare=function() prepared=prepared+1 return true end,
     ready=function() return ready end,pending=function() return false end,tick=function() end,
     failed=function() failures=failures+1 end}
 MainScreen={instance={inGame=true,isVisible=function() return visible end,exitOption={}},
     onMenuItemMouseDownMainMenu=function() exits=exits+1 end,
     quitToDesktop=function() exits=exits+10 end}
-local Persistence=require 'EmberRoutesProbe/Persistence'
+local Persistence=require 'EmberRoutesProbe/Runtime/Persistence'
 start()
 MainScreen.instance.exitOption.onMouseDown({internal='EXIT'},0,0)
 check(prepared==1 and exits==0 and not visible,'return-to-menu waits and resumes simulation')

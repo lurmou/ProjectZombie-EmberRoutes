@@ -25,6 +25,23 @@ local hoverBorder={r=0.35,g=0.45,b=0.55,a=0.9}
 ---@field contentBounds {x:number, y:number, width:number, height:number}
 local CardPanel = ISPanel:derive("EmberRoutesCardPanel")
 
+-- Draw-loop caches: the small font height is constant for the session and badge
+-- widths repeat, so neither should reach the font manager every frame.
+local smallFontHeight
+local badgeWidthCache={}
+local function smallHeight()
+    if not smallFontHeight then smallFontHeight=getTextManager():getFontHeight(UIFont.Small) end
+    return smallFontHeight
+end
+local function cachedMeasure(text)
+    local width=badgeWidthCache[text]
+    if not width then
+        width=getTextManager():MeasureStringX(UIFont.Small,text)
+        badgeWidthCache[text]=width
+    end
+    return width
+end
+
 ---Static zero-GC draw function for drawing a card inside list rows or custom prerender loops.
 ---@param owner ISPanel
 ---@param x number
@@ -60,13 +77,19 @@ function CardPanel.draw(owner, x, y, width, height, opts)
 
     -- 3. Optional Header
     if opts.title and opts.title ~= "" then
-        local tm = getTextManager()
-        local h = tm:getFontHeight(UIFont.Small)
+        local h = smallHeight()
         local pad = math.max(4, math.floor(h * 0.4))
         local headerH = opts.headerHeight or (h + pad)
 
-        -- Header divider line
-        Theme.rect(owner, x + 3, y + headerH, width - 6, 1, {r = border.r, g = border.g, b = border.b, a = 0.35})
+        -- Header divider line; rebuilt only when the border colour changes
+        -- (selected/hover), never per frame.
+        local divider = opts.dividerColor
+        if not divider or opts.dividerFor ~= border then
+            divider = {r = border.r, g = border.g, b = border.b, a = 0.35}
+            opts.dividerColor = divider
+            opts.dividerFor = border
+        end
+        Theme.rect(owner, x + 3, y + headerH, width - 6, 1, divider)
 
         local textX = x + pad + (indicatorCol and 2 or 0)
         local iconSize = opts.iconSize or h
@@ -83,7 +106,7 @@ function CardPanel.draw(owner, x, y, width, height, opts)
 
         -- Top-right badge
         if opts.badge and opts.badge ~= "" then
-            local bw = tm:MeasureStringX(UIFont.Small, opts.badge)
+            local bw = cachedMeasure(opts.badge)
             local bx = x + width - bw - pad
             local bCol = opts.badgeColor or Theme.accent
             Theme.text(owner, opts.badge, bx, y + math.floor((headerH - h) / 2), bCol)

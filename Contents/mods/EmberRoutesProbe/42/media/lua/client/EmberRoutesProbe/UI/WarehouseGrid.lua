@@ -67,13 +67,25 @@ function Grid:setRows(rows,selection)
     local cols=math.max(1,math.floor((availableW+gap)/(slotSize+gap)))
     self.columns=cols
 
+    local productionByType
+    local okCat,Catalog=pcall(require,"EmberRoutesProbe/Crafting/CraftingCatalog")
+    if okCat and Catalog and Catalog.productionIndex then
+        local okIdx,_,byType=pcall(Catalog.productionIndex)
+        if okIdx then productionByType=byType end
+    end
+
     for i,row in ipairs(self.rows) do
         local col=(i-1)%cols
         local rowIdx=math.floor((i-1)/cols)
         local cellX=p+col*(slotSize+gap)
         local cellY=p+rowIdx*(slotSize+gap)
         local icon=self.presentation:icon(row.fullType)
+        local r,g,b=1,1,1
+        if self.presentation and self.presentation.color then
+            r,g,b=self.presentation:color(row.fullType)
+        end
         local countStr=row.pending and "..." or formatCount(row.count)
+        local isCraftable=(productionByType and productionByType[row.fullType]~=nil) or false
         local cell={
             index=i,
             row=row,
@@ -82,9 +94,13 @@ function Grid:setRows(rows,selection)
             width=slotSize,
             height=slotSize,
             icon=icon,
+            r=r,
+            g=g,
+            b=b,
             countText=countStr,
             countWidth=UICache.measureCount(countStr),
-            fullType=row.fullType
+            fullType=row.fullType,
+            craftable=isCraftable
         }
         self.cells[i]=cell
         if selection and row.fullType==selection.fullType then
@@ -213,7 +229,7 @@ function Grid:prerender()
             local iconPad=4
             local iconSize=cell.width-iconPad*2
             if cell.icon then
-                self:drawTextureScaledAspect(cell.icon,cell.x+iconPad,drawY+iconPad,iconSize,iconSize,1,1,1,1)
+                self:drawTextureScaledAspect(cell.icon,cell.x+iconPad,drawY+iconPad,iconSize,iconSize,1,cell.r or 1,cell.g or 1,cell.b or 1)
             else
                 Theme.text(self,"?",cell.x+cell.width/2-4,drawY+(cell.height-h)/2,Theme.muted)
             end
@@ -234,6 +250,9 @@ function Grid:prerender()
                 Theme.rect(self,bx,by,bw,bh,Theme.selected)
                 Theme.rect(self,bx,by,bw,bh,Theme.accent,true)
                 Theme.text(self,badgeStr,bx+2,by-1,Theme.accent)
+            elseif cell.craftable then
+                Theme.badge(self,cell.x+cell.width-14,drawY+2,12,12,Theme.accent,Theme.accentDark)
+                Theme.text(self,"+",cell.x+cell.width-11,drawY+1,Theme.text,UIFont.Small)
             end
 
             -- Quantity count badge (bottom right)
@@ -310,7 +329,7 @@ function Grid:updateTooltip()
         local label=row.label or row.fullType or "?"
         local count=row.pending and "..." or tostring(row.count or 0)
         local sources=#(row.sources or {})
-        local hint=getTextOrNull("IGUI_EmberRoutesProbe_Warehouse_slotHint") or "左键选择 · 双击委托制作"
+        local hint=getTextOrNull("IGUI_EmberRoutesProbe_Warehouse_slotHint") or "左键选择 | 双击加入待送 | 中键委托制作"
         local cartItem=self.owner.deliveryCart and self.owner.deliveryCart[row.fullType]
         local inCartCount=cartItem and cartItem.count or 0
 
@@ -323,7 +342,7 @@ function Grid:updateTooltip()
         end
         local qtyLine=getText("IGUI_EmberRoutesProbe_Settlement_quantity")..": "..count.." ("..sources.." "..getText("IGUI_EmberRoutesProbe_Settlement_sources")..")"
         if inCartCount>0 then
-            qtyLine=qtyLine.."  ·  "..getText("IGUI_EmberRoutesProbe_Settlement_cartTitle")..": +"..tostring(inCartCount)
+            qtyLine=qtyLine.."  |  "..getText("IGUI_EmberRoutesProbe_Settlement_cartTitle")..": +"..tostring(inCartCount)
         end
         desc=desc.."<RGB:0.95,0.95,0.95> "..qtyLine.." <LINE> "
         desc=desc.."<RGB:0.55,0.68,0.78> "..hint
@@ -373,13 +392,13 @@ function Grid:drawHoverTooltip()
     local label=row.label or row.fullType or "?"
     local count=row.pending and "..." or tostring(row.count or 0)
     local sources=#(row.sources or {})
-    local hint=getTextOrNull("IGUI_EmberRoutesProbe_Warehouse_slotHint") or "左键选择 · 双击委托制作"
+    local hint=getTextOrNull("IGUI_EmberRoutesProbe_Warehouse_slotHint") or "左键选择 | 双击加入待送 | 中键委托制作"
     local cartItem=self.owner.deliveryCart and self.owner.deliveryCart[row.fullType]
     local inCartCount=cartItem and cartItem.count or 0
 
     local qtyLine=getText("IGUI_EmberRoutesProbe_Settlement_quantity")..": "..count.." ("..sources.." "..getText("IGUI_EmberRoutesProbe_Settlement_sources")..")"
     if inCartCount>0 then
-        qtyLine=qtyLine.."  ·  "..getText("IGUI_EmberRoutesProbe_Settlement_cartTitle")..": +"..tostring(inCartCount)
+        qtyLine=qtyLine.."  |  "..getText("IGUI_EmberRoutesProbe_Settlement_cartTitle")..": +"..tostring(inCartCount)
     end
 
     local showDetailed=type(isShiftKeyDown)=="function" and isShiftKeyDown()
@@ -436,9 +455,23 @@ function Grid:onMouseDoubleClick(x,y)
     if cell and cell.row and cell.row.fullType then
         self.selected=cell.index
         if self.select then self.select(self.owner,cell.row) end
-        if self.owner and self.owner.owner and self.owner.owner.openPublicOrder then
-            self.owner.owner:openPublicOrder({productType=cell.row.fullType})
+        if self.owner and self.owner.addToDeliveryCart then
+            self.owner:addToDeliveryCart(cell.row,1)
             return true
+        end
+    end
+    return false
+end
+
+function Grid:onMouseButtonDown(btn,x,y)
+    if btn==2 then
+        local cell=self:cellAt(x,y)
+        if cell and cell.row and cell.row.fullType then
+            self.selected=cell.index
+            if self.select then self.select(self.owner,cell.row) end
+            if self.owner and self.owner.onMiddleClickItem then
+                return self.owner:onMiddleClickItem(cell.row,false)
+            end
         end
     end
     return false
@@ -464,6 +497,13 @@ function Grid:onMouseDown(x,y)
     if cell then
         self.selected=cell.index
         if self.select then self.select(self.owner,cell.row) end
+        local myScroll=self.scrollY or 0
+        local drawY=cell.y-myScroll
+        if cell.craftable and x>=cell.x+cell.width-16 and y>=drawY and y<=drawY+16 then
+            if self.owner and self.owner.onMiddleClickItem then
+                return self.owner:onMiddleClickItem(cell.row,false)
+            end
+        end
         return true
     end
     return true
@@ -587,8 +627,8 @@ function Grid:onJoypadDown(button)
     elseif button==Joypad.AButton and self.cells[self.selected] then
         if self.select then self.select(self.owner,self.cells[self.selected].row) end
     elseif button==Joypad.XButton and self.cells[self.selected] then
-        if self.owner.owner and self.owner.owner.openPublicOrder then
-            self.owner.owner:openPublicOrder({productType=self.cells[self.selected].row.fullType})
+        if self.owner and self.owner.onMiddleClickItem then
+            self.owner:onMiddleClickItem(self.cells[self.selected].row,false)
         end
     elseif self.owner.onListJoypad then self.owner:onListJoypad(button) end
 end

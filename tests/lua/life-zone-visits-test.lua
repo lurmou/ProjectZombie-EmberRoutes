@@ -4,14 +4,14 @@ local function check(value,label) assert(value,label) checks=checks+1 end
 local entry={id='home',revision=1,areas={{x=0,y=0,w=30,h=20}}}
 local root={entries={home=entry}}
 local actor={} local serial=0
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return root end,
     view=function(a,id) if a==actor and id=='home' then return entry end return nil,'ACCESS_DENIED' end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={id=function() serial=serial+1 return 'z'..serial end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={id=function() serial=serial+1 return 'z'..serial end}
 local reserved=false
-package.loaded['EmberRoutesProbe/LaborStore']={resourceOwner=function() return reserved and {} or nil end}
-local Zones=require 'EmberRoutesProbe/SettlementZones'
-local Visits=require 'EmberRoutesProbe/LifeZoneVisits'
-local Record=require 'EmberRoutesProbe/LeisureRecord'
+package.loaded['EmberRoutesProbe/Work/LaborStore']={resourceOwner=function() return reserved and {} or nil end}
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
+local Visits=require 'EmberRoutesProbe/Settlement/LifeZoneVisits'
+local Record=require 'EmberRoutesProbe/Leisure/LeisureRecord'
 local zone=assert(Zones.save(actor,'home',nil,nil,{name='Common',enabled=true,
     area={x=10,y=0,w=3,h=3,z=0},rules={OBSERVE=1}}))
 local function environment(id)
@@ -61,9 +61,9 @@ local now=0
 getTimestampMs=function() return now end
 local motion='MOVING'
 EmberRoutesProbeJava={motionResult=function() return motion end}
-package.loaded['EmberRoutesProbe/MembershipService']={entry=function() return entry end}
-package.loaded['EmberRoutesProbe/LeisureService']={standable=function() return {} end}
-local Actions=require 'EmberRoutesProbe/LeisureActions'
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={entry=function() return entry end}
+package.loaded['EmberRoutesProbe/Leisure/LeisureService']={standable=function() return {} end}
+local Actions=require 'EmberRoutesProbe/Leisure/LeisureActions'
 local function context(point)
     local location={x=.5,y=.5,z=0}
     local saves,moves,stops=0,0,0
@@ -104,8 +104,8 @@ check(not Visits.seek(disabled,available),'disabled zone is not a destination')
 check(Zones.remove(actor,'home',zone.id,zone.revision),'remove test zone')
 check(not Zones.destination('home',{id=zone.id,revision=zone.revision},candidate.point),'removed zone never rebinds by coordinates')
 local personal={effects='KNOWN',payload={kind='LEISURE',step='ACTING',leisure={activity='OBSERVE',zoneVisit=ref}}}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {forNpc=function() return {personal} end} end}
-local Social=require 'EmberRoutesProbe/SocialCoordinator'
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return {forNpc=function() return {personal} end} end}
+local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
 check(not Social.available('a'),'in-transit visit does not advertise as an idle social partner')
 personal.payload.leisure.zoneVisit=nil
 check(Social.available('a'),'ordinary idle observation remains eligible for social invitations')

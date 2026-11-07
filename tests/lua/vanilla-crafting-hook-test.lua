@@ -80,7 +80,7 @@ local mockPlayer = {
 }
 getPlayer = function() return mockPlayer end
 
-package.loaded['EmberRoutesProbe/SettlementLedger'] = {
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger'] = {
     at = function(x, y)
         if x == 100 and y == 200 then
             return { { id = 'settlement_alpha', name = 'Alpha Sanctuary' } }
@@ -89,7 +89,7 @@ package.loaded['EmberRoutesProbe/SettlementLedger'] = {
     end
 }
 
-package.loaded['EmberRoutesProbe/SettlementDashboard'] = {
+package.loaded['EmberRoutesProbe/UI/SettlementDashboard'] = {
     open = function(actor, id, tabId)
         return {
             openPublicOrder = function(self, ctx)
@@ -100,7 +100,7 @@ package.loaded['EmberRoutesProbe/SettlementDashboard'] = {
 }
 
 -- 1. Install Hook
-local Hook = require 'EmberRoutesProbe/VanillaCraftingHook'
+local Hook = require 'EmberRoutesProbe/Integration/VanillaCraftingHook'
 Hook.install()
 
 -- 2. Test instantiation and button injection

@@ -1,6 +1,6 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Sort=require "EmberRoutesProbe/SortPolicy"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Sort=require "EmberRoutesProbe/Warehouse/SortPolicy"
 
 local count=0
 local function check(val,msg)

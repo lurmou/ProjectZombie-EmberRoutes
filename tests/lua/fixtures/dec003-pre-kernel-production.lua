@@ -1,11 +1,11 @@
 -- TEST ONLY: frozen 37edb7e ProductionJobs.lua; never loaded by production.
 -- Production execution drafts. JobStore alone owns persistent records;
 -- drafts authorize nothing without their captured revision and Claims token.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Record=require 'EmberRoutesProbe/CraftJobRecord'
-local Yield=require 'EmberRoutesProbe/ProductionYield'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Record=require 'EmberRoutesProbe/Crafting/CraftJobRecord'
+local Yield=require 'EmberRoutesProbe/Crafting/ProductionYield'
 local M={}
 local world,entries,byNpc=nil,{},{}
 local recoveredWorld

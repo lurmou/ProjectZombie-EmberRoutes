@@ -4,7 +4,7 @@ local Layout=require 'EmberRoutesProbe/UI/Layout'
 local State=require 'EmberRoutesProbe/UI/State'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
-local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Defense_'..key,...) end
 
@@ -79,7 +79,7 @@ function EmberRoutesDefensePage:createChildren()
         btn:setEnable(false)
         Theme.styleButton(btn,false,i==self.store.value.alertLevel)
         btn.tooltip=fullHint
-        Tooltip.attach(btn,'prerender',self)
+        Tooltip.register(btn,{method='prerender',owner=self})
         self:addChild(btn)
         self.alertButtons[i]=btn
     end
@@ -136,8 +136,11 @@ function EmberRoutesDefensePage:prerender()
     -- Title with Preview Badge
     local title=self.titleText or text('title')
     Theme.text(self,title,self.titleBounds.x,self.titleBounds.y,Theme.gold)
-    local titleW=getTextManager():MeasureStringX(UIFont.Small,title)
-    Theme.text(self,self.badgeText or '',self.titleBounds.x+titleW+p,self.titleBounds.y,Theme.accent)
+    if self._titleFor~=title then
+        self._titleFor=title
+        self._titleW=getTextManager():MeasureStringX(UIFont.Small,title)
+    end
+    Theme.text(self,self.badgeText or '',self.titleBounds.x+self._titleW+p,self.titleBounds.y,Theme.accent)
     Theme.text(self,self.alertHintText or text('alertLocked'),self.titleBounds.x,self.titleBounds.y+h,Theme.muted)
 
     -- Heat Meter Card
@@ -145,11 +148,13 @@ function EmberRoutesDefensePage:prerender()
     local CardPanel=require 'EmberRoutesProbe/UI/CardPanel'
     local heatTitle=self.heatTitle or text('heatMeter')
     local heatSafeLabel=self.heatSafeLabel or (text('heatSafe')..' (0 / 100)')
-    CardPanel.draw(self,hr.x,hr.y,hr.width,hr.height,{
-        title=heatTitle,
-        badge=heatSafeLabel,
-        badgeColor=Theme.status.READY
-    })
+    -- Reuse one options table: CardPanel.draw runs every frame.
+    local opts=self._heatOpts
+    if not opts then opts={} self._heatOpts=opts end
+    opts.title=heatTitle
+    opts.badge=heatSafeLabel
+    opts.badgeColor=Theme.status.READY
+    CardPanel.draw(self,hr.x,hr.y,hr.width,hr.height,opts)
     Theme.text(self,self.heatUnavailable or text('unavailable'),hr.x+p,hr.y+p+h+p/4,Theme.muted)
 
     -- Heat progress bar preview (0/100, safe threshold at 70%)

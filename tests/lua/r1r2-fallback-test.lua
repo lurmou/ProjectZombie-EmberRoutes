@@ -4,17 +4,17 @@ package.path='Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/
 local f=dofile('tests/lua/repose-sites-test.lua')
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/LaborStore']=nil
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-local Store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']=nil
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 f.resourceProxy.resourceOwner=Store.resourceOwner
-local Jobs=require 'EmberRoutesProbe/TaskJobs' local jobs=Jobs.current()
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs' local jobs=Jobs.current()
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 assert(jobs:create(Record.create('care-a','a'))) Store.data()
 local row={version=1,slots={},complete=true,dirtyCount=0}
-local Facilities=package.loaded['EmberRoutesProbe/SettlementFacilities']
+local Facilities=package.loaded['EmberRoutesProbe/Settlement/SettlementFacilities']
 local advances=0
 Facilities.watch=function() return row end
 Facilities.advance=function(_,n) advances=advances+n return 0 end
@@ -36,11 +36,11 @@ f.npc.getCurrentState=function() return 'OTHER' end
 getGameTime=function() return {getWorldAgeHours=function() return 10 end} end
 ZombRand=function(n) return n-1 end
 EmberRoutesProbeJava.reposeAtWithControl=function() return true end
-package.loaded['EmberRoutesProbe/ActivityService']={context=function() end,allowsPoint=function() return true end,policyAt=function() return 1 end}
-package.loaded['EmberRoutesProbe/SocialCoordinator']={withdraw=function() end,reset=function() end}
-local Service=require 'EmberRoutesProbe/LeisureService'
-local Policy=require 'EmberRoutesProbe/LeisurePolicy'
-local Registry=require 'EmberRoutesProbe/LeisureRegistry'
+package.loaded['EmberRoutesProbe/Activity/ActivityService']={context=function() end,allowsPoint=function() return true end,policyAt=function() return 1 end}
+package.loaded['EmberRoutesProbe/Activity/SocialCoordinator']={withdraw=function() end,reset=function() end}
+local Service=require 'EmberRoutesProbe/Leisure/LeisureService'
+local Policy=require 'EmberRoutesProbe/Leisure/LeisurePolicy'
+local Registry=require 'EmberRoutesProbe/Leisure/LeisureRegistry'
 -- Isolate fallback from ordinary registered seeks; STROLL construction and
 -- Policy selection remain real, with optional normal-selection scan budget.
 Registry.all=function() return {} end
@@ -57,7 +57,7 @@ local function decide(scan)
  check(done,'bounded decision completes')
  return c
 end
-local Activity=package.loaded['EmberRoutesProbe/ActivityService']
+local Activity=package.loaded['EmberRoutesProbe/Activity/ActivityService']
 local points,visits={},{}
 local grid=f.cell.getGridSquare
 f.cell.getGridSquare=function(self,x,y,z)

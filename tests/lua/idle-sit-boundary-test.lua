@@ -4,17 +4,17 @@ package.path='Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/
 local f=dofile('tests/lua/repose-sites-test.lua')
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/LaborStore']=nil
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-local Store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']=nil
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 f.resourceProxy.resourceOwner=Store.resourceOwner
-local Jobs=require 'EmberRoutesProbe/TaskJobs' local jobs=Jobs.current()
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs' local jobs=Jobs.current()
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 assert(jobs:create(Record.create('care-a','a'))) Store.data()
 local row={version=1,slots={},complete=true,dirtyCount=0}
-local Facilities=package.loaded['EmberRoutesProbe/SettlementFacilities']
+local Facilities=package.loaded['EmberRoutesProbe/Settlement/SettlementFacilities']
 local advances=0
 Facilities.watch=function() return row end
 Facilities.advance=function(_,n) advances=advances+n return 0 end
@@ -36,11 +36,11 @@ f.npc.getCurrentState=function() return 'OTHER' end
 getGameTime=function() return {getWorldAgeHours=function() return 10 end} end
 ZombRand=function(n) return n-1 end
 EmberRoutesProbeJava.reposeAtWithControl=function() return true end
-package.loaded['EmberRoutesProbe/ActivityService']={context=function() end,allowsPoint=function() return true end,policyAt=function() return 1 end}
-package.loaded['EmberRoutesProbe/SocialCoordinator']={withdraw=function() end,reset=function() end}
-local Service=require 'EmberRoutesProbe/LeisureService'
-local Policy=require 'EmberRoutesProbe/LeisurePolicy'
-local Registry=require 'EmberRoutesProbe/LeisureRegistry'
+package.loaded['EmberRoutesProbe/Activity/ActivityService']={context=function() end,allowsPoint=function() return true end,policyAt=function() return 1 end}
+package.loaded['EmberRoutesProbe/Activity/SocialCoordinator']={withdraw=function() end,reset=function() end}
+local Service=require 'EmberRoutesProbe/Leisure/LeisureService'
+local Policy=require 'EmberRoutesProbe/Leisure/LeisurePolicy'
+local Registry=require 'EmberRoutesProbe/Leisure/LeisureRegistry'
 -- Leave only SIT in the registered pool: normal seek receives zero scan.
 local sit=Registry.get('SIT') Registry.all=function() return {sit} end
 local sample={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
@@ -64,10 +64,10 @@ check(Store.resourceOwner(c.claims[1]).taskId==job.id,'real personal claim autho
 check(discover('b').leisure.ambient,'second NPC cannot select claimed seat')
 -- Stop a prepared SIT through the actual execution adapter (before body start).
 for _,name in ipairs({'ISInventoryTransferAction','ISEatFoodAction','ISDrinkFluidAction'}) do package.loaded['TimedActions/'..name]=true end
-package.loaded['EmberRoutesProbe/CraftSupply']={}
-package.loaded['EmberRoutesProbe/SelfCareResources']={}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareResources']={}
 f.npc.getInventory=function() return {getItems=function() return f.list({}) end} end
-local Execute=require 'EmberRoutesProbe/SelfCareExecution'
+local Execute=require 'EmberRoutesProbe/SelfCare/SelfCareExecution'
 local spec=Execute.new(f.actor,{id='a',handle=f.npc},job,nil,function() return {scan=0,paths=0,nodes=8} end)
 check(spec.persistFailure({bodyStopped=true,effects='KNOWN'},'LEISURE_NEEDS_CARE'),'known stopped interruption persists')
 check(not Store.resourceOwner(c.claims[1]) and #jobs:get(job.id).payload.claims==0,'interrupt releases actual claim')
@@ -93,7 +93,7 @@ row.slots={seat(f.furniture,0,0)} row.slots[1].z=1
 check(discover('a').leisure.ambient,'other floor excluded') row.slots[1].z=0
 square.isFree=function() return false end
 check(discover('a').leisure.ambient,'origin must be standable') square.isFree=function() return true end
-local activity=package.loaded['EmberRoutesProbe/ActivityService']
+local activity=package.loaded['EmberRoutesProbe/Activity/ActivityService']
 activity.policyAt=function(_,_,_,_,_,kind) return kind=='SIT' and 0 or 1 end
 check(discover('a').leisure.ambient,'SIT zone prohibition retained') activity.policyAt=function() return 1 end
 local rev=f.sites.view(f.actor,f.furniture).revision

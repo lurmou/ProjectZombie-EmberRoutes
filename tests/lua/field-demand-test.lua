@@ -2,17 +2,17 @@ local n=0 local function check(v,m) n=n+1 assert(v,m) end
 local root={} local count=0 local enabled=false local available=false local supplied=false
 local loaded=true local stain=true local incomplete=false local now=0 local notifications=0
 local entry={id='s',revision=1,areas={{x=0,y=0,w=10,h=10}}}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
 local entries={entry}
-package.loaded['EmberRoutesProbe/SettlementLedger']={list=function() return entries end,view=function(_,id)
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={list=function() return entries end,view=function(_,id)
     for _,e in ipairs(entries) do if e.id==id then return e end end
 end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function(_,x,y) return x>=0 and x<10 and y>=0 and y<10 end}
-package.loaded['EmberRoutesProbe/FieldSpatial']={chunk=function() return loaded and {} or nil end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function(_,x,y) return x>=0 and x<10 and y>=0 and y<10 end}
+package.loaded['EmberRoutesProbe/Field/FieldSpatial']={chunk=function() return loaded and {} or nil end,
     square=function() return loaded and {} or nil end}
-package.loaded['EmberRoutesProbe/FieldDiscovery']={allowed=function() return true end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() notifications=notifications+1 end}
-package.loaded['EmberRoutesProbe/ToolDiscovery']={findSupplies=function()
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']={allowed=function() return true end}
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() notifications=notifications+1 end}
+package.loaded['EmberRoutesProbe/Field/ToolDiscovery']={findSupplies=function()
     if supplied then return {ready=true,requirements={}} end
     return nil,incomplete and 'FIELD_OBSERVING' or 'FIELD_TOOLS_UNAVAILABLE',
         {complete=not incomplete,missingRoles={'CLEAN_TOOL','CLEAN_FLUID'}}
@@ -21,7 +21,7 @@ EmberRoutesProbeJava={workerCount=function() return count end,workerIdAt=functio
     cleaningScanStains=function() return stain and {{x=1,y=1,z=0}} or {} end,
     cleaningSquareHasStains=function() return stain end}
 getText=function(k,...) return k end
-local D=require 'EmberRoutesProbe/FieldDemand'
+local D=require 'EmberRoutesProbe/Field/FieldDemand'
 local function tick()
     now=now+2000
     D.advance({},now,function() if available then return {handle={}},entry end end,

@@ -13,31 +13,31 @@ local entry={id='home',revision=1}
 dofile('tests/lua/membership-fixture.lua')(function() return entry end,{'a'})
 local mode={socialPending=false,readingDone=true,readingCandidate=nil,smoker=false,smoke=false,
     seat=false,seatDeferred=false}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() return 'x' end}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {forNpc=function() return {} end} end}
-package.loaded['EmberRoutesProbe/StudyService']={changed=function() end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() return 'x' end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return {forNpc=function() return {} end} end}
+package.loaded['EmberRoutesProbe/Leisure/StudyService']={changed=function() end,
     decorateLeisure=function(c) c.study=true return c end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
 local settlementRoot={format=1,revision=1,entries={[entry.id]=entry},publicLifeZones={format=1,revision=0,byId={}}}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end,data=function() return settlementRoot end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/SettlementFacilities']={describe=function() end,watch=function() return {slots={}} end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() return entry end,data=function() return settlementRoot end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementFacilities']={describe=function() end,watch=function() return {slots={}} end,
     advance=function() return 0 end,reason=function() return 'PENDING' end}
-package.loaded['EmberRoutesProbe/SocialCoordinator']={
+package.loaded['EmberRoutesProbe/Activity/SocialCoordinator']={
     advertise=function() end,withdraw=function() end,reset=function() end,
     pending=function() return mode.socialPending and 'k1' or nil end,
     invite=function() return nil end, -- No eligible advertised partner in this fixture.
     view=function(key,id) return {other='b',point={x=1,y=1,z=0}} end}
-package.loaded['EmberRoutesProbe/LibraryIndex']={choose=function(actor,npc,e,_,budget,offset,leisure)
+package.loaded['EmberRoutesProbe/Leisure/LibraryIndex']={choose=function(actor,npc,e,_,budget,offset,leisure)
     if mode.requireContainer then assert(budget.containers==1) budget.containers=budget.containers-1 end
     budget.scan=budget.scan-1
     if mode.readingDone then return mode.readingCandidate,true end
     return nil,false,'INDEX_PENDING' end}
-package.loaded['EmberRoutesProbe/LeisureSmoke']={find=function(npc,budget,row)
+package.loaded['EmberRoutesProbe/Leisure/LeisureSmoke']={find=function(npc,budget,row)
     if mode.smoke then return {item={getID=function() return 7 end},fire={getID=function() return 8 end}},true end
     return nil,true end}
 local seatIterators=0
-package.loaded['EmberRoutesProbe/ReposeSites']={
+package.loaded['EmberRoutesProbe/SelfCare/ReposeSites']={
     new=function() seatIterators=seatIterators+1 local steps=0
         return {step=function()
             if not mode.seat then return nil,true end
@@ -58,7 +58,7 @@ local npc={getX=function() return 1 end,getY=function() return 1 end,getZ=functi
     hasTrait=function() return mode.smoker end,
     getFitness=function() return fitness end,getCurrentState=function() return idle end}
 EmberRoutesProbeJava={reposeAtWithControl=function() return true end}
-local Service=require 'EmberRoutesProbe/LeisureService'
+local Service=require 'EmberRoutesProbe/Leisure/LeisureService'
 local binding={id='a',handle=npc}
 local s={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
 local function fresh() return {scan=32,paths=1,containers=4} end
@@ -108,7 +108,7 @@ local c,done,why=Service.candidate({},binding,s,fresh(),{cooldowns={},decisionAf
 assert(c and c.leisure.ambient and c.leisure.activity=='OBSERVE' and c.leisure.untilHours==2
     and not c.leisure.point and done and why=='LEISURE_PAUSE',
     'decision pause returns resource-free observation with the original deadline')
-local Record=require 'EmberRoutesProbe/LeisureRecord'
+local Record=require 'EmberRoutesProbe/Leisure/LeisureRecord'
 assert(Record.valid({kind='LEISURE',settlementId=entry.id,leisure=c.leisure}))
 local pausedMemory={cooldowns={OBSERVE=2},decisionAfter=2}
 Service.finished({job={npcId='a'},reason='LEISURE_NEEDS_CARE',
@@ -169,7 +169,7 @@ local function copy(v)
     if type(v)~='table' then return v end
     local t={} for k,x in pairs(v) do t[k]=copy(x) end return t
 end
-local Personal=require 'EmberRoutesProbe/SelfCareRecord'
+local Personal=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 local saved=Personal.create('care','a')
 local api={forNpc=function() return {copy(saved)} end,
     update=function(_,id,revision,patch)
@@ -179,7 +179,7 @@ local api={forNpc=function() return {copy(saved)} end,
         assert(Personal.valid(saved))
         return true
     end}
-package.loaded['EmberRoutesProbe/TaskJobs'].current=function() return api end
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs'].current=function() return api end
 local proof={id='chair',partId='part',revision=1,key='seat',settlementId='home',
     parts={{id='part',x=4,y=5,z=0}}}
 local function interrupted(activity)
@@ -202,8 +202,8 @@ getCell=function() return {getGridSquare=function(_,x,y)
     return {getObjects=function() return {size=function() return present and 1 or 0 end,
         get=function() return {getModData=function() return {EmberRoutesRepose={id='chair',partId='part',revision=1}} end} end} end}
 end} end
-package.loaded['EmberRoutesProbe/SettlementFacilities'].describe=function() return nil,1 end
-package.loaded['EmberRoutesProbe/ReposeSites'].prepare=function(candidate)
+package.loaded['EmberRoutesProbe/Settlement/SettlementFacilities'].describe=function() return nil,1 end
+package.loaded['EmberRoutesProbe/SelfCare/ReposeSites'].prepare=function(candidate)
     assert(candidate.object and candidate.revision==1)
     return copy(proof)
 end
@@ -234,12 +234,12 @@ assert(invalid and invalid.leisure.ambient and not invalid.resume and not saved.
     'lost original is discarded once and normal discovery reaches cut-1 ambient')
 interrupted('READING')
 local book={getID=function() return 42 end}
-package.loaded['EmberRoutesProbe/LibraryIndex'].choose=function(actor,body,e,target,budget,offset,leisure,itemId)
+package.loaded['EmberRoutesProbe/Leisure/LibraryIndex'].choose=function(actor,body,e,target,budget,offset,leisure,itemId)
     assert(leisure and itemId==42,'resume re-finds only the original book through library discovery')
     budget.scan=budget.scan-1
     return {item=book,id=42,entry=entry},true
 end
-package.loaded['EmberRoutesProbe/StudyService'].valid=function(actor,body,id,p)
+package.loaded['EmberRoutesProbe/Leisure/StudyService'].valid=function(actor,body,id,p)
     return p.study and p.membershipRevision~=nil and p.settlementRevision==entry.revision
 end
 local reading=Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory))

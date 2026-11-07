@@ -1,5 +1,5 @@
-local Read=require 'EmberRoutesProbe/InventoryRead'
-local Producers=require 'EmberRoutesProbe/LaborProducers'
+local Read=require 'EmberRoutesProbe/Warehouse/InventoryRead'
+local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 local container,items={}, {values={}}
 function container:getItems() return items end
@@ -44,7 +44,7 @@ setmetatable(item.data,nil)
 EmberRoutesProbeJava.inventoryReadSlice=function() return {reason='INVENTORY_CHANGED'} end
 local value,reason=Read.slice(container,items,70,0,32)
 check(value==nil and reason=='INVENTORY_CHANGED','native invalidation propagated')
-local Driver=require 'EmberRoutesProbe/Driver'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local presentCalls=0
 EmberRoutesProbeJava.carrierPresent=function(handle) presentCalls=presentCalls+1 return handle==item end
 EmberRoutesProbeJava.carrierId=function(handle) presentCalls=presentCalls+1 return handle==item and 'npc' or '' end

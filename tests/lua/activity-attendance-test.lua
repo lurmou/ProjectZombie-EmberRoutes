@@ -16,7 +16,7 @@ local npc={getX=function() return x end,getY=function() return y end,getZ=functi
     getPrimaryHandItem=function() end,getSecondaryHandItem=function() end,hasTrait=function() return false end}
 local binding={id='a',handle=npc}
 local jobs,current,stops,inventoryReads={},nil,0,0
-local formal=assert(require('EmberRoutesProbe/JobStore').open(root))
+local formal=assert(require('EmberRoutesProbe/Kernel/JobStore').open(root))
 local jobApi={visitNpc=function(_,id,visit) for _,j in ipairs(jobs) do if j.npcId==id then visit(j) end end formal:visitNpc(id,visit) end,
     peekPersonal=function() for _,j in ipairs(jobs) do if j.providerType=='SELF_CARE' then return j end end end,
     forNpc=function() return jobs end,
@@ -29,30 +29,30 @@ local jobApi={visitNpc=function(_,id,visit) for _,j in ipairs(jobs) do if j.npcI
 local runtime={accepting=function() return accepting end,owns=function() return current~=nil end,
     status=function() return current end,
     stopJob=function(_,id,jobId) stops=stops+1 current.state='STOPPING' return true end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,
     id=function() serial=serial+1 return 'id-'..serial end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return spatial end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return spatial end,
     view=function(a,scope) if a==actor and scope=='home' then return entry end end}
-package.loaded['EmberRoutesProbe/MembershipService']={
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={
     view=function(id) if id=='a' then return {revision=1,context='SETTLEMENT',settlementId='home'} end end,
     entry=function() return entry end,character=function() return 'owner' end,
     check=function() return {allowed=true,revision=1,entryRevision=1,settlementId='home'} end}
-package.loaded['EmberRoutesProbe/TaskResume']={epoch=function() return 0 end}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobApi end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return binding end,valid=function(b) return b==binding end}
-package.loaded['EmberRoutesProbe/Work']={hasCargo=function() inventoryReads=inventoryReads+1 return cargo end}
-package.loaded['EmberRoutesProbe/LaborStore']={resourceOwner=function() return nil end}
-package.loaded['EmberRoutesProbe/RuntimeMetrics']={active=function() return false end}
+package.loaded['EmberRoutesProbe/Runtime/TaskResume']={epoch=function() return 0 end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobApi end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return runtime end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return binding end,valid=function(b) return b==binding end}
+package.loaded['EmberRoutesProbe/Work/Work']={hasCargo=function() inventoryReads=inventoryReads+1 return cargo end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={resourceOwner=function() return nil end}
+package.loaded['EmberRoutesProbe/Kernel/RuntimeMetrics']={active=function() return false end}
 local square={TreatAsSolidFloor=function() return true end,isSolid=function() return false end,
     isSolidTrans=function() return false end,HasStairs=function() return false end,
     isDoorSquare=function() return false end,isFree=function() return true end,isOutside=function() return false end,
     getMovingObjects=function() return {size=function() return 0 end} end}
 getCell=function() return {getGridSquare=function() return square end} end
-local Zones=require 'EmberRoutesProbe/SettlementZones'
-local Store=require 'EmberRoutesProbe/ActivityStore'
-local Service=require 'EmberRoutesProbe/ActivityService'
-local Attendance=require 'EmberRoutesProbe/ActivityAttendance'
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
+local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
+local Service=require 'EmberRoutesProbe/Activity/ActivityService'
+local Attendance=require 'EmberRoutesProbe/Activity/ActivityAttendance'
 local zone=assert(Zones.save(actor,'home',nil,nil,{name='Gathering',enabled=true,
     area={x=10,y=10,w=4,h=4,z=0},rules={OBSERVE=0}}))
 -- Arrival can use an explicit event quiet-stance rule without erasing area geometry.
@@ -98,14 +98,14 @@ jobs[1].payload.kind='SLEEP' current.state='ACTIVE'
 Attendance.request(actor,binding,ref)
 check(stops==1,'attendance does not stop urgent personal care')
 jobs={} current=nil
-local Leisure=require 'EmberRoutesProbe/LeisureService'
+local Leisure=require 'EmberRoutesProbe/Leisure/LeisureService'
 local sample={safe=true,healthy=true,hunger=0,thirst=0,fatigue=0,endurance=1,pain=0}
 local candidate=assert(Leisure.candidate(actor,binding,sample,{scan=8,paths=1,containers=1},{cooldowns={},decisionAfter=99}))
 check(candidate.leisure.zoneVisit.eventId==event.id,'explicit destination works without idle work offer')
 check(Zones.location('home',ref,candidate.point) and not Zones.destination('home',ref,candidate.point),'event stance can override ordinary observation ban')
-check(require('EmberRoutesProbe/LeisureRecord').valid({kind='LEISURE',settlementId='home',leisure=candidate.leisure}),'event route is persistable scalar data')
+check(require('EmberRoutesProbe/Leisure/LeisureRecord').valid({kind='LEISURE',settlementId='home',leisure=candidate.leisure}),'event route is persistable scalar data')
 local l=candidate.leisure
-local p={kind='LEISURE',step='ACTING',claims={require('EmberRoutesProbe/LifeZoneVisits').tileKey(l.point)},
+local p={kind='LEISURE',step='ACTING',claims={require('EmberRoutesProbe/Settlement/LifeZoneVisits').tileKey(l.point)},
     leisure=l,settlementId='home',membershipRevision=1,settlementRevision=1}
 jobs={job('SELF_CARE',p)} current={jobId='SELF_CARE',state='ACTIVE'} accepting=false
 check(Leisure.valid(actor,npc,'a',p),'transit is not rejected for being outside the gathering')
@@ -114,7 +114,7 @@ EmberRoutesProbeJava={motionResult=function() return 'MOVING' end}
 local c={actor=actor,npc=npc,payload=p,job=jobs[1],valid=function() return true end,budget={paths=1},
     body={move=function() moves=moves+1 return true,'MOVE_REQUESTED' end,stop=function() stopCalls=stopCalls+1 return true end},
     persist=function() return true end}
-local action=require('EmberRoutesProbe/LeisureActions').new(c)
+local action=require('EmberRoutesProbe/Leisure/LeisureActions').new(c)
 check(action.run()=='Running' and moves==1,'travel uses the existing movement adapter')
 x,y,z=l.point.x,l.point.y,l.point.z
 check(action.run()=='Success' and l.finished,'owned route can report arrival inside Runtime.step')

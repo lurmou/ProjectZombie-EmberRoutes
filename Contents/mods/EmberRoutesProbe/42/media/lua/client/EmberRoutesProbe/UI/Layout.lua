@@ -33,4 +33,69 @@ function Layout.split(bounds,h,gap)
     return {index={x=bounds.x,y=bounds.y,width=index,height=bounds.height},
         main={x=bounds.x+index+gap,y=bounds.y,width=width-index-gap,height=bounds.height},compact=false}
 end
+--- Intelligent drawer docking & displacement:
+--- Ensures dash and drawer fit side-by-side without overflowing or overlapping.
+--- Shifts dash left if needed and centers the combined unit.
+---@param dash any
+---@param drawerW number
+---@param gap number?
+---@param screenW number?
+---@return number x
+---@return number y
+---@return number w
+---@return number h
+function Layout.dockDrawer(dash, drawerW, gap, screenW)
+    gap = gap or 8
+    screenW = screenW or (getCore and getCore():getScreenWidth()) or 1920
+    local dashX = (dash.getX and dash:getX()) or dash.x or 0
+    local dashY = (dash.getY and dash:getY()) or dash.y or 0
+    local dashW = dash.width or 0
+    local dashH = dash.height or 0
+
+    local combinedW = dashW + gap + drawerW
+    local targetDashX = dashX
+    local targetDrawerX = dashX + dashW + gap
+
+    if targetDrawerX + drawerW > screenW - 8 then
+        if combinedW <= screenW - 16 then
+            targetDashX = math.max(8, math.floor((screenW - combinedW) / 2))
+        else
+            targetDashX = 8
+            drawerW = math.max(280, math.min(drawerW, screenW - dashW - gap - 16))
+        end
+        if dash._drawerSavedX == nil then
+            dash._drawerSavedX = dashX
+        end
+        dash._dockedDashX = targetDashX
+        if dash.setX and math.abs(dash:getX() - targetDashX) > 2 then
+            dash:setX(targetDashX)
+        end
+        targetDrawerX = targetDashX + dashW + gap
+        if targetDrawerX + drawerW > screenW - 8 then
+            targetDrawerX = math.max(8, screenW - drawerW - 8)
+        end
+    end
+
+    return targetDrawerX, dashY, drawerW, dashH
+end
+
+--- Restores dashboard position when drawer closes, unless player manually moved it.
+---@param dash any
+function Layout.undockDrawer(dash)
+    if not dash then return end
+    if dash._drawerSavedX ~= nil then
+        local currentX = (dash.getX and dash:getX()) or dash.x or 0
+        local dockedX = dash._dockedDashX or currentX
+        if math.abs(currentX - dockedX) <= 6 then
+            if dash.setX then
+                local screenW = (getCore and getCore():getScreenWidth()) or 1920
+                local restoreX = math.max(8, math.min(dash._drawerSavedX, screenW - (dash.width or 0) - 8))
+                dash:setX(restoreX)
+            end
+        end
+        dash._drawerSavedX = nil
+        dash._dockedDashX = nil
+    end
+end
+
 return Layout

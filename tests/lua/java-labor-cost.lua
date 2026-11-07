@@ -1,8 +1,8 @@
 -- Installed VM cost only; reflective JavaFunction is not the game Exposer.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local root={format=1,taskJobs={format=1,byId={}},containers={},quarantineResources={}}
 Registry.data=function() return root end
-local Store=require 'EmberRoutesProbe/LaborStore'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 Store.data()
 local function measure(label,run)
     for i=1,2000 do run() end

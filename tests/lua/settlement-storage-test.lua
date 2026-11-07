@@ -4,6 +4,7 @@ local function check(value,why) n=n+1 assert(value,why) end
 local tables,uuid,reads={},0,0
 ModData={getOrCreate=function(key) tables[key]=tables[key] or {} return tables[key] end}
 function getRandomUUID() uuid=uuid+1 return "uuid-"..uuid end
+_G.getRandomUUID = getRandomUUID
 local client=false
 function isClient() return client end function isServer() return false end
 local actor={x=1,y=1,isDead=function() return false end,getIndex=function() return 0 end,getPlayerNum=function() return 0 end,
@@ -14,17 +15,17 @@ Events={}
 for _,name in ipairs({'OnContainerUpdate','OnTick','OnTickEvenPaused','OnGameStart'}) do
     events[name]={} Events[name]={Add=function(fn) events[name][#events[name]+1]=fn end}
 end
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local squares={}
 local function key(x,y,z) return x..":"..y..":"..z end
 function getCell() return {getGridSquare=function(_,x,y,z) return squares[key(x,y,z)] end} end
-local Geometry=require "EmberRoutesProbe/SettlementGeometry"
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
-local Membership=require "EmberRoutesProbe/SettlementMembership"
-local Index=require "EmberRoutesProbe/WarehouseIndex"
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Query=require "EmberRoutesProbe/WarehouseQuery"
+local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
+local Membership=require "EmberRoutesProbe/Settlement/SettlementMembership"
+local Index=require "EmberRoutesProbe/Warehouse/WarehouseIndex"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Query=require "EmberRoutesProbe/Warehouse/WarehouseQuery"
 local function box(x,y,z)
     local object={data={}}
     local list={values={}}
@@ -298,7 +299,7 @@ freezerRelease()
 function a.object:getContainerByIndex(i) return i==0 and a.container or nil end
 check(not Registry.resolve(freezerId,'take'),'removed freezer never resolves primary by fallback')
 -- Pure aggregation: workload accounting includes duplicate detection and sorting.
-local Rollup=require 'EmberRoutesProbe/WarehouseRollup'
+local Rollup=require 'EmberRoutesProbe/Warehouse/WarehouseRollup'
 local values={status='LOADED',count=20000,ids={},types={},x=0,y=0,z=0}
 for i=1,20000 do values.ids[i]=true end
 for i=2048,1,-1 do values.types[string.format('Mod.%04d',i)]={node='other',count=9+(i<=1568 and 1 or 0)} end

@@ -27,4 +27,4 @@ description: 垂直工种与生命周期闭环铁律：契约对齐、唯一身�
 
 ## 5. 持久事实与释放对称 (Symmetric Claim & Release)
 - **严禁纯内存黑户**：凡是在公共调度目录（如 `directory:claim`）中认领了资源或地块的任务，必须在 `JobStore` 拥有最小持久化记录（如 `FIELD_WORK`），保障存档重进与打断恢复；
-- **有始必须有终**：任务无论是 `DONE`、`CANCELLED` 还是角色死亡，必须显式调用 `directory:release` 归还地块与配额锁，严禁永久泄漏认领配额导致资源点永久死锁。
+- **有始必须有终**：目录认领必须有结清路径；仅有业务证据证明 `effects=KNOWN` 且 `obligationsCleared=true` 时调用 `directory:release`。取消、死亡、记录缺失或身体已停止不能单独证明结清；不足时保留责任并给出可诊断原因，不伪造释放证明。

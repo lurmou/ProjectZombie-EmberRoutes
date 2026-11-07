@@ -1,4 +1,5 @@
 -- warehouse-ae2-test.lua: Verification of AE2 style continuous scrollbar & Scheme A status badge
+package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local count=0
 local function check(v,s) count=count+1 assert(v,s) end
 
@@ -67,7 +68,7 @@ getTextManager=function()
 end
 
 -- 1. Test WarehouseQuery.all & Query.all
-local Query=require "EmberRoutesProbe/WarehouseQuery"
+local Query=require "EmberRoutesProbe/Warehouse/WarehouseQuery"
 local rows={}
 for i=1,150 do
     rows[#rows+1]={fullType="Item_"..i,label="Item "..i,count=i,node="tools"}

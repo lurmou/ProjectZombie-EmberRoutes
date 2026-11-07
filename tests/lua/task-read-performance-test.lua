@@ -1,5 +1,5 @@
 -- Installed Kahlua CPU comparison only; no inference about whole-game latency.
-local Store=require 'EmberRoutesProbe/JobStore'
+local Store=require 'EmberRoutesProbe/Kernel/JobStore'
 for _,ordinary in ipairs({1,8}) do
     local root={} local store=assert(Store.open(root))
     local function job(id,provider)

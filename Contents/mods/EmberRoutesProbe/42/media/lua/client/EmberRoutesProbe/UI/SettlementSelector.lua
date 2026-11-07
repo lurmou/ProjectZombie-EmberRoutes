@@ -1,12 +1,12 @@
 require "ISUI/ISCollapsableWindow"
 require "ISUI/ISTextEntryBox"
 require "ISUI/ISButton"
-local Geometry=require "EmberRoutesProbe/SettlementGeometry"
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
+local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local State=require "EmberRoutesProbe/UI/State"
-local Log=require "EmberRoutesProbe/Log"
+local Log=require "EmberRoutesProbe/Kernel/Log"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 
 ---@class EmberRoutesSettlementSelector:ISCollapsableWindow
@@ -87,7 +87,9 @@ end
 function EmberRoutesSettlementSelector:initialise()
     ISCollapsableWindow.initialise(self)
     self.renderTick=function() self:renderWorldHighlights() end
-    Events.OnRenderTick.Add(self.renderTick)
+    if _G.Events and Events.OnRenderTick and Events.OnRenderTick.Add then
+        Events.OnRenderTick.Add(self.renderTick)
+    end
 end
 
 function EmberRoutesSettlementSelector:createChildren()
@@ -219,7 +221,7 @@ function EmberRoutesSettlementSelector:updateDragMessage()
         dragText=text("dragRemove",self.dragArea.w,self.dragArea.h)
     end
     local summary=text("summary",count,tiles)
-    self.store:setState({message=dragText.." · "..summary})
+    self.store:setState({message=dragText.." | "..summary})
 end
 
 function EmberRoutesSettlementSelector:point()
@@ -292,12 +294,38 @@ function EmberRoutesSettlementSelector:apply()
         self.store:setState({message=text("noAreas")})
         return
     end
+    local isNew=(self.entry==nil)
     local ok,entry,code=pcall(Ledger.commit,self.actor,self.entry and self.entry.id,self.nameEntry:getText(),targetAreas)
     if not ok then Log.write("SETTLEMENT","COMMIT_ERROR "..tostring(entry)) code="ERROR" entry=nil end
     if entry then
         Log.write("SETTLEMENT","SAVED id="..entry.id.." revision="..entry.revision.." areas="..#entry.areas)
+        local actor=self.actor
+        local savedCb=self.saved
         self:close()
-        if self.saved then self.saved(entry) end
+        if isNew then
+            local sw,sh=getCore():getScreenWidth(),getCore():getScreenHeight()
+            local modalW,modalH=380,140
+            local prompt=getText("IGUI_EmberRoutesProbe_Warehouse_autoZonePrompt")
+            local modal=ISModalDialog:new((sw-modalW)/2,(sh-modalH)/2,modalW,modalH,prompt,true,nil,function(_,button)
+                if button.internal=="YES" then
+                    local Batch=require "EmberRoutesProbe/Warehouse/BatchStoragePainting"
+                    local containers=Batch.scanSettlement(entry)
+                    if #containers==0 then
+                        actor:Say(getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneEmpty"))
+                    else
+                        local result=Batch.apply(containers,"auto",actor)
+                        local msg=getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneSuccess",tostring(result.updated))
+                        actor:Say(msg)
+                    end
+                end
+                if savedCb then savedCb(entry) end
+            end)
+            modal:initialise()
+            modal:addToUIManager()
+            if actor:getJoypadBind()~=-1 then setJoypadFocus(actor:getIndex(),modal) end
+        else
+            if savedCb then savedCb(entry) end
+        end
     else
         self.store:setState({message=text(code)})
     end
@@ -331,17 +359,24 @@ function EmberRoutesSettlementSelector:renderWorldHighlights()
         end
     elseif not self.dragging and self.cursorX and self.cursorY then
         -- 3. Render hover square under cursor when idle
-        local hx,hy=self:point()
-        if hx and hy then
-            self.cursorX,self.cursorY=hx,hy
-            addAreaHighlightForPlayer(playerNum,hx,hy,hx+1,hy+1,z,0.90,0.95,1.0,0.30)
+        local isJoypad=self.actor and self.actor.getJoypadBind and self.actor:getJoypadBind()~=-1
+        if isJoypad then
+            addAreaHighlightForPlayer(playerNum,self.cursorX,self.cursorY,self.cursorX+1,self.cursorY+1,z,0.90,0.95,1.0,0.30)
+        elseif not self:overPanel() then
+            local hx,hy=self:point()
+            if hx and hy then
+                self.cursorX,self.cursorY=hx,hy
+                addAreaHighlightForPlayer(playerNum,hx,hy,hx+1,hy+1,z,0.90,0.95,1.0,0.30)
+            end
         end
     end
 end
 
 function EmberRoutesSettlementSelector:prerender()
     ISCollapsableWindow.prerender(self)
-    if self.renderWorldHighlights then self:renderWorldHighlights() end
+    -- World highlights are additive engine draws owned by Events.OnRenderTick
+    -- (see renderWorldHighlights registration). Drawing them here again doubled
+    -- both the engine calls and the resulting overlay alpha every frame.
     local y=self:titleBarHeight()+self.pad
     for _,line in ipairs(self.hintLines) do
         self:drawText(line,self.pad,y,0.9,0.85,0.65,1,UIFont.Small)
@@ -389,7 +424,9 @@ function EmberRoutesSettlementSelector:onJoypadDirRight() self:range(self.cursor
 
 function EmberRoutesSettlementSelector:close()
     if self.renderTick then
-        Events.OnRenderTick.Remove(self.renderTick)
+        if _G.Events and Events.OnRenderTick and Events.OnRenderTick.Remove then
+            Events.OnRenderTick.Remove(self.renderTick)
+        end
         self.renderTick=nil
     end
     if self.unsubscribe then self.unsubscribe() self.unsubscribe=nil end

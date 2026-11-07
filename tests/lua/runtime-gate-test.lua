@@ -1,6 +1,6 @@
 package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
 
-local Gate = require 'EmberRoutesProbe/RuntimeGate'
+local Gate = require 'EmberRoutesProbe/Kernel/RuntimeGate'
 
 -- 1. Uninitialized / Unknown environment (engine globals are nil)
 -- Must reject execution instead of silently defaulting to single player.
@@ -50,8 +50,8 @@ assert(Gate.canExecute(livingActor) == false, "cannot execute SP on MP server")
 -- 6. Consumer verification with SettlementLedger
 _G.isClient = function() return false end
 _G.isServer = function() return false end
-package.loaded['EmberRoutesProbe/ContainerRegistry'] = { id = function() return 'faction_test' end }
-local Ledger = require 'EmberRoutesProbe/SettlementLedger'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'] = { id = function() return 'faction_test' end }
+local Ledger = require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local ok, authorized = pcall(Ledger.authorized, nil)
 assert(ok and not authorized, "missing actor is rejected without calling getIndex")
 local actorWithoutGetIndex = { isDead = function() return false end }

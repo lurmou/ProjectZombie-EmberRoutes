@@ -1,7 +1,7 @@
 -- Real SelfCare admission/Execution/Resume/adapter/JobStore/Claims; model bridge only.
-local JobStore=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 local checks=0
 local function check(v,m) assert(v,m) checks=checks+1 end
 local function copy(v) if type(v)~='table' then return v end local r={} for k,x in pairs(v) do r[k]=copy(x) end return r end
@@ -52,20 +52,20 @@ local function setup(old,borrowed)
     stub('SelfCareActions',{consumption=function() return {kind='Action',run=function() return 'Success' end} end})
     stub('TaskBusinessStop',{new=function(o) return o end})
     for _,name in ipairs({'SelfCareCommit','SelfCare','SelfCareExecution','TaskResume'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
-    local A=old and dofile('tests/lua/fixtures/dec003-pre-kernel-personal-adapter.lua') or require 'EmberRoutesProbe/LaborDomainAdapters'
+    local A=old and dofile('tests/lua/fixtures/dec003-pre-kernel-personal-adapter.lua') or require 'EmberRoutesProbe/Work/LaborDomainAdapters'
     A.install(S,st,identity,clean,function() return true end)
     if not old then
         local host=dofile('tests/lua/fixtures/dec003-activity-kernel-host.lua')
         host.install(st,alloc,clean)
-        require('EmberRoutesProbe/LaborJobCommit').install(S,st,alloc,clean)
+        require('EmberRoutesProbe/Work/LaborJobCommit').install(S,st,alloc,clean)
     else EmberRoutesProbeJava={} end
     EmberRoutesProbeJava.workerCount=function() return 1 end
     EmberRoutesProbeJava.workerIdAt=function() return 'a' end
     getTimestampMs=function() return now end getSpecificPlayer=function() return {isDead=function() return false end} end
-    if old then package.loaded['EmberRoutesProbe/TaskResume']=dofile('tests/lua/fixtures/dec003-pre-kernel-task-resume.lua') end
-    local E=old and dofile('tests/lua/fixtures/dec003-pre-kernel-selfcare-execution.lua') or require 'EmberRoutesProbe/SelfCareExecution'
-    package.loaded['EmberRoutesProbe/SelfCareExecution']=E
-    local care=old and dofile('tests/lua/fixtures/dec003-pre-kernel-selfcare.lua') or require 'EmberRoutesProbe/SelfCare'
+    if old then package.loaded['EmberRoutesProbe/Runtime/TaskResume']=dofile('tests/lua/fixtures/dec003-pre-kernel-task-resume.lua') end
+    local E=old and dofile('tests/lua/fixtures/dec003-pre-kernel-selfcare-execution.lua') or require 'EmberRoutesProbe/SelfCare/SelfCareExecution'
+    package.loaded['EmberRoutesProbe/SelfCare/SelfCareExecution']=E
+    local care=old and dofile('tests/lua/fixtures/dec003-pre-kernel-selfcare.lua') or require 'EmberRoutesProbe/SelfCare/SelfCare'
     return {jobs=jobs,S=S,st=st,root=root,care=care,snapshots=snapshots,spec=function() return assert(spec) end,
         binding=binding,rt=rt,peek=function() return jobs:get('personal') end,reject=function() reject=true end,
         tick=function() now=now+10000 care.tick() end}
@@ -138,7 +138,7 @@ local f
 f=setup(false) EmberRoutesProbeJava.laborCreate=nil f.tick()
 check(not f.peek() and not f.root.nextClaimSeq,'missing bridge fail closed')
 -- Transactional output claims and seat removal use the same persist CAS.
-f=setup(false) f.tick() local spec,c=require('EmberRoutesProbe/SelfCareExecution').new({},f.binding,f.peek(),
+f=setup(false) f.tick() local spec,c=require('EmberRoutesProbe/SelfCare/SelfCareExecution').new({},f.binding,f.peek(),
     {id=11,item={}},function() return {} end,false,{},function() return true end)
 check(spec.start({}),'second execution context starts')
 check(c.claimOutputs({12}) and f.st.claims.owners['item:12'] and #f.peek().payload.claims==2,'output addition in persist transaction')
@@ -156,26 +156,26 @@ f=setup(false,true) f.tick() check(f.spec().start({}),'borrowed attempt start')
 check(f.care.prepareRecovery(nil) and f.peek().effects=='UNKNOWN'
     and f.peek().payload.step=='RECONCILE_REQUIRED' and f.peek().obligations.RETURN_ORIGINALS,'interrupted obligation retained')
 ISTimedActionQueue={queues={}}
-package.loaded['EmberRoutesProbe/SelfCareReconciliation']=nil
-check(require('EmberRoutesProbe/SelfCareReconciliation').run(f.binding,f.peek(),{},{scan=32},f.rt),'evidence scan reconciles')
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareReconciliation']=nil
+check(require('EmberRoutesProbe/SelfCare/SelfCareReconciliation').run(f.binding,f.peek(),{},{scan=32},f.rt),'evidence scan reconciles')
 check(f.peek().state=='SUSPENDED' and f.peek().effects=='KNOWN' and f.peek().payload.step=='SETTLING'
     and f.peek().obligations.RETURN_ORIGINALS.itemId==11 and f.st.claims.owners['item:11'],'KNOWN retains RETURN_ORIGINALS and original claim')
 -- Cold classification queues without changing the published Job object.
 local pending={} local before=f.peek()
-require('EmberRoutesProbe/SelfCareJobRecovery').restore({current=f.root,rebuilt=f.st.claims,
+require('EmberRoutesProbe/SelfCare/SelfCareJobRecovery').restore({current=f.root,rebuilt=f.st.claims,
     hasConflict=function() return true end,rebuiltPersonal={},pendingPersonal=pending})
 check(#pending==1 and equal(before,f.peek()),'cold conflict is a detached queued proposal')
-check(require('EmberRoutesProbe/SelfCareCommit').update(pending[1].id,pending[1].revision,pending[1].patch)
+check(require('EmberRoutesProbe/SelfCare/SelfCareCommit').update(pending[1].id,pending[1].revision,pending[1].patch)
     and f.peek().effects=='UNKNOWN','cold queued proposal uses kernel after publication')
 -- Hard stop: legacy cold death bypassed RUNNING's suspension fence.
 f=setup(false) assert(f.S.createClaimedJob(Record.create('personal','a')))
 local j=f.peek() local p=assert(Record.begin(j,'REST')) p.step='ACTING'
-assert(require('EmberRoutesProbe/SelfCareCommit').update(j.id,j.revision,{payload=p,state='RUNNING'}))
-package.loaded['EmberRoutesProbe/MembershipService']={view=function() return {retired=true} end}
+assert(require('EmberRoutesProbe/SelfCare/SelfCareCommit').update(j.id,j.revision,{payload=p,state='RUNNING'}))
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function() return {retired=true} end}
 pending={} before=f.peek()
-require('EmberRoutesProbe/SelfCareJobRecovery').restore({current=f.root,rebuilt=f.st.claims,
+require('EmberRoutesProbe/SelfCare/SelfCareJobRecovery').restore({current=f.root,rebuilt=f.st.claims,
     hasConflict=function() return false end,rebuiltPersonal={},pendingPersonal=pending})
 check(equal(before,f.peek()) and pending[1].patch.state=='SUSPENDED','cold death proposal cannot bypass transition')
-local ok,reason=require('EmberRoutesProbe/SelfCareCommit').update(pending[1].id,pending[1].revision,pending[1].patch)
+local ok,reason=require('EmberRoutesProbe/SelfCare/SelfCareCommit').update(pending[1].id,pending[1].revision,pending[1].patch)
 check(not ok and reason=='TASK_WRITE_FAILURE' and equal(before,f.peek()),'cold nonretained RUNNING death remains a recorded contract gap')
 print('PASS '..checks..' SELF_CARE migration assertions (Lua host model only)')

@@ -9,7 +9,8 @@ require 'ISUI/ISPanel'
 require 'ISUI/ISButton'
 require 'ISUI/ISComboBox'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
-local Zones = require 'EmberRoutesProbe/SettlementZones'
+local Visual = require 'EmberRoutesProbe/UI/StatusVisual'
+local Zones = require 'EmberRoutesProbe/Settlement/SettlementZones'
 local LifeZoneSelector = require 'EmberRoutesProbe/UI/LifeZoneSelector'
 
 local Editors = {}
@@ -293,17 +294,18 @@ Editors.tag_chips = {
         local buttons = {}
 
         local function getChipText(tagDef)
-            local isEnabled = state[tagDef.id] == true
-            local label = tagDef.label and getTextOrNull(tagDef.label) or tagDef.id
-            return (isEnabled and "[V] " or "[X] ") .. label
+            return tagDef.label and getTextOrNull(tagDef.label) or tagDef.id
         end
 
+        local MARK_SLOT=14
         local function refreshChips()
             for _, item in ipairs(buttons) do
                 local isEnabled = state[item.tag.id] == true
                 local label=getChipText(item.tag)
-                item.btn.title = Text.wrapLimited(label,item.btn.width-p*2,UIFont.Small,1)[1]
+                item.btn.title = "  "..(Text.wrapLimited(label,item.btn.width-p*2-MARK_SLOT,UIFont.Small,1)[1] or '')
                 item.btn.tooltip=label
+                item.btn.emberMark=isEnabled and "done" or "blocked"
+                item.btn.emberMarkColor=isEnabled and Theme.status.READY or Theme.status.ERROR
                 Theme.button(item.btn, isEnabled)
             end
         end
@@ -312,6 +314,16 @@ Editors.tag_chips = {
             local r=flow[i]
             local btn = ISButton:new(r.x,r.y,r.width,r.height,"",panel,nil)
             btn:initialise()
+            local basePrerender=btn.prerender
+            if basePrerender then
+                btn.prerender=function(self)
+                    basePrerender(self)
+                    if not self.emberMark then return end
+                    local ms=math.max(6,math.min(self.height-4,10))
+                    Visual.mark(self,4,math.floor((self.height-ms)/2),ms,
+                        self.emberMark,self.emberMarkColor)
+                end
+            end
             local currentTag = tag
             btn.onclick = function()
                 state[currentTag.id] = not state[currentTag.id]

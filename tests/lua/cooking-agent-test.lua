@@ -1,16 +1,16 @@
 -- Actual Runtime/BT/Jobs/claims and installed handcraft Lua; native path/transfer effects mocked.
 local f=dofile('tests/lua/cooking-craft-test.lua')
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Batch=require 'EmberRoutesProbe/CookingBatch'
-local Agent=require 'EmberRoutesProbe/CookingAgent'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
-local Membership=require 'EmberRoutesProbe/MembershipService'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Batch=require 'EmberRoutesProbe/Cooking/CookingBatch'
+local Agent=require 'EmberRoutesProbe/Cooking/CookingAgent'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local Membership=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local npc,actor=f.npc,f.f.fixture.actor
 function npc:isDead() return not self.alive end
 local entry={id='kitchen',areas={{x=1000,y=0,w=100,h=100}}}
@@ -27,7 +27,7 @@ Registry.resolve=function(id) return allowed and endpoints[id] or nil,'ACCESS_DE
 Registry.revalidate=function(e) return allowed and endpoints[e.id]==e and e or nil end
 Registry.logistics=function() return 'STORAGE' end
 Registry.accepts=function() return allowed end Registry.filter=function() return filter end
-require('EmberRoutesProbe/SettlementMembership').query=function() return {'source','cold'} end
+require('EmberRoutesProbe/Settlement/SettlementMembership').query=function() return {'source','cold'} end
 local bridge=EmberRoutesProbeJava local key local moves=0 local stopMask=0 local delayStop=false
 bridge.acquireBodyControl=function(_,job,generation) assert(not key) key=job..':'..generation return key end
 bridge.bodyStopMask=function() return stopMask end
@@ -64,7 +64,7 @@ local function create()
     f.object.user=nil f.object.mod.EmberRoutesCraftOccupancy=nil f.object.mod.EmberRoutesCraftProbeBenchId=nil
     local milk=f.f.item('Mod.MilkCarrier',false,storage.container)
     milk.fluid=f.milkContainer(6) function milk:getFluidContainer() return self.fluid end
-    local profile=assert(require('EmberRoutesProbe/CookingCraft').profile('Base.churn_butter'))
+    local profile=assert(require('EmberRoutesProbe/Cooking/CookingCraft').profile('Base.churn_butter'))
     local j=assert(Record.new('agent-'..serial,npc.id,'kitchen',profile.facts.id,'REQUEST','request-'..serial,.15,.15))
     j=assert(Batch.prepare(j,{profile=profile,entries={{id=milk.id,slot=0,item=milk,endpoint=endpoints.source}}}))
     assert(Jobs:create(j))

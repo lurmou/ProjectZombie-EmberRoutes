@@ -1,9 +1,9 @@
 -- QA overlay only. Never copied into the normal mod by the production build.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Gate=require 'EmberRoutesProbe/RuntimeGate'
-local Log=require 'EmberRoutesProbe/Log'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Gate=require 'EmberRoutesProbe/Kernel/RuntimeGate'
+local Log=require 'EmberRoutesProbe/Kernel/Log'
 local Q={}
 local KEY='b5AcceptanceFixture'
 local function need(v,reason) if not v then error(reason) end return v end
@@ -67,7 +67,7 @@ function Q.verify(actor)
     need(f.format==1 and f.ready,'B5_FIXTURE_INCOMPLETE')
     need(f.lastSession~=session(),'B5_SAME_LUA_SESSION_NOT_A_COLD_BOOT')
     Store.data() -- Read/rebuild the real current Claims instance; never clear runtime caches here.
-    need(require('EmberRoutesProbe/JobStore').open(root),'B5_JOBSTORE_REOPEN_FAILED')
+    need(require('EmberRoutesProbe/Kernel/JobStore').open(root),'B5_JOBSTORE_REOPEN_FAILED')
     local inventory=actor:getInventory():getItems() local found={}
     for i=0,inventory:size()-1 do
 	local item=inventory:get(i)

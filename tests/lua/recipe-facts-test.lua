@@ -11,9 +11,9 @@ local function list(values)
 end
 ArrayList={new=function() return list() end}
 ResourceType={Item='Item',Fluid='Fluid',Energy='Energy'}
-package.loaded['EmberRoutesProbe/CraftRecipeAdapter']={}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecipeAdapter']={}
 local root={}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
 function getTextOrNull() end
 local function input(slot,kind,quantity)
     local io={slot=slot,kind=kind,quantity=quantity,keep=false}
@@ -60,9 +60,9 @@ function getScriptManager() return {getCraftRecipe=function(_,id) return scripts
     getAllCraftRecipes=function() return list({butter,ordinary}) end} end
 EmberRoutesProbeJava={recipeHasCallbacks=function(r) return r.callbacks==true end,
     recipeHasSpecialOutputs=function() return false end,recipeKey=function(r) return r.id end}
-local Facts=require 'EmberRoutesProbe/CraftRecipeFacts'
-local Production=require 'EmberRoutesProbe/ProductionRecipe'
-local Inputs=require 'EmberRoutesProbe/CraftRecipeInputs'
+local Facts=require 'EmberRoutesProbe/Crafting/CraftRecipeFacts'
+local Production=require 'EmberRoutesProbe/Crafting/ProductionRecipe'
+local Inputs=require 'EmberRoutesProbe/Crafting/CraftRecipeInputs'
 local facts=Facts.read(butter.id)
 check(facts and facts.workstation and facts.inputs[1].child==facts.inputs[2],'read keeps the native fluid parent/child relationship')
 check(facts.inputs[2].amount==5 and facts.inputs[2].parentSlot==0,'fluid volume is attached to the original parent IO')
@@ -114,7 +114,7 @@ local logic={getRecipeData=function() return data end}
 check(Inputs.applied(logic,twoBound),'native per-slot manual assignment is checked')
 actual[carrier],actual[second]=actual[second],actual[carrier]
 check(not Inputs.applied(logic,twoBound),'same flat item set swapped across slots is rejected')
-local Catalog=require 'EmberRoutesProbe/CraftingCatalog'
+local Catalog=require 'EmberRoutesProbe/Crafting/CraftingCatalog'
 Catalog.step()
 local byId,byType=Catalog.recipeIndex()
 local executable=Catalog.productionIndex()
@@ -125,7 +125,7 @@ local planning=assert(Inputs.planning({facts=facts,roots={facts.inputs[1]},outpu
 check(planning.inputs[1].any and planning.inputs[1].fluid.amount==5
     and planning.inputs[1].accept(bucket) and not planning.inputs[1].accept(smallA),
     'shared metadata becomes a typed wildcard BOM without treating small carriers as reusable tools')
-local planner=require('EmberRoutesProbe/ProductionChainPlan').new(planning,1,
+local planner=require('EmberRoutesProbe/Crafting/ProductionChainPlan').new(planning,1,
     {{id=101,fullType=bucket:getFullType(),item=bucket,fluidAmount=5}},{})
 for _=1,100 do planner:step(1) if planner.done then break end end
 check(planner.result and planner.result.nodes[1].fluidInputs[1].itemId==101,

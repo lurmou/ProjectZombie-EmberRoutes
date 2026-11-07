@@ -1,5 +1,5 @@
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Stop=require 'EmberRoutesProbe/TaskBusinessStop'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Stop=require 'EmberRoutesProbe/Runtime/TaskBusinessStop'
 local checks=0
 local function check(value,message) checks=checks+1 assert(value,message) end
 local bodies={a={id='a'},b={id='b'}}

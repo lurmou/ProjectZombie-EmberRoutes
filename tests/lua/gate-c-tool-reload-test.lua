@@ -14,19 +14,19 @@ local endpoint={id='S',container=box,object={}}
 local Registry={data=function() return root end,id=function() serial=serial+1 return 'r-'..serial end,
     resolve=function(id) if id=='S' then return endpoint end end,revalidate=function() return true end,
     logistics=function() return 'STORAGE' end,accepts=function() return true end,inventoryChanged=function() end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/Boot']={controlledExecution=true}
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {handle=npc} end,valid=function() return true end}
-package.loaded['EmberRoutesProbe/WorkTransfer']={reachable=function() return true end}
-package.loaded['EmberRoutesProbe/CraftSupply']={}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=Registry
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={controlledExecution=true}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {handle=npc} end,valid=function() return true end}
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={reachable=function() return true end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
 package.loaded['TimedActions/ISInventoryTransferAction']=true
-package.loaded['EmberRoutesProbe/FieldActions']={}
+package.loaded['EmberRoutesProbe/Field/FieldActions']={}
 ISTimedActionQueue={queues={}}
 local actions={} local spec local physical=0
 local body={stop=function() return true end,clear=function() return true end,add=function(a) actions[#actions+1]=a return true end}
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {accepting=function() return true end,
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return true end,
     submit=function(_,s) spec=s s.start(body) return {} end,inspect=function() return {state='ACTIVE'} end} end}
 npc={id='n',isDead=function() return false end,getInventory=function() return inv end}
 ISInventoryTransferAction={new=function(_,worker,item,from,to) return {isValid=function() return true end,
@@ -38,8 +38,8 @@ ISInventoryTransferAction={new=function(_,worker,item,from,to) return {isValid=f
 local tool={id=31,container=inv,getID=function(self) return self.id end,getContainer=function(self) return self.container end}
 inv.items={tool}
 local actor={isDead=function() return false end}
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Service=require 'EmberRoutesProbe/ToolReturnService'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Service=require 'EmberRoutesProbe/Field/ToolReturnService'
 local function copy(v) if type(v)~='table' then return v end local t={} for k,x in pairs(v) do t[k]=copy(x) end return t end
 local function reload()
     root=copy(root) -- serialization may duplicate byId/byNpc/byItem table aliases
@@ -83,7 +83,7 @@ local held={id=32,container=inv,getID=tool.getID,getContainer=tool.getContainer}
 inv.items={held} local c32=assert(Store.claimCustody('n',32,'DIG','S','field-3'))
 local untouched={id=33,container=box,getID=tool.getID,getContainer=tool.getContainer}
 box.items[#box.items+1]=untouched local c33=assert(Store.claimCustody('n',33,'DIG','S','field-3'))
-local Supplies=require 'EmberRoutesProbe/FieldSupplies'
+local Supplies=require 'EmberRoutesProbe/Field/FieldSupplies'
 check(Supplies.releaseUncollected({npc=npc},{requirements={{itemId=32,custodyId=c32.id,containerId='S'},
     {itemId=33,custodyId=c33.id,containerId='S'}}}),'mixed pickup stop reconciles each original')
 check(Store.custodyByItem(32).state=='HELD' and not Store.canClaimTool('other',32),'held tool retains obligation after interrupted pickup')

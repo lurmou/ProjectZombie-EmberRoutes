@@ -6,7 +6,8 @@ require 'ISUI/ISScrollingListBox'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
-local Tooltip=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
+local Visual=require 'EmberRoutesProbe/UI/StatusVisual'
 
 ---@class EmberRoutesPersonnelDossierDrawer:ISCollapsableWindow
 local DossierDrawer=ISCollapsableWindow:derive('EmberRoutesPersonnelDossierDrawer')
@@ -20,7 +21,7 @@ function DossierDrawer:new(owner,x,y,width,height)
     o.background=true
     o.backgroundColor=Theme.window
     o.borderColor=Theme.border
-    o.activeTab='skills'
+    o.activeTab='overview'
     o.searchQuery=''
     o.worker=nil
     o.details=nil
@@ -41,15 +42,15 @@ function DossierDrawer:createChildren()
     local btnH=math.ceil(h*1.55)
 
     -- Tab Switcher Bar directly under title
-    local tabW=math.floor((self.width-p*3)/2)
-    self.tabSkillsBtn=ISButton:new(p,th+p/2,tabW,btnH,text('tabSkills'),self,function()
+    local tabW=math.floor((self.width-p*4)/3)
+    self.tabSkillsBtn=ISButton:new(p*2+tabW,th+p/2,tabW,btnH,text('tabSkills'),self,function()
         self:selectTab('skills')
     end)
     self.tabSkillsBtn:initialise()
     Theme.button(self.tabSkillsBtn,true)
     self:addChild(self.tabSkillsBtn)
 
-    self.tabRecipesBtn=ISButton:new(p*2+tabW,th+p/2,tabW,btnH,text('tabRecipes'),self,function()
+    self.tabRecipesBtn=ISButton:new(p*3+tabW*2,th+p/2,tabW,btnH,text('tabRecipes'),self,function()
         self:selectTab('recipes')
     end)
     self.tabRecipesBtn:initialise()
@@ -59,6 +60,9 @@ function DossierDrawer:createChildren()
     local contentY=th+p+btnH
     local contentH=self.height-contentY-p
 
+    self.overview=require('EmberRoutesProbe/UI/InfoList').new(self,{x=p,y=contentY,width=self.width-p*2,height=contentH})
+    self.tabOverviewBtn=ISButton:new(p,th+p/2,tabW,btnH,getText('IGUI_EmberRoutesProbe_Layout_overview'),self,function() self:selectTab('overview') end)
+    self.tabOverviewBtn:initialise() Theme.button(self.tabOverviewBtn) self:addChild(self.tabOverviewBtn)
     -- 1. Skills & Traits List
     self.skillsList=ISScrollingListBox:new(p,contentY,self.width-p*2,contentH)
     self.skillsList:initialise()
@@ -94,7 +98,7 @@ function DossierDrawer:createChildren()
     self.recipesList.doDrawItem=function(list,y,item,alt) return self:drawRecipeItem(list,y,item,alt) end
     self:addChild(self.recipesList)
 
-    self:selectTab('skills')
+    self:selectTab('overview')
     if self.worker then
         self:refresh()
     end
@@ -109,15 +113,19 @@ function DossierDrawer:selectTab(tab)
     self.tabRecipesBtn.borderColor=not isSkills and Theme.accent or Theme.border
 
     self.skillsList:setVisible(isSkills)
-    self.searchBox:setVisible(not isSkills)
-    self.recipesList:setVisible(not isSkills)
+    self.searchBox:setVisible(tab=='recipes')
+    self.recipesList:setVisible(tab=='recipes')
+    self.overview.list:setVisible(tab=='overview')
+    Theme.button(self.tabOverviewBtn,tab=='overview')
+    Theme.button(self.tabSkillsBtn,isSkills)
+    Theme.button(self.tabRecipesBtn,tab=='recipes')
 end
 
 function DossierDrawer:setWorker(worker)
     self.worker=worker
     if worker then
         self.title=text('dossierTitle')..' - '..worker.name
-        local Personnel=require 'EmberRoutesProbe/PersonnelService'
+        local Personnel=require 'EmberRoutesProbe/Settlement/PersonnelService'
         self.details=Personnel.details(self.owner.actor,self.owner.entry.id,worker.id)
     else
         self.title=text('dossierTitle')
@@ -128,6 +136,20 @@ end
 
 function DossierDrawer:refresh()
     if not self.skillsList or not self.recipesList then return end
+    local rows={}
+    local worker=self.worker
+    if worker then
+        rows[#rows+1]={text=require('EmberRoutesProbe/Settlement/MembershipText').summary(worker.membership),color=Theme.muted}
+        for _,stat in ipairs({{'health','statHealth',100,false},{'fatigue','statEnergy',1,true},{'hunger','statFullness',1,true},{'thirst','statHydration',1,true}}) do
+            local value=worker[stat[1]]
+            if type(value)=='number' then
+                local f=math.max(0,math.min(1,stat[4] and 1-value or value/stat[3]))
+                rows[#rows+1]={text=text(stat[2]),fraction=f,compact=true,meterMode='health',meterLabel=tostring(math.floor(f*100))..'%'}
+            end
+        end
+        for _,row in ipairs(require('EmberRoutesProbe/UI/PersonnelPresentation').rows(self.details)) do rows[#rows+1]=row end
+    end
+    self.overview:set(rows)
     self:rebuildSkillList()
     self:rebuildRecipeList()
 end
@@ -274,7 +296,7 @@ function DossierDrawer:drawSkillItem(list,y,entry,alt)
 
         -- Multiplier / Boost
         if s.multiplier and s.multiplier>1 then
-            local multStr='×'..string.format('%.1f',s.multiplier)
+            local multStr='x'..string.format('%.1f',s.multiplier)
             Theme.text(list,multStr,pipsX+totalPipW+6,y+(itemH-h)/2,Theme.gold)
         end
         return y+itemH
@@ -301,8 +323,8 @@ function DossierDrawer:drawRecipeItem(list,y,entry,alt)
     local itemH=entry.height or list.itemheight
     if y+list:getYScroll()+itemH<=0 or y+list:getYScroll()>=list.height then return y+itemH end
     if alt then Theme.rect(list,0,y,list.width,itemH,Theme.panel) end
-    local glyph='●'
-    Theme.text(list,glyph,p,y+(itemH-h)/2,Theme.accent)
+    local ms=math.max(6,math.min(h-2,10))
+    Visual.mark(list,p,y+(itemH-ms)/2,ms,'bullet',Theme.accent)
     Theme.text(list,entry.item.recipe or entry.text,p+h,y+(itemH-h)/2,Theme.textColor)
     return y+itemH
 end
@@ -312,9 +334,9 @@ function DossierDrawer:prerender()
     -- Keep docked attached to dashboard
     local dash=self.owner and self.owner.owner
     if dash and dash.getX and dash.getY then
-        local targetX=dash:getX()+dash.width+4
+        local targetX=dash:getX()+dash.width+8
         local screenW=getCore():getScreenWidth()
-        if targetX+self.width>screenW then targetX=dash:getX()-self.width-4 end
+        if targetX+self.width>screenW-8 then targetX=math.max(8,screenW-self.width-8) end
         if math.abs(self:getX()-targetX)>2 or math.abs(self:getY()-dash:getY())>2 then
             self:setX(targetX)
             self:setY(dash:getY())
@@ -330,6 +352,9 @@ function DossierDrawer:close()
     Tooltip.dismissOwner(self)
     if self.owner then
         self.owner.dossierDrawerOpen=false
+        if self.owner.owner then
+            Layout.undockDrawer(self.owner.owner)
+        end
     end
 end
 

@@ -1,5 +1,5 @@
-local Carry=require 'EmberRoutesProbe/ProductionCarry'
-local Producers=require 'EmberRoutesProbe/LaborProducers'
+local Carry=require 'EmberRoutesProbe/Crafting/ProductionCarry'
+local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
 local checks=0
 local function check(ok,label) checks=checks+1 assert(ok,label) end
 local root={weight=0,capacity=50}

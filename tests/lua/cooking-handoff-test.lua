@@ -1,12 +1,12 @@
 -- Real Job/Claims/Runtime transfer and recipient action chain; native world mocked.
 local h=dofile('tests/lua/cooking-heat-test.lua') local f=h.f local npc=f.npc
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Agent=require 'EmberRoutesProbe/CookingAgent'
-local Handoff=require 'EmberRoutesProbe/CookingHandoff'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Agent=require 'EmberRoutesProbe/Cooking/CookingAgent'
+local Handoff=require 'EmberRoutesProbe/Cooking/CookingHandoff'
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 local t=h.preparation(false)
 h.untilState(t,function() return t.stove.object.active end)

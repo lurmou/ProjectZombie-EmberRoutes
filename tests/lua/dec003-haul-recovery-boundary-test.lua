@@ -1,6 +1,6 @@
 -- Real recovery producer + real Store publication; bridge only records intents.
 -- This proves ordering/no re-entry, not Java execution or recovery parity.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local root={format=1,containers={},taskJobs={format=1,byId={}},quarantineResources={}}
 local function job(id,item)
     return {id=id,npcId=id,providerType='HAUL',scopeId=id,claimId=id..':c'..item,
@@ -13,16 +13,16 @@ root.taskJobs.byId.b=job('b',2)
 Registry.data=function() return root end
 local Recovery=require 'EmberRoutesProbe/Hauling/HaulJobRecovery'
 local pending={}
-local Claims=require 'EmberRoutesProbe/LaborClaims'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 Recovery.restore({current=root,rebuilt=Claims.new(),hasConflict=function() return true end,
     ensureEntityClaimId=function() error('unexpected acquire') end,rebuiltHaul={},newTokens={},pendingHaul=pending})
 assert(#pending==2 and root.taskJobs.byId.a.revision==1 and root.taskJobs.byId.a.effects=='KNOWN','producer must only enqueue')
 -- Exercise Store.data publication/drain with a controlled recovery order.
-package.loaded['EmberRoutesProbe/LaborRecovery']={restore=function(context)
+package.loaded['EmberRoutesProbe/Work/LaborRecovery']={restore=function(context)
     context.pendingHaul[1]=pending[1] context.pendingHaul[2]=pending[2]
 end}
-package.loaded['EmberRoutesProbe/BuiltinLaborRecovery']={install=function() end}
-local Store=require 'EmberRoutesProbe/LaborStore'
+package.loaded['EmberRoutesProbe/Work/BuiltinLaborRecovery']={install=function() end}
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local seen={}
 EmberRoutesProbeJava={laborCreate=function() error('unexpected create') end,laborCancel=function() error('unexpected cancel') end,
     laborMutate=function(ledger,owner,claims,contracts,cleanup,id,revision,payload,mutation)

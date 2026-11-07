@@ -2,16 +2,16 @@ require "ISUI/ISPanel"
 require "ISUI/ISButton"
 require "ISUI/ISComboBox"
 require "ISUI/ISTextEntryBox"
-local Service=require "EmberRoutesProbe/CraftingService"
+local Service=require "EmberRoutesProbe/Crafting/CraftingService"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local State=require "EmberRoutesProbe/UI/State"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
-local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 local Lifecycle=require "EmberRoutesProbe/UI/PageLifecycle"
 local Grid=require "EmberRoutesProbe/UI/RecipeGrid"
 local Draft=require "EmberRoutesProbe/UI/CraftingDraft"
-local Words=require "EmberRoutesProbe/CraftingText"
+local Words=require "EmberRoutesProbe/Crafting/CraftingText"
 local text=Words.get
 ---@class EmberRoutesCraftingBrowser:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
@@ -55,14 +55,14 @@ function EmberRoutesCraftingBrowser:new(shell,bounds)
     o.shell=shell o.owner=shell.owner o.actor=shell.actor o.entry=shell.entry o.fontHeight=shell.fontHeight o.pad=shell.pad
     o.background=false o.categories={false}
     o.store=State.new({snapshot={workers={},surfaces={}},catalog={rows={},categories={},page=1,pages=1,loading=true},
-        search="",category=false,unsupported=false,page=1,recipeId=false,npcId=false,surface=false,quantity=1,
+        search="",category=false,unsupported=false,page=1,recipeId=false,surface=false,quantity=1,
         preview={state="CHECKING",conditions={},counts={}},notice=""})
     return o
 end
 function EmberRoutesCraftingBrowser:initialise() ISPanel.initialise(self) end
 function EmberRoutesCraftingBrowser:createChildren()
     ISPanel.createChildren(self) local h,p=self.fontHeight,self.pad
-    self.columns=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},{{grow=5},{grow=4}},{padding=p,gap=p}))
+    self.columns=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},{{grow=4},{grow=5}},{padding=p,gap=p}))
     local left=self.columns[1]
     local regions=assert(Layout.axis(left,{{basis=h+p},{basis=h+p},{grow=1},{basis=h+p},{basis=h}},{direction="column",gap=p/2}))
     self.search=ISTextEntryBox:new("",regions[1].x,regions[1].y,regions[1].width,regions[1].height)
@@ -121,7 +121,7 @@ function EmberRoutesCraftingBrowser:activate()
             self.store:setState({snapshot=snapshot})
         end)
     if mounted and self.active then
-        self:watchCatalog() self.store:setState({snapshot=Service.status(self.actor,self.entry.id)})
+        self.store:setState({snapshot=Service.status(self.actor,self.entry.id)}) self:watchCatalog() self:repaint()
     end
 end
 function EmberRoutesCraftingBrowser:deactivate()
@@ -151,7 +151,7 @@ function EmberRoutesCraftingBrowser:onListKey(key,list)
     elseif key==Keyboard.KEY_TAB then self:focusContent() end
 end
 function EmberRoutesCraftingBrowser:focusDraft()
-    if self.actor:getJoypadBind()~=-1 then setJoypadFocus(self.actor:getIndex(),self.draft.worker) end
+    if self.actor:getJoypadBind()~=-1 then setJoypadFocus(self.actor:getIndex(),self.draft.quantity) end
 end
 function EmberRoutesCraftingBrowser:turn(delta)
     self:change({page=math.max(1,math.min(self.store.value.catalog.pages,self.store.value.page+delta))})
@@ -174,9 +174,9 @@ function EmberRoutesCraftingBrowser:project(value,changes)
         self.syncing=false
         Theme.enable(self.previous,catalog.page>1) Theme.enable(self.next,catalog.page<catalog.pages)
         self.unsupported:setTitle(text(value.unsupported and "includingUnsupported" or "supportedOnly"))
-        self.statusLines.lines=Text.wrapLimited(value.notice~="" and value.notice or text(catalog.loading and "catalogLoading" or "executionRecheck"),self.statusLines.bounds.width,UIFont.Small,1)
+        self.statusLines.lines=Text.wrapLimited(value.notice~="" and value.notice or (catalog.loading and text("catalogLoading") or ""),self.statusLines.bounds.width,UIFont.Small,1)
         if not self.filterProduct and not value.recipeId and catalog.rows[1] then self:change({recipeId=catalog.rows[1].id}) return end
-        if not (changes.recipeId or changes.snapshot or changes.npcId or changes.quantity or changes.surface or changes.preview) then return end
+        if not (changes.recipeId or changes.snapshot or changes.quantity or changes.surface or changes.preview) then return end
     end
     if changes.recipeId then
         self.recipe=value.recipeId and Service.describe(value.recipeId) or nil self.draft.expanded={}
@@ -184,23 +184,17 @@ function EmberRoutesCraftingBrowser:project(value,changes)
     end
     if changes.snapshot then
         if value.snapshot.surfaceId and value.snapshot.surfaceId~=self.defaultSurface then
-            self.defaultSurface=value.snapshot.surfaceId self:change({surface=value.snapshot.surfaceId}) return
+            self.defaultSurface=value.snapshot.surfaceId
         end
-        local present=false for _,worker in ipairs(value.snapshot.workers) do if worker.id==value.npcId then present=true end end
-        if not present and value.snapshot.workers[1] then self:change({npcId=value.snapshot.workers[1].id}) return end
     end
-    if self.recipe and self.recipe.surface and not value.surface then
-        local id=Service.chooseSurface and Service.chooseSurface(self.actor,self.entry.id,value.npcId)
-        if id then self:change({surface=id}) return end
-    end
-    local key=tostring(value.recipeId)..":"..tostring(value.npcId)..":"..tostring(value.quantity)..":"..tostring(self.recipe and self.recipe.surface and value.surface or false)
+    local key=tostring(value.recipeId)..":"..tostring(value.quantity)..":"..tostring(self.recipe and self.recipe.surface and value.surface or false)
     if self.previewKey~=key and value.recipeId then
         self.previewKey=key
         self.previewGeneration=(self.previewGeneration or 0)+1 local generation=self.previewGeneration
         if self.cancelPreview then self.cancelPreview() end
         local token=self.activation
         self:change({preview={state="CHECKING",conditions={},counts={}}})
-        self.cancelPreview=Service.preview(self.actor,self.entry.id,value.npcId,value.recipeId,value.quantity,value.surface,function(result)
+        self.cancelPreview=Service.preview(self.actor,self.entry.id,nil,value.recipeId,value.quantity,value.surface or nil,function(result)
             if self.active and self.activation==token and self.previewKey==key and self.previewGeneration==generation then self:change({preview=result}) end
         end)
         return
@@ -209,10 +203,11 @@ function EmberRoutesCraftingBrowser:project(value,changes)
 end
 function EmberRoutesCraftingBrowser:command(command,recipeId,surfaceId)
     local v=self.store.value
+    local Words=require "EmberRoutesProbe/UI/OrderMonitorCards"
     local result=Service.command(self.actor,self.entry.id,v.npcId,command,surfaceId or v.surface,recipeId or v.recipeId,v.quantity)
     self:change({notice=Words.reason(result),snapshot=Service.status(self.actor,self.entry.id)})
     if command=="run" and result=="STARTED" then
-        if self.shell.returnContext then self.shell:returnWarehouse() else self.shell:selectView("orders") end
+        if self.shell and self.shell.returnContext then self.shell:returnWarehouse() elseif self.shell and self.shell.selectView then self.shell:selectView("orders") end
     end
 end
 function EmberRoutesCraftingBrowser:warehouse(fullType)

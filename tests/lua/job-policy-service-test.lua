@@ -20,7 +20,7 @@ local fakeRoot = {
     }
 }
 
-package.loaded['EmberRoutesProbe/SettlementLedger'] = {
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger'] = {
     data = function() return fakeRoot end,
     authorized = function(actor) return actor == 'actor' end,
     view = function(actor, id)
@@ -30,13 +30,13 @@ package.loaded['EmberRoutesProbe/SettlementLedger'] = {
 }
 
 local notified = 0
-local Signals = require 'EmberRoutesProbe/LaborSignals'
+local Signals = require 'EmberRoutesProbe/Work/LaborSignals'
 Signals.watch(function() notified = notified + 1 end)
 
-local Registry = require 'EmberRoutesProbe/JobPolicyRegistry'
-local Service = require 'EmberRoutesProbe/JobPolicyService'
-local CleaningDef = require 'EmberRoutesProbe/CleaningPolicyDef'
-local CookingDef = require 'EmberRoutesProbe/CookingPolicyDef'
+local Registry = require 'EmberRoutesProbe/Kernel/JobPolicyRegistry'
+local Service = require 'EmberRoutesProbe/Work/JobPolicyService'
+local CleaningDef = require 'EmberRoutesProbe/Field/CleaningPolicyDef'
+local CookingDef = require 'EmberRoutesProbe/Cooking/CookingPolicyDef'
 
 print("=== Running Job Policy Unit Tests ===")
 

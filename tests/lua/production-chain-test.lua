@@ -1,4 +1,4 @@
-local Chain=require 'EmberRoutesProbe/ProductionChainPlan'
+local Chain=require 'EmberRoutesProbe/Crafting/ProductionChainPlan'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
 local function input(kind,count,keep,slot)

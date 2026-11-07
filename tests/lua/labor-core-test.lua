@@ -1,7 +1,7 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;"..package.path
 local count=0
 local function check(value,message) count=count+1 assert(value,message) end
-local Claims=require "EmberRoutesProbe/LaborClaims"
+local Claims=require "EmberRoutesProbe/Kernel/LaborClaims"
 local claims=Claims.new()
 local a=claims:acquire("a",1,{"item:1","item:2"})
 local b,reason=claims:acquire("b",1,{"item:3","item:2"})
@@ -16,7 +16,7 @@ claims:release(a)
 check(claims:valid(renewed,"item:1") and not claims:reserve(b,"box",3,1,1),"old token cannot release renewed item or capacity")
 claims:release(renewed)
 check(claims:reserve(b,"box",3,1,1),"new token releases its reservation")
-local Schedule=require "EmberRoutesProbe/LaborSchedule"
+local Schedule=require "EmberRoutesProbe/Work/LaborSchedule"
 local schedule=Schedule.new() local seen={}
 for i=1,100 do schedule:add(i) end
 for _=1,25 do schedule:step(4,function(id) seen[id]=(seen[id] or 0)+1 end) end
@@ -25,7 +25,7 @@ local removed={}
 schedule:step(4,function(id) removed[#removed+1]=id schedule:remove(id) end)
 check(#removed==4 and removed[1]==1 and removed[4]==4,"removing current worker preserves cursor")
 
-local View=require "EmberRoutesProbe/InventoryView"
+local View=require "EmberRoutesProbe/Warehouse/InventoryView"
 local reads=0 local container={items={}}
 function container:getItems() return self.items end
 function container.items:size() return #self end

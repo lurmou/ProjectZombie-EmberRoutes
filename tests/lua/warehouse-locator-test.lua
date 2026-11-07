@@ -19,11 +19,11 @@ local now,marks=0,0 function getTimestampMs() return now end
 function addAreaHighlightForPlayer() marks=marks+1 end
 Events=Events or {} local callbacks={}
 Events.OnRenderTick={Add=function(fn) callbacks[fn]=true end,Remove=function(fn) callbacks[fn]=nil end}
-package.loaded['EmberRoutesProbe/Log']=package.loaded['EmberRoutesProbe/Log'] or {write=function() end}
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Locator=require 'EmberRoutesProbe/WarehouseLocator'
+package.loaded['EmberRoutesProbe/Kernel/Log']=package.loaded['EmberRoutesProbe/Kernel/Log'] or {write=function() end}
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Locator=require 'EmberRoutesProbe/Warehouse/WarehouseLocator'
 local filter=Filter.new() filter.groups.other=true
 check(Registry.configure(actor,object,filter)=='FILTER_CONFIGURED','fixture uses the real registration and access rules')
 local id=object.data.EmberRoutesContainer.id

@@ -56,6 +56,64 @@ end
 ---@param x number
 ---@param y number
 ---@param width number
+---@param height number? default 4
+---@param fraction number 0.0 to 1.0
+---@param color table? {r, g, b, a}
+---@param trough table? {r, g, b, a}
+function StatMeter.drawBar(owner, x, y, width, height, fraction, color, trough)
+    local h = height or 4
+    local f = math.max(0, math.min(1.0, fraction or 0))
+    Theme.rect(owner, x, y, width, h, trough or COLOR_TROUGH)
+    local fillW = math.floor(width * f)
+    if fillW > 0 then
+        Theme.rect(owner, x, y, fillW, h, color or COLOR_GREEN)
+    end
+end
+
+---Static zero-GC draw function for a two-segment comparative ratio bar (e.g. Work vs Leisure).
+---@param owner ISPanel
+---@param x number
+---@param y number
+---@param width number
+---@param height number
+---@param ratioA number 0.0 to 1.0 (proportion of segment A)
+---@param opts table? {colorA=table, colorB=table, trough=table, border=table, isEmpty=boolean, plain=boolean}
+function StatMeter.drawSplitBar(owner, x, y, width, height, ratioA, opts)
+    opts = opts or {}
+    local trough = opts.trough or COLOR_TROUGH
+    Theme.rect(owner, x, y, width, height, trough)
+
+    if not opts.isEmpty and width > 0 then
+        local fA = math.max(0, math.min(1.0, ratioA or 0))
+        local colA = opts.colorA or COLOR_BLUE
+        local colB = opts.colorB or COLOR_GREEN
+
+        local fillA = math.floor(width * fA)
+        local fillB = width - fillA
+
+        if fA > 0 and fillA > 0 then
+            Theme.rect(owner, x, y, fillA, height, colA)
+        end
+        if fA < 1.0 and fillB > 0 then
+            Theme.rect(owner, x + fillA, y, fillB, height, colB)
+        end
+
+        -- Clean 1px divider seam between segments when both exist
+        if fillA > 1 and fillB > 1 then
+            Theme.rect(owner, x + fillA, y, 1, height, trough)
+        end
+    end
+
+    if not opts.plain then
+        Theme.rect(owner, x, y, width, height, opts.border or COLOR_BORDER, true)
+    end
+end
+
+---Static zero-GC draw function for embedding inside list rows or custom prerender loops.
+---@param owner ISPanel
+---@param x number
+---@param y number
+---@param width number
 ---@param height number
 ---@param fraction number 0.0 to 1.0
 ---@param opts table? {mode="progress"|"health"|"load"|"custom", color=table, capFraction=number, threshold=number, label=string, labelW=number, showPercent=boolean}

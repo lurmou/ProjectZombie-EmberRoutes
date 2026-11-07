@@ -1,7 +1,7 @@
-local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 require "ISUI/ISScrollingListBox"
 local Text=require "EmberRoutesProbe/UI/Text"
-local Metrics=require "EmberRoutesProbe/WarehouseMetrics"
+local Metrics=require "EmberRoutesProbe/Warehouse/WarehouseMetrics"
 local Cached={}
 ---@class EmberRoutesCachedList:ISScrollingListBox
 ---@field emberPad number
@@ -27,7 +27,7 @@ end
 function Cached.create(owner,bounds,select,style)
     ---@type EmberRoutesCachedList
     local list=ISScrollingListBox:new(bounds.x,bounds.y,bounds.width,bounds.height)
-    list:initialise() Tooltip.attach(list,"updateTooltip",owner) list.font=UIFont.Small
+    list:initialise() Tooltip.register(list,{method="updateTooltip",owner=owner}) list.font=UIFont.Small
     list.emberPad,list.emberFontHeight=owner.pad,owner.fontHeight
     list.emberStyle=style
     local function clampScroll(self)
@@ -102,14 +102,21 @@ function Cached.create(owner,bounds,select,style)
     if select then
         local clicked=function(target,row)
             if target.focusList then target:focusList(list) end
-            if row then select(target,row.value) end
+            if row~=nil then
+                local val=(type(row)=='table' and row.value~=nil) and row.value or row
+                select(target,val)
+            end
         end
         list:setOnMouseDownFunction(owner,clicked) list:setOverrideAButtonFunction(owner,clicked)
     end
     list:setWantKeyEvents(true)
     local function move(direction)
         list.selected=math.max(1,math.min(#list.items,list.selected+direction)) list:ensureVisible(list.selected)
-        if select and list.items[list.selected] then select(owner,list.items[list.selected].item.value) end
+        if select and list.items[list.selected] then
+            local it=list.items[list.selected].item
+            local val=(type(it)=='table' and it.value~=nil) and it.value or it
+            select(owner,val)
+        end
     end
     list.onKeyPress=function(_,key)
         if owner.isListFocused and not owner:isListFocused(list) then return end

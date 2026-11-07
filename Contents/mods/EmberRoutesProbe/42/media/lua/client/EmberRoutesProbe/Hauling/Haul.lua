@@ -1,10 +1,10 @@
-local Probe = require "EmberRoutesProbe/Boot"
-local Log = require "EmberRoutesProbe/Log"
-local Actions = require "EmberRoutesProbe/Actions"
-local Batch = require "EmberRoutesProbe/Batch"
+local Probe = require "EmberRoutesProbe/Kernel/Boot"
+local Log = require "EmberRoutesProbe/Kernel/Log"
+local Actions = require "EmberRoutesProbe/Runtime/Actions"
+local Batch = require "EmberRoutesProbe/Runtime/Batch"
 local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
-local Diagnostic=require 'EmberRoutesProbe/TaskDiagnostic'
-local Driver=require 'EmberRoutesProbe/Driver'
+local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 require "TimedActions/ISInventoryTransferAction"
 
 local Haul = { endpoints = {}, fixtures = {}, batch = nil }
@@ -133,6 +133,8 @@ local function moveStep(name, endpoint)
         if not requested then return "PASSED", "already adjacent and reachable" end
         local result = EmberRoutesProbeJava.motionResult(Haul.npc)
         if result == "MOVING" then return "WAIT" end
+        -- Parked carrier keeps its step instead of reporting a path failure.
+        if Driver.suspended(Haul.npc) then return "WAIT" end
         if result ~= "REACHED" then return "FAILED", "movement=" .. result end
         return reachable(endpoint) and "PASSED" or "FAILED", "movement=" .. result .. " reach checked"
     end
@@ -375,7 +377,10 @@ function Haul.tick(context)
     if Haul.body and (not context or context~=controlled or context.body~=Haul.body or not Haul.body.current()) then return end
     local valid, reason = endpointsValid()
     if valid then
-        if not EmberRoutesProbeJava.carrierPresent(Haul.npc) then reason = "CARRIER_UNAVAILABLE"
+        if not EmberRoutesProbeJava.carrierPresent(Haul.npc) then
+            -- Parked carrier: hold the haul instead of cancelling it.
+            if require('EmberRoutesProbe/Runtime/Driver').suspended(Haul.npc) then return end
+            reason = "CARRIER_UNAVAILABLE"
         elseif Haul.actor:isDead() then reason = "ACTOR_DEAD"
         elseif Haul.npc:getBodyDamage():getOverallBodyHealth() < 95 then reason = "INJURED"
         else reason = nil end

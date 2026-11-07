@@ -3,13 +3,13 @@ local root,now={taskJobs={format=1,byId={}}},0 local entry={id='home',revision=1
 getTimestampMs=function() return now end
 getGameTime=function() return {getWorldAgeHours=function() return 10 end} end
 CharacterStat={FATIGUE='fatigue',ENDURANCE='endurance'}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-package.loaded['EmberRoutesProbe/Boot']={}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/MembershipService']={entry=function() return entry end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function(_,x,y) return x>=1 and x<=2 and y==1 end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={entry=function() return entry end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function(_,x,y) return x>=1 and x<=2 and y==1 end}
 local x,ground,asleep,fatigue,owner=0,false,false,0.9,true
 local begun,ready,starts,stops=false,false,0,0
 local npc={getX=function() return x end,getY=function() return 1 end,getZ=function() return 0 end,
@@ -20,13 +20,13 @@ local calls=0
 EmberRoutesProbeJava={floorSleepSafe=function(_,sx,sy,sz)
     calls=calls+1 return (sx==1 or sx==2) and sy==1 and sz==0
 end,motionResult=function() return 'MOVING' end,bedPoseReady=function() return ready end}
-local F=require 'EmberRoutesProbe/FloorSleep'
+local F=require 'EmberRoutesProbe/SelfCare/FloorSleep'
 local scan=F.scan(npc,'a') local point
 for i=1,81 do local p,done=scan:step(1) point=p if done then break end end
 assert(point and point.x==1 and calls<=9,'bounded scan finds a safe point inside the settlement')
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/LaborStore'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local job=Record.create('sleep','a') job.payload=Record.begin(job,'SLEEP')
 job.payload.floorSite=point job.payload.claims={F.key(point)} job.payload.step='ACTING'
 assert(Record.valid(job) and Jobs.current():create(job))
@@ -42,7 +42,7 @@ local competing=F.scan(npc,'b') local other
 for i=1,81 do local p,done=competing:step(1) other=p if done then break end end
 assert(other and other.x==2,'another sleeper skips the claimed tile')
 local move=F.move(c) assert(move.run()=='Running') x=1 assert(move.run()=='Success')
-local Repose=require 'EmberRoutesProbe/SelfCareRepose'
+local Repose=require 'EmberRoutesProbe/SelfCare/SelfCareRepose'
 local leaf=Repose.new(c)
 assert(leaf.run()=='Running' and starts==0,'no sleep effects while native sitting is pending')
 begun=true assert(leaf.run()=='Running' and starts==0,'native ground seat alone is not sleep evidence')

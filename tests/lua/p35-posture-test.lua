@@ -24,7 +24,7 @@ local c={sameAttempt=function() return true end,valid=function() return true end
     isSittingOnFurniture=function() return seated end,getVariableBoolean=function() return started end,
     getSitOnFurnitureObject=function() return object end,
     setVariable=function(_,key,value) assert(key=='forceGetUp' and value) requests=requests+1 end}}
-local P=require 'EmberRoutesProbe/LeisurePosture'
+local P=require 'EmberRoutesProbe/Leisure/LeisurePosture'
 local blocked=P.new(c,'chair') contextName='getup'
 assert(blocked.enter()=='Running' and clears==0,'old get-up cannot be cleared in its transition')
 contextName='idle'

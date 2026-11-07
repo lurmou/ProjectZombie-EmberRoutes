@@ -1,7 +1,7 @@
 -- Lua HOST parity only. Frozen old code is a TEST-ONLY oracle, never a fallback.
 -- Java compilation, real bridge calls, game, disk reload and performance UNVERIFIED.
-local Jobs=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
 local function copy(t) if type(t)~='table' then return t end local r={} for k,v in pairs(t) do r[k]=copy(v) end return r end
@@ -20,20 +20,20 @@ local function setup(old)
     function S.getToken(id) return state.tokens[id] end
     local function alloc(r,id) r.nextClaimSeq=r.nextClaimSeq+1 return id..':c'..r.nextClaimSeq end
     local function clean(id) state.tokens[id]=nil end
-    package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
-    package.loaded['EmberRoutesProbe/LaborStore']=S
-    package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() return 'attempt:1' end}
-    package.loaded['EmberRoutesProbe/ProductionJobs']=nil
+    package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobs end}
+    package.loaded['EmberRoutesProbe/Work/LaborStore']=S
+    package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() return 'attempt:1' end}
+    package.loaded['EmberRoutesProbe/Crafting/ProductionJobs']=nil
     -- Actual same-fact adapter/generation fence, not a permissive claim mock.
-    require('EmberRoutesProbe/LaborDomainAdapters').install(S,state,function() error('unexpected identity allocation') end,clean,function() return true end)
+    require('EmberRoutesProbe/Work/LaborDomainAdapters').install(S,state,function() error('unexpected identity allocation') end,clean,function() return true end)
     if old then dofile('tests/lua/fixtures/dec003-pre-kernel-commit.lua').install(S,state,alloc,clean)
     else
         state.bridge=dofile('tests/lua/fixtures/dec003-craft-kernel-host.lua')
         state.bridge.install(state,alloc,clean)
-        require('EmberRoutesProbe/LaborJobCommit').install(S,state,alloc,clean)
+        require('EmberRoutesProbe/Work/LaborJobCommit').install(S,state,alloc,clean)
     end
     function S.quarantineResource() error('quarantine must not run in directed chain') end
-    local P=old and dofile('tests/lua/fixtures/dec003-pre-kernel-production.lua') or require 'EmberRoutesProbe/ProductionJobs'
+    local P=old and dofile('tests/lua/fixtures/dec003-pre-kernel-production.lua') or require 'EmberRoutesProbe/Crafting/ProductionJobs'
     local r={id='craft',npcId='npc',requester='player',settlementId='scope',recipeId='saw',recipeName='Saw',
         signature='saw:1',product='Base.Plank',requested=1,target=1,unitYield=1,produced=0,delivered=0,
         generation=0,state='RUNNING',phase='CRAFTING',released=false,benchId='bench',
@@ -132,7 +132,7 @@ EmberRoutesProbeJava=bridge check(P.prepareRecovery(),'recovery can run after fa
 P,S,J,st,r,snap=setup(false) EmberRoutesProbeJava=nil
 ok,why=P.create(r) check(not ok and why=='KERNEL_UNAVAILABLE' and not J:get(r.id),'create fail closed')
 -- Classify pre-publication rebuild failure writes: no JobStore/kernel call.
-local Recovery=require 'EmberRoutesProbe/CraftJobRecovery'
+local Recovery=require 'EmberRoutesProbe/Crafting/CraftJobRecovery'
 P,S,J,st,r,snap=setup(false) assert(P.create(r))
 local rev=J:get(r.id).revision local calls=#st.bridge.calls
 Recovery.restore({current=st.root,rebuilt=st.claims,hasConflict=function() return true end,

@@ -1,7 +1,7 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Sort=require "EmberRoutesProbe/SortPolicy"
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Claims=require "EmberRoutesProbe/LaborClaims"
+local Sort=require "EmberRoutesProbe/Warehouse/SortPolicy"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Claims=require "EmberRoutesProbe/Kernel/LaborClaims"
 local count=0 local function check(value,message) count=count+1 assert(value,message) end
 local item={}
 function item:getFullType() return "Base.Food" end

@@ -15,7 +15,7 @@ function store.close(id,revision,reason)
     local e=events[id] assert(e.revision==revision)
     e.state='WINDING_DOWN' e.controlEpoch=e.controlEpoch+1 e.outcome=reason store.touch(e) return true
 end
-package.loaded['EmberRoutesProbe/ActivityStore']=store
+package.loaded['EmberRoutesProbe/Activity/ActivityStore']=store
 local participant={}
 function participant.proof(e,id) calls.proofs=calls.proofs+1 proofed[id]=true return not bad[id],now end
 function participant.receipt(e,id) return not bad[id] end
@@ -33,8 +33,8 @@ function participant.finishCollection(e,all)
     return all
 end
 function participant.advance(actor,e,id) calls.advance=calls.advance+1 visited[id]=true end
-package.loaded['EmberRoutesProbe/ActivityParticipant']=participant
-local Pump=require 'EmberRoutesProbe/ActivityPump'
+package.loaded['EmberRoutesProbe/Activity/ActivityParticipant']=participant
+local Pump=require 'EmberRoutesProbe/Activity/ActivityPump'
 local pump=Pump.new({site=function() return true end,
     memberValid=function(id,e) return e.roster[id] and not e.roster[id].withdrawn end,
     calendar=function(actor,hours,budget) assert(budget==2) calls.calendar=calls.calendar+1 end})

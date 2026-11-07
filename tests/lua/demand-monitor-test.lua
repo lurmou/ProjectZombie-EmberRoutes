@@ -10,18 +10,18 @@ local field={{id='DEMAND:cleaning:s',state='BLOCKED',reason='FIELD_WORKER_BUSY',
 local rule={id='r',product='Base.Bandage',minimum=5,knownCount=1,enabled=true,revision=1,activeOrder='order'}
 local order={id='order',state='WAITING',name='Bandages'}
 local control
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return {status=function() return control end} end}
-package.loaded['EmberRoutesProbe/MembershipService']={view=function() end}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() if allowed then return {id='s',name='Home'} end return nil,'ACCESS_DENIED' end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-package.loaded['EmberRoutesProbe/DisplayNames']={name=function(id) return id end}
-package.loaded['EmberRoutesProbe/FieldDemand']={rows=function() return field end}
-package.loaded['EmberRoutesProbe/Boot']={publicDispatch=true}
-package.loaded['EmberRoutesProbe/PublicWork']={orders=function() return {order} end,rules=function() return {rule,rule} end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {status=function() return control end} end}
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function() end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() if allowed then return {id='s',name='Home'} end return nil,'ACCESS_DENIED' end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function(id) return id end}
+package.loaded['EmberRoutesProbe/Field/FieldDemand']={rows=function() return field end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={publicDispatch=true}
+package.loaded['EmberRoutesProbe/Work/PublicWork']={orders=function() return {order} end,rules=function() return {rule,rule} end}
 local projector
-package.loaded['EmberRoutesProbe/MedicalCare']={demands=function() return {} end}
-package.loaded['EmberRoutesProbe/OrderMonitorService']={watch=function(_,_,callback,p) projector=p return function() end end}
-local D=require 'EmberRoutesProbe/DemandMonitorService'
+package.loaded['EmberRoutesProbe/SelfCare/MedicalCare']={demands=function() return {} end}
+package.loaded['EmberRoutesProbe/Warehouse/OrderMonitorService']={watch=function(_,_,callback,p) projector=p return function() end end}
+local D=require 'EmberRoutesProbe/Warehouse/DemandMonitorService'
 local s=D.status({},'s')
 check(#s.rows==2,'same stock problem deduplicates even with repeated source facts')
 local cleaning=s.rows[1] local stock=s.rows[2]

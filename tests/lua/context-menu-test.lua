@@ -87,7 +87,7 @@ end
 ISContextMenu = { getNew = function(_, parent) return newMenu() end }
 
 -- Mock Boot & Java probe
-package.loaded['EmberRoutesProbe/Boot'] = { ready = true, hasJava = function() return true end }
+package.loaded['EmberRoutesProbe/Kernel/Boot'] = { ready = true, hasJava = function() return true end }
 
 EmberRoutesProbeJava = {
     workerCount = function() return 2 end,
@@ -96,14 +96,14 @@ EmberRoutesProbeJava = {
     selectCarrier = function(id) return true end
 }
 
-package.loaded['EmberRoutesProbe/Driver'] = {
+package.loaded['EmberRoutesProbe/Runtime/Driver'] = {
     bindId = function(actor, id)
         return { handle = { getDescriptor = function() return { getForename = function() return id == "worker-1" and "张" or "李" end, getSurname = function() return id == "worker-1" and "三" or "四" end } end } }
     end,
     selected = function() return "worker-1" end
 }
 
-package.loaded['EmberRoutesProbe/SettlementLedger'] = {
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger'] = {
     authorized = function() return true end,
     data = function() return { factionId = "faction-1" } end,
     list = function()
@@ -114,7 +114,7 @@ package.loaded['EmberRoutesProbe/SettlementLedger'] = {
     end
 }
 
-package.loaded['EmberRoutesProbe/LogisticsMenu'] = {
+package.loaded['EmberRoutesProbe/Integration/LogisticsMenu'] = {
     initialize = function() end,
     fill = function(actor, menu, entry)
         return menu:addOption("物流中心 - " .. entry.name, actor, function() end, entry.id)
@@ -130,7 +130,7 @@ package.loaded['EmberRoutesProbe/LogisticsMenu'] = {
     end
 }
 
-package.loaded['EmberRoutesProbe/ContainerRegistry'] = {
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'] = {
     filter = function() return nil end,
     metadata = function() return nil end,
     logistics = function() return "STORAGE" end,
@@ -138,7 +138,7 @@ package.loaded['EmberRoutesProbe/ContainerRegistry'] = {
     listeners = {}
 }
 
-package.loaded['EmberRoutesProbe/ContainerConfiguration'] = {
+package.loaded['EmberRoutesProbe/Warehouse/ContainerConfiguration'] = {
     summary = function() return "配置概要" end,
     warning = function() return nil end,
     text = function(k) return k end,
@@ -146,16 +146,16 @@ package.loaded['EmberRoutesProbe/ContainerConfiguration'] = {
     hasClipboard = function() return false end
 }
 
-package.loaded['EmberRoutesProbe/StorageFilterPanel'] = { open = function() end }
+package.loaded['EmberRoutesProbe/UI/StorageFilterPanel'] = { open = function() end }
 package.loaded['EmberRoutesProbe/UI/Text'] = { wrapLimited = function(s) return { s } end }
 UIFont = { Small = 0 }
 getCore = function() return { getScreenWidth = function() return 1920 end } end
 
 package.loaded['EmberRoutesProbe/UI/SettlementSelector'] = { open = function() end }
-package.loaded['EmberRoutesProbe/SettlementDashboard'] = { open = function() end }
-package.loaded['EmberRoutesProbe/LifeZoneMenu'] = { fill = function() end }
-package.loaded['EmberRoutesProbe/MembershipText'] = { reason = function(k) return k end }
-package.loaded['EmberRoutesProbe/MembershipService'] = {
+package.loaded['EmberRoutesProbe/UI/SettlementDashboard'] = { open = function() end }
+package.loaded['EmberRoutesProbe/Integration/LifeZoneMenu'] = { fill = function() end }
+package.loaded['EmberRoutesProbe/Settlement/MembershipText'] = { reason = function(k) return k end }
+package.loaded['EmberRoutesProbe/Settlement/MembershipService'] = {
     setReturnPoint = function() return true end,
     view = function(id) return { factionId = "faction-1", revision = 1 } end,
     request = function() return { state = "OK" } end
@@ -163,8 +163,8 @@ package.loaded['EmberRoutesProbe/MembershipService'] = {
 package.loaded['ISUI/ISCollapsableWindow'] = {}
 
 -- Load modified modules
-local ContainerMenu = require "EmberRoutesProbe/ContainerMenu"
-local SettlementMenu = require "EmberRoutesProbe/SettlementMenu"
+local ContainerMenu = require "EmberRoutesProbe/Integration/ContainerMenu"
+local SettlementMenu = require "EmberRoutesProbe/Integration/SettlementMenu"
 
 -- Test 1: ContainerMenu has logistics role integrated
 local cParent = newMenu()
@@ -198,17 +198,17 @@ for _, name in ipairs({ "ISTimedActionQueue", "ISEatFoodAction", "ISDrinkFluidAc
     package.loaded["TimedActions/" .. name] = { queues = {} }
 end
 
-package.loaded['EmberRoutesProbe/StockService'] = {}
-package.loaded['EmberRoutesProbe/PublicWork'] = {}
-package.loaded['EmberRoutesProbe/Persistence'] = { execute = function() end }
-package.loaded['EmberRoutesProbe/TaskResume'] = { install = function() end }
-package.loaded['EmberRoutesProbe/SelfCare'] = { install = function() end }
-package.loaded['EmberRoutesProbe/TaskRetirement'] = { install = function() end }
-package.loaded['EmberRoutesProbe/MembershipLifecycle'] = { install = function() end }
-package.loaded['EmberRoutesProbe/StorageTabs'] = {}
-package.loaded['EmberRoutesProbe/RecipeOrderEntry'] = {}
-package.loaded['EmberRoutesProbe/DebugMenu'] = {}
-package.loaded['EmberRoutesProbe/NpcDebugMenu'] = {}
+package.loaded['EmberRoutesProbe/Warehouse/StockService'] = {}
+package.loaded['EmberRoutesProbe/Work/PublicWork'] = {}
+package.loaded['EmberRoutesProbe/Runtime/Persistence'] = { execute = function() end }
+package.loaded['EmberRoutesProbe/Runtime/TaskResume'] = { install = function() end }
+package.loaded['EmberRoutesProbe/SelfCare/SelfCare'] = { install = function() end }
+package.loaded['EmberRoutesProbe/Runtime/TaskRetirement'] = { install = function() end }
+package.loaded['EmberRoutesProbe/Settlement/MembershipLifecycle'] = { install = function() end }
+package.loaded['EmberRoutesProbe/UI/StorageTabs'] = {}
+package.loaded['EmberRoutesProbe/Integration/RecipeOrderEntry'] = {}
+package.loaded['EmberRoutesProbe/Integration/DebugMenu'] = {}
+package.loaded['EmberRoutesProbe/Integration/NpcDebugMenu'] = {}
 
 require "EmberRoutesProbe"
 
@@ -303,9 +303,9 @@ assert_true(followIdx ~= nil and settleIdx ~= nil, "Both FOLLOW and SETTLE shoul
 assert_true(followIdx < settleIdx, "FOLLOW must appear before SETTLE in companion menu")
 
 -- Case E: Logistics unset option
-package.loaded['EmberRoutesProbe/ContainerRegistry'].metadata = function() return { role = "STORAGE" } end
-package.loaded['EmberRoutesProbe/LogisticsMenu'] = nil
-local LogisticsReal = require "EmberRoutesProbe/LogisticsMenu"
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry'].metadata = function() return { role = "STORAGE" } end
+package.loaded['EmberRoutesProbe/Integration/LogisticsMenu'] = nil
+local LogisticsReal = require "EmberRoutesProbe/Integration/LogisticsMenu"
 local logParent = newMenu()
 LogisticsReal.container(mockActor, logParent, {}, {})
 local roleOpt = logParent.options[1]
@@ -319,7 +319,7 @@ end
 assert_true(hasUnset, "Configured container must offer UNSET option in role submenu")
 
 -- Case F: ItemLockMenu icon check
-local ItemLockMenu = require "EmberRoutesProbe/ItemLockMenu"
+local ItemLockMenu = require "EmberRoutesProbe/Integration/ItemLockMenu"
 local itemCtx = newMenu()
 local mockItem = { getModData = function() return {} end }
 ItemLockMenu.fill(0, itemCtx, { mockItem })

@@ -1,5 +1,5 @@
-local Sessions=require 'EmberRoutesProbe/ExecutionSessions'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
+local Sessions=require 'EmberRoutesProbe/Kernel/ExecutionSessions'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 local checks=0
 local function check(value,message) checks=checks+1 assert(value,message) end
 local function rejected(value,reason,expected,message)
@@ -101,4 +101,4 @@ check(claims:valid(claim,'item:42'),'world retirement never destroys business cu
 local fresh=Sessions.new()
 local freshToken=fresh:acquire('npc-a','new-world','TEST')
 check(fresh:canAct(freshToken) and not fresh:canAct(active) and not s:canAct(freshToken),'same stable ID in new world cannot reuse old authorization')
-print(require('EmberRoutesProbe/Build').prefix..' execution sessions: '..checks..' checks; pure protocol, no game bodies')
+print(require('EmberRoutesProbe/Kernel/Build').prefix..' execution sessions: '..checks..' checks; pure protocol, no game bodies')

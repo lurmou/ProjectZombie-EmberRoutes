@@ -1,6 +1,6 @@
 -- Integration test for StockService: scheduling, non-preemption, early settle, and overlap checks.
 local checks=0
-package.loaded['EmberRoutesProbe/HealthAssessment']={canWork=function() return true end}
+package.loaded['EmberRoutesProbe/SelfCare/HealthAssessment']={canWork=function() return true end}
 local function check(cond,msg)
     checks=checks+1
     assert(cond,msg or ("Assertion failed at check #"..checks))
@@ -63,10 +63,10 @@ _G.getTimestampMs=function() return 1000 end
 _G.getTextOrNull=function(k) return nil end
 _G.getText=function(k) return k end
 
-local Registry=require "EmberRoutesProbe/ContainerRegistry"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 Registry.data=function() return mockModData end
 
-local Ledger=require "EmberRoutesProbe/SettlementLedger"
+local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
 Ledger.data=function()
     return {format=1,factionId="f1",entries={s1=mockSettlement1,s2=mockSettlement2}}
 end
@@ -75,7 +75,7 @@ Ledger.view=function(actor,id)
     return id=="s1" and mockSettlement1 or id=="s2" and mockSettlement2 or nil
 end
 
-local Index=require "EmberRoutesProbe/WarehouseIndex"
+local Index=require "EmberRoutesProbe/Warehouse/WarehouseIndex"
 local mockIndexResults={}
 Index.candidates=function(actor,settlementId,req)
     local r=mockIndexResults[settlementId..":"..req.fullType]
@@ -87,17 +87,17 @@ Index.watch=function(settlementId,callback)
 end
 Index.refresh=function(settlementId) end
 
-local Driver=require "EmberRoutesProbe/Driver"
+local Driver=require "EmberRoutesProbe/Runtime/Driver"
 Driver.bindId=function(actor,id)
     return {handle=mockNpc}
 end
 
-local Work=require "EmberRoutesProbe/Work"
+local Work=require "EmberRoutesProbe/Work/Work"
 Work.busy=function(id) return false end
 
-local StockStore=require "EmberRoutesProbe/StockStore"
-local StockService=require "EmberRoutesProbe/StockService"
-local Production=require "EmberRoutesProbe/Production"
+local StockStore=require "EmberRoutesProbe/Warehouse/StockStore"
+local StockService=require "EmberRoutesProbe/Warehouse/StockService"
+local Production=require "EmberRoutesProbe/Crafting/Production"
 
 -- 1. checkEarlySettle
 -- Fake in-flight production order context
@@ -159,7 +159,7 @@ local r=StockStore.get(ruleId)
 check(r.activeCycle~=nil and r.activeCycle.phase=="ATTACHED","rule cycle attached")
 
 -- Clean up
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local currentRuntime=Runtime.current
 local receipt={state='PENDING'}
 local cancelled=0
@@ -185,7 +185,7 @@ r=StockStore.get(ruleId) check(cancelled==1 and not r.activeCycle,'disabling rul
 StockStore.command(mockActor,'s1','enable',{ruleId=ruleId})
 StockService.markDirty(ruleId) StockService.tick()
 r=StockStore.get(ruleId)
-package.loaded['EmberRoutesProbe/BusinessJobs']={crafts=function() return {[r.npcId]={id=r.activeCycle.taskId,released=false}} end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={crafts=function() return {[r.npcId]={id=r.activeCycle.taskId,released=false}} end}
 mockModData.craftProbes.byNpc.worker_1={id=r.activeCycle.taskId,released=false}
 StockService.markDirty(ruleId) StockService.tick()
 r=StockStore.get(ruleId) check(r.activeCycle.phase=='ATTACHED','matching real production record attaches prepared cycle')

@@ -7,8 +7,8 @@ local function check(cond, msg)
     checks = checks + 1
 end
 
-local Evaluator = require 'EmberRoutesProbe/FoodPolicyEvaluator'
-local PolicyDef = require 'EmberRoutesProbe/CookingPolicyDef'
+local Evaluator = require 'EmberRoutesProbe/Cooking/FoodPolicyEvaluator'
+local PolicyDef = require 'EmberRoutesProbe/Cooking/CookingPolicyDef'
 
 print("=== Running Food Policy & Evaluator Unit Tests ===")
 

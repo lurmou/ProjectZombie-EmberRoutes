@@ -25,17 +25,17 @@ local npc={getInventory=function() return root end,getPrimaryHandItem=function()
  setSecondaryHandItem=function(_,v) secondary=v end,getClothingItem_Back=function() end,
  isEquippedClothing=function() return false end,getCurrentSquare=function() return {} end,
  getPlayerNum=function() return -1 end,isTimedActionInstant=function() return false end}
-package.loaded['EmberRoutesProbe/LaborStore']={validField=function() return true end,validToolUse=function() return true end}
-package.loaded['EmberRoutesProbe/ToolRequirements']={}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={validField=function() return true end,validToolUse=function() return true end}
+package.loaded['EmberRoutesProbe/Field/ToolRequirements']={}
 local square={}
-package.loaded['EmberRoutesProbe/FieldSpatial']={square=function() return square end,reachable=function() return true end,walkway=function() return true end,adjacent=function() return square end}
-package.loaded['EmberRoutesProbe/FieldDiscovery']={object=function() end}
-package.loaded['EmberRoutesProbe/FieldCargo']={}
+package.loaded['EmberRoutesProbe/Field/FieldSpatial']={square=function() return square end,reachable=function() return true end,walkway=function() return true end,adjacent=function() return square end}
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']={object=function() end}
+package.loaded['EmberRoutesProbe/Field/FieldCargo']={}
 local spec
-package.loaded['EmberRoutesProbe/FieldActions']={new=function(_,h) spec=h return {} end}
+package.loaded['EmberRoutesProbe/Field/FieldActions']={new=function(_,h) spec=h return {} end}
 local cleanCount=0
 ISCleanBlood={new=function(_,who,sq,cleaner) check(who==npc and sq==square and cleaner==fluid,'native clean receives same NPC square and cleaner original') cleanCount=cleanCount+1 return {} end}
-local O=require 'EmberRoutesProbe/FieldOperations'
+local O=require 'EmberRoutesProbe/Field/FieldOperations'
 local c={npc=npc,job={id='j',npcId='n',payload={target={kind='STAIN',tools={1,2}}}},token={}}
 c.body={snapshot=function() return {nativeStopped=true} end}
 c.move=function() return 'Success' end
@@ -58,9 +58,9 @@ action=spec.create() ISEquipWeaponAction.complete(action)
 c.node=nil O.step(c) check(spec.kind=='STAIN' and primary==mop and secondary==fluid,'cloth and cleaner reach native cleaning without equip loop')
 -- Other field preparation uses the same real native equip action.
 local plant={}
-local discovery=require 'EmberRoutesProbe/FieldDiscovery'
+local discovery=require 'EmberRoutesProbe/Field/FieldDiscovery'
 discovery.object=function() return plant end discovery.plant=function() return plant end
-require('EmberRoutesProbe/FieldSpatial').identity=function() return 'plant' end
+require('EmberRoutesProbe/Field/FieldSpatial').identity=function() return 'plant' end
 
 c.node=nil c.job.payload.target={kind='WATER',identity='plant',tools={1}} primary=nil secondary=nil
 O.step(c) check(spec.kind=='EQUIP','watering equips the carried container before approaching the plant')

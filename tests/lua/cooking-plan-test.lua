@@ -1,4 +1,4 @@
-local Plan=require 'EmberRoutesProbe/ProductionChainPlan'
+local Plan=require 'EmberRoutesProbe/Crafting/ProductionChainPlan'
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 local function milk(slot,amount)
     return {slot=slot or 0,count=1,keep=true,any=true,types={},choices={},

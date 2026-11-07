@@ -1,6 +1,6 @@
 -- Lua HOST parity only. Java compilation/bridge/game/performance UNVERIFIED.
-local Jobs=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local checks=0
 local function check(v,m) checks=checks+1 assert(v,m) end
@@ -19,9 +19,9 @@ local function setup(old)
     function Store.getToken(id) return state.claims.tokensByTaskId[id] end
     local function alloc(r,id) r.nextClaimSeq=r.nextClaimSeq+1 return id..':c'..r.nextClaimSeq end
     local function clean(id) state.tokens[id]=nil end
-    package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return jobs end}
-    package.loaded['EmberRoutesProbe/LaborStore']=Store
-    package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
+    package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return jobs end}
+    package.loaded['EmberRoutesProbe/Work/LaborStore']=Store
+    package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
     package.loaded['EmberRoutesProbe/Hauling/HaulJobs']=nil
     function Store.claimHaulJob(j)
         local t=assert(state.claims:acquire(j.id,j.payload.sequence,j.payload.claims,{claimId=j.claimId}))
@@ -32,7 +32,7 @@ local function setup(old)
     else
         state.bridge=dofile('tests/lua/fixtures/dec003-kernel-host.lua')
         state.bridge.install(state,alloc,clean)
-        require('EmberRoutesProbe/LaborJobCommit').install(Store,state,alloc,clean)
+        require('EmberRoutesProbe/Work/LaborJobCommit').install(Store,state,alloc,clean)
     end
     local Haul
     if old then Haul=dofile('tests/lua/fixtures/dec003-pre-kernel-haul.lua')

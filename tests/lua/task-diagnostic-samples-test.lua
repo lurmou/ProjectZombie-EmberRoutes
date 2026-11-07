@@ -4,15 +4,15 @@ local checks,key,serial=0,nil,0
 local function check(value,message) checks=checks+1 assert(value,message) end
 local actor={Say=function() end,isDead=function() return false end}
 local Probe={ready=true,controlledExecution=true,hasJava=function() return true end}
-package.loaded['EmberRoutesProbe/Boot']=Probe
-package.loaded['EmberRoutesProbe/Actions']={isBusy=function() return false end,
+package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
+package.loaded['EmberRoutesProbe/Runtime/Actions']={isBusy=function() return false end,
     cleanupForHaul=function(body,cap) assert(body==npc and cap.current()) return true end}
-package.loaded['EmberRoutesProbe/Companion']={}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={}
 package.loaded['EmberRoutesProbe/Hauling/Haul']={}
 Probe.cleanupHaul=function(body,cap) assert(body==npc and cap.current()) return true end
 function isClient() return false end function isServer() return false end
 local root={}
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 Registry.data=function() return root end
 Registry.id=function() serial=serial+1 return 'sample-job-'..serial end
 local actions={isEmpty=function() return true end}
@@ -26,8 +26,8 @@ EmberRoutesProbeJava={controlledCarrier=function() return npc end,carrierFor=fun
     freezeBodyControl=function() return true end,thawBodyControl=function() return true end,retireBodyControl=function() return true end,
     stopCarrier=function() error('sample used legacy stop') end}
 ISTimedActionQueue={queues={},clear=function() end}
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Persistence=require 'EmberRoutesProbe/Persistence'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Persistence=require 'EmberRoutesProbe/Runtime/Persistence'
 Runtime.begin()
 local function drain()
     for _=1,30 do Runtime.current():step() if not Runtime.current():owns('npc-2') then return end end

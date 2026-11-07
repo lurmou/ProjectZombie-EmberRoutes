@@ -72,7 +72,7 @@ function actor:Say(message) self.speech[#self.speech + 1] = message end
 function actor:isDead() return false end
 local userItem = npc.root:AddItem("UNRELATED_ITEM")
 local Probe = { ready = true, build = { version = "test", prefix = "TEST" }, hasJava = function() return true end }
-package.loaded["EmberRoutesProbe/Boot"] = Probe
+package.loaded["EmberRoutesProbe/Kernel/Boot"] = Probe
 EmberRoutesProbeJava = {
     actionCarrier = function() if active then return npc end end,
     carrierActive = function(expected) return active and expected == npc end,
@@ -136,7 +136,7 @@ ISInventoryTransferAction = { new = function(_, character, value, source, dest) 
 for _, name in ipairs({ "ISTimedActionQueue", "ISEatFoodAction", "ISDrinkFluidAction", "ISInventoryTransferAction" }) do
     package.loaded["TimedActions/" .. name] = true
 end
-local Actions = require "EmberRoutesProbe/Actions"
+local Actions = require "EmberRoutesProbe/Runtime/Actions"
 local function tick(count)
     for _ = 1, count do
         clock = clock + 100

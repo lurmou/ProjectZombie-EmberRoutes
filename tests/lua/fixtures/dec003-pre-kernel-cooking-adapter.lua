@@ -7,7 +7,7 @@ function A.install(Store,state,ensureEntityClaimId,cleanToken,scopeAllowed)
 function Store.claimCooking(job)
     Store.data()
     local saved=state.root.taskJobs.byId[job.id]
-    if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.npcId~=job.npcId
+    if not require('EmberRoutesProbe/Cooking/CookingRecord').valid(saved) or saved.npcId~=job.npcId
 	or saved.revision~=job.revision or saved.payload.phase=='SETTLED' then return nil,'COOKING_JOB_CHANGED' end
     local claimId = ensureEntityClaimId(state.root, saved, saved.id)
     local token,why=state.claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId })
@@ -16,9 +16,9 @@ function Store.claimCooking(job)
 end
 function Store.transferCooking(job,token,npcId)
     if not Store.validCooking(job,token) then return nil,'COOKING_JOB_CHANGED' end
-    local proposed,why=require('EmberRoutesProbe/CookingRecord').handoff(job,npcId)
+    local proposed,why=require('EmberRoutesProbe/Cooking/CookingRecord').handoff(job,npcId)
     if not proposed then return nil,why end
-    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
     local ok,reason=jobs:transferCooking(job.id,job.revision,proposed)
     if not ok then return nil,reason end
     -- Same Job/resource set throughout. Old callbacks fail revision/NPC/token checks.
@@ -41,7 +41,7 @@ end
 function Store.replaceCooking(job,token,proposed)
     if not Store.validCooking(job,token) or proposed.id~=job.id or proposed.npcId~=job.npcId
 	or proposed.scopeId~=job.scopeId or proposed.revision~=job.revision
-	or not require('EmberRoutesProbe/CookingRecord').valid(proposed) then return false,'COOKING_JOB_CHANGED' end
+	or not require('EmberRoutesProbe/Cooking/CookingRecord').valid(proposed) then return false,'COOKING_JOB_CHANGED' end
     local old={} for _,key in ipairs(token.resources) do old[#old+1]=key end
     -- Pure coordination, no yield or native effect between replace and publish.
     -- Conflict rejection leaves both the durable Job and all old owners intact.
@@ -58,7 +58,7 @@ function Store.replaceCooking(job,token,proposed)
 	    return false,'COOKING_CAPACITY_INVALID'
 	end
     end
-    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
     local changed,why=jobs:update(job.id,job.revision,{payload=proposed.payload,effects=proposed.effects,
 	obligations=proposed.obligations,state=proposed.state})
     if not changed then
@@ -80,7 +80,7 @@ end
 function Store.finishCooking(job,token)
     if not Store.validCooking(job,token) then return false,'COOKING_JOB_CHANGED' end
     local saved=state.root.taskJobs.byId[job.id]
-    if not require('EmberRoutesProbe/CookingRecord').valid(saved) or saved.payload.phase~='SETTLED'
+    if not require('EmberRoutesProbe/Cooking/CookingRecord').valid(saved) or saved.payload.phase~='SETTLED'
 	or saved.effects~='KNOWN' or #saved.payload.claims>0 then return false,'COOKING_OBLIGATION_RETAINED' end
     state.claims:release(token) cleanToken(job.id) return true
 end

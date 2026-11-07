@@ -1,8 +1,8 @@
 -- Multi-rectangle zone CSG selector for work zones (lumber, corpse, forage, etc.) and life zones.
 local Base=require 'EmberRoutesProbe/UI/SettlementSelector'
-local Zones=require 'EmberRoutesProbe/SettlementZones'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Geometry=require 'EmberRoutesProbe/SettlementGeometry'
+local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Text=require 'EmberRoutesProbe/UI/Text'
 
 local function text(key, ...) return getText('IGUI_EmberRoutesProbe_LifeZone_'..key, ...) end
@@ -78,7 +78,7 @@ function Selector:updateDragMessage()
         dragText=getText("IGUI_EmberRoutesProbe_Settlement_dragRemove",self.dragArea.w,self.dragArea.h)
     end
     local summary=getText("IGUI_EmberRoutesProbe_Settlement_summary",count,tiles)
-    self.store:setState({message=dragText.." · "..summary})
+    self.store:setState({message=dragText.." | "..summary})
 end
 
 function Selector:apply()

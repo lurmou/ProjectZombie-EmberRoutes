@@ -14,8 +14,8 @@ end
 local currentActor = actor
 function actor:getCurrentSquare() return {} end
 function getSpecificPlayer(index) assert(index == 0) return currentActor end
-local Companion = require "EmberRoutesProbe/Companion"
-local Persistence = require "EmberRoutesProbe/Persistence"
+local Companion = require "EmberRoutesProbe/Settlement/Companion"
+local Persistence = require "EmberRoutesProbe/Runtime/Persistence"
 local realPrint = print
 print = function() end
 EmberRoutesProbeJava.blockCheckpoint = function(reason) blocked[#blocked + 1] = reason return "CHECKPOINT_BLOCKED" end
@@ -37,12 +37,12 @@ EmberRoutesProbeJava.checkpointHomeY = function() return 3 end
 EmberRoutesProbeJava.checkpointHomeZ = function() return 1 end
 
 Companion.execute(actor, "follow")
-local home = Companion.home.x
+local home = Companion.exportState().homeX
 local craftSaveResult
 Probe.afterCraftSave=function(results) craftSaveResult=results or false end
 Persistence.save()
 check(saves == 1 and savedIntent.mode == "FOLLOW" and savedIntent.home, "save exports follow before cancellation")
-check(Companion.mode == "FOLLOW" and Companion.home.x == home, "normal save resumes follow and preserves anchor")
+check(Companion.exportState().mode == "FOLLOW" and Companion.exportState().homeX == home, "normal save resumes follow and preserves anchor")
 check(craftSaveResult and craftSaveResult[""]=="CHECKPOINT_SAVED","craft continuation receives checkpoint success only after capture completes")
 Haul.execute(actor, "run")
 check(Haul.busy(), "active real haul prepared")
@@ -75,16 +75,16 @@ Probe.ready = true
 Persistence.tick()
 Persistence.tick()
 check(restores == 1 and not Probe.restorePending, "auto restore attempts exactly once per world start")
-check(Companion.mode == "FOLLOW" and Companion.home.x == 2 and Companion.home.z == 1, "native restored scalar metadata reinstates home and intent")
+check(Companion.exportState().mode == "FOLLOW" and Companion.exportState().homeX == 2 and Companion.exportState().homeZ == 1, "native restored scalar metadata reinstates home and intent")
 restoreResult, Probe.restorePending = "RESTORE_TILE_UNAVAILABLE", true
 Persistence.tick()
 Persistence.tick()
 check(restores == 2 and not Probe.restorePending, "unloaded tile is terminal for automatic attempt")
 Persistence.execute(actor, "restore")
 check(restores == 3, "manual retry remains available after tile failure")
-local previousMode = Companion.mode
+local previousMode = Companion.exportState().mode
 Persistence.execute(actor, "report")
-check(reports == 1 and Companion.mode == previousMode, "report does not take over companion or work")
+check(reports == 1 and Companion.exportState().mode == previousMode, "report does not take over companion or work")
 Probe.cleanupHaul = function() error("injected cleanup exception") end
 Persistence.save()
 check(saves == 3 and blocked[#blocked]:find("SAVE_HANDLER_FAILED"), "thrown cleanup error also poisons old checkpoint")

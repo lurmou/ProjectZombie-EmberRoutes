@@ -62,7 +62,7 @@ package.loaded['Foraging/ISSearchManager']=true
 local game='D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/'
 dofile(game..'client/Foraging/ISBaseIcon.lua') package.loaded['Foraging/ISBaseIcon']=true
 dofile(game..'shared/Foraging/ISForageAction.lua') package.loaded['Foraging/ISForageAction']=true
-local F=require 'EmberRoutesProbe/FieldForage'
+local F=require 'EmberRoutesProbe/Field/FieldForage'
 local raw={id='icon',itemType='Mod.Herb',count=2}
 local zone={forageIcons={icon=raw}}
 local square={}

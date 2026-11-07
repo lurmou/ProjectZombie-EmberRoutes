@@ -2,17 +2,17 @@
 local n=0
 local function check(v,msg) n=n+1 assert(v,msg) end
 local cargoCalls=0
-package.loaded['EmberRoutesProbe/FieldSupplies']={step=function(c)
+package.loaded['EmberRoutesProbe/Field/FieldSupplies']={step=function(c)
     c.job.payload.phase='WORK' return 'Running'
 end}
-package.loaded['EmberRoutesProbe/FieldCargo']={step=function(c)
+package.loaded['EmberRoutesProbe/Field/FieldCargo']={step=function(c)
     cargoCalls=cargoCalls+1
     if c.cargoResult=='Success' then
 	for _,a in ipairs(c.job.payload.assets) do a.custody='DELIVERED' end
     end
     return c.cargoResult or 'Running'
 end}
-local W=require 'EmberRoutesProbe/FieldWorkflow'
+local W=require 'EmberRoutesProbe/Field/FieldWorkflow'
 local function context(kind)
     local c={job={effects='KNOWN',payload={phase='WORK',target={kind=kind or 'STAIN'},assets={},workDone=true}}}
     c.change=function(fn) if c.reject then return false end fn(c.job) return true end
@@ -52,7 +52,7 @@ check(W.step(c,def)=='Failure','unreleased capacity blocks settlement')
 c=context() c.reject=true c.job.payload.assets={{id=3,custody='HELD'}}
 check(W.step(c,def)=='Failure' and c.job.payload.phase=='WORK','failed phase publication cannot advance')
 c=context('TREE') c.job.payload.phase='DELIVER' c.job.payload.assets={{id=1,custody='GROUND'}} c.cargoResult='Success'
-package.loaded['EmberRoutesProbe/FieldCargo'].step=function() return 'Success' end
+package.loaded['EmberRoutesProbe/Field/FieldCargo'].step=function() return 'Success' end
 check(W.step(c,def)=='Failure','cargo Success cannot erase pending original responsibility')
 c=context() c.recoveryOnly=true before=continues
 check(W.step(c,def)=='Success' and continues==before,'recovery cannot start another target')

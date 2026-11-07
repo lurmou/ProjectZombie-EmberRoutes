@@ -25,7 +25,7 @@ function Cards.title(row)
         local base=row.title or getText('IGUI_EmberRoutesProbe_Public_cooking')
         if base==getText('IGUI_EmberRoutesProbe_Public_cooking') and row.product then
             local prodName=getItemNameFromFullType and getItemNameFromFullType(row.product)
-            if prodName and prodName~='' then return base..' · '..prodName end
+            if prodName and prodName~='' then return base..' | '..prodName end
         end
         return base
     end
@@ -56,12 +56,6 @@ function Cards.signature(row)
     return table.concat(fields,'|')
 end
 
-local function makeStr(codepoints, utf8bytes)
-    local ok, str = pcall(string.char, unpack(codepoints))
-    if ok and str and #str == #codepoints then return str end
-    return utf8bytes
-end
-
 function Cards.isChinese()
     if _G.getTextOrNull then
         local t = getTextOrNull('IGUI_EmberRoutesProbe_Monitor_crafting')
@@ -78,13 +72,16 @@ function Cards.isChinese()
     return false
 end
 
-local ICON_DONE = makeStr({10004}, '✔')
-local ICON_ACTIVE = makeStr({9679}, '●')
-local ICON_WAIT = makeStr({9675}, '○')
-local ARROW_WIDE = makeStr({32, 8594, 32}, ' → ')
-local ARROW_NARROW = makeStr({8594}, '→')
-local BOX_BRANCH = makeStr({9500, 9472, 9472, 32}, '├── ')
-local BOX_CORNER = makeStr({9492, 9472, 9472, 32}, '└── ')
+-- Text-only phase serialization for logs/regressions; NOT rendered on screen.
+-- The on-screen pipeline track is drawn geometrically by
+-- StatusVisual.steps/drawSteps inside the work-order drawer.
+local ICON_DONE    = '+'
+local ICON_ACTIVE  = '*'
+local ICON_WAIT    = 'o'
+local ARROW_WIDE   = ' > '
+local ARROW_NARROW = '>'
+local BOX_BRANCH   = '|-- '
+local BOX_CORNER   = '+-- '
 
 local STAGE_KEYS={'IGUI_EmberRoutesProbe_Order_stage_source','IGUI_EmberRoutesProbe_Order_stage_staging',
     'IGUI_EmberRoutesProbe_Order_stage_craft','IGUI_EmberRoutesProbe_Order_stage_store'}
@@ -272,7 +269,7 @@ end
 function Cards.assetStatus(row,asset)
     if asset.kind=='cargo' and asset.custodyState=='CARRIED' then return 'TRANSIT' end
     if asset.custodyState=='TRANSIT' then return 'TRANSIT' end
-    if asset.custodyState=='UNCOLLECTED' then return 'WAITING' end
+    if asset.custodyState=='UNCOLLECTED' then return 'IN_STORAGE' end
     if asset.custodyState=='WITHDRAWN' then return 'WITHDRAWN' end
     if asset.custodyState=='RECONCILE' then return 'RECONCILE' end
     if asset.custodyState=='STORED' then return 'STORED' end
@@ -389,7 +386,7 @@ function Cards.detailRows(row,expanded)
     if #children>1 and not expanded then
         local names={}
         for _,child in ipairs(children) do names[#names+1]=child.name or text('unassigned') end
-        card(text('handlers',#children),{table.concat(names,' · ')})
+        card(text('handlers',#children),{table.concat(names,' | ')})
     elseif #children>0 then
         for _,child in ipairs(children) do
             card(child.name or text('unassigned'),{action(child) or Cards.reason(child.phase)})
@@ -461,7 +458,7 @@ function Cards.detailRows(row,expanded)
         local notes={}
         if row.cargoHeld and row.cargoHeld>0 then notes[#notes+1]=text('detail_carrying',row.cargoHeld) end
         if row.compact and row.kind~='DEMAND' and row.summaryText then notes[#notes+1]=row.summaryText end
-        if row.membership then notes[#notes+1]=require('EmberRoutesProbe/MembershipText').summary(row.membership) end
+        if row.membership then notes[#notes+1]=require('EmberRoutesProbe/Settlement/MembershipText').summary(row.membership) end
         if row.bucket=='paused' and row.reason then notes[#notes+1]=row.reasonText or Cards.reason(row.reason) end
         if row.responsibilitySummary then notes[#notes+1]=row.responsibilitySummary end
         if row.demandReason and not row.blocked then notes[#notes+1]=row.demandReason end

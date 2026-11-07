@@ -40,14 +40,14 @@ end
 local Registry={data=function() return root end,id=function() nextId=nextId+1 return 'id'..nextId end,
     resolve=function() return endpoint end,revalidate=function() return endpoint end,
     logistics=function() return 'STORAGE' end,accepts=function() return accepted end,inventoryChanged=function() end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end,resources=function() return {} end}
-package.loaded['EmberRoutesProbe/LaborProducers']={transfer=function() return true end}
-package.loaded['EmberRoutesProbe/Driver']={}
-package.loaded['EmberRoutesProbe/SelfCareResources']={eligible=function() return true end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=Registry
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end,resources=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/LaborProducers']={transfer=function() return true end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={}
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareResources']={eligible=function() return true end,
     revalidate=function(candidate) return candidate.item:getContainer()==candidate.container end}
-package.loaded['EmberRoutesProbe/CraftSupply']={returnRoute=function() return nil,'RETURN_TARGET_UNAVAILABLE' end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={returnRoute=function() return nil,'RETURN_TARGET_UNAVAILABLE' end}
 package.loaded['TimedActions/ISInventoryTransferAction']=true
 package.loaded['TimedActions/ISEatFoodAction']=true package.loaded['TimedActions/ISDrinkFluidAction']=true
 local queued,live,retained=nil,true,true
@@ -77,12 +77,12 @@ ISEatFoodAction={new=function(_,who,item,fraction)
 end}
 EmberRoutesProbeJava={carrierActive=function() return true end}
 if ERLaborTestBridge then for name,method in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[name]=method end end
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 Transfer.reachable=function() return true end
-local Execute=require 'EmberRoutesProbe/SelfCareExecution'
+local Execute=require 'EmberRoutesProbe/SelfCare/SelfCareExecution'
 local budget={nodes=16,scan=32,paths=1}
 local controller={inspect=function() return {state='STOPPING',npcId='a',jobId='care'} end,
     bodySnapshot=function() return {available=true,nativeStopped=true} end,stopBody=function() return true end}
@@ -94,7 +94,7 @@ local function begin(item,borrow,fraction,medical)
     local p=assert(Record.begin(job,medical and 'MEDICAL' or 'EAT',job.payload.resume))
     p.step='STOP_CONFIRMED' p.claims={'item:'..item.id} p.itemId=item.id p.fraction=fraction or 0.25
     if borrow then p.sourceId='pantry' end
-    if medical then assert(require('EmberRoutesProbe/MedicalCare').begin(p,{medical=medical},item)) end
+    if medical then assert(require('EmberRoutesProbe/SelfCare/MedicalCare').begin(p,{medical=medical},item)) end
     local obligations=borrow and {RETURN_ORIGINALS={itemId=item.id,sourceId='pantry'}} or {}
     assert(jobs:update(job.id,job.revision,{payload=p,obligations=obligations}))
     job=jobs:get('care') assert(Store.claimPersonal(job))
@@ -177,7 +177,7 @@ check(jobs:get('care').payload.step=='IDLE' and blocked.where==source and eats==
 local alternative={id='other',container=container(),object={}}
 Registry.resolve=function(id) return id=='other' and alternative or endpoint end
 Registry.accepts=function(ep) return ep==alternative or accepted end
-package.loaded['EmberRoutesProbe/CraftSupply'].returnRoute=function()
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply'].returnRoute=function()
     return {step=function() return alternative,true end}
 end
 local rerouted=food(70,source)
@@ -191,7 +191,7 @@ local stale=food(5,main) spec,c=begin(stale,false)
 root={} check(not spec.validate(),'retired world cannot act on originals')
 -- End-to-end stop receipt -> personal BT -> exact predecessor restoration with
 -- real TaskRuntime/Controller/Sessions, retaining only native host doubles.
-local Driver=package.loaded['EmberRoutesProbe/Driver']
+local Driver=package.loaded['EmberRoutesProbe/Runtime/Driver']
 Driver.valid=function(binding) return binding.id=='a' and binding.handle==npc end
 Driver.acquireControl=function(binding) return {binding=binding} end
 Driver.stopEvidence=function() return {available=true,nativeStopped=queued==nil} end
@@ -202,25 +202,25 @@ ISTimedActionQueue.add=function(action)
     if action.start then action:start() end
 end
 ISTimedActionQueue.clear=function() if queued then queued:stop() end removeQueued() end
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Resume=require 'EmberRoutesProbe/TaskResume'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
 local runtime=Runtime.new({stopped=Resume.stopped})
-package.loaded['EmberRoutesProbe/TaskRuntime']={current=function() return runtime end}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return runtime end}
 local original={id='original-craft',generation=1,state='RUNNING'}
-package.loaded['EmberRoutesProbe/BusinessJobs'].crafts=function() return {a=original} end
+package.loaded['EmberRoutesProbe/Work/BusinessJobs'].crafts=function() return {a=original} end
 local cap local resumeCount=0
 local predecessor={npcId='a',jobId=original.id,kind='PRODUCTION',binding={id='a',handle=npc},
     validate=function() return true end,start=function(body) cap=body original.state='RUNNING' return true end,
     tick=function() end,finished=function() return false end,persistFailure=function() return true end}
 predecessor.stopAdapter=function(ctrl,ticket)
-    return require('EmberRoutesProbe/TaskBusinessStop').new({controller=ctrl,ticket=ticket,
+    return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=ctrl,ticket=ticket,
         npc=npc,npcId='a',jobId=original.id,same=function() return true end,
         pause=function(reason)
             original.state='PAUSED' original.reason=reason original.generation=original.generation+1
             return cap.clear()
         end,effects=function() return 'KNOWN' end,persist=function() return true end})
 end
-package.loaded['EmberRoutesProbe/Production']={execute=function(_,command,_,id,options)
+package.loaded['EmberRoutesProbe/Crafting/Production']={execute=function(_,command,_,id,options)
     assert(command=='resume' and id=='a' and options.nonPreemptive)
     predecessor.nonPreemptive=true
     local h=runtime:submit(predecessor) if not h then return 'WAIT' end
@@ -247,7 +247,7 @@ assert(not Resume.resume({},'a','care2')) runtime:step() runtime:step()
 check(Resume.resume({},'a','care2') and resumeCount==1 and original.state=='RUNNING'
     and jobs:get('care2').payload.resume.state=='RESTORED','same original craft starts once after self-care')
 print('PASS '..checks..' integrated personal BT/custody/stop checks; native world mocked')
-local Custody=require 'EmberRoutesProbe/SelfCareCustody'
+local Custody=require 'EmberRoutesProbe/SelfCare/SelfCareCustody'
 local held=food(999,main,0.5) local prepared=0
 local oldPrepare,oldReachable=Transfer.prepareMove,Transfer.reachable
 Transfer.prepareMove=function() prepared=prepared+1 return {preview=true} end
@@ -258,7 +258,7 @@ accepted=true Custody.prepareReturn(lookahead)
 check(lookahead.returnPreview.target==endpoint and prepared==1 and held:getContainer()==main and not queued,
     'return lookahead prepares a destination while retaining original and body')
 local oldRevalidate=Registry.revalidate
-local supply=package.loaded['EmberRoutesProbe/CraftSupply'] local oldRoute=supply.returnRoute
+local supply=package.loaded['EmberRoutesProbe/Crafting/CraftSupply'] local oldRoute=supply.returnRoute
 supply.returnRoute=function() return nil,'RETURN_TARGET_UNAVAILABLE' end
 Registry.revalidate=function() return nil end accepted=false time=time+1001
 Custody.prepareReturn(lookahead)

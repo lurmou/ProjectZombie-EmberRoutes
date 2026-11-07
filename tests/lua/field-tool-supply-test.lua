@@ -9,14 +9,14 @@ local function check(v,msg) n=n+1 assert(v,msg) end
 
 local root={}
 local registry={data=function() return root end,id=function() return 'claim-1' end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=registry
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
-package.loaded['EmberRoutesProbe/SettlementLedger']={data=function() return root end}
-package.loaded['EmberRoutesProbe/SettlementZones']={revision=function() return 1 end}
-package.loaded['EmberRoutesProbe/JobPolicyService']={get=function() return {} end}
-package.loaded['EmberRoutesProbe/MembershipService']={
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=registry
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={revision=function() return 1 end}
+package.loaded['EmberRoutesProbe/Work/JobPolicyService']={get=function() return {} end}
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={
     check=function() return {allowed=true,entryRevision=1} end,
     entry=function() return {id='settlement-1',areas={{x=0,y=0,w=10,h=10}}},nil,1 end,
     view=function() return {settlementId='settlement-1',context='SETTLEMENT'} end
@@ -114,23 +114,23 @@ registry.logistics=function() return 'STORAGE' end
 registry.inventoryChanged=function() end
 
 local entry={id='settlement-1',areas={{x=0,y=0,w=10,h=10}}}
-package.loaded['EmberRoutesProbe/SettlementMembership']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={
     query=function() return {'crate-1'} end
 }
-package.loaded['EmberRoutesProbe/SettlementGeometry']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={
     inside=function() return true end
 }
-package.loaded['EmberRoutesProbe/WorkTransfer']={
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={
     reachable=function() return true end,
     prepareMove=function() return {square=crateSquare} end
 }
-package.loaded['EmberRoutesProbe/Driver']={
+package.loaded['EmberRoutesProbe/Runtime/Driver']={
     valid=function() return true end,
     same=function() return true end,
     unknown=function() return false end,
     bindId=function() return {id=1,handle=npc} end
 }
-package.loaded['EmberRoutesProbe/TaskRuntime']={
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={
     current=function()
         return {
             accepting=function() return true end,
@@ -163,7 +163,7 @@ ISInventoryTransferAction={
 ISTimedActionQueue={hasAction=function(a) return queuedAction==a and a~=nil end}
 
 local stainPoint={x=5,y=5,z=0,identity='stain-101'}
-package.loaded['EmberRoutesProbe/FieldDiscovery']={
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']={
     claim=function(pt) return {kind='STAIN',x=pt.x,y=pt.y,z=pt.z,identity=pt.identity},{'field-target:'..pt.identity} end,
     policy=function() return {} end,
     allowed=function() return true end,
@@ -171,13 +171,13 @@ package.loaded['EmberRoutesProbe/FieldDiscovery']={
     object=function() return true end
 }
 
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Field=require 'EmberRoutesProbe/FieldWork'
-local ToolDiscovery=require 'EmberRoutesProbe/ToolDiscovery'
-local FieldSupplies=require 'EmberRoutesProbe/FieldSupplies'
-local ToolReq=require 'EmberRoutesProbe/ToolRequirements'
-local Providers=require 'EmberRoutesProbe/FieldProviders'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Field=require 'EmberRoutesProbe/Field/FieldWork'
+local ToolDiscovery=require 'EmberRoutesProbe/Field/ToolDiscovery'
+local FieldSupplies=require 'EmberRoutesProbe/Field/FieldSupplies'
+local ToolReq=require 'EmberRoutesProbe/Field/ToolRequirements'
+local Providers=require 'EmberRoutesProbe/Field/FieldProviders'
 check(not ToolReq.matchPhysical({getFluidContainer=function() return nil end},'CLEAN_FLUID'),'ordinary item without fluid is rejected safely')
 check(not ToolReq.matchPhysical({},'CLEAN_FLUID'),'missing fluid capability is rejected safely')
 

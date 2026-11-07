@@ -1,6 +1,6 @@
 -- Directed real participant/adapter/JobStore/Claims chain; host bridge model only.
-local JobStore=require 'EmberRoutesProbe/JobStore'
-local Claims=require 'EmberRoutesProbe/LaborClaims'
+local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
+local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 local checks=0
 local function check(v,m) assert(v,m) checks=checks+1 end
 local function copy(v) if type(v)~='table' then return v end local r={} for k,x in pairs(v) do r[k]=copy(x) end return r end
@@ -50,13 +50,13 @@ local function setup(old)
     if old then
         dofile('tests/lua/fixtures/dec003-pre-kernel-activity-adapter.lua').install(S,st,identity,clean,function() return true end)
     else
-        require('EmberRoutesProbe/LaborDomainAdapters').install(S,st,identity,clean,function() return true end)
+        require('EmberRoutesProbe/Work/LaborDomainAdapters').install(S,st,identity,clean,function() return true end)
         st.bridge=dofile('tests/lua/fixtures/dec003-activity-kernel-host.lua')
         st.bridge.install(st,alloc,clean)
-        require('EmberRoutesProbe/LaborJobCommit').install(S,st,alloc,clean)
+        require('EmberRoutesProbe/Work/LaborJobCommit').install(S,st,alloc,clean)
     end
-    package.loaded['EmberRoutesProbe/ActivityParticipant']=nil
-    local P=old and dofile('tests/lua/fixtures/dec003-pre-kernel-activity-participant.lua') or require 'EmberRoutesProbe/ActivityParticipant'
+    package.loaded['EmberRoutesProbe/Activity/ActivityParticipant']=nil
+    local P=old and dofile('tests/lua/fixtures/dec003-pre-kernel-activity-participant.lua') or require 'EmberRoutesProbe/Activity/ActivityParticipant'
     local function peek() return jobs:get('participant') end
     return {P=P,S=S,st=st,jobs=jobs,event=event,peek=peek,snapshots=snapshots,root=root,
         removes=function() return removes end,spec=function() return assert(spec) end,

@@ -91,7 +91,7 @@ local plans={{id='plan',args={name='Evening gathering',roster={'a','b'},zoneId='
 
 local function copy(v) if type(v)~='table' then return v end local r={} for k,x in pairs(v) do r[k]=copy(x) end return r end
 
-package.loaded['EmberRoutesProbe/ActivityService']={
+package.loaded['EmberRoutesProbe/Activity/ActivityService']={
     view=function() return copy(events) end,schedules=function() return copy(plans) end,
     revision=function() return 1 end,detail=function() return copy(events[1]) end,
     review=function(actor,args)
@@ -106,31 +106,31 @@ package.loaded['EmberRoutesProbe/ActivityService']={
     cancel=function() calls[#calls+1]={kind='cancel'} return true end,
     cancelSchedule=function() calls[#calls+1]={kind='cancelSchedule'} return true end
 }
-package.loaded['EmberRoutesProbe/SettlementZones']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={
     activities=function() return {'SOCIAL','READING','SIT','SMOKE','FITNESS','STROLL','OBSERVE'} end,
     list=function() return {{id='zone',name='Garden',revision=7,enabled=true,area={x=0,y=0,w=8,h=7,z=0}}} end
 }
-package.loaded['EmberRoutesProbe/MembershipService']={
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={
     members=function() return {'a','b','c'} end,
     view=function() return {context='SETTLEMENT'} end
 }
-package.loaded['EmberRoutesProbe/Driver']={bindId=function() return {} end}
-package.loaded['EmberRoutesProbe/DisplayNames']={
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function() return {} end}
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={
     name=function(id) return id=='a' and 'Alexandra' or id=='b' and 'Brianna' or 'Casey' end
 }
 local worldData={}
-package.loaded['EmberRoutesProbe/SettlementLedger']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={
     authorized=function() return permitted end,
     data=function() return worldData end,
     view=function(_,id) return id==entry.id and entry or nil end
 }
-package.loaded['EmberRoutesProbe/WarehouseIndex']={
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex']={
     watch=function(_,fn) return function() end end,
     query=function() return {} end,
     revision=function() return 1 end,
     snapshot=function() return {state='READY',rows={},counts={items=0}} end,
 }
-package.loaded['EmberRoutesProbe/WarehouseMetrics']={
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseMetrics']={
     begin=function() return 0 end,
     finish=function() end
 }
@@ -140,7 +140,7 @@ local def=Registry.get('activities')
 check(def~=nil and def.isTab==true and def.module=='ActivityPage' and def.group=='settlement','activities is a settlement-local tab with its existing page')
 check(def.order==38,'activities tab is correctly ordered between policies and defense')
 
-local Dashboard=require 'EmberRoutesProbe/SettlementDashboard'
+local Dashboard=require 'EmberRoutesProbe/UI/SettlementDashboard'
 local panel,reason=Dashboard.open(actor,entry.id,'activities')
 if not panel then print('open failed with reason:',reason) else print('opened panel with activeTab:',panel.activeTab) end
 check(panel~=nil and panel.activeTab=='activities','SettlementDashboard can open directly to activities tab')

@@ -1,10 +1,10 @@
 -- Shared-cache, ownership and admission boundaries over real Jobs/Claims/Index.
 local f=dofile('tests/lua/cooking-supply-test.lua')
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Service=require 'EmberRoutesProbe/CookingSupplyService'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Service=require 'EmberRoutesProbe/Cooking/CookingSupplyService'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 Registry.configure(f.f.actor,f.box,f.config,f.box.container,'STORAGE')
 local root=Registry.data()

@@ -1,6 +1,6 @@
 -- Exercise the native-return-table branch with the complete real Lua index.
 -- Physical objects are the existing host fixtures, not real Java inventories.
-local Read=require 'EmberRoutesProbe/InventoryRead'
+local Read=require 'EmberRoutesProbe/Warehouse/InventoryRead'
 local calls=0 local maxSlice=0
 local bridge={}
 bridge.inventoryReadSlice=function(container,items,size,offset,limit)

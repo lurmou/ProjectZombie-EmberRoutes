@@ -12,7 +12,7 @@ for i=0,f.materials.container:getItems():size()-1 do
     if item:getFullType()=='Base.Log' then item.weight=9 logs[#logs+1]=item end
 end
 check(#logs==3 and 28>f.npc:getMaxWeight()*1.5,'all three logs cannot fit at once')
-local request=require('EmberRoutesProbe/ProductionChain').new(f.actor,f.npc,f.entry,f.recipe.key,9,nil,'offer:three',false)
+local request=require('EmberRoutesProbe/Crafting/ProductionChain').new(f.actor,f.npc,f.entry,f.recipe.key,9,nil,'offer:three',false)
 local plan,reason
 for _=1,2000 do plan,reason=request:step() if plan or reason then break end end
 check(plan and not reason and #plan.assets==4,'public preclaim admits three logs and one reusable saw by single-batch capacity')

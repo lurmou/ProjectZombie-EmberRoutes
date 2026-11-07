@@ -1,5 +1,5 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Filter=require "EmberRoutesProbe/StorageFilter"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
 local count,submits,measures=0,0,0
 local function check(value,why) count=count+1 assert(value,why) end
 local Base={}
@@ -64,12 +64,12 @@ local Registry={containerIndex=function(o,c) if o:getContainer()==c then return 
     if not permit then return "TOO_FAR_TO_TAG" end
     live=Filter.copy(draft) return "FILTER_CONFIGURED"
 end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=Registry
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local actor={isDead=function() return false end,getPlayerNum=function() return 0 end,getJoypadBind=function() return -1 end}
 local container={getType=function() return "crate" end,getItems=function() return {size=function() return 0 end} end}
 local object={getContainer=function() return container end}
-local Panel=require "EmberRoutesProbe/StorageFilterPanel"
+local Panel=require "EmberRoutesProbe/UI/StorageFilterPanel"
 local panel=Panel.open(actor,object)
 check(panel.initialised and panel.parentCreated and panel.added,"native lifecycle delegates and adds to UI")
 check(panel.list.initialised and panel.list.height>0,"list initialised with positive relative layout")
@@ -130,7 +130,7 @@ if ERTestRuntime then
     end}
 end
 -- Model the installed native local-position write followed by tooltip draw.
-local Anchor=require 'EmberRoutesProbe/UI/TooltipAnchor'
+local Anchor=require 'EmberRoutesProbe/UI/TooltipManager'
 local calls=0
 local tip={visible=true,followMouse=true,setX=function(self,x) self.x=x end,setY=function(self,y) self.y=y end,
     getIsVisible=function(self) return self.visible end,setVisible=function(self,v) self.visible=v end,
@@ -141,7 +141,7 @@ getMouseX=function() return mx end getMouseY=function() return my end
 local control={tooltipUI=tip,updateTooltip=function(self)
     calls=calls+1 self.tooltipUI:setX(23) self.tooltipUI:setY(23) return 'native'
 end}
-Anchor.attach(control,'updateTooltip')
+Anchor.register(control,{method='updateTooltip'})
 check(control:updateTooltip()=='native' and calls==1 and tip.x==732 and tip.y==410,'tooltip is at screen coordinates before prerender; native executes once')
 mx,my=900,600 control:updateTooltip()
 check(tip.x==932 and tip.y==610,'moving mouse updates one tooltip anchor without local-coordinate echo')

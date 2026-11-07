@@ -1,5 +1,5 @@
 local checks=0 local function check(v,s) checks=checks+1 assert(v,s) end
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 local asleep,resting=false,false local fatigue,endurance=0.9,0.1 local hours=10
 local owner,active=true,true local enters,wakes,saves=0,0,0
 CharacterStat={FATIGUE='fatigue',ENDURANCE='endurance'}
@@ -17,7 +17,7 @@ local function context(kind)
             return true
         end}}
 end
-local Repose=require 'EmberRoutesProbe/SelfCareRepose'
+local Repose=require 'EmberRoutesProbe/SelfCare/SelfCareRepose'
 local c=context('SLEEP') local leaf=Repose.new(c)
 check(leaf.run()=='Running' and asleep and fatigue==0.9 and saves>0,'sleep entry records fact and leaves native Stats untouched')
 hours=11 fatigue=0.6
@@ -47,8 +47,8 @@ local bed={} local now=0 local sitting=false local poseReady=false local poseSta
 getTimestampMs=function() return now end
 npc.isSittingOnFurniture=function() return sitting end
 npc.getSitOnFurnitureObject=function() return sitting and bed or nil end
-package.loaded['EmberRoutesProbe/ReposeSites']={resolve=function() return {object=bed,quality='goodBed'} end}
-package.loaded['EmberRoutesProbe/LeisurePosture']={new=function(_,object)
+package.loaded['EmberRoutesProbe/SelfCare/ReposeSites']={resolve=function() return {object=bed,quality='goodBed'} end}
+package.loaded['EmberRoutesProbe/Leisure/LeisurePosture']={new=function(_,object)
     assert(object==bed)
     return {enter=function() sitting=true resting=true return 'Success' end,
         leave=function() return not sitting end}
@@ -66,7 +66,7 @@ native.body.furniture=function(object,phase)
     poseStarted=true return true
 end
 native.body.stop=function() asleep=false return not sitting end
-local B=require 'EmberRoutesProbe/SleepBed'
+local B=require 'EmberRoutesProbe/SelfCare/SleepBed'
 local approach=B.move(native)
 check(approach.run()=='Running' and approach.run()=='Success','sleep uses same exact native seat planner and goal validation')
 local bedLeaf=Repose.new(native)

@@ -1,0 +1,819 @@
+local Probe=require "EmberRoutesProbe/Kernel/Boot"
+local Work=require "EmberRoutesProbe/Work/Work"
+local Store=require "EmberRoutesProbe/Work/LaborStore"
+local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local Driver=require "EmberRoutesProbe/Runtime/Driver"
+local Recipe=require "EmberRoutesProbe/Crafting/ProductionRecipe"
+local Plan=require "EmberRoutesProbe/Crafting/ProductionSupply"
+local Supply=require "EmberRoutesProbe/Crafting/CraftSupply"
+local Transfer=require "EmberRoutesProbe/Work/WorkTransfer"
+local Actions=require "EmberRoutesProbe/Crafting/ProductionActions"
+local Carry=require "EmberRoutesProbe/Crafting/ProductionCarry"
+local Stations=require "EmberRoutesProbe/Crafting/CraftStations"
+local Surfaces=require "EmberRoutesProbe/Crafting/CraftSurfaces"
+local Signals=require "EmberRoutesProbe/Work/LaborSignals"
+local Log=require "EmberRoutesProbe/Kernel/Log"
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Production={}
+local JobExecution=require "EmberRoutesProbe/Crafting/ProductionJobs"
+local Yield=require 'EmberRoutesProbe/Crafting/ProductionYield'
+local Allocation=require 'EmberRoutesProbe/Crafting/ProductionAllocation'
+local contexts,candidates,pending={},{},{}
+local requests={}
+local waiting,inventoryDirty,inventoryRevision={},false,0
+local yieldWorld,yieldIds,yieldCursor,yieldScan,yieldRetry=nil,{},0,0,{}
+local function inventoryChanged() inventoryDirty=true inventoryRevision=inventoryRevision+1 end
+if Registry.inventoryListeners then Registry.inventoryListeners[#Registry.inventoryListeners+1]=inventoryChanged end
+if Events.OnContainerUpdate then Events.OnContainerUpdate.Add(inventoryChanged) end
+local function record(id)
+    return JobExecution.record(id)
+end
+function Production.handles(id)
+    local request=requests[id]
+    if request and request.root==Registry.data() then
+        local state=request.runtime:inspect(request.handle)
+        if state and (state.state=='PENDING' or state.state=='QUEUED' or state.state=='ACTIVE' or state.state=='STOPPING') then return true end
+        requests[id]=nil
+    end
+    local r=record(id) return contexts[id]~=nil or (r and r.format==4)
+end
+function Production.busy(id) return contexts[id]~=nil end
+local function rejectUncollected(c,fact)
+    local r=c.record
+    -- A public demand is not cancelled because its worker's capacity changed.
+    -- Keep its exact Job paused/resumable; ordinary discovery rejects known
+    -- overweight first batches before allocating a public Job in the first place.
+    if r.orderId then return end
+    if fact.bodyStopped~=true or fact.effects~='KNOWN' or r.reason~='CAPACITY_UNAVAILABLE'
+        or r.uncertain or r.unitMade or r.produced~=0 or r.delivered~=0
+        or (r.chain and r.chain.index>1) then return end
+    local containers,seen={c.npc:getInventory()},{[c.npc:getInventory()]=true}
+    local assets={}
+    for _,name in ipairs({'materials','tools','outputs','held'}) do
+        for _,asset in ipairs(r[name] or {}) do
+            local location=c.plan and c.plan.locations[asset.id]
+            if not location or not location.endpoint then return end
+            local endpoint=Supply.endpoint(c.entry,location.endpoint.id,'take')
+            if not endpoint or endpoint.container~=location.endpoint.container
+                or Registry.logistics(endpoint)~='STORAGE' then return end
+            if not seen[endpoint.container] then seen[endpoint.container]=true containers[#containers+1]=endpoint.container end
+            assets[asset.id]=endpoint.container
+        end
+    end
+    local View=require 'EmberRoutesProbe/Warehouse/InventoryView'
+    local index=View.index(containers)
+    if not index then return end
+    for id,container in pairs(assets) do
+        local item=View.find(index,id)
+        if not item or item:getContainer()~=container then return end
+    end
+    -- No original left its verified warehouse and no product was made. Release
+    -- only this Job's claims AFTER confirmed stop, never erase unknown cargo.
+    r.released=true r.state='CANCELLED' r.phase='CANCELLED'
+    if not JobExecution.commit(r) then return end
+    c.completed=true c.closedGeneration=r.generation
+    Log.write('PRODUCTION','npc='..r.npcId..' order='..r.id..' REJECTED_UNCOLLECTED CAPACITY_UNAVAILABLE')
+end
+function Production.stopAdapter(id,controller,ticket)
+    local c=contexts[id]
+    if not c then return nil,'NO_ACTIVE_PRODUCTION' end
+    local r,root,generation=c.record,c.root,c.record.generation
+    return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=c.npc,npcId=id,jobId=r.id,
+        same=function(paused)
+            if root~=Registry.data() or record(id)~=r then return false end
+            if c.completed then return r.generation==c.closedGeneration end
+            if c.stopped then return r.generation==c.stoppedGeneration and r.state=='PAUSED' end
+            return not paused and not r.released and r.generation==generation and contexts[id]==c
+        end,
+        pause=function(reason)
+            if c.completed then return true end
+            return Production.pause(reason,id,c)
+        end,
+        effects=function() return r.uncertain and 'UNKNOWN' or 'KNOWN' end,
+        persist=function(fact)
+            if fact.effects=='UNKNOWN' then r.uncertain=true r.phase='RECONCILE_REQUIRED' end
+            rejectUncollected(c,fact)
+            Signals.changed(id)
+            return c.completed or r.state=='PAUSED'
+        end})
+end
+local function releaseBench(c)
+    if c.ownsBench and c.object then
+        if c.object:getUsingPlayer()==c.npc then c.object:setUsingPlayer(nil) end
+        local data=c.object:getModData() local marker=data.EmberRoutesCraftOccupancy
+        if marker and marker.jobId==c.record.id and marker.leaseId==c.record.id then data.EmberRoutesCraftOccupancy=nil end
+    end
+    c.ownsBench=false
+end
+local function changed(c,message)
+    local ok,why=JobExecution.commit(c.record)
+    if not ok then c.cancelled=true c.commitFailure=why end
+    Signals.changed(c.record.npcId)
+    if message then Log.write("PRODUCTION","npc="..c.record.npcId.." order="..c.record.id.." "..message) end
+end
+local function fits(c,added,consumed,output)
+    local ok,fact=Carry.fits(c.npc,added,consumed,output)
+    if not ok then
+        local fields={}
+        for _,key in ipairs({'weight','maximum','capacity','added','consumed','output','peak','limit'}) do
+            fields[#fields+1]=key..'='..tostring(fact[key])
+        end
+        changed(c,'CAPACITY_CHECK '..table.concat(fields,' '))
+    end
+    return ok
+end
+function Production.pause(reason,id,owned)
+    local c=owned or contexts[id]
+    if c and c.body and not owned then return c.body.requestStop(reason or 'USER') end
+    local request=requests[id]
+    if not owned and request and request.root==Registry.data() then request.runtime:stopJob(id,request.jobId,reason or 'USER') end
+    waiting[id]=nil
+    if reason~="SAVE" then candidates[id]=nil pending[id]=nil end
+    local r=record(id)
+    if not c then
+	if r and not r.released and reason=="USER" then r.generation=r.generation+1 r.state="PAUSED" r.reason=reason JobExecution.commit(r) Signals.changed(id) end
+        return
+    end
+    r=c.record
+    if not c.stopped then
+        c.stopped=true c.cancelled=true r.generation=r.generation+1 r.state="PAUSED" r.reason=reason
+        c.stoppedGeneration=r.generation
+        if c.chainRequest then c.chainRequest:cancel() end
+        if r.phase=="COMMITTING" then r.uncertain=true r.phase="RECONCILE_REQUIRED" end
+    end
+    if not c.body.clear() then return false end
+    releaseBench(c)
+    if not Driver.stop(c.binding,c.body) then return false end
+    if contexts[id]==c then contexts[id]=nil end
+    if reason=="SAVE" and not r.uncertain then
+        candidates[id]={actor=c.actor,record=r,root=c.root,generation=r.generation,command=c.returnOnly and "return" or "resume"}
+    end
+    if r.chain and not r.uncertain and (reason=="MATERIALS_UNAVAILABLE" or reason=="TOOLS_UNAVAILABLE"
+        or reason=="CHAIN_INVENTORY_UNKNOWN" or reason=="ITEM_RESERVED" or reason=="INVENTORY_CHANGED") then
+        waiting[id]={actor=c.actor,record=r,root=c.root,generation=r.generation,revision=inventoryRevision}
+    end
+    changed(c,"PAUSED "..tostring(reason))
+    return true
+end
+function Production.pauseAll(reason)
+    if reason~="SAVE" then candidates,pending={},{} end
+    local ids={} for id in pairs(contexts) do ids[id]=true end
+    for id in pairs(requests) do ids[id]=true end
+    for id in pairs(ids) do Production.pause(reason,id) end
+end
+function Production.reset() Production.pauseAll("WORLD_RESET") JobExecution.reset() contexts,candidates,pending,requests={},{},{},{} waiting={} inventoryDirty=false end
+local function context(actor,binding,r,entry,object,body)
+    local c={actor=actor,npc=binding.handle,binding=binding,record=r,entry=entry,object=object,root=Registry.data(),generation=r.generation,body=body}
+    c.valid=function()
+        local locationObject=c.object
+        if r.station then locationObject=nil end
+        return body.current() and contexts[r.npcId]==c and not c.cancelled and c.root==Registry.data() and record(r.npcId)==r
+            and r.generation==c.generation and r.state=="RUNNING" and not actor:isDead()
+            and actor:getUsername()==r.requester and Driver.valid(binding)
+            and require('EmberRoutesProbe/SelfCare/HealthAssessment').canWork(c.npc)
+	    and Supply.entry(actor,c.npc,locationObject,r.settlementId,true)~=nil and JobExecution.valid(r,c.token)
+    end
+    c.changed=function(message) changed(c,message) return not c.commitFailure,c.commitFailure end
+    return c
+end
+-- Rebind only before a unit's native effect; replace atomically migrates bench claims.
+local function station(c)
+    local r=c.record
+    if c.returnOnly or r.unitMade or r.uncertain or r.phase=="COMMITTING" then return true end
+    if not r.station then return true end
+    if r.station.id~=r.benchId then return nil,"STATION_RETAINED" end
+    local spec,why=Recipe.read(r.recipeId) if not spec then return nil,why end
+    if not spec.station then return nil,"RECIPE_CHANGED" end
+    if spec.signature~=r.signature then return nil,"RECIPE_CHANGED" end
+    local object=Stations.resolve(r.station)
+    if object then
+        local entry,reason=Supply.entry(c.actor,c.npc,object,r.settlementId,true)
+        if not entry then return nil,reason end
+        c.object=object return true
+    end
+    releaseBench(c) c.object=nil
+    local search=Stations.search(c.entry,spec.facts,function(candidate)
+        local marker=candidate:getModData().EmberRoutesCraftOccupancy
+        return not marker or marker.jobId==r.id
+    end)
+    local site
+    -- At most 4096 observed slots, including pending facility observations.
+    for _=1,64 do
+        local reason
+        site,reason=search:step(64)
+        if site or reason~='SITE_OBSERVING' then break end
+    end
+    if not site then return nil,"STATION_UNAVAILABLE" end
+    local entry,reason=Supply.entry(c.actor,c.npc,site.object,r.settlementId,true)
+    if not entry then return nil,reason end
+    local data=site.object:getModData()
+    data.EmberRoutesCraftProbeBenchId=data.EmberRoutesCraftProbeBenchId or Registry.id()
+    local proposed={} for k,v in pairs(r) do proposed[k]=v end
+    proposed.benchId=data.EmberRoutesCraftProbeBenchId
+    proposed.station={id=proposed.benchId,position=site.position}
+    local ok,failed=JobExecution.replace(r,c.token,proposed) if not ok then return nil,failed end
+    c.object=site.object
+    return true
+end
+local function makePlan(c,select)
+    local ready,failed=station(c) if not ready then return nil,failed end
+    if c.record.chain and c.record.chain.index==0 and not c.returnOnly then
+        local r=c.record
+        c.chainRequest=require("EmberRoutesProbe/Crafting/ProductionChain").new(c.actor,c.npc,c.entry,r.recipeId,r.requested,c.object,r.id,false,r.preferences)
+        c.planning=true return true
+    end
+    local spec,reason
+    if not c.returnOnly and not c.record.unitMade then
+        if c.record.surface and not c.object then
+            local object,why=Surfaces.resolve(c.record.surface,c.record.benchId)
+            if not object then return nil,why end c.object=object
+        end
+        spec,reason=Recipe.inspect(c.actor,c.npc,c.object,c.record.recipeId,true,false,c.record.id)
+        if not spec then return nil,reason end
+        if (spec.station==true)~=(c.record.station~=nil) then return nil,"RECIPE_CHANGED" end
+        if spec.signature~=c.record.signature then return nil,"RECIPE_CHANGED" end
+    end
+    local plan,why=Plan.new(c.entry,c.npc,spec,c.record,select)
+    if not plan then return nil,why end
+    c.spec=spec c.plan=plan c.planning=true c.inputs=nil c.outputPlanning=nil c.outputAllocated=nil return true
+end
+-- Every stage shares one task/token. No child completion releases intermediate originals.
+local function activateNode(c,index)
+    local r=c.record local node=r.chain.nodes[index]
+    if not node then return nil,"CHAIN_RECORD_INVALID" end
+    local spec,reason=Recipe.read(node.recipeId)
+    if not spec or spec.signature~=node.signature then return nil,reason or "RECIPE_CHANGED" end
+    local object
+    if spec.station then
+        if node.recipeId~=r.chain.goal.recipeId or not node.location or not node.benchId then return nil,"STATION_NODE_UNSUPPORTED" end
+        object=Stations.resolve({id=node.benchId,position=node.location})
+    elseif spec.surface then
+        object,reason=Surfaces.resolve(node.location,node.benchId)
+        if not object then return nil,reason or "CRAFT_SURFACE_REQUIRED" end
+    end
+    local entry,why=Supply.entry(c.actor,c.npc,object,r.settlementId,true) if not entry then return nil,why end
+    local proposed={} for k,v in pairs(r) do proposed[k]=v end
+    proposed.recipeId=node.recipeId proposed.signature=node.signature proposed.product=spec.product proposed.recipeName=spec.name
+    proposed.requested=node.requested proposed.target=node.requested proposed.unitYield=spec.yield proposed.produced=0 proposed.delivered=0
+    proposed.outputAllocation=nil
+    proposed.benchId=node.benchId proposed.surface=not spec.station and node.location or nil proposed.phase="PLANNING" proposed.unitMade=false
+    proposed.station=spec.station and {id=node.benchId,position={x=node.location.x,y=node.location.y,z=node.location.z}} or nil
+    local ok,failed=JobExecution.replace(r,c.token,proposed) if not ok then return nil,failed end
+    for _,key in ipairs({"recipeId","signature","product","recipeName","requested","target","unitYield","produced","delivered","phase","unitMade"}) do r[key]=proposed[key] end
+    r.outputAllocation=nil
+    r.benchId=proposed.benchId r.surface=proposed.surface r.station=proposed.station r.chain.index=index
+    c.entry=entry c.object=object c.returned=nil c.route=nil c.inputs=nil
+    return makePlan(c,true)
+end
+local function find(c,asset)
+    local root=c.npc:getInventory() local location=c.plan.locations[asset.id]
+    if location and location.endpoint then
+        local current=Supply.endpoint(c.entry,location.endpoint.id,"take")
+        if not current or current.container~=location.endpoint.container then return nil,"CONTAINER_CHANGED" end
+        if Actions.inRoot(location.item,current.container,asset.id) then return location.item,nil,current end
+    end
+    local items=root:getItems() if items:size()>512 then return nil,"INVENTORY_LIMIT" end
+    local found
+    for i=0,items:size()-1 do
+        if items:get(i):getID()==asset.id then if found then return nil,"ITEM_ID_CONFLICT" end found=items:get(i) end
+    end
+    return found,found and nil or "ITEM_MISSING"
+end
+local function moved(c,item,from,to,endpoint,callback)
+    if not Transfer.reachable(c.npc,endpoint) then return nil,nil,endpoint end
+    return Actions.transfer(c,item,from,to,endpoint,callback)
+end
+local function outputOverlap(c,asset,destinationId)
+    if c.returnOnly or not c.record.orderId then return end
+    for _,output in ipairs(c.record.outputs) do
+        if output==asset then
+            return require('EmberRoutesProbe/Work/OrderQuery').outputOverlapReason(c.record.orderId,asset.fullType,destinationId)
+        end
+    end
+end
+local function deliver(c,asset,callback)
+    local item,reason,source=find(c,asset)
+    if not item then
+        changed(c,'ASSET_BLOCKED item='..tostring(asset.id)..' source='..tostring(asset.source)
+            ..' destination='..tostring(asset.destination)..' reason='..tostring(reason))
+        return nil,reason
+    end
+    if asset.fullType and item:getFullType()~=asset.fullType then return nil,"INPUT_CHANGED" end
+    if source and Registry.accepts(source,item) and Registry.logistics(source)=='STORAGE' then
+        local isOutput=false
+        for _,candidate in ipairs(c.record.outputs) do if candidate==asset then isOutput=true break end end
+        if not isOutput then asset.destination=source.id if callback then callback() end return false end
+    end
+    local output=false
+    for _,candidate in ipairs(c.record.outputs) do if candidate==asset then output=true break end end
+    local allocation=output and Allocation.row(c.record,asset) or nil
+    local target
+    if allocation and allocation.allocated==1 then
+        target=Supply.endpoint(c.entry,allocation.targets[1].destinationId,'put')
+        if not target then return nil,'NO_CLASSIFIED_STORAGE_TARGET' end
+    else
+        if not c.route then c.route=Supply.route(c.plan,item) end
+        local done
+        target,done=c.route:step(32) if not done then return nil end c.route=nil
+        if not target then return nil,'NO_CLASSIFIED_STORAGE_TARGET' end
+        if allocation then
+            Allocation.assign(allocation,target.id)
+            asset.destination=target.id
+            changed(c,'OUTPUT_ALLOCATED '..tostring(asset.id)..' '..target.id)
+            if c.commitFailure then return nil,c.commitFailure end
+        end
+    end
+    asset.destination=target.id
+    local why=outputOverlap(c,asset,target.id) if why then return nil,why end
+    -- Source presence is not a transfer receipt. Outputs settle only after the
+    -- native transfer postcondition; resumed settled outputs are skipped above.
+    if source and source.id==target.id then
+        if allocation and allocation.transferred~=1 then return nil,'RECONCILE_REQUIRED' end
+        if callback then callback() end return false
+    end
+    local root=c.npc:getInventory()
+    if item:getContainer()~=root then
+        if not source then return nil,"ITEM_LOCATION_CHANGED" end
+        return moved(c,item,source.container,root,source)
+    end
+    return moved(c,item,root,target.container,target,function()
+        if allocation and not Allocation.settle(allocation,target.id) then
+            c.record.uncertain=true c.record.reason='RECONCILE_REQUIRED'
+            return
+        end
+        if callback then callback() end
+    end)
+end
+local function finish(c)
+    local r=c.record releaseBench(c)
+    local manual
+    if c.returnOnly and r.activityYield and r.activityYield.kind=='MANUAL' and not r.activityYield.cancelled then
+        manual=Yield.manualPlan(r)
+        if not manual then r.uncertain=true end
+    end
+    if r.uncertain then r.state="RECONCILE_REQUIRED" r.phase=r.state r.reason="RECONCILE_REQUIRED"
+    else
+        if manual and not manual.complete then Yield.applyManual(r,manual)
+        else
+            r.state=manual and manual.complete and 'DONE' or c.returnOnly and "CANCELLED" or "DONE" r.phase=r.state
+            if r.activityYield then r.reason=r.activityYield.cancelled and 'USER_CANCEL' or 'ACTIVITY_YIELD' end
+            if not c.returnOnly and r.reason~="TARGET_REACHED" then r.reason=nil end
+            r.released=true
+        end
+        inventoryChanged()
+    end
+    r.generation=r.generation+1 c.completed=true c.closedGeneration=r.generation contexts[r.npcId]=nil
+    changed(c,r.state)
+end
+local function prepare(c)
+    if c.chainRequest then
+        local result,reason=c.chainRequest:step()
+        if not result then
+            if reason then c.record.chain.blocker=c.chainRequest.blocker end
+            return nil,reason
+        end
+        c.chainRequest=nil
+        local r=c.record local proposed={} for k,v in pairs(r) do proposed[k]=v end
+        proposed.held=result.assets
+	local ok,why=JobExecution.replace(r,c.token,proposed) if not ok then return nil,why end
+        r.chain.nodes=result.nodes
+        r.chain.blocker=nil
+        return activateNode(c,1)
+    end
+    local ready,reason=c.plan:step(32)
+    if not ready then return nil,reason end
+    local r=c.record
+    if r.phase=="PLANNING" and not c.returnOnly then
+        local proposed={} for key,value in pairs(r) do proposed[key]=value end
+        proposed.materials,proposed.tools,proposed.outputs=c.plan.materials,c.plan.tools,{}
+        if r.chain then
+            local active={} for _,name in ipairs({"materials","tools"}) do for _,asset in ipairs(proposed[name]) do active[asset.id]=true end end
+            proposed.held={}
+            for _,asset in ipairs(r.held) do if not active[asset.id] then proposed.held[#proposed.held+1]=asset end end
+        end
+        local weight,consumed=0,0
+        local bySlot={} for _,input in ipairs(c.spec.inputs) do bySlot[input.slot]=input end
+        for _,name in ipairs({"materials","tools"}) do
+            for _,asset in ipairs(proposed[name]) do
+                local location=c.plan.locations[asset.id]
+                if not location or not location.item or Store.owner(asset.id) and Store.owner(asset.id).taskId~=r.id then return nil,"ITEM_RESERVED" end
+                if location.endpoint and not Actions.inRoot(location.item,location.endpoint.container,asset.id) then return nil,"INVENTORY_CHANGED" end
+                if location.item:getContainer()~=c.npc:getInventory() then weight=weight+location.item:getUnequippedWeight() end
+                consumed=consumed+Carry.consumed(location.item,bySlot[asset.slot])
+            end
+        end
+        if not fits(c,weight,consumed,c.spec.outputWeight) then return nil,"CAPACITY_UNAVAILABLE" end
+	local ok,why=JobExecution.replace(r,c.token,proposed) if not ok then return nil,why end
+        r.phase="COLLECTING" changed(c,"COLLECTING")
+    end
+    if not c.returnOnly and not r.unitMade then
+        local bySlot={} for _,input in ipairs(c.spec.inputs) do bySlot[input.slot]=input end
+        c.inputs={}
+        for _,name in ipairs({"materials","tools"}) do
+            for _,asset in ipairs(r[name]) do
+                local item,why=find(c,asset) local input=bySlot[asset.slot]
+                if not item then return nil,why end
+                if not input or input.keep~=(name=="tools") or not input.io:canUseItem(item,c.npc) then return nil,"INPUT_CHANGED" end
+                c.inputs[#c.inputs+1]={id=asset.id,slot=asset.slot,item=item,io=input.io,keep=input.keep,asset=asset}
+            end
+        end
+        if #c.inputs~=c.spec.inputCount then return nil,"NATIVE_INPUT_SET_CHANGED" end
+    elseif not c.returnOnly then
+        for _,asset in ipairs(r.outputs) do
+            if asset.delivered then
+                local item,_,endpoint=find(c,asset)
+                if not item or not endpoint or Registry.logistics(endpoint)~="STORAGE" or not Registry.accepts(endpoint,item) then
+                    r.uncertain=true return nil,"RECONCILE_REQUIRED"
+                end
+            end
+        end
+    end
+    c.planning=false return true
+end
+local function advance(c)
+    local r=c.record local root=c.npc:getInventory()
+    if not c.returnOnly and Probe.activityContext and Yield.request(r,Probe.activityContext(r.npcId)) then
+        -- Native craft actions have already performed/stopped before advance().
+        -- Reuse original return-only reconciliation; no further unit is started.
+        c.returnOnly=true r.reason='ACTIVITY_YIELD' changed(c,'ACTIVITY_YIELD')
+    end
+    if c.returnOnly then
+        c.returned=c.returned or {}
+        for _,name in ipairs({"materials","outputs","tools","held"}) do
+            if name~="materials" or not r.unitMade then
+                for _,asset in ipairs(r[name] or {}) do
+                    if not c.returned[asset.id] and not (name=='outputs' and asset.delivered) then
+                        local item=find(c,asset)
+                        if not item and r.uncertain then c.returned[asset.id]=true
+                        else
+                            local action,reason,movement=deliver(c,asset,function()
+                                c.returned[asset.id]=true
+                                if name=="outputs" and r.unitMade and not asset.delivered then
+                                    asset.delivered=true if asset.fullType==r.product then r.delivered=r.delivered+1 end
+                                end
+                            end)
+                            if action~=false then return action,reason,movement end
+                        end
+                    end
+                end
+            end
+        end
+        finish(c) return nil
+    end
+    if not r.unitMade then
+        local ready,why=station(c) if not ready then return nil,why end
+        for _,input in ipairs(c.inputs) do
+            if not Actions.inRoot(input.item,root,input.id) then
+                local item,reason,source=find(c,input.asset) if not item then return nil,reason end
+                if not source then return nil,"ITEM_LOCATION_CHANGED" end
+                return moved(c,item,source.container,root,source)
+            end
+        end
+        r.phase="CRAFTING"
+        if not r.station and c.spec.surface and not require("EmberRoutesProbe/Crafting/CraftRecipeAdapter").atBench(c.npc,c.object) then return nil,nil,{object=c.object} end
+        if r.station then
+            local site,why=Stations.read(c.object,c.spec.facts) if not site then return nil,why end
+            local logic=HandcraftLogic.new(c.npc,site.bench,c.object)
+            if not logic:isCharacterInRangeOfWorkbench() then return nil,nil,{object=c.object} end
+        end
+        return Actions.craft(c)
+    end
+    releaseBench(c)
+    if r.phase~="RETURNING" then r.phase="RETURNING" changed(c,"RETURNING") end
+    if not c.outputAllocated then
+        c.outputPlanning=c.outputPlanning or require('EmberRoutesProbe/Crafting/ProductionRouting').new(c)
+        local ready,why=c.outputPlanning:step(32)
+        if not ready then return nil,why end
+        c.outputAllocated=true c.outputPlanning=nil
+        changed(c,'OUTPUT_BATCH_ALLOCATED')
+        if c.commitFailure then return nil,c.commitFailure end
+    end
+    for _,asset in ipairs(r.outputs) do
+        if not asset.delivered then
+            local action,reason,movement=deliver(c,asset,function()
+                if not asset.delivered then
+                    asset.delivered=true if asset.fullType==r.product then r.delivered=r.delivered+1 end changed(c,"DELIVERED "..r.delivered.."/"..r.target)
+                end
+            end)
+            if action~=false then return action,reason,movement end
+        end
+    end
+    if Production.earlySettleCheck and Production.earlySettleCheck(c) then
+        r.reason="TARGET_REACHED"
+    elseif r.produced<r.target then
+        local proposed={} for key,value in pairs(r) do proposed[key]=value end
+        proposed.materials,proposed.outputs={},{}
+        if r.chain and r.chain.index<#r.chain.nodes then
+            proposed.held={} for _,asset in ipairs(r.held) do proposed.held[#proposed.held+1]=asset end
+            for _,asset in ipairs(r.outputs) do proposed.held[#proposed.held+1]=asset end
+        end
+	local ok,why=JobExecution.replace(r,c.token,proposed) if not ok then return nil,why end
+        r.unitMade=false r.phase="PLANNING" changed(c,"NEXT_UNIT")
+        local ready,reason=makePlan(c,true) if not ready then return nil,reason end return nil
+    end
+    if r.delivered~=r.target and r.reason~="TARGET_REACHED" then return nil,"RECONCILE_REQUIRED" end
+    c.returned=c.returned or {}
+    for _,tool in ipairs(r.tools) do
+        if not c.returned[tool.id] then
+            local action,reason,movement=deliver(c,tool,function() c.returned[tool.id]=true end)
+            if action~=false then return action,reason,movement end
+        end
+    end
+    if r.reason~="TARGET_REACHED" and r.chain and r.chain.index<#r.chain.nodes then
+        local proposed={} for k,v in pairs(r) do proposed[k]=v end
+        proposed.held={} for _,asset in ipairs(r.held) do proposed.held[#proposed.held+1]=asset end
+        for _,name in ipairs({"outputs","tools"}) do
+            for _,asset in ipairs(r[name]) do
+                local item,reason=find(c,asset) if not item then return nil,reason end
+                proposed.held[#proposed.held+1]={id=asset.id,fullType=item:getFullType(),destination=asset.destination}
+            end
+        end
+        proposed.materials,proposed.tools,proposed.outputs={},{},{}
+	local ok,reason=JobExecution.replace(r,c.token,proposed) if not ok then return nil,reason end
+        local ready,why=activateNode(c,r.chain.index+1) if not ready then return nil,why end
+        changed(c,"CHAIN_NEXT") return nil
+    end
+    finish(c) return nil
+end
+local function tick(c)
+    if not c.valid() then return "CARRIER_OR_OWNER_CHANGED" end
+    if not c.returnOnly and not fits(c) then return "CAPACITY_UNAVAILABLE" end
+    local now=getTimestampMs() if now<(c.nextTick or 0) then return end c.nextTick=now+100
+    if c.planning then local _,reason=prepare(c) return reason end
+    if c.moving and c.record.station and not c.returnOnly and not c.record.unitMade
+        and not c.record.uncertain and not Stations.resolve(c.record.station) then
+        if not c.body.clear() then return "STATION_UNAVAILABLE" end
+        c.moving=nil
+        local ready,why=station(c) if not ready then return why end
+    end
+    if c.moving then
+        local state,reason=c.moving.poll()
+        if state=="FAILED" or now-c.started>185000 then return reason or "MOVE_TIMEOUT" end
+        if state=="PASSED" then c.moving=nil end return
+    end
+    if c.action then
+        if c.action.failure then return c.action.failure end
+        if ISTimedActionQueue.hasAction(c.action) then if now-c.started>180000 then return "ACTION_TIMEOUT" end return end
+        if c.action.stopped or not c.action.performed then return "NATIVE_ACTION_STOPPED" end c.action=nil
+    end
+    if not c.npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
+    local action,reason,movement=advance(c) if reason then return reason end
+    if movement then
+        c.moving=Transfer.move({npc=c.npc,actor=c.actor,job=c.record,body=c.body},movement) c.started=now
+        local state,why=c.moving.start() if state=="FAILED" then return why or "MOVE_FAILED" end
+    elseif action then
+        c.action=action c.started=now
+        if not c.body.add(action) then return 'CONTROL_REQUIRED' end
+    end
+end
+function Production.tick(id)
+    local c=contexts[id] if not c then return end
+    local ok,reason=pcall(tick,c)
+    if not ok then changed(c,"ERROR "..tostring(reason)) reason="ERROR" end
+    if reason then Production.pause(reason,id) end
+end
+local function execute(actor,command,object,id,options,body,validateOnly)
+    if not Probe.ready or not Probe.hasJava() then return Probe.unavailableCode() end
+    if isClient() or isServer() then return "SP_ONLY" end
+    options=options or {recipeId="Base.CarveWoodenFork",quantity=1}
+    if command=="stop" then Work.pause("USER",id) return "PAUSED" end
+    if Work.executing(id) then return "BUSY" end
+    local binding=Driver.bindId(actor,id) if not binding then return "CARRIER_UNAVAILABLE" end
+    local npc=binding.handle local r=record(id) local spec
+    local healthy,healthReason=require('EmberRoutesProbe/SelfCare/HealthAssessment').canWork(npc)
+    if not healthy then return healthReason end
+    if command=="run" then
+        if r and not r.released then return "RETURN_OR_RECONCILE_FIRST" end
+        if Work.hasCargo(actor,id) then return "CARGO_RETAINED_RESUME_FIRST" end
+        local why
+        spec,why=Recipe.inspect(actor,npc,object,options.recipeId,command=="run",false)
+        if not spec then return why end
+        local n=options.quantity
+        if type(n)~="number" or n~=math.floor(n) or n<1 or n>9999 then return "INVALID_QUANTITY" end
+        if not spec.surface and not spec.station then object=nil end
+        local entry,reason=Supply.entry(actor,npc,object,options.settlementId) if not entry then return reason end
+        if options.settlementId and entry.id~=options.settlementId then return "SETTLEMENT_MISMATCH" end
+        if validateOnly then return true end
+        if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
+        local benchId
+        if object then local data=object:getModData() data.EmberRoutesCraftProbeBenchId=data.EmberRoutesCraftProbeBenchId or Registry.id() benchId=data.EmberRoutesCraftProbeBenchId end
+        local stationSite
+        if spec.station then
+            stationSite=Stations.read(object,spec.facts)
+            if not stationSite then return "STATION_UNAVAILABLE" end
+        end
+        local taskId=options.taskId or Registry.id()
+        r={format=3,id=taskId,npcId=id,requester=actor:getUsername(),generation=1,state="RUNNING",phase="PLANNING",
+            recipeId=spec.id,signature=spec.signature,product=spec.product,recipeName=spec.name,unitYield=spec.yield,
+            requested=n,target=math.ceil(n/spec.yield)*spec.yield,produced=0,delivered=0,materials={},tools={},outputs={},
+            settlementId=entry.id,benchId=benchId,surface=spec.surface and not spec.station and Surfaces.location(object) or nil,released=false}
+        if spec.station then r.station={id=benchId,position=stationSite.position} end
+        if options.origin then r.origin=options.origin end
+        r.workerName=require('EmberRoutesProbe/Warehouse/DisplayNames').name(id,npc)
+        if options.orderId then r.orderId=options.orderId end
+        if options.chain then
+            local goal={} for _,key in ipairs({"recipeId","recipeName","product","signature","requested","target","unitYield","produced","delivered"}) do goal[key]=r[key] end
+            r.chain={format=1,index=0,nodes={},goal=goal} r.held={}
+            if options.preferences then r.preferences=options.preferences end
+        end
+	local token,reason=JobExecution.create(r) if not token then return reason end
+        local c=context(actor,binding,r,entry,object,body) c.token=token contexts[id]=c
+        local ready,why=makePlan(c,true)
+        if not ready then Production.pause(why,id) return why end
+        changed(c,"STARTED "..r.recipeId.." target="..r.target) return "STARTED"
+    end
+    if not r or r.format~=4 or r.released then return "NO_CARGO" end
+    local explicitCancel=r.activityYield and command=='return' and options.nonPreemptive~=true
+    -- Once return-to-yield starts, save/reload or a resume cannot restart work
+    -- before all of this attempt's originals have been reconciled.
+    local freed=Yield.assetFree(r)
+    if r.activityYield and not freed and command=='resume' then command='return' end
+    if r.requester~=actor:getUsername() then return "OWNER_CHANGED" end
+    if command~="resume" and command~="return" then return "INVALID_COMMAND" end
+    if command=="resume" and (r.uncertain or r.phase=="COMMITTING") then return "RECONCILE_REQUIRED" end
+    if command=="resume" and not r.unitMade and r.surface then
+        local resolved,why=Surfaces.resolve(r.surface,r.benchId) if not resolved then return why end object=resolved
+    else object=nil end
+    local entry,reason=Supply.entry(actor,npc,object,r.settlementId,true) if not entry then return reason end
+    if validateOnly then return true end
+    if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
+    if freed then Store.data() end -- Rebuild against the still-valid asset-free snapshot first.
+    r.generation=r.generation+1 r.state="RUNNING" r.reason=nil
+    local marker=r.activityYield
+    if freed and command=='resume' then r.activityYield=nil end
+    local token,why=JobExecution.claim(r,command=='return')
+    if not token then
+        if freed then r.activityYield=marker marker.blockedReason=why end
+        r.state="PAUSED" r.reason=freed and 'ACTIVITY_YIELD' or why return why
+    end
+    if explicitCancel then r.activityYield.cancelled=true end
+    if not JobExecution.commit(r) then return 'PRODUCTION_COMMIT_FAILED' end
+    local c=context(actor,binding,r,entry,object,body) c.token=token c.returnOnly=command=="return" contexts[id]=c
+    local ready,failed=makePlan(c,r.phase=="PLANNING" and not c.returnOnly)
+    if not ready then Production.pause(failed,id) return failed end
+    changed(c,"RESUME "..command) return command=="return" and "RETURN_STARTED" or "RESUME_STARTED"
+end
+function Production.execute(actor,command,object,id,options)
+    if command=='teach' then return 'READ_BOOK_REQUIRED' end
+    if command=='stop' then Work.pause('USER',id) return 'PAUSED' end
+    if command~='run' and command~='resume' and command~='return' then return 'INVALID_COMMAND' end
+    local runtime=Runtime.current()
+    if not runtime then return 'ADMISSION_CLOSED' end
+    local root=Registry.data()
+    local previous=record(id)
+    local generation=previous and previous.generation
+    local copy={} for key,value in pairs(options or {recipeId='Base.CarveWoodenFork',quantity=1}) do copy[key]=value end
+    if copy.origin then local origin={} for key,value in pairs(copy.origin) do origin[key]=value end copy.origin=origin end
+    local jobId=command=='run' and (copy.taskId or Registry.id()) or previous and previous.id
+    if not jobId then return 'NO_CARGO' end
+    if command=='run' then copy.taskId=jobId end
+    local c
+    local member=command=='run' and require('EmberRoutesProbe/Settlement/MembershipService').view(id)
+    local membershipRevision=member and member.revision
+    local handle,why=runtime:submit({npcId=id,jobId=jobId,kind='PRODUCTION',binding=Driver.bindId(actor,id),
+        nonPreemptive=copy.nonPreemptive==true,captureStop=true,reconcileErrors=true,
+        validate=function()
+            if copy.activityResumeEpoch~=nil then
+                local binding=Driver.bindId(actor,id)
+                if not binding or require('EmberRoutesProbe/Runtime/TaskResume').epoch(id)~=copy.activityResumeEpoch
+                    or Probe.activityContext and Probe.activityContext(id) or Probe.careBlocksWork and Probe.careBlocksWork(id) then return false end
+                local npc=binding.handle
+                if not require('EmberRoutesProbe/Settlement/MembershipService').check(id,'WORK',
+                    {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=copy.settlementId},copy.activityMembershipRevision).allowed then return false end
+            end
+            if command=='run' then
+                local binding=Driver.bindId(actor,id) if not binding or not membershipRevision then return false end
+                local npc=binding.handle
+                if not require('EmberRoutesProbe/Settlement/MembershipService').check(id,'WORK',
+                    {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=copy.settlementId},membershipRevision).allowed then return false end
+            end
+            return Registry.data()==root and record(id)==previous and (not previous or previous.generation==generation)
+                and execute(actor,command,object,id,copy,nil,true)==true
+        end,
+        start=function(body)
+            local value=execute(actor,command,object,id,copy,body)
+            c=contexts[id]
+            if c and c.record.id==jobId then return true end
+            return false,value,'UNCHANGED'
+        end,
+        tick=function() Production.tick(id) end,
+        finished=function() return c and contexts[id]~=c end,
+        stopAdapter=function(controller,ticket) return Production.stopAdapter(id,controller,ticket) end,
+        persistFailure=function(fact,reason)
+            local r=record(id)
+            if Registry.data()~=root then return false end
+            if fact.effects=='UNKNOWN' then
+                if not r or r.id~=jobId then return false end
+		r.uncertain=true r.phase='RECONCILE_REQUIRED' r.reason=reason JobExecution.commit(r) Signals.changed(id)
+            end
+            return true
+        end})
+    if handle then
+        if not copy.nonPreemptive and Probe.invalidateCare then Probe.invalidateCare(id,'PRODUCTION_COMMAND') end
+        requests[id]={handle=handle,runtime=runtime,root=root,jobId=jobId}
+    end
+    return handle and 'QUEUED' or why,handle
+end
+function Production.afterSave(results)
+    if not results then
+	for _,candidate in pairs(pending) do if candidate.record.reason=="SAVE" then candidate.record.reason="SAVE_FAILED" JobExecution.commit(candidate.record) Signals.changed(candidate.record.npcId) end end
+        pending={}
+    end
+    for id,candidate in pairs(candidates) do
+        if results and results[id] and string.find(results[id],"^CHECKPOINT_SAVED") then pending[id]=candidate
+        else candidate.record.reason="SAVE_FAILED" Signals.changed(id) end
+    end
+    candidates={}
+end
+function Production.tickPending()
+    for id,candidate in pairs(pending) do
+        pending[id]=nil local r=candidate.record
+        if candidate.root==Registry.data() and record(id)==r and r.generation==candidate.generation and r.reason=="SAVE" and not r.uncertain then
+            local ok,why=pcall(Production.execute,candidate.actor,candidate.command,nil,id,{nonPreemptive=true})
+            if not ok then r.reason="ERROR" Log.write("PRODUCTION",tostring(why)) Signals.changed(id) end
+        end
+        return true
+    end
+    if inventoryDirty then
+        for id,candidate in pairs(waiting) do
+            if candidate.revision~=inventoryRevision then
+                waiting[id]=nil local r=candidate.record
+                if candidate.root==Registry.data() and record(id)==r and r.generation==candidate.generation and not r.uncertain then
+                    Production.execute(candidate.actor,"resume",nil,id,{nonPreemptive=true})
+                end
+                return true
+            end
+        end
+        inventoryDirty=false
+    end
+    local root=Registry.data() local now=getTimestampMs()
+    if root~=yieldWorld then yieldWorld,yieldIds,yieldCursor,yieldScan,yieldRetry=root,{},0,0,{} end
+    if now>=yieldScan then
+        yieldScan=now+1000 yieldIds={}
+        for id,r in pairs(require('EmberRoutesProbe/Work/BusinessJobs').crafts()) do if Yield.assetFree(r) then yieldIds[#yieldIds+1]=id end end
+        table.sort(yieldIds)
+    end
+    if #yieldIds>0 then
+        yieldCursor=yieldCursor%#yieldIds+1 local id=yieldIds[yieldCursor] local r=record(id)
+        local c=r and r.activityContinuation
+        if r and c and Yield.assetFree(r) and r.reason=='ACTIVITY_YIELD' and now>=(yieldRetry[id] or 0)
+            and require('EmberRoutesProbe/Runtime/TaskResume').epoch(id)==c.resumeEpoch
+            and not (Probe.activityContext and Probe.activityContext(id)) and not (Probe.careBlocksWork and Probe.careBlocksWork(id)) then
+            local actor=getSpecificPlayer(0) local b=actor and Driver.bindId(actor,id)
+            local member=b and require('EmberRoutesProbe/Settlement/MembershipService').check(id,'WORK',
+                {x=b.handle:getX(),y=b.handle:getY(),z=b.handle:getZ(),scopeId=r.settlementId},c.membershipRevision)
+            if member and member.allowed and actor:getUsername()==r.requester then
+                yieldRetry[id]=now+2000
+                local result=Production.execute(actor,'resume',nil,id,{nonPreemptive=true,settlementId=r.settlementId,
+                    activityResumeEpoch=c.resumeEpoch,activityMembershipRevision=c.membershipRevision})
+                return result=='QUEUED'
+            end
+        end
+    end
+    return false
+end
+function Production.status(r)
+    local result={id=r.id,npcId=r.npcId,settlementId=r.settlementId,state=r.state,phase=r.phase,reason=r.reason,released=r.released,
+        uncertain=r.uncertain==true,made=r.unitMade==true,resumable=not r.released and not r.uncertain and r.phase~="COMMITTING",
+        recipeId=r.recipeId,recipeName=r.recipeName,product=r.product,requested=r.requested,target=r.target,produced=r.produced,delivered=r.delivered,
+        surfaceRequired=r.surface~=nil,surface=r.surface and {x=r.surface.x,y=r.surface.y,z=r.surface.z} or nil}
+    result.allocated,result.settled,result.remaining=Allocation.count(r,r.product)
+    if Yield.assetFree(r) and r.activityYield.blockedReason then result.reason=r.activityYield.blockedReason end
+    if r.chain then
+        local goal=r.chain.goal
+        result.chainIndex=r.chain.index result.chainTotal=#r.chain.nodes result.stepName=r.recipeName
+        if r.chain.blocker then result.stepName=r.chain.blocker.recipeName end
+        for _,key in ipairs({"recipeId","recipeName","product","requested","target"}) do result[key]=goal[key] end
+        result.produced=r.chain.index==#r.chain.nodes and r.produced or 0
+        result.delivered=r.chain.index==#r.chain.nodes and r.delivered or 0
+        if r.chain.index~=#r.chain.nodes then result.allocated,result.settled,result.remaining=0,0,result.target end
+    end
+    if r.activityContinuation then
+        local c=r.activityContinuation local g=c.goal
+        result.requested,result.target=g.requested,g.target result.recipeId,result.product,result.recipeName=g.recipeId,g.product,g.recipeName
+        result.produced=math.min(g.target,c.delivered+(result.produced or 0))
+        result.delivered=math.min(g.target,c.delivered+(result.delivered or 0))
+        result.allocated=math.min(g.target,c.delivered+(result.allocated or 0))
+        result.settled=result.delivered result.remaining=math.max(0,result.target-result.settled)
+    end
+    return result
+end
+function Production.findRootOrders(settlementId,fullType)
+    local probes=require('EmberRoutesProbe/Work/BusinessJobs').crafts()
+    if not probes then return {hasManualOrder=false,orders={}} end
+    local orders={}
+    local hasManual=false
+    for npcId,r in pairs(probes) do
+	if r.format==4 and not r.released and not r.uncertain and (not settlementId or r.settlementId==settlementId) then
+            local product=r.chain and r.chain.goal and r.chain.goal.product or r.product
+            if product==fullType then
+                orders[#orders+1]=r
+                if not r.origin or r.origin.kind~="MAINTAIN_STOCK" then
+                    hasManual=true
+                end
+            end
+        end
+    end
+    return {hasManualOrder=hasManual,orders=orders}
+end
+return Production

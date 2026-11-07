@@ -1,8 +1,9 @@
-local Tooltip=require "EmberRoutesProbe/UI/TooltipAnchor"
+local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 require "ISUI/ISScrollingListBox"
-local Filter=require "EmberRoutesProbe/StorageFilter"
-local Editor=require "EmberRoutesProbe/FilterEditor"
+local Filter=require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Editor=require "EmberRoutesProbe/Warehouse/FilterEditor"
 local Flow=require "EmberRoutesProbe/UI/Text"
+local Visual=require "EmberRoutesProbe/UI/StatusVisual"
 local Rows={}
 local function text(key) return getText("IGUI_EmberRoutesProbe_Filter_"..key) end
 
@@ -12,7 +13,7 @@ local function text(key) return getText("IGUI_EmberRoutesProbe_Filter_"..key) en
 function Rows.create(owner,bounds)
     ---@type EmberRoutesFilterList
     local list=ISScrollingListBox:new(bounds.x,bounds.y,bounds.width,bounds.height)
-    list:initialise() Tooltip.attach(list,"updateTooltip",owner)
+    list:initialise() Tooltip.register(list,{method="updateTooltip",owner=owner})
     list.itemheight=owner.rowHeight
     list.font=UIFont.Small
     list:setWantKeyEvents(true)
@@ -106,9 +107,10 @@ function Rows.draw(list,y,entry)
     local cy=y+pad/2
 
     if row.hasChildren then
-        local foldSymbol=row.collapsed and "[+]" or "[-]"
-        local foldCol=row.collapsed and {0.95,0.85,0.35} or {0.65,0.78,0.92}
-        list:drawText(foldSymbol,x-18,cy-1,foldCol[1],foldCol[2],foldCol[3],1,UIFont.Small)
+        local foldCol=row.collapsed and {r=0.95,g=0.85,b=0.35,a=1} or {r=0.65,g=0.78,b=0.92,a=1}
+        local ms=math.max(6,math.min(10,box))
+        Visual.mark(list,x-18,cy+math.floor((box-ms)/2),ms,
+            row.collapsed and "plus" or "minus",foldCol)
     end
 
     list:drawRectBorder(x,cy,box,box,0.9,0.7,0.76,0.8)
@@ -151,7 +153,7 @@ function Rows.refresh(self)
         row.color=row.root and Filter.nodes[row.id].color or nil
         row.indent=self.pad+18+math.min(row.depth or 0,4)*self.pad*2
         row.lines=Flow.wrap(label,self.list.width-row.indent-self.fontHeight-self.pad*3-16,UIFont.Small)
-        if #row.lines>2 then row.lines={row.lines[1],row.lines[2].."…"} end
+        if #row.lines>2 then row.lines={row.lines[1],row.lines[2].."..."} end
         if row.kind=="type" then
             row.stateCaption=text(row.mark=="[~]" and "inherit" or (row.mark=="[x]" and "allow" or "deny"))
         elseif row.mark=="[-]" then row.stateCaption=text("partial")

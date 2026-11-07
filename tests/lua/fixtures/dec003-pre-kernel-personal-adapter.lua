@@ -4,7 +4,7 @@ function A.install(Store,state,ensureEntityClaimId,cleanToken,scopeAllowed)
 function Store.claimPersonal(job)
     Store.data()
     local saved=state.root.taskJobs.byId[job.id]
-    if not require('EmberRoutesProbe/SelfCareRecord').valid(saved)
+    if not require('EmberRoutesProbe/SelfCare/SelfCareRecord').valid(saved)
 	or saved.npcId~=job.npcId or saved.payload.attemptId~=job.payload.attemptId
 	or saved.payload.sequence~=job.payload.sequence then return nil,'STALE_PERSONAL_ATTEMPT' end
     local claimId = ensureEntityClaimId(state.root, saved, job.id)
@@ -23,13 +23,13 @@ end
 -- Called from membership retirement / personal stop, never from a timer.
 function Store.settleDeadPersonal(job,bodyStopped)
     Store.data()
-    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
     local saved=jobs:get(job.id)
-    local Record=require 'EmberRoutesProbe/SelfCareRecord'
+    local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
     if not Record.valid(saved) or saved.npcId~=job.npcId then return false end
-    local member=require('EmberRoutesProbe/MembershipService').view(saved.npcId)
+    local member=require('EmberRoutesProbe/Settlement/MembershipService').view(saved.npcId)
     if member and not member.retired then return false end
-    local runtime=require('EmberRoutesProbe/TaskRuntime').current()
+    local runtime=require('EmberRoutesProbe/Runtime/TaskRuntime').current()
     local retained=Record.deathRetained(saved)
     -- A live callback can still publish facts: never clear behind its back.
     if not retained and bodyStopped~=true and runtime and runtime:status(saved.npcId,saved.id) then
@@ -58,7 +58,7 @@ function Store.finishPersonal(job,token)
     local saved=state.root.taskJobs.byId[job.id]
     if saved.effects~='KNOWN' then return false,'PERSONAL_EFFECT_UNKNOWN' end
     for _ in pairs(saved.obligations) do return false,'PERSONAL_OBLIGATION_RETAINED' end
-    local jobs=require('EmberRoutesProbe/TaskJobs').current()
+    local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
     local payload=jobs:get(job.id).payload payload.claims={}
     local ok,reason=jobs:update(job.id,saved.revision,{payload=payload})
     if not ok then return false,reason end

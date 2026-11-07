@@ -3,9 +3,9 @@ local checks,now=0,100
 local function check(v,m) checks=checks+1 assert(v,m) end
 getTimestampMs=function() return now end
 package.loaded['TimedActions/ISInventoryTransferAction']=true
-package.loaded['EmberRoutesProbe/LaborProducers']={}
+package.loaded['EmberRoutesProbe/Work/LaborProducers']={}
 local moves,motion,arrived={},'MOVING',false
-package.loaded['EmberRoutesProbe/Driver']={move=function(binding,actor,p,body)
+package.loaded['EmberRoutesProbe/Runtime/Driver']={move=function(binding,actor,p,body)
     check(binding.id=='npc' and body=='owned-session','retry retains the same body authority')
     moves[#moves+1]=p motion='MOVING' return 'MOVE_REQUESTED'
 end}
@@ -27,7 +27,7 @@ function target:getAdjacentSquare(dir) return dir=='W' and west or dir=='E' and 
 getCell=function() return {getGridSquare=function(_,x,y) return tiles[x..':'..y] end} end
 luautils={getCorrectSquareForWall=function(_,s) return s end}
 dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/Util/AdjacentFreeTileFinder.lua')
-local Transfer=require 'EmberRoutesProbe/WorkTransfer'
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 Transfer.reachable=function() return arrived end
 local c={npc={},actor={},job={npcId='npc'},body='owned-session'}
 local endpoint={object={getSquare=function() return target end}}
@@ -43,7 +43,7 @@ motion='FAILED' step.poll() motion='FAILED'
 check(step.poll()=='FAILED' and #moves==2,'exhausted neighbours fail finitely without repeating a failed tile')
 moves={} step=Transfer.move(c,endpoint) step.start() motion='STOPPED'
 check(step.poll()=='FAILED' and #moves==1,'external stop does not launch an automatic replacement')
-local driver=package.loaded['EmberRoutesProbe/Driver'] local move=driver.move
+local driver=package.loaded['EmberRoutesProbe/Runtime/Driver'] local move=driver.move
 driver.move=function() return 'NOT_AUTHORIZED' end
 step=Transfer.move(c,endpoint)
 check(step.start()=='FAILED','denied body authority fails without alternate retries')

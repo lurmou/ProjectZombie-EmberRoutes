@@ -1,10 +1,10 @@
 -- Bounded selector uses actual shared warehouse access and original identity.
 local f=dofile('tests/lua/cooking-collection-test.lua') local h=f.h local e=h.e local host=h.f
-local Menu=require 'EmberRoutesProbe/CookingMenu'
-local Evolved=require 'EmberRoutesProbe/CookingEvolved'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
+local Menu=require 'EmberRoutesProbe/Integration/CookingMenu'
+local Evolved=require 'EmberRoutesProbe/Cooking/CookingEvolved'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 local recipe=e.recipe
 function recipe:getItemRecipe(item)
     if item.food then return {getUse=function() return item.spice and 1 or 10 end} end

@@ -9,6 +9,10 @@ local Layout = require "EmberRoutesProbe/UI/Layout"
 local Text = require "EmberRoutesProbe/UI/Text"
 local Theme = require "EmberRoutesProbe/UI/Theme"
 local StatMeter = require "EmberRoutesProbe/UI/StatMeter"
+local UICache = require "EmberRoutesProbe/UI/UICache"
+
+-- Static recessed sub-pill fill: draws happen every frame.
+local SUB_PILL_BG = {r = 0.04, g = 0.08, b = 0.06, a = 0.75}
 
 local CompactSummaryStrip = {}
 local methods = {}
@@ -158,12 +162,17 @@ function methods:draw(owner)
     local gap = math.max(4, math.floor(p / 2))
     local innerW = p2.width - subPad * 2
 
-    -- Sub-pill inner recessed styling
-    local subBg = {r = 0.04, g = 0.08, b = 0.06, a = 0.75}
-    local subBorder = {r = self.probeBorder.r * 0.75, g = self.probeBorder.g * 0.75, b = self.probeBorder.b * 0.75, a = 0.70}
+    -- Sub-pill inner recessed styling. The border is derived once per theme
+    -- colour instance; the fill is a module constant.
+    local subBg = SUB_PILL_BG
+    local subBorder = self._subBorder
+    if not subBorder or self._subBorderFor ~= self.probeBorder then
+        subBorder = {r = self.probeBorder.r * 0.75, g = self.probeBorder.g * 0.75, b = self.probeBorder.b * 0.75, a = 0.70}
+        self._subBorder = subBorder
+        self._subBorderFor = self.probeBorder
+    end
 
-    local tm = getTextManager()
-    local cTextW = tm and tm.MeasureStringX and tm:MeasureStringX(UIFont.Small, self.containerText) or (#self.containerText * 7)
+    local cTextW = UICache.measure(UIFont.Small, self.containerText)
     local sub1W = math.max(cTextW + p * 2, math.floor(innerW * 0.40))
     local sub1X = p2.x + subPad
 
@@ -180,7 +189,7 @@ function methods:draw(owner)
         Theme.rect(owner, sub2X, subY, sub2W, subH, subBg)
         Theme.rect(owner, sub2X, subY, sub2W, subH, subBorder, true)
 
-        local lTextW = tm and tm.MeasureStringX and tm:MeasureStringX(UIFont.Small, self.loadText) or (#self.loadText * 7)
+        local lTextW = UICache.measure(UIFont.Small, self.loadText)
         local lTextX = sub2X + p
         local lTextY = subY + math.floor((subH - h) / 2)
         local lColor = (self.pct >= 80) and Theme.gold or Theme.textColor

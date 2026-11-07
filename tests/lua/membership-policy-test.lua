@@ -1,4 +1,4 @@
-local P=require 'EmberRoutesProbe/MembershipPolicy'
+local P=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
 local e={id='home',factionId='f',revision=4,areas={{x=0,y=0,w=10,h=10}}}
 local r={npcId='a',factionId='f',settlementId='home',context='SETTLEMENT',revision=2}
 local at={x=2,y=2,z=0,scopeId='home'}

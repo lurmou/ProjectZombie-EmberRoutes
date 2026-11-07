@@ -4,11 +4,11 @@ dofile('tests/lua/settlement-tabs-test.lua')
 local checks=0
 local function check(v,m) assert(v,m) checks=checks+1 end
 local R=require 'EmberRoutesProbe/UI/PageRegistry'
-local D=require 'EmberRoutesProbe/SettlementDashboard'
+local D=require 'EmberRoutesProbe/UI/SettlementDashboard'
 local fixture=ERSettlementPreview('warehouse',20,1280,900)
 local actor=fixture.actor fixture:close()
 check(not R.get('demands') and not R.get('orders'),'retired IDs are not registered')
-for id,group in pairs({warehouse='warehouse',personnel='personnel',logistics='personnel',crafting='work',policies='settlement',activities='settlement',defense='settlement'}) do
+for id,group in pairs({warehouse='warehouse',personnel='personnel',logistics='personnel',crafting='warehouse',policies='settlement',activities='settlement',defense='settlement'}) do
  check(R.getGroup(id)==group,'group '..id)
 end
 local shell=assert(D.open(actor,'settlement'))
@@ -20,8 +20,10 @@ local function only(id)
  end
 end
 only('warehouse')
-shell:selectGroup('work') only('crafting')
-check(shell.tabButtons.crafting.visible,'crafting registered as work tab')
+check(#R.groups==3 and not R.get('crafting').isTab,'three groups and warehouse-owned flow')
+check(not shell:selectGroup('work') and not shell.tabButtons.crafting,'no retired work group/button')
+check(shell:selectTab('crafting'),'crafting remains reachable') only('crafting')
+check(shell.activeGroup=='warehouse','crafting belongs to warehouse')
 shell:selectTab('personnel',{npcId='worker'}) only('personnel')
 local page=shell.pages.personnel local token=page.activation
 check(page.store.value.selected.id=='worker','stable member selection')

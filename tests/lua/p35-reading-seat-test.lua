@@ -1,36 +1,36 @@
 local root,now={},0
 getTimestampMs=function() return now end
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end}
-package.loaded['EmberRoutesProbe/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
-package.loaded['EmberRoutesProbe/CraftRecord']={records=function() return {} end}
-package.loaded['EmberRoutesProbe/Boot']={}
-package.loaded['EmberRoutesProbe/CraftSupply']={}
-package.loaded['EmberRoutesProbe/WorkTransfer']={}
-package.loaded['EmberRoutesProbe/LeisureService']={note=function() end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
+package.loaded['EmberRoutesProbe/Work/BusinessJobs']={hauls=function() return {tasks={},byNpc={},routes={}} end,flush=function() end}
+package.loaded['EmberRoutesProbe/Crafting/CraftRecord']={records=function() return {} end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={}
+package.loaded['EmberRoutesProbe/Leisure/LeisureService']={note=function() end}
 EmberRoutesProbeJava={moveSeatWithControl=function() end}
 local object={} local proof={id='chair',partId='part',revision=1,parts={{id='part',x=2,y=2,z=0}}}
 local hasSeat,blocked=false,false
-package.loaded['EmberRoutesProbe/ReposeSites']={new=function(_,_,_,_,_,options)
+package.loaded['EmberRoutesProbe/SelfCare/ReposeSites']={new=function(_,_,_,_,_,options)
     assert(options.maxDistance==nil and not options.sameFloor and options.seatingOnly and options.excludeBeds)
     if options.preferredPoint then assert(options.preferredPoint.x==2 and options.preferredPoint.y==2) end
     return {step=function() return hasSeat and {} or nil,true end} end,
     prepare=function() return proof end,keys=function() return {'repose:chair:part'} end,
     resolve=function() return not blocked and {object=object,quality='averageBed'} or nil end}
 local moves=0 local failPath=false
-package.loaded['EmberRoutesProbe/SelfCareFurniture']={seat=function() return {run=function() moves=moves+1 return failPath and 'Failure' or 'Success' end,halt=function() end} end}
+package.loaded['EmberRoutesProbe/SelfCare/SelfCareFurniture']={seat=function() return {run=function() moves=moves+1 return failPath and 'Failure' or 'Success' end,halt=function() end} end}
 local sitting,ref,resting=false,nil,false
 local exits=0
-package.loaded['EmberRoutesProbe/LeisurePosture']={new=function() return {
+package.loaded['EmberRoutesProbe/Leisure/LeisurePosture']={new=function() return {
     enter=function() sitting=true ref=object return 'Success' end,
     leave=function() exits=exits+1 return not sitting and ref==nil end} end}
 local reads,stops=0,0
-package.loaded['EmberRoutesProbe/StudyActions']={read=function() return {
+package.loaded['EmberRoutesProbe/Leisure/StudyActions']={read=function() return {
     run=function() reads=reads+1 return reads%2==0 and 'Success' or 'Running' end,
     halt=function() stops=stops+1 return true end} end}
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Seat=require 'EmberRoutesProbe/StudySeat'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Seat=require 'EmberRoutesProbe/Leisure/StudySeat'
 local function context(id)
     local job=Record.create(id,id) job.payload=Record.begin(job,'STUDY')
     local p=job.payload p.step='ACTING' p.settlementId='home' p.itemId=9 p.sourceId='shelf'
@@ -81,7 +81,7 @@ hasSeat=true failPath=true reads=0 now=0
 local visits={} local blockedSnapshot
 local originals={}
 for i=1,3 do originals[i]={id='chair'..i,partId='part',revision=1,key='seat'..i,parts={{id='part',x=i,y=2,z=0}}} end
-local sites=package.loaded['EmberRoutesProbe/ReposeSites']
+local sites=package.loaded['EmberRoutesProbe/SelfCare/ReposeSites']
 -- A slow scan is still pending past the former 2-second/eight-slice cutoff.
 local savedScan=sites.new local scanSteps=0
 sites.new=function() return {step=function()

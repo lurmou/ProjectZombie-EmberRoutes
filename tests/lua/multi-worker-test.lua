@@ -1,10 +1,8 @@
 -- Real Lua controllers, deliberately fake native actions/Java bodies. No engine claim.
 local fixture=dofile("tests/lua/work-test.lua")
-local Work=require "EmberRoutesProbe/Work"
-local Store=require "EmberRoutesProbe/LaborStore"
-local Companion=require "EmberRoutesProbe/Companion"
--- This fixture exercises the old diagnostic movement/checkpoint adapter, not membership migration.
-Companion.restoreState=Companion.debugRestoreState
+local Work=require "EmberRoutesProbe/Work/Work"
+local Store=require "EmberRoutesProbe/Work/LaborStore"
+local Companion=require "EmberRoutesProbe/Settlement/Companion"
 local Probe=fixture.ctx.Probe
 local actor=fixture.actor
 local checks=0
@@ -121,13 +119,13 @@ tick(4,true)
 check(capacityB:getContainer()==source.container and Work.busy(b.id),"paused held cargo still owns reserved space")
 local oldGeneration=held.generation
 Work.reset()
-package.loaded["EmberRoutesProbe/LaborStore"]=nil
+package.loaded["EmberRoutesProbe/Work/LaborStore"]=nil
 package.loaded["EmberRoutesProbe/Hauling/HaulJobs"]=nil
 package.loaded['EmberRoutesProbe/Hauling/HaulAgent']=nil
 package.loaded['EmberRoutesProbe/Hauling/HaulRouting']=nil
-package.loaded["EmberRoutesProbe/WorkAgent"]=nil
-package.loaded["EmberRoutesProbe/Work"]=nil
-Work=require "EmberRoutesProbe/Work" Store=require "EmberRoutesProbe/LaborStore"
+package.loaded["EmberRoutesProbe/Work/WorkAgent"]=nil
+package.loaded["EmberRoutesProbe/Work/Work"]=nil
+Work=require "EmberRoutesProbe/Work/Work" Store=require "EmberRoutesProbe/Work/LaborStore"
 check(Store.record(a.id).generation>oldGeneration and Store.record(a.id).reservation,"reload rebuilds claims from scalar intent")
 selected=b.id Work.execute(actor,"resume") tick(3,true)
 check(capacityB:getContainer()==source.container and Work.busy(b.id),"restored reservation blocks conflicting worker")
@@ -140,13 +138,13 @@ check(capacityB:getContainer()==destination.container and Work.record(b.id).stat
 
 -- Both companions retain independent bindings; selected worker never retargets A.
 selected=a.id actor.x=6 Companion.debugExecute(actor,"follow")
-selected=b.id Companion.debugExecute(actor,"follow") Companion.tick()
+selected=b.id Companion.debugExecute(actor,"follow") Probe.tickTasks()
 check(Companion.exportState(a.id).mode=="FOLLOW" and Companion.exportState(b.id).mode=="FOLLOW","two follower intents coexist")
 Companion.cancel("USER",a.id)
 check(Companion.exportState(a.id).mode=="HOLD" and Companion.exportState(b.id).mode=="FOLLOW","companion cancellation is scoped")
 Companion.cancelAll("TEST_END")
 
-local Persistence=require "EmberRoutesProbe/Persistence"
+local Persistence=require "EmberRoutesProbe/Runtime/Persistence"
 local saved,blocked,restored={},{},{}
 bridge.workerCount=function() return 2 end
 bridge.workerIdAt=function(index) return index==0 and a.id or b.id end

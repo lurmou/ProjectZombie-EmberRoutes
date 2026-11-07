@@ -10,7 +10,7 @@ local count=0
 local function check(v,s) count=count+1 assert(v,s) end
 
 -- 1. Test ProductionChainPlan preference routing
-local Plan=require 'EmberRoutesProbe/ProductionChainPlan'
+local Plan=require 'EmberRoutesProbe/Crafting/ProductionChainPlan'
 local dummyProducers={
     ['Base.Plank']={
         {
@@ -62,7 +62,7 @@ check(planPref.nodes[1].recipeId=='Base.SawLogs','chain plan respects preference
 
 -- 2. Test PublicPreview passing preferences & CHECKING handling
 local passedPref=nil
-package.loaded['EmberRoutesProbe/CraftingService']={
+package.loaded['EmberRoutesProbe/Crafting/CraftingService']={
     status=function() return {workers={{id='w1'}}} end,
     preview=function(actor,scope,workerId,recipeId,qty,surfaceId,callback,pref)
         passedPref=pref
@@ -83,7 +83,7 @@ package.loaded['EmberRoutesProbe/CraftingService']={
     end
 }
 
-local PublicPreview=require 'EmberRoutesProbe/PublicPreview'
+local PublicPreview=require 'EmberRoutesProbe/Work/PublicPreview'
 local finalResult=nil
 PublicPreview.watch({},'s1','Base.MakeTable',1,nil,function(res)
     finalResult=res
@@ -95,24 +95,24 @@ check(finalResult.chain.nodes[1].recipeId=='Base.SawLogs','resolved chain has pr
 
 -- 3. Test PublicWork.create & saveRule receiving and persisting preferences
 local rootData={orders={},stockRules={},publicWork={format=1,sequence=0,orders={},priorities={},rules={}}}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={
     data=function() return rootData end,
     resolve=function() return nil end,
     id=function() return 'gen-id-1' end,
     listeners={},
     inventoryListeners={}
 }
-local Boot=require 'EmberRoutesProbe/Boot'
+local Boot=require 'EmberRoutesProbe/Kernel/Boot'
 Boot.ready=true
 Boot.runtimeReady=true
 Boot.hasJava=function() return true end
 function isClient() return false end
 function isServer() return false end
 
-package.loaded['EmberRoutesProbe/SettlementLedger']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={
     view=function(actor,scope) return {id=scope} end, listeners={}
 }
-package.loaded['EmberRoutesProbe/ProductionRecipe']={
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={
     read=function(id) return {id=id,name='Make Table',product='Base.Table',yield=1,recipe={}} end
 }
 
@@ -121,7 +121,7 @@ local actor={
     getUsername=function() return 'Survivor' end
 }
 
-local PublicWork=require 'EmberRoutesProbe/PublicWork'
+local PublicWork=require 'EmberRoutesProbe/Work/PublicWork'
 local resOrder,orderId=PublicWork.create(actor,'entry1','Base.MakeTable',1,nil,PublicWork.requestId(),{['Base.Plank']='Base.SawLogs'})
 check(resOrder=='ORDER_CREATED','PublicWork.create returns ORDER_CREATED')
 local createdOrders=PublicWork.orders('entry1')

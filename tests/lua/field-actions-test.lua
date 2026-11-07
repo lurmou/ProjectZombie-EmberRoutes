@@ -1,5 +1,5 @@
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
-local Actions=require 'EmberRoutesProbe/FieldActions'
+local Actions=require 'EmberRoutesProbe/Field/FieldActions'
 local queued
 ISTimedActionQueue={hasAction=function(a) return queued==a end}
 local commits=0

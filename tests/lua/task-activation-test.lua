@@ -6,9 +6,9 @@ Events={}
 for _,name in ipairs({'OnGameStart','OnServerStarted','OnTick','OnTickEvenPaused','OnPreMapLoad','OnSave'}) do
     Events[name]={Add=function(fn) callbacks[name]=fn end}
 end
-package.loaded['EmberRoutesProbe/Build']={version='activation',prefix='TEST'}
+package.loaded['EmberRoutesProbe/Kernel/Build']={version='activation',prefix='TEST'}
 local logs={}
-package.loaded['EmberRoutesProbe/Log']={write=function(kind,message) logs[#logs+1]=kind..' '..message end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function(kind,message) logs[#logs+1]=kind..' '..message end}
 function getText(key) return key end
 SandboxVars={EmberRoutes={CarrierProbe=true}}
 local function stub() end
@@ -22,7 +22,7 @@ for _,name in ipairs({'command','tick','reset','clearForSave','actionCarrier','c
     'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl'}) do bridge[name]=stub end
 EmberRoutesProbeJava=bridge
 local Probe=dofile('Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua')
-package.loaded['EmberRoutesProbe/Boot']=Probe
+package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
 check(Probe.controlledExecution==true,'production defaults to complete controlled path')
 local required={'captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
     'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','ownedCarrierId','freezeBodyControl',
@@ -38,8 +38,8 @@ callbacks.OnGameStart()
 check(not Probe.ready and Probe.failureCode=='RUNTIME_MODULES_MISSING','missing Lua consumers cannot silently enable partial execution')
 
 local world,loaded,order={},false,{}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return world end}
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return world end}
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 Probe.prepareTaskRecovery=function() loaded=true order[#order+1]='claims' end
 Probe.beginTasks=function() check(loaded,'claims prepared before runtime begin') order[#order+1]='begin' Runtime.begin() end
 Probe.tickTasks=Runtime.tick Probe.resetTasks=Runtime.reset
@@ -66,7 +66,7 @@ local handle=assert(runtime:submit({npcId='npc-a',jobId='original-job',kind='TES
     validate=function() return loaded end,start=function(cap) owned=cap starts=starts+1 return true end,
     tick=stub,finished=function() return false end,persistFailure=function() return true end,
     stopAdapter=function(controller,ticket)
-        return require('EmberRoutesProbe/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=body,
+        return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,npc=body,
             npcId='npc-a',jobId='original-job',same=function() return true end,
             pause=function() return owned.clear() end,effects=function() return 'KNOWN' end,persist=function() return true end})
     end}))

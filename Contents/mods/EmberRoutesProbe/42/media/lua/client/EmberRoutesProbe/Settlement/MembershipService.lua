@@ -1,0 +1,413 @@
+-- Sole writer of world-local identity and macro intentions. Execution lives in MembershipRuntime.
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Policy=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
+local S={}
+local indexWorld,index,squadIndex,dirty=nil,{},{},true
+local contexts={WAIT=true,FOLLOW=true,RETURN=true,SETTLEMENT=true}
+local kinds={SETTLE=true,FOLLOW=true,WAIT=true,RETURN=true,TRANSFER=true,UNASSIGN=true,DISMISS=true}
+local function validSlot(slot)
+    return type(slot)=='number' and slot>=0 and slot<=2 and slot==math.floor(slot)
+end
+local function slotTaken(data,id,leader,slot)
+    for otherId,row in pairs(data.byNpc) do
+        if otherId~=id and not row.retired then
+            if row.squadLeaderId==leader and row.squadSlot==slot then return true end
+            local pending=row.pendingCommand
+            if pending and pending.kind=='FOLLOW' and pending.leaderId==leader
+                and pending.followSlot==slot then return true end
+        end
+    end
+    return false
+end
+local function copy(v)
+    if type(v)~='table' then return v end
+    local r={} for k,x in pairs(v) do r[k]=copy(x) end return r
+end
+local function store()
+    local value=Registry.data().npcMembership
+    if type(value)~='table' or value.format~=1 or type(value.byNpc)~='table'
+        or type(value.receipts)~='table' or type(value.receiptOrder)~='table' then return nil end
+    return value
+end
+local function notify(id)
+    dirty=true
+    require('EmberRoutesProbe/Work/LaborSignals').changed(id)
+    if S.changed then S.changed(id) end
+end
+local function receipt(data,key,value)
+    if not data.receipts[key] then data.receiptOrder[#data.receiptOrder+1]=key end
+    data.receipts[key]=value
+    -- Pending requests remain in the member row even if their technical receipt is evicted.
+    while #data.receiptOrder>128 do local old=table.remove(data.receiptOrder,1) data.receipts[old]=nil end
+end
+local function scalarId(v) return type(v)=='string' and #v>0 and #v<=256 end
+local function validBed(r)
+    if r.bedId==nil then return r.bedLocation==nil end
+    if not scalarId(r.bedId) or type(r.settlementId)~='string' or type(r.bedLocation)~='table' then return false end
+    for _,axis in ipairs({'x','y','z'}) do local n=r.bedLocation[axis]
+        if type(n)~='number' or n~=n or math.abs(n)>10000000 or n~=math.floor(n) then return false end
+    end
+    return true
+end
+local function validRow(id,r)
+    return type(id)=='string' and id~='' and type(r)=='table' and r.npcId==id
+        and validBed(r)
+        and (r.squadLeaderId==nil and r.squadSlot==nil
+            or scalarId(r.squadLeaderId) and validSlot(r.squadSlot))
+        and (not r.retired or r.squadLeaderId==nil and r.squadSlot==nil)
+        and (r.posting==nil or type(r.settlementId)=='string' and type(r.posting)=='table' and r.posting.format==1
+            and scalarId(r.posting.zoneId) and scalarId(r.posting.category))
+        and (r.obligations==nil or type(r.obligations)=='table')
+        and (r.lastCommand==nil or type(r.lastCommand)=='table' and kinds[r.lastCommand.kind]
+            and scalarId(r.lastCommand.requestId))
+        and (r.bedReason==nil or type(r.bedReason)=='string')
+        and (r.postingReason==nil or type(r.postingReason)=='string')
+        and (r.postingRevision==nil or type(r.postingRevision)=='number' and r.postingRevision>=0
+            and r.postingRevision<=1e12 and r.postingRevision==math.floor(r.postingRevision))
+        and type(r.factionId)=='string' and contexts[r.context] and type(r.revision)=='number'
+        and r.revision>=1 and r.revision<9007199254740000 and r.revision==math.floor(r.revision)
+        and (r.settlementId==nil or type(r.settlementId)=='string')
+        and (r.retired and r.followSlot==nil or not r.retired and
+            (r.context=='FOLLOW' and scalarId(r.leaderId) and validSlot(r.followSlot)
+                and r.squadLeaderId==r.leaderId and r.squadSlot==r.followSlot
+                or r.context~='FOLLOW' and r.followSlot==nil))
+        and (r.pendingCommand==nil or type(r.pendingCommand)=='table' and kinds[r.pendingCommand.kind]
+            and type(r.pendingCommand.requestId)=='string' and r.pendingCommand.acceptedRevision==r.revision
+            and type(r.pendingCommand.expectedRevision)=='number'
+            and (r.pendingCommand.kind=='FOLLOW' and scalarId(r.pendingCommand.leaderId)
+                    and validSlot(r.pendingCommand.followSlot)
+                or r.pendingCommand.kind~='FOLLOW' and r.pendingCommand.followSlot==nil))
+end
+function S.load()
+    local data=store() if not data then return false,'MEMBERSHIP_NEW_WORLD_REQUIRED' end
+    local n=0 for id,r in pairs(data.byNpc) do n=n+1 if n>512 or not validRow(id,r) then return false,'MEMBERSHIP_FORMAT_INVALID' end end
+    -- A load is read-only. Reject duplicate live/pending slots without repairing
+    -- or rewriting the original records; no legacy default or migration.
+    local occupied={}
+    local function reserve(id,leader,slot)
+        local slots=occupied[leader]
+        if not slots then slots={} occupied[leader]=slots end
+        if slots[slot] and slots[slot]~=id then return false end
+        slots[slot]=id return true
+    end
+    for id,r in pairs(data.byNpc) do if not r.retired then
+        if r.squadLeaderId and not reserve(id,r.squadLeaderId,r.squadSlot) then return false,'MEMBERSHIP_FORMAT_INVALID' end
+        local p=r.pendingCommand
+        if p and p.kind=='FOLLOW' and not reserve(id,p.leaderId,p.followSlot) then return false,'MEMBERSHIP_FORMAT_INVALID' end
+    end end
+    return true
+end
+function S.newWorld(freshRoot)
+    local root=freshRoot or Registry.data()
+    if root.npcMembership~=nil then return S.load() end
+    -- A character creation event in an old world is NOT a migration grant.
+    for _,key in ipairs({'containers','jobs','companionIntents','executionSave','production','publicWork'}) do
+        local value=root[key]
+        if type(value)=='table' then for _ in pairs(value) do return false,'MEMBERSHIP_NEW_WORLD_REQUIRED' end end
+    end
+    if root.taskJobs then for _ in pairs(root.taskJobs.byId or {}) do return false,'MEMBERSHIP_NEW_WORLD_REQUIRED' end end
+    root.npcMembership={format=1,byNpc={},receipts={},receiptOrder={}}
+    return true
+end
+function S.register(id)
+    local data=store() if not data or type(id)~='string' or id=='' then return false end
+    if data.byNpc[id] then
+        if not validRow(id,data.byNpc[id]) then return false,'MEMBERSHIP_FORMAT_INVALID' end
+        return true
+    end
+    local n=0 for _ in pairs(data.byNpc) do n=n+1 end if n>=512 then return false,'MEMBERSHIP_LIMIT' end
+    data.byNpc[id]={npcId=id,factionId=Ledger.data().factionId,context='WAIT',revision=1}
+    notify(id) return true
+end
+function S.character(actor)
+    if not actor or actor:isDead() or not actor.getModData then return nil end
+    local md=actor:getModData()
+    if not md.EmberRoutesCharacterId then md.EmberRoutesCharacterId=Registry.id() end
+    return md.EmberRoutesCharacterId
+end
+-- Canonical slot read for admission and recovery, never from checkpoint intent.
+function S.followSlot(id,actor,expected)
+    local data=store() local r=data and data.byNpc[id]
+    if not r or r.retired then return nil,'NO_MEMBERSHIP' end
+    if not validRow(id,r) then return nil,'MEMBERSHIP_FORMAT_INVALID' end
+    if type(expected)~='number' or r.revision~=expected or r.pendingCommand or r.context~='FOLLOW'
+        or r.leaderId~=S.character(actor) then return nil,'STALE_MEMBERSHIP' end
+    if not validSlot(r.followSlot) then return nil,'INVALID_FOLLOW_SLOT' end
+    if slotTaken(data,id,r.leaderId,r.followSlot) then return nil,'SLOT_TAKEN' end
+    return r.followSlot
+end
+function S.canFollow(actor,id,slot)
+    local data=store() local r=data and data.byNpc[id]
+    if not Ledger.authorized(actor) then return false,'ACCESS_DENIED' end
+    if not r or r.retired then return false,'NO_MEMBERSHIP' end
+    if not validRow(id,r) then return false,'MEMBERSHIP_FORMAT_INVALID' end
+    if r.factionId~=Ledger.data().factionId then return false,'ACCESS_DENIED' end
+    if not validSlot(slot) then return false,'INVALID_FOLLOW_SLOT' end
+    local leader=S.character(actor)
+    if not leader then return false,'LEADER_ID_UNAVAILABLE' end
+    if slotTaken(data,id,leader,slot) then return false,'SLOT_TAKEN' end
+    return true
+end
+function S.entry(id,scope)
+    local data=store() local row=data and data.byNpc[id]
+    if not row or not row.settlementId then return nil,'NO_MEMBERSHIP',row and row.revision end
+    local root=Ledger.data() local e=root.entries[row.settlementId]
+    if not e then return nil,'TARGET_LOST',row.revision end
+    if row.factionId~=root.factionId or e.factionId~=row.factionId then return nil,'ACCESS_DENIED',row.revision end
+    if scope and scope~=e.id then return nil,'SCOPE_MISMATCH',row.revision end
+    return e,nil,row.revision
+end
+function S.check(id,purpose,observation,expected)
+    local data=store() local row=data and data.byNpc[id]
+    local e=S.entry(id)
+    return Policy.evaluate(row,e,purpose,observation,expected)
+end
+function S.view(id)
+    local data=store() local r=data and data.byNpc[id] if not r then return nil,'NO_MEMBERSHIP' end
+    local value=copy(r) value.pending=value.pendingCommand value.pendingCommand=nil
+    local e,why=S.entry(id)
+    value.settlementName=e and e.name value.reason=r.reason or (r.settlementId and why)
+    if r.posting then
+        local zone=require('EmberRoutesProbe/Settlement/SettlementZones').get(r.posting.zoneId)
+        value.postingName=zone and zone.name
+    end
+    return value
+end
+-- Rebuild only on membership changes/world replacement; UI receives detached stable IDs.
+function S.members(scope)
+    local data=store() if not data then return {} end
+    if dirty or indexWorld~=data then
+        indexWorld,index,squadIndex,dirty=data,{},{},false
+        for id,r in pairs(data.byNpc) do
+            if not r.retired then
+                local key=r.settlementId or '' index[key]=index[key] or {} index[key][#index[key]+1]=id
+                if r.squadLeaderId then
+                    local team=squadIndex[r.squadLeaderId] or {} squadIndex[r.squadLeaderId]=team
+                    team[r.squadSlot+1]=id
+                end
+            end
+        end
+        for _,ids in pairs(index) do table.sort(ids) end
+    end
+    local result={} for _,id in ipairs(index[scope or ''] or {}) do result[#result+1]=id end return result
+end
+function S.squad(actor)
+    if not Ledger.authorized(actor) then return {} end
+    local data=store() if not data then return {} end
+    S.members() -- rebuild the shared invalidation index once, not per refresh
+    local team=squadIndex[S.character(actor)] or {}
+    local result={} for slot=1,3 do if team[slot] then result[#result+1]=team[slot] end end
+    return result
+end
+local function reject(why) return {state='REJECTED',reason=why} end
+function S.request(actor,id,c)
+    local data=store() local row=data and data.byNpc[id]
+    if not data then return reject('MEMBERSHIP_NEW_WORLD_REQUIRED') end
+    if not Ledger.authorized(actor) then return reject('ACCESS_DENIED') end
+    if not row or row.retired then return reject('NO_MEMBERSHIP') end
+    if not validRow(id,row) then return reject('MEMBERSHIP_FORMAT_INVALID') end
+    if row.factionId~=Ledger.data().factionId then return reject('ACCESS_DENIED') end
+    if not require('EmberRoutesProbe/Runtime/Driver').bindId(actor,id) then return reject('CARRIER_UNAVAILABLE') end
+    if type(c)~='table' or not kinds[c.kind] or type(c.requestId)~='string' or c.requestId=='' or #c.requestId>128
+        or type(c.expectedRevision)~='number' then return reject('INVALID_COMMAND') end
+    if c.kind=='FOLLOW' and not validSlot(c.followSlot) then return reject('INVALID_FOLLOW_SLOT') end
+    if c.kind~='FOLLOW' and c.followSlot~=nil then return reject('INVALID_COMMAND') end
+    local leader=c.kind=='FOLLOW' and S.character(actor) or nil
+    if c.kind=='FOLLOW' and not leader then return reject('LEADER_ID_UNAVAILABLE') end
+    local key=id..':'..c.requestId
+    local prior=data.receipts[key]
+    if prior then
+        if prior.kind~=c.kind or prior.settlementId~=c.settlementId
+            or prior.followSlot~=c.followSlot or prior.leaderId~=leader then return reject('REQUEST_CONFLICT') end
+        return copy(prior)
+    end
+    if row.pendingCommand and row.pendingCommand.requestId==c.requestId then
+        local p=row.pendingCommand
+        if p.kind~=c.kind or p.settlementId~=c.settlementId
+            or p.followSlot~=c.followSlot or p.leaderId~=leader then return reject('REQUEST_CONFLICT') end
+        return copy(p)
+    end
+    if row.revision~=c.expectedRevision then return reject('STALE_MEMBERSHIP') end
+    if c.kind=='DISMISS' and row.squadLeaderId~=S.character(actor) then return reject('NO_MEMBERSHIP') end
+    local target=c.kind=='SETTLE' or c.kind=='TRANSFER'
+    if target then
+        local entry=Ledger.data().entries[c.settlementId]
+        if not entry then return reject('TARGET_LOST') end
+        if entry.factionId~=row.factionId then return reject('ACCESS_DENIED') end
+    elseif c.kind=='RETURN' and not S.entry(id) then return reject('TARGET_LOST') end
+    if c.kind=='FOLLOW' and slotTaken(data,id,leader,c.followSlot) then return reject('SLOT_TAKEN') end
+    if row.pendingCommand then
+        local old=row.pendingCommand
+        receipt(data,id..':'..old.requestId,{state='CANCELLED',requestId=old.requestId,kind=old.kind,settlementId=old.settlementId,
+            followSlot=old.followSlot,leaderId=old.leaderId,revision=row.revision+1})
+    end
+    row.revision=row.revision+1 row.reason='COMMAND_PENDING'
+    row.pendingCommand={state='PENDING',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,
+        expectedRevision=c.expectedRevision,acceptedRevision=row.revision,leaderId=leader,followSlot=c.followSlot}
+    receipt(data,key,{state='PENDING',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,
+        leaderId=leader,followSlot=c.followSlot,revision=row.revision})
+    notify(id) return copy(data.receipts[key])
+end
+function S.advance(id,actor,obligations,bodyOwned)
+    local data=store() local r=data and data.byNpc[id] local c=r and r.pendingCommand
+    if not c then return false end
+    if not validRow(id,r) then return false end
+    if bodyOwned then r.reason='BODY_STOPPING' return false end
+    if c.kind=='FOLLOW' and (not actor or actor:isDead() or S.character(actor)~=c.leaderId) then
+        r.reason='LEADER_LOST' return false
+    end
+    if c.kind=='FOLLOW' then
+        if not validSlot(c.followSlot) then r.reason='INVALID_FOLLOW_SLOT' return false end
+        if slotTaken(data,id,c.leaderId,c.followSlot) then r.reason='SLOT_TAKEN' return false end
+    end
+    local hasToolCustody=false
+    for _,o in ipairs(obligations or {}) do
+        if o.kind=='TOOL_CUSTODY' then hasToolCustody=true break end
+    end
+    local changing=c.kind=='UNASSIGN' or ((c.kind=='TRANSFER' or c.kind=='SETTLE') and c.settlementId~=r.settlementId)
+        or (c.kind=='FOLLOW' and hasToolCustody)
+    obligations=obligations or {}
+    if (changing or c.kind=='RETURN' or c.kind=='WAIT' or c.kind=='DISMISS') and #obligations>0 then r.reason='OBLIGATION_PENDING' r.obligations=copy(obligations) return false end
+    if c.kind=='SETTLE' or c.kind=='TRANSFER' then
+        local e=Ledger.data().entries[c.settlementId]
+        if not e or e.factionId~=r.factionId then r.reason='TARGET_LOST' return false end
+        local Beds=require 'EmberRoutesProbe/Settlement/MembershipBeds'
+        local ready,scan=Beds.observe(e)
+        if not ready then r.reason='BED_OBSERVING' return false end
+        if r.settlementId~=c.settlementId then
+            if not Beds.release(r,S.entry(id)) then r.reason='BED_RELEASE_BLOCKED' return false end
+            r.posting=nil r.postingReason=nil
+        end
+        Beds.settle(r,e,scan)
+        r.settlementId=c.settlementId r.context='SETTLEMENT'
+    elseif c.kind=='UNASSIGN' then
+        if not require('EmberRoutesProbe/Settlement/MembershipBeds').release(r,S.entry(id)) then r.reason='BED_RELEASE_BLOCKED' return false end
+        r.settlementId=nil r.posting=nil r.postingReason=nil r.context='WAIT'
+    elseif c.kind=='DISMISS' then
+        r.context='WAIT' r.squadLeaderId=nil r.squadSlot=nil
+    else r.context=c.kind end
+    if c.kind=='FOLLOW' then r.squadLeaderId=c.leaderId r.squadSlot=c.followSlot end
+    r.lastCommand={kind=c.kind,requestId=c.requestId}
+    r.leaderId=r.context=='FOLLOW' and c.leaderId or nil
+    r.followSlot=r.context=='FOLLOW' and c.followSlot or nil
+    r.revision=r.revision+1 r.pendingCommand=nil r.reason=nil r.obligations=nil
+    receipt(data,id..':'..c.requestId,{state='COMMITTED',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,
+        followSlot=c.followSlot,leaderId=c.leaderId,revision=r.revision})
+    notify(id) return true
+end
+function S.result(id,requestId)
+    if type(requestId)~='string' then return nil end
+    local data=store() local receipt=data and data.receipts[id..':'..requestId]
+    return receipt and copy(receipt)
+end
+function S.cancel(actor,id,requestId,expected)
+    local data=store() local r=data and data.byNpc[id] local c=r and r.pendingCommand
+    if not Ledger.authorized(actor) then return reject('ACCESS_DENIED') end
+    if not r or r.revision~=expected then return reject('STALE_MEMBERSHIP') end
+    if not validRow(id,r) then return reject('MEMBERSHIP_FORMAT_INVALID') end
+    if not c or c.requestId~=requestId then return reject('STALE_REQUEST') end
+    r.revision=r.revision+1 r.pendingCommand=nil r.reason=nil r.obligations=nil
+    local result={state='CANCELLED',requestId=requestId,kind=c.kind,settlementId=c.settlementId,
+        followSlot=c.followSlot,leaderId=c.leaderId,revision=r.revision}
+    receipt(data,id..':'..requestId,result) notify(id) return copy(result)
+end
+function S.transition(id,expected,context,reason)
+    local data=store() local r=data and data.byNpc[id]
+    if not r or r.pendingCommand or r.revision~=expected or not contexts[context] or not validRow(id,r) then return false end
+    if context=='FOLLOW' and (not validSlot(r.followSlot) or not scalarId(r.leaderId)) then return false end
+    r.context=context r.reason=reason r.revision=r.revision+1
+    if context~='FOLLOW' then r.leaderId=nil r.followSlot=nil end
+    notify(id) return true
+end
+function S.note(id,reason)
+    local data=store() local r=data and data.byNpc[id]
+    if r and r.reason~=reason then r.reason=reason require('EmberRoutesProbe/Work/LaborSignals').changed(id) end
+end
+function S.retire(id,settled)
+    local data=store() local r=data and data.byNpc[id] if not r then return true end
+    if not validRow(id,r) then return false end
+    if r.pendingCommand then
+        local c=r.pendingCommand
+        receipt(data,id..':'..c.requestId,{state='CANCELLED',requestId=c.requestId,kind=c.kind,settlementId=c.settlementId,
+            followSlot=c.followSlot,leaderId=c.leaderId,revision=r.revision+1})
+    end
+    r.retired=true r.pendingCommand=nil r.followSlot=nil r.leaderId=nil
+    r.squadLeaderId=nil r.squadSlot=nil r.revision=r.revision+1
+    if settled then
+        if not require('EmberRoutesProbe/Settlement/MembershipBeds').release(r,S.entry(id)) then notify(id) return false end
+        data.byNpc[id]=nil
+    end notify(id) return settled
+end
+-- Configuration remains a membership command; furniture is the validity authority.
+function S.configureBed(actor,object,current,mode,npcId)
+    local data=store() if not data then return 'MEMBERSHIP_NEW_WORLD_REQUIRED' end
+    if not Ledger.authorized(actor) then return 'ACCESS_DENIED' end
+    local Beds=require 'EmberRoutesProbe/Settlement/MembershipBeds'
+    local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
+    local actual,why=Sites.view(actor,object) if not actual then return why end
+    if actual.revision~=current.revision or actual.id~=current.id then return 'SITE_CHANGED' end
+    if mode~='PUBLIC' and mode~='DISABLED' and mode~='ASSIGNED' then return 'SITE_POLICY_INVALID' end
+    local at=object:getSquare()
+    if actor:getZ()~=at:getZ() or (actor:getX()-at:getX()-0.5)^2+(actor:getY()-at:getY()-0.5)^2>16 then return 'SITE_TOO_FAR' end
+    local parts=Sites.group(object)
+    current=actual
+    local row=mode=='ASSIGNED' and data.byNpc[npcId] or data.byNpc[current.npcId]
+    local entry=row and S.entry(row.npcId)
+    if mode=='ASSIGNED' then
+        if not row or row.retired or row.pendingCommand or not entry then return 'NO_MEMBERSHIP' end
+        if current.mode=='ASSIGNED' and current.npcId~=npcId then return 'BED_ALREADY_ASSIGNED' end
+        for _,part in ipairs(parts) do local at=part:getSquare()
+            if not require('EmberRoutesProbe/Settlement/SettlementGeometry').inside(entry,at:getX(),at:getY()) then return 'SCOPE_MISMATCH' end
+        end
+    end
+    local result=Beds.configure(row,entry,object,parts,current,mode)
+    if result=='SITE_POLICY_SAVED' then
+        -- Policy proofs invalidate sleep independently. Configuration must not
+        -- masquerade as a macro command and stop unrelated body owners.
+        require('EmberRoutesProbe/Work/LaborSignals').changed(row and row.npcId)
+    end
+    return result
+end
+function S.reconcileBed(id)
+    local data=store() local row=data and data.byNpc[id] if not row or not row.bedId then return end
+    local before,reason=row.bedId,row.bedReason
+    require('EmberRoutesProbe/Settlement/MembershipBeds').reconcile(row,S.entry(id))
+    if before~=row.bedId or reason~=row.bedReason then
+        require('EmberRoutesProbe/Work/LaborSignals').changed(id)
+    end
+end
+function S.notePosting(id,reason)
+    local data=store() local row=data and data.byNpc[id]
+    if row and row.posting and row.postingReason~=reason then
+        row.postingReason=reason require('EmberRoutesProbe/Work/LaborSignals').changed(id)
+    end
+end
+function S.setPosting(actor,id,posting,expected,expectedPosting)
+    local data=store() local row=data and data.byNpc[id]
+    if not Ledger.authorized(actor) then return 'ACCESS_DENIED' end
+    if not row or row.retired or not row.settlementId then return 'NO_MEMBERSHIP' end
+    if row.revision~=expected then return 'STALE_MEMBERSHIP' end
+    if (row.postingRevision or 0)~=expectedPosting then return 'POSTING_CHANGED' end
+    if row.pendingCommand or row.context~='SETTLEMENT' then return 'POSTING_SETTLED_REQUIRED' end
+    local entry=S.entry(id) if not entry then return 'TARGET_LOST' end
+    if posting~=nil then
+        if type(posting)~='table' or not scalarId(posting.zoneId) or not scalarId(posting.category) then return 'POSTING_INVALID' end
+        -- PublicWork registers the currently supported provider categories.
+        local public=require 'EmberRoutesProbe/Work/PublicWork'
+        if not public.provider(posting.category) then return 'POSTING_CATEGORY_INVALID' end
+        local zone,why=require('EmberRoutesProbe/Settlement/SettlementZones').get(posting.zoneId)
+        if not zone then return why end
+        if zone.settlementId~=entry.id or not zone.enabled
+            or not require('EmberRoutesProbe/Settlement/SettlementZones').coveredZone(entry,zone) then return 'POSTING_ZONE_INVALID' end
+    end
+    row.postingReason=nil
+    row.posting=posting and {format=1,zoneId=posting.zoneId,category=posting.category} or nil
+    row.postingRevision=(row.postingRevision or 0)+1
+    require('EmberRoutesProbe/Work/LaborSignals').changed(id) return 'POSTING_SAVED'
+end
+function S.setReturnPoint(actor,scope,point,expected)
+    return Ledger.setReturnPoint(actor,scope,point,expected)
+end
+function S.ensureReturnPoint(actor,scope) return Ledger.ensureReturnPoint(actor,scope) end
+return S

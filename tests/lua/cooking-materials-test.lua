@@ -12,24 +12,24 @@ local npc={getInventory=function() return inventory end}
 local entry={id='settlement'}
 local Registry={data=function() return root end,logistics=function() return 'STORAGE' end,
     accepts=function() return permitted end,filter=function() return {} end,revalidate=function() return permitted end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=Registry
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'storage'} end}
-package.loaded['EmberRoutesProbe/SortPolicy']={index=function() return {add=function() end} end}
-package.loaded['EmberRoutesProbe/StorageFilter']={copy=function(x) return x end}
-package.loaded['EmberRoutesProbe/CraftSupply']={endpoint=function()
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=Registry
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'storage'} end}
+package.loaded['EmberRoutesProbe/Warehouse/SortPolicy']={index=function() return {add=function() end} end}
+package.loaded['EmberRoutesProbe/Warehouse/StorageFilter']={copy=function(x) return x end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={endpoint=function()
     if unloaded then return nil,'CONTAINER_UNLOADED' end return endpoint
 end}
-package.loaded['EmberRoutesProbe/LaborStore']={owner=function(id) return owner[id] end}
-package.loaded['EmberRoutesProbe/LaborProducers']={eligible=function(item) return not item.denied end}
-package.loaded['EmberRoutesProbe/CookingFood']={read=function() return {safe=true,frozen=false} end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={owner=function(id) return owner[id] end}
+package.loaded['EmberRoutesProbe/Work/LaborProducers']={eligible=function(item) return not item.denied end}
+package.loaded['EmberRoutesProbe/Cooking/CookingFood']={read=function() return {safe=true,frozen=false} end}
 function instanceof() return false end
 local native={canUseItem=function(_,item) return item.milk end,
     isFluidMatch=function(_,container) return container.milk end}
 local fluid={resource='Fluid',amount=5,line='-fluid 5',io=native}
 local row={slot=0,count=1,keep=true,any=true,resource='Item',child=fluid,io=native}
 local profile={facts={id='Mod.Butter',name='Butter',signature='v1',surface=false},roots={row},outputs={['Mod.Butter']=1}}
-package.loaded['EmberRoutesProbe/CookingCraft']={profile=function() return profile end}
-local Supply=require 'EmberRoutesProbe/CookingSupply'
+package.loaded['EmberRoutesProbe/Cooking/CookingCraft']={profile=function() return profile end}
+local Supply=require 'EmberRoutesProbe/Cooking/CookingSupply'
 local sampleCalls=0
 local function item(id,amount,milk)
     local c={amount=amount,milk=milk~=false}

@@ -13,22 +13,22 @@ getTimestampMs=function() return 1000 end
 
 local root={}
 local registry={data=function() return root end,id=function() return 'claim-1' end}
-package.loaded['EmberRoutesProbe/ContainerRegistry']=registry
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
-package.loaded['EmberRoutesProbe/SettlementLedger']={
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=registry
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={
     data=function() return root end,
     get=function() return {id='settlement-1',areas={{x=0,y=0,w=30,h=30}}} end
 }
-package.loaded['EmberRoutesProbe/SettlementZones']={revision=function() return 1 end}
-package.loaded['EmberRoutesProbe/JobPolicyService']={get=function() return {} end}
-package.loaded['EmberRoutesProbe/MembershipService']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={revision=function() return 1 end}
+package.loaded['EmberRoutesProbe/Work/JobPolicyService']={get=function() return {} end}
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={
     check=function() return {allowed=true,entryRevision=1} end,
     entry=function() return {id='settlement-1',areas={{x=0,y=0,w=30,h=30}}},nil,1 end,
     view=function() return {settlementId='settlement-1',context='SETTLEMENT'} end
 }
-package.loaded['EmberRoutesProbe/PublicWork']={
+package.loaded['EmberRoutesProbe/Work/PublicWork']={
     priorities=function() return {cleaning=2,lumberjack=3,farming=3,forager=3} end
 }
 
@@ -148,23 +148,23 @@ registry.logistics=function() return 'STORAGE' end
 registry.inventoryChanged=function() end
 
 local entry={id='settlement-1',areas={{x=0,y=0,w=30,h=30}}}
-package.loaded['EmberRoutesProbe/SettlementMembership']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={
     query=function() return {'crate-1'} end
 }
-package.loaded['EmberRoutesProbe/SettlementGeometry']={
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={
     inside=function() return true end
 }
-package.loaded['EmberRoutesProbe/WorkTransfer']={
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={
     reachable=function() return true end,
     prepareMove=function() return {square=crateSquare} end
 }
-package.loaded['EmberRoutesProbe/Driver']={
+package.loaded['EmberRoutesProbe/Runtime/Driver']={
     valid=function() return true end,
     same=function() return true end,
     unknown=function() return false end,
     bindId=function() return {id=1,handle=npc} end
 }
-package.loaded['EmberRoutesProbe/TaskRuntime']={
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={
     current=function()
         return {
             accepting=function() return true end,
@@ -202,7 +202,7 @@ local stain3Point={kind='STAIN',x=20,y=20,z=0,identity='stain-103'}
 
 local activeStains={stain1Point,stain2Point,stain3Point}
 
-package.loaded['EmberRoutesProbe/FieldDiscovery']={
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery']={
     claim=function(pt)
 	return {kind=pt.kind,x=pt.x,y=pt.y,z=pt.z,identity=pt.identity,iconId=pt.iconId},{'field-target:'..pt.identity}
     end,
@@ -212,12 +212,12 @@ package.loaded['EmberRoutesProbe/FieldDiscovery']={
     object=function(t) return true end
 }
 
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Field=require 'EmberRoutesProbe/FieldWork'
-local ToolDiscovery=require 'EmberRoutesProbe/ToolDiscovery'
-local FieldSupplies=require 'EmberRoutesProbe/FieldSupplies'
-local Providers=require 'EmberRoutesProbe/FieldProviders'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Field=require 'EmberRoutesProbe/Field/FieldWork'
+local ToolDiscovery=require 'EmberRoutesProbe/Field/ToolDiscovery'
+local FieldSupplies=require 'EmberRoutesProbe/Field/FieldSupplies'
+local Providers=require 'EmberRoutesProbe/Field/FieldProviders'
 
 -- =========================================================================
 -- Part 1: Initial Job 1 - Autonomous Tool Fetch & Stain 1 Execution
@@ -432,7 +432,7 @@ check(Store.custodyByItem(302).state=='HELD','bleach custody retained on worker'
 local icon1={kind='FORAGE',x=8,y=5,z=0,identity='icon-1',iconId='icon-1'}
 local icon2={kind='FORAGE',x=8,y=5,z=0,identity='icon-2',iconId='icon-2'}
 activeStains={icon1,icon2}
-package.loaded['EmberRoutesProbe/FieldDiscovery'].object=function() error('forage must use typed claim, not IsoObject') end
+package.loaded['EmberRoutesProbe/Field/FieldDiscovery'].object=function() error('forage must use typed claim, not IsoObject') end
 local forager=Providers.get('forager')
 check(forager.claim({key='forage-offer',point=icon1},'1','forage-job',{actor=npc,entry=entry})=='QUEUED','forage job created')
 local fc={job=Jobs.current():get('forage-job'),npc=npc,actor=npc}

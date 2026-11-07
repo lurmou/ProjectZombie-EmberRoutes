@@ -2,12 +2,12 @@
 -- Native body/queue callbacks are substitutes; no game or disk-save acceptance.
 _ERActivityFixtureOnly=true
 local f=dofile('tests/lua/activity-lifecycle-test.lua')
-local Service=require 'EmberRoutesProbe/ActivityService'
-local Store=require 'EmberRoutesProbe/ActivityStore'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Script=require 'EmberRoutesProbe/ActivityScripted'
+local Service=require 'EmberRoutesProbe/Activity/ActivityService'
+local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Script=require 'EmberRoutesProbe/Activity/ActivityScripted'
 local checks=0 local function check(v,m) assert(v,m) checks=checks+1 end
 local queues=ISTimedActionQueue.queues
 local gestures,lines=0,0
@@ -34,8 +34,8 @@ for _,b in pairs(f.bodies) do
 end
 package.loaded['TimedActions/ISBaseTimedAction']=true
 package.loaded['TimedActions/ISEatFoodAction']=true package.loaded['TimedActions/ISDrinkFluidAction']=true
-package.loaded['EmberRoutesProbe/WorkTransfer']={}
-package.loaded['EmberRoutesProbe/CraftSupply']={}
+package.loaded['EmberRoutesProbe/Work/WorkTransfer']={}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={}
 local function remove(a) queues[a.character]={queue={}} end
 ISBaseTimedAction={new=function(_,character) return {character=character,
     forceStop=function(self) self:stop() end,
@@ -56,9 +56,9 @@ local function submit(e,id)
     if j.payload.step~='IDLE' then return end
     local p=assert(Record.begin(j,'LEISURE')) p.step='STOP_CONFIRMED' p.activityRef=ref
     p.membershipRevision=1 p.settlementRevision=1 p.settlementId='home' p.leisure=candidate.leisure
-    p.claims={require('EmberRoutesProbe/LeisureRecord').tileKey(p.leisure.point)}
+    p.claims={require('EmberRoutesProbe/Leisure/LeisureRecord').tileKey(p.leisure.point)}
     assert(Jobs.current():update(j.id,j.revision,{payload=p})) j=Jobs.current():get(j.id)
-    local spec,context=require('EmberRoutesProbe/SelfCareExecution').new(f.actor,assert(Driver.bindId(f.actor,id)),j,candidate,
+    local spec,context=require('EmberRoutesProbe/SelfCare/SelfCareExecution').new(f.actor,assert(Driver.bindId(f.actor,id)),j,candidate,
         function() return {nodes=16,scan=32,paths=1,containers=4} end,false,nil,function() return true end)
     assert(f.runtime:submit(spec))
     owners[id]={spec=spec,context=context}
@@ -80,7 +80,7 @@ for _=1,100 do tick(e,1) if e.stage.sharedStart then break end end
 check(e.stage.sharedStart and e.stage.sharedEnd,'only real started role Sessions arm the common clock')
 check(Jobs.current():peekPersonal('b').payload.leisure.roleDuty=='ROLE_SPEAK'
     and Jobs.current():peekPersonal('a').payload.leisure.roleDuty=='ROLE_LISTEN','role constraints feed the original individual executor')
-check(not require('EmberRoutesProbe/SocialCoordinator').available('b'),'ordinary pair discovery cannot recruit a speaking role')
+check(not require('EmberRoutesProbe/Activity/SocialCoordinator').available('b'),'ordinary pair discovery cannot recruit a speaking role')
 local old=Service.context('b')
 tick(e,100)
 check(e.state=='CLOSED' and e.outcome=='COMPLETED','three phases finish after real role completion and confirmed owner cleanup')
@@ -128,7 +128,7 @@ check(unknown.state=='SETTLING' and unknown.outcome=='INCOMPLETE' and unknown.ro
     'owner-reported unknown effects retain evidence instead of completing or replaying roles')
 check(not f.keys.a and not f.keys.b and unknown.roster.a.settled and unknown.roster.b.settled,
     'known participants finish cleanup independently of an unknown listener')
-local Phase=require 'EmberRoutesProbe/ActivityPhaseRecord'
+local Phase=require 'EmberRoutesProbe/Activity/ActivityPhaseRecord'
 local stageActors={}
 for i=1,32 do stageActors['npc'..i]={jobId='job'..i,participantEpoch=1} end
 local bounds={id='bounded',worldId='world',controlEpoch=1,stageEpoch=1,speakerId='npc1',gatherDeadline=1,createdAt=0}

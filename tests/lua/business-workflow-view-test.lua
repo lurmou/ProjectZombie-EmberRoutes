@@ -1,5 +1,5 @@
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
-local Craft=require 'EmberRoutesProbe/CraftWorkflowView'
+local Craft=require 'EmberRoutesProbe/Crafting/CraftWorkflowView'
 local Haul=require 'EmberRoutesProbe/Hauling/HaulWorkflowView'
 local function step(row,key) for _,s in ipairs(row.workflow.steps) do if s.key==key then return s end end end
 local row={closed=false}
@@ -32,9 +32,9 @@ h.manifest={{itemId=1,custodyState='WITHDRAWN'}} h.routingWait=nil
 Haul.attach(row,h,nil,12)
 check(not step(row,'haulTake') and not step(row,'haulPut') and step(row,'haulWithdraw').status=='COMPLETED','all withdrawn is not rendered as all taken/delivered')
 getText=function(key) return key end
-package.loaded['EmberRoutesProbe/DisplayNames']={name=function() return 'Cook' end}
-package.loaded['EmberRoutesProbe/MembershipService']={view=function() end}
-local Cooking=require 'EmberRoutesProbe/CookingMonitor'
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function() return 'Cook' end}
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function() end}
+local Cooking=require 'EmberRoutesProbe/Cooking/CookingMonitor'
 local j={id='cooking',npcId='n',revision=2,state='SUSPENDED',effects='KNOWN',payload={source='AUTO',phase='HEATING',
     assets={{id=5,role='OUTPUT',fullType='Base.Food',custody='STATION'}},duty={state='HEATING'},heat={closed=false,aborted=false}}}
 row=Cooking.project({bind=function() end},j)

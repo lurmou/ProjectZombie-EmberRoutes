@@ -2,17 +2,16 @@
 -- Unit tests for AE2-style Delivery Cart Drawer & WarehousePage middle-click ordering
 
 package.loaded['ISUI/ISContextMenu'] = true
-package.loaded['EmberRoutesProbe/PersonnelService'] = {
+package.loaded['EmberRoutesProbe/Settlement/PersonnelService'] = {
     invalidate = function() end, release = function() end,
     details = function() return {knowledge={}} end, rows = function() return {} end
 }
-package.loaded['EmberRoutesProbe/WarehouseLocator'] = {
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseLocator'] = {
     new = function() return {clear = function() end} end
 }
-package.loaded['EmberRoutesProbe/UI/TooltipAnchor'] = {
-    attach = function() end, clear = function() end,
-    dismissOwner = function() end, unregisterOwner = function() end,
-    clearOwner = function() end, unregister = function() end
+package.loaded['EmberRoutesProbe/UI/TooltipManager'] = {
+    register= function() end, clear = function() end,
+    dismissOwner = function() end, unregisterOwner = function() end, unregister = function() end
 }
 
 _G.Events = setmetatable({}, {
@@ -23,7 +22,7 @@ _G.Events = setmetatable({}, {
 })
 
 -- Detached endpoint snapshots are the picker service contract; never expose Registry roots.
-package.loaded['EmberRoutesProbe/DeliveryService']={containers=function(_,_,mode)
+package.loaded['EmberRoutesProbe/Logistics/DeliveryService']={containers=function(_,_,mode)
     return {{id=mode=='put' and 'registered-destination' or 'registered-source',x=1,y=2,z=0}}
 end}
 local checks = 0
@@ -181,7 +180,7 @@ end
 local publicDeliveryCalls = {}
 local requestSerial=0
 function getRandomUUID() requestSerial=requestSerial+1 return 'delivery-request-'..requestSerial end
-package.loaded['EmberRoutesProbe/PublicWork'] = {
+package.loaded['EmberRoutesProbe/Work/PublicWork'] = {
     createDeliveryOrder = function(actor, settlementId, items, requestId, destinationId)
         publicDeliveryCalls[#publicDeliveryCalls + 1] = {
             actor = actor,
@@ -293,14 +292,12 @@ check(page.cartDrawer:isVisible() == false, "Drawer closed by second button clic
 
 page:onMiddleClickItem(logRow,false) -- Seed the detail button; native input is checked below.
 
--- Test 10: Details panel cartButton synchronization
-check(page.details.cartButton ~= nil, "Details panel cartButton exists")
+-- Test 10: Double-click adds to delivery cart (AE2 quick add)
+page:clearDeliveryCart()
 page.details:setItem(logRow)
-check(page.details.cartButton.title == "IGUI_EmberRoutesProbe_Warehouse_removeShort", "Details button shows remove label when item in cart")
--- Click details button to toggle out of cart
-page.details.cartButton.onclick(page.details.cartButton.target)
-check(page.deliveryCart["Base.Log"] == nil, "Item removed from cart via details panel button")
-check(page.details.cartButton.title == "IGUI_EmberRoutesProbe_Warehouse_addShort", "Details button label updated to add label")
+page:addToDeliveryCart(logRow, 1)
+check(page.deliveryCart["Base.Log"] ~= nil, "Item added to cart via quick add")
+check(page.deliveryCart["Base.Log"].count == 1, "Item count in cart is 1")
 
 -- Test 11: Add item with specific source warehouse
 local testSource = {id = "cont_101", kind = "Crate", x = 10, y = 20, z = 0, count = 5}
@@ -315,7 +312,7 @@ page:clearDeliveryCart()
 -- A rejected submission keeps both cart and request identity; an edit starts a new request.
 page:onMiddleClickItem(logRow,false)
 local captured={}
-package.loaded['EmberRoutesProbe/PublicWork'].createDeliveryOrder=function(_,_,_,requestId)
+package.loaded['EmberRoutesProbe/Work/PublicWork'].createDeliveryOrder=function(_,_,_,requestId)
     captured[#captured+1]=requestId return 'ORDER_LIMIT'
 end
 page:dispatchDeliveryCart() page:dispatchDeliveryCart()
@@ -395,7 +392,7 @@ page:toggleCartDrawer(true)
 local drawer=page.cartDrawer
 check(#drawer.sourcePicker.options==2 and #drawer.destinationPicker.options==2,'pickers contain registered endpoints and legacy defaults only')
 local capturedDestination,capturedSource
-package.loaded['EmberRoutesProbe/PublicWork'].createDeliveryOrder=function(_,_,items,_,destinationId)
+package.loaded['EmberRoutesProbe/Work/PublicWork'].createDeliveryOrder=function(_,_,items,_,destinationId)
     capturedDestination=destinationId capturedSource=items[1].sourceId return 'DESTINATION_FULL'
 end
 page.deliverySourceId='registered-source' page.deliveryDestinationId='registered-destination'

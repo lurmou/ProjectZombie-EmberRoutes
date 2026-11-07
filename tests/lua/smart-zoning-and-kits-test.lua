@@ -1,7 +1,7 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local Filter = require "EmberRoutesProbe/StorageFilter"
-local SmartZoning = require "EmberRoutesProbe/SmartZoning"
-local CustomKits = require "EmberRoutesProbe/CustomKits"
+local Filter = require "EmberRoutesProbe/Warehouse/StorageFilter"
+local SmartZoning = require "EmberRoutesProbe/Work/SmartZoning"
+local CustomKits = require "EmberRoutesProbe/Crafting/CustomKits"
 
 local count = 0
 local function check(val, msg)

@@ -14,11 +14,11 @@ local registry={
     accepts=function() return true end,
     inventoryChanged=function() end
 }
-package.loaded['EmberRoutesProbe/ContainerRegistry']=registry
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end,watch=function() end}
-package.loaded['EmberRoutesProbe/Log']={write=function() end}
-package.loaded['EmberRoutesProbe/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
-package.loaded['EmberRoutesProbe/Work']={record=function() end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']=registry
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end,watch=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={controlledExecution=true,ready=true,enabled=true,runtimeReady=true}
+package.loaded['EmberRoutesProbe/Work/Work']={record=function() end}
 package.loaded['TimedActions/ISCleanBlood']=true
 package.loaded['TimedActions/ISChopTreeAction']=true
 package.loaded['TimedActions/ISGrabCorpseAction']=true
@@ -30,6 +30,9 @@ package.loaded['TimedActions/ISGrabItemAction']=true
 package.loaded['Farming/TimedActions/ISWaterPlantAction']=true
 package.loaded['Farming/TimedActions/ISHarvestPlantAction']=true
 package.loaded['Farming/TimedActions/ISShovelAction']=true
+package.loaded['Farming/TimedActions/ISCurePlantAction']=true
+package.loaded['Farming/TimedActions/ISSeedActionNew']=true
+package.loaded['Farming/TimedActions/ISPlowAction']=true
 package.loaded['Farming/ISUI/ISFarmingMenu']=true
 package.loaded['Foraging/ISForageAction']=true
 package.loaded['Foraging/ISSearchManager']=true
@@ -83,11 +86,11 @@ local fakeRuntime={
         }
     end
 }
-package.loaded['EmberRoutesProbe/TaskRuntime']=fakeRuntime
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']=fakeRuntime
 
-local Store=require 'EmberRoutesProbe/LaborStore'
-local CustodyRecord=require 'EmberRoutesProbe/ToolCustodyRecord'
-local ReturnRecord=require 'EmberRoutesProbe/ToolReturnRecord'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local CustodyRecord=require 'EmberRoutesProbe/Field/ToolCustodyRecord'
+local ReturnRecord=require 'EmberRoutesProbe/Field/ToolReturnRecord'
 
 -- =========================================================================
 -- 1. Schema Validation (ToolCustodyRecord & ToolReturnRecord)
@@ -218,7 +221,7 @@ check(Store.canClaimTool('2',501),'claim released, other NPC can now claim tool 
 local npc2Custody=Store.claimCustody('2',602,'AXE',nil,'other-job')
 check(npc2Custody~=nil,'npc2 holds tool 602')
 
-local FieldProviders=require 'EmberRoutesProbe/FieldProviders'
+local FieldProviders=require 'EmberRoutesProbe/Field/FieldProviders'
 local cleaningDef=FieldProviders.get('cleaning')
 -- Mock supply discovery returning 2 tools: 601 (available) and 602 (conflict)
 local mockSupplies={
@@ -227,7 +230,7 @@ local mockSupplies={
         {role='TOOL_SOAP',item={getID=function() return 602 end},endpoint={id='c2'}}
     }
 }
-package.loaded['EmberRoutesProbe/ToolDiscovery']={
+package.loaded['EmberRoutesProbe/Field/ToolDiscovery']={
     findSupplies=function() return mockSupplies end
 }
 
@@ -248,7 +251,7 @@ check(Store.custodyByItem(601)==nil,'first tool custody 601 safely rolled back u
 -- =========================================================================
 -- 4. ToolReturnProvider 30s Idle Dispatch
 -- =========================================================================
-local Provider=require 'EmberRoutesProbe/ToolReturnProvider'
+local Provider=require 'EmberRoutesProbe/Field/ToolReturnProvider'
 Provider.reconcile()
 
 -- Claim a tool for NPC 1
@@ -286,7 +289,7 @@ check(candidates[1].custodyId==tool701.id,'candidate references correct custody'
 -- =========================================================================
 -- 5. ToolReturnService Execution & Single Body Control
 -- =========================================================================
-local Service=require 'EmberRoutesProbe/ToolReturnService'
+local Service=require 'EmberRoutesProbe/Field/ToolReturnService'
 Service.reconcile()
 
 local invItems={}
@@ -445,8 +448,8 @@ check(tool803.state=='RECONCILE_REQUIRED' and not Store.canClaimTool('2',803),'u
 -- =========================================================================
 -- 7. Membership Obligations & Recovery (Step 4)
 -- =========================================================================
-local MembershipRuntime=require 'EmberRoutesProbe/MembershipRuntime'
-local MembershipService=require 'EmberRoutesProbe/MembershipService'
+local MembershipRuntime=require 'EmberRoutesProbe/Settlement/MembershipRuntime'
+local MembershipService=require 'EmberRoutesProbe/Settlement/MembershipService'
 
 -- obligations() includes TOOL_CUSTODY
 local obList=MembershipRuntime.obligations('1')
@@ -457,7 +460,7 @@ end
 check(foundCustody,'MembershipRuntime.obligations includes TOOL_CUSTODY')
 
 -- advance() blocks leaving settlement with tool custody
-local pendingFollow={kind='FOLLOW',requestId='req-f',expectedRevision=1}
+local pendingFollow={kind='FOLLOW',requestId='req-f',expectedRevision=1,followSlot=0}
 local rowMember={revision=1,factionId='f',settlementId='home',context='SETTLEMENT'}
 local blockedAdvance=MembershipService.advance('1',fakeActor,obList,false)
 -- S.advance with active obligations blocks
@@ -526,7 +529,7 @@ Service.reconcile() Provider.reconcile()
 local tc=Store.claimCustody('1',1001,'MOP','crate-1',nil) tc.state='HELD'
 local tool={getID=function() return 1001 end,getContainer=function() return npcInv end}
 invItems={tool}
-local dir=require('EmberRoutesProbe/TaskDirectory').new()
+local dir=require('EmberRoutesProbe/Kernel/TaskDirectory').new()
 local key='toolReturn:'..tc.id
 dir:upsert(key,1,'toolReturn','home') assert(dir:claim(key,1,'1','return-directory'))
 check(Provider.claim({key=key,custodyId=tc.id},'1','return-directory',{actor=fakeActor,entry={id='home'},directory=dir})=='STARTED','provider owns accepted directory allocation')
@@ -562,7 +565,7 @@ check(dir:upsert(key,4,'toolReturn','home').jobId==nil and Store.custodyByItem(1
 check(#bodyActions==beforeRecoveryActions,'recovering unknown return never replays PUT')
 
 local priorWorld=reloadRoot
-local otherDirectory=require('EmberRoutesProbe/TaskDirectory').new()
+local otherDirectory=require('EmberRoutesProbe/Kernel/TaskDirectory').new()
 otherDirectory:upsert(key,1,'toolReturn','other-world') assert(otherDirectory:claim(key,1,'1','new-world-job'))
 registry.data=function() return {} end
 Provider.advance({actor=fakeActor,now=16000,directory=otherDirectory})

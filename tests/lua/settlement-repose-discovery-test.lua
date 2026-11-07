@@ -1,12 +1,12 @@
 local f=dofile('tests/lua/repose-sites-test.lua')
-local Index=require 'EmberRoutesProbe/SettlementFacilities'
-local Geometry=require 'EmberRoutesProbe/SettlementGeometry'
+local Index=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
+local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Sites=f.sites local checks=0
-local function tick() f.advance(require('EmberRoutesProbe/TickConfig').facilitiesMs) Index.tick(64) end
+local function tick() f.advance(require('EmberRoutesProbe/Kernel/TickConfig').facilitiesMs) Index.tick(64) end
 local function check(value,label) checks=checks+1 assert(value,label) end
 local foreign={id='other',revision=1,areas={{x=200,y=0,w=8,h=8}}}
 f.entry.areas={{x=0,y=0,w=96,h=16}} f.entry.revision=1
-package.loaded['EmberRoutesProbe/SettlementLedger'].at=function(x,y)
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger'].at=function(x,y)
     if Geometry.inside(f.entry,x,y) then return {f.entry} end
     if Geometry.inside(foreign,x,y) then return {foreign} end return {}
 end

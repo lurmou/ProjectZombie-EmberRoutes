@@ -1,2 +1,0 @@
-PASS classified native crafting: 104 checks; installed Lua, fake engine/inventory/movement/save
-PASS installed Kahlua: craft-probe-test.lua; native host mocked

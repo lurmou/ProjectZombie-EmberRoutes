@@ -1,5 +1,5 @@
 -- Host microbenchmark only; excludes Exposer/game loop/GC frame spikes.
-local Store=require 'EmberRoutesProbe/JobStore'
+local Store=require 'EmberRoutesProbe/Kernel/JobStore'
 local rows={} for i=1,32 do rows[i]={itemId=i,custody='CARRIED',weight=0.5,source='crate-a',destination='crate-b'} end
 local store=assert(Store.open({}))
 assert(store:create({id='bench',npcId='npc',providerType='BENCH',scopeId='s',revision=1,

@@ -1,24 +1,27 @@
 package emberroutes.probe;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Objects;
 import zombie.inventory.InventoryItem;
 import zombie.inventory.ItemContainer;
 
 /**
- * Lightweight, allocation-free container fingerprint for zero-cost change detection.
+ * Slot-level container fingerprint.
+ *
+ * <p>The former four scalar fingerprint (size, head id, tail id, weight)
+ * silently missed same-size replacements in the middle of a container:
+ * swapping two items of the same type left head, tail, size and weight
+ * untouched. Item ids are unique in PZ, so comparing every slot id is exact
+ * for content identity. One linear pass, no string work, no per-item objects.
  */
 public final class WarehouseFingerprint {
-    private final int size;
-    private final int headId;
-    private final int tailId;
+    private final int[] slotIds;
     private final long weightBits;
 
-    public WarehouseFingerprint(int size, int headId, int tailId, double weight) {
-        this.size = size;
-        this.headId = headId;
-        this.tailId = tailId;
-        // Quantize weight to 0.01 kg to avoid floating point precision differences
+    public WarehouseFingerprint(int[] slotIds, double weight) {
+        this.slotIds = slotIds;
+        // Quantize weight to 0.01 kg to avoid floating point precision differences.
         this.weightBits = Double.doubleToLongBits(Math.round(weight * 100.0) / 100.0);
     }
 
@@ -27,23 +30,22 @@ public final class WarehouseFingerprint {
         ArrayList<InventoryItem> items = container.getItems();
         if (items == null) return null;
         int sz = items.size();
-        int head = 0, tail = 0;
-        if (sz > 0) {
-            InventoryItem h = items.get(0);
-            InventoryItem t = items.get(sz - 1);
-            if (h != null) head = h.getID();
-            if (t != null) tail = t.getID();
+        int[] ids = new int[sz];
+        for (int i = 0; i < sz; i++) {
+            InventoryItem it = items.get(i);
+            ids[i] = it == null ? 0 : it.getID();
         }
-        double weight = container.getContentsWeight();
-        return new WarehouseFingerprint(sz, head, tail, weight);
+        return new WarehouseFingerprint(ids, container.getContentsWeight());
     }
 
+    /** True only if every slot still holds the same item. */
     public boolean matches(WarehouseFingerprint other) {
         if (other == null) return false;
-        return this.size == other.size
-            && this.headId == other.headId
-            && this.tailId == other.tailId
-            && this.weightBits == other.weightBits;
+        return this.weightBits == other.weightBits && Arrays.equals(this.slotIds, other.slotIds);
+    }
+
+    public int size() {
+        return slotIds.length;
     }
 
     @Override
@@ -55,6 +57,6 @@ public final class WarehouseFingerprint {
 
     @Override
     public int hashCode() {
-        return Objects.hash(size, headId, tailId, weightBits);
+        return Objects.hash(Arrays.hashCode(slotIds), weightBits);
     }
 }

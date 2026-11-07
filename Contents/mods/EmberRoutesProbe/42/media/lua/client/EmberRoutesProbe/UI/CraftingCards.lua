@@ -2,7 +2,7 @@ local Cached=require "EmberRoutesProbe/UI/CachedList"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Visual=require "EmberRoutesProbe/UI/StatusVisual"
-local Words=require "EmberRoutesProbe/CraftingText"
+local Words=require "EmberRoutesProbe/Crafting/CraftingText"
 local text=Words.get
 local Cards={}
 local stages={PLANNING=1,COLLECTING=2,CRAFTING=3,COMMITTING=3,CONFIRMED=4,RETURNING=4,DONE=4}
@@ -66,7 +66,8 @@ function Cards.details(owner,bounds)
             badge=Visual.badge(label,state,width,h,p/2),lines={},bars={}}
         local index=order and (stages[order.phase] or 0) or 0
         if order and order.released and order.state~="DONE" then index=0 end
-        if order then v.track=Visual.steps({text("stepPlan"),text("stepCollect"),text("stepCraft"),text("stepStore")},width,h,p,index,state) end
+        if order then v.track=Visual.steps({text("stepPlan"),text("stepCollect"),text("stepCraft"),text("stepStore")},width,h,p,index,state,
+            {"box","arrowDown","hammer","box"}) end
         v.trackY=h*3+p*3
         local y=v.trackY+(v.track and v.track.height or 0)+p
         local function add(value,color)
@@ -97,7 +98,7 @@ function Cards.details(owner,bounds)
         end
         if order and order.target then
             if order.chainTotal and order.chainTotal>0 then
-                add(text("chainStep").." "..order.chainIndex.." / "..order.chainTotal.."  → "..order.stepName,Theme.accent)
+                add(text("chainStep").." "..order.chainIndex.." / "..order.chainTotal.."  > "..order.stepName,Theme.accent)
             end
             for _,metric in ipairs({{key="produced",label="madeCount",color=Theme.accent},{key="delivered",label="storedCount",color=Visual.colors.done}}) do
                 add(text(metric.label).."  "..order[metric.key].." / "..order.target,metric.color)

@@ -1,11 +1,11 @@
 -- Original bug through real business/claims modules; native bodies/actions remain fake.
 local f=dofile('tests/lua/multi-worker-test.lua')
 local Work,actor,npc=f.Work,f.actor,f.a
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
-local Service=require 'EmberRoutesProbe/LogisticsService'
-local Store=require 'EmberRoutesProbe/LaborStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local Service=require 'EmberRoutesProbe/Logistics/LogisticsService'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Probe=f.fixture.ctx.Probe
 function actor:getIndex() return 0 end
 local checks=0
@@ -34,8 +34,8 @@ check(Work.assign(actor,npc.id,{producer='LOGISTICS',settlementId=entry.id,sourc
     source=Registry.metadata(source,source.container).id,destination=Registry.metadata(fridge,fridge.container).id,
     items={a:getID(),b:getID(),c:getID()}})=='STARTED','start autonomous original batch')
 local r=Work.record(npc.id) local id=r.id
-local beforeClear=require('EmberRoutesProbe/TaskJobs').current():get(r.id)
-check(not Store.clear(npc.id) and Store.owner(a:getID()) and require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision==beforeClear.revision,
+local beforeClear=require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id)
+check(not Store.clear(npc.id) and Store.owner(a:getID()) and require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision==beforeClear.revision,
     'clear retains uncollected responsibility and persistent revision')
 -- Capacity rejection is a no-write result, not loss of the execution draft.
 local capItem=f.fixture.item('tool',source.container)
@@ -44,9 +44,9 @@ local rival=assert(capClaims:acquire('capacity-rival',1,{'item:'..capItem:getID(
 local capKey=Registry.metadata(fridge,fridge.container).id
 assert(capClaims:reserve(rival,capKey,capItem:getID(),1,1))
 local capToken=assert(Store.getToken(r.id))
-local oldRevision=require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision
+local oldRevision=require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision
 check(not Store.capacity(capToken,a:getID(),capKey,1,1)
-    and require('EmberRoutesProbe/TaskJobs').current():get(r.id).revision==oldRevision
+    and require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision==oldRevision
     and Store.valid(r,r.generation,capToken),'capacity contention preserves authoritative revision and retryable execution')
 capClaims:release(rival)
 check(Store.capacity(capToken,a:getID(),capKey,1,1),'capacity may be retried after competing reservation clears')
@@ -65,7 +65,7 @@ check(a:getContainer()==fridge.container and b:getContainer()==food.container an
 check(#r.items==3 and not Store.owner(a:getID()) and not Store.owner(b:getID()) and not Store.owner(c:getID()),
     'denominator stable and each delivered original claim released')
 -- A capacity-bearing token can shrink, reacquire its exact reduced set, then become empty.
-local claims=require('EmberRoutesProbe/LaborClaims').new()
+local claims=require('EmberRoutesProbe/Kernel/LaborClaims').new()
 local t=assert(claims:acquire('shrink',1,{'item:101','item:102'}))
 assert(claims:reserve(t,'box',101,1,10)) assert(claims:reserve(t,'box',102,1,10))
 check(claims:shrink(t,{'item:101'}) and #t.resources==1 and claims:available('box',10)==9,'shrink preserves remaining capacity')
@@ -89,7 +89,7 @@ local later=box(18,{'unknown-type'})
 for _=1,300 do Service.tick() f.tick(1,true) if r.state=='DONE' then break end end
 check(r.state=='DONE' and d:getContainer()==later.container,'new registered target wakes route wait without manual resume')
 -- Exercise the same adapter with real Session arbitration and independent queue evidence.
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local keys={}
 f.bridge.acquireBodyControl=function(body,job,generation) assert(not keys[body]) keys[body]=job..':'..generation return keys[body] end
 f.bridge.bodyStopMask=function(body,key) return key==keys[body] and (body.actions:isEmpty() and 0 or 4) or -1 end
@@ -187,7 +187,7 @@ local unresolved={id=Registry.id(),npcId=f.b.id,format=3,kind='EXPLICIT_TRANSFER
     state='PAUSED',reason='CREATED',phase='COLLECT',generation=0,routeRevision=0,attemptSequence=0,plannedCount=1,delivered=0}
 unresolved.manifest=require('EmberRoutesProbe/Hauling/HaulManifest').create(unresolved)
 assert(require('EmberRoutesProbe/Hauling/HaulJobs').claim(unresolved))
-local authority=require('EmberRoutesProbe/TaskJobs').current()
+local authority=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 local unknownJob=authority:get(unresolved.id)
 assert(authority:update(unknownJob.id,unknownJob.revision,{effects='UNKNOWN',state='RECONCILE_REQUIRED'}))
 require('EmberRoutesProbe/Hauling/HaulJobs').prepareRecovery()

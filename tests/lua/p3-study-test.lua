@@ -9,7 +9,7 @@ getGameTime=function() return {getWorldAgeHours=function() return 10 end} end
 instanceof=function(item,kind) return kind=='Literature' and item.literature==true end
 CharacterTrait={ILLITERATE='illiterate'} SkillBook={Carpentry={perk='wood'}}
 local owners={} local reads,known={},{} local illiterate=false
-package.loaded['EmberRoutesProbe/Boot']={}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
 local invItems={} local inventory={getItems=function() return list(invItems) end}
 local shelfItems={} local shelf={getItems=function() return list(shelfItems) end}
 local npc={getInventory=function() return inventory end,hasTrait=function() return illiterate end,getZ=function() return 0 end,
@@ -34,13 +34,13 @@ end
 local magazine,skill=book(1,nil,-1),book(2,'Carpentry',100)
 shelfItems={magazine,skill}
 local resolutions=0 local endpoint={id='shelf',container=shelf}
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,
     accepts=function() return true end,logistics=function() return 'STORAGE' end,revalidate=function() return endpoint end}
-package.loaded['EmberRoutesProbe/SettlementMembership']={query=function() return {'shelf'} end}
-package.loaded['EmberRoutesProbe/CraftSupply']={endpoint=function() resolutions=resolutions+1 return endpoint end}
-package.loaded['EmberRoutesProbe/LaborStore']={owner=function(id) return owners[id] end}
-package.loaded['EmberRoutesProbe/PlanningWake']={capture=function() return {} end,changed=function() return false end}
-local Library=require 'EmberRoutesProbe/LibraryIndex'
+package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'shelf'} end}
+package.loaded['EmberRoutesProbe/Crafting/CraftSupply']={endpoint=function() resolutions=resolutions+1 return endpoint end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={owner=function(id) return owners[id] end}
+package.loaded['EmberRoutesProbe/Runtime/PlanningWake']={capture=function() return {} end,changed=function() return false end}
+local Library=require 'EmberRoutesProbe/Leisure/LibraryIndex'
 check(Library.eligible(magazine),'native recipe magazines with -1 pages and literatureTitle are eligible')
 check(Library.useful(npc,magazine,'MakeCakeBatter'),'unknown target magazine is useful')
 illiterate=true check(not Library.useful(npc,magazine,'MakeCakeBatter'),'illiterate reader cannot borrow for study') illiterate=false
@@ -74,8 +74,8 @@ ISReadABook={new=function(_,character,item)
 end}
 ISTimedActionQueue={hasAction=function(action) return queued==action end}
 local wakes=0
-package.loaded['EmberRoutesProbe/StudyService']={completed=function() wakes=wakes+1 end}
-local Actions=require 'EmberRoutesProbe/StudyActions'
+package.loaded['EmberRoutesProbe/Leisure/StudyService']={completed=function() wakes=wakes+1 end}
+local Actions=require 'EmberRoutesProbe/Leisure/StudyActions'
 local function context(item,target)
     item.container=inventory invItems={item}
     return {npc=npc,job={npcId='a'},payload={attemptId='j:1',itemId=item:getID(),settlementId='home',study={knowledge=target}},
@@ -103,7 +103,7 @@ check(completeCount==1,'stale callback cannot apply native learning') retained=t
 local lost=context(skill,nil) local lostLeaf=Actions.read(lost,skill)
 assert(lostLeaf.run()=='Running') queued:start() skill.container=shelf queued=nil
 check(lostLeaf.run()=='Failure' and lost.effects=='UNKNOWN','missing borrowed original quarantines effects')
-local Record=require 'EmberRoutesProbe/SelfCareRecord'
+local Record=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 local j=Record.create('j','a') local payload=assert(Record.begin(j,'STUDY'))
 payload.itemId=1 payload.sourceId='shelf' payload.settlementId='home' payload.study={version=0}
 j.payload=payload check(Record.valid(j),'study persistent payload is versioned and validated')
@@ -111,15 +111,15 @@ j.payload.reading={attemptId='j:1',itemId=1,fullType='Base.Book1',before=0,total
 check(Record.valid(j),'native unpaged magazine facts survive the record validator')
 j.payload.reading.total=-1 check(not Record.valid(j),'invalid persisted normalized page count is rejected')
 -- Actual offer service fences new work and policy changes before borrowing.
-package.loaded['EmberRoutesProbe/StudyService']=nil
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Leisure/StudyService']=nil
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() return entry end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
 local order={state='WAITING',recipeId='cake'} local revision=0
-package.loaded['EmberRoutesProbe/PublicWork']={order=function() return order end,
+package.loaded['EmberRoutesProbe/Work/PublicWork']={order=function() return order end,
     priorities=function() return {crafting=3,revision=revision} end}
-package.loaded['EmberRoutesProbe/LaborSignals']={changed=function() end}
-local Study=require 'EmberRoutesProbe/StudyService'
+package.loaded['EmberRoutesProbe/Work/LaborSignals']={changed=function() end}
+local Study=require 'EmberRoutesProbe/Leisure/StudyService'
 magazine.container=shelf skill.container=shelf invItems={} reads[skill:getFullType()]=0
 Study.offer('a',entry,{orderId='order',recipeId='cake',knowledge={'alias','MakeCakeBatter'}})
 local borrowed=Study.candidate({},npc,'a',{scan=32,containers=4})
@@ -149,7 +149,7 @@ skill.getBoredomChange=function() return -10 end
 local limited=context(skill,nil) limited.payload.study.leisure=true
 local inActivityArea=true
 -- This fixture has no live settlement ledger; activity policy is a separate seam.
-package.loaded['EmberRoutesProbe/ActivityService']={policyAt=function() return 1 end,
+package.loaded['EmberRoutesProbe/Activity/ActivityService']={policyAt=function() return 1 end,
     allowsPoint=function() return inActivityArea end}
 local window=Actions.read(limited,skill)
 assert(window.run()=='Running')

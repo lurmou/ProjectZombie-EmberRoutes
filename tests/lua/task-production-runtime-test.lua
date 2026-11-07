@@ -1,6 +1,6 @@
 local f=dofile('tests/lua/craft-probe-test.lua')
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Production=require 'EmberRoutesProbe/Production'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Production=require 'EmberRoutesProbe/Crafting/Production'
 local checks=0
 local function check(value,message) checks=checks+1 assert(value,message) end
 local key,grants
@@ -17,6 +17,10 @@ bridge.freezeBodyControl=function() return true end
 bridge.thawBodyControl=function() return key==nil end
 bridge.controlledCarrier=function() return f.npc end
 bridge.motionResult=function() return f.npc.motion or 'STOPPED' end
+bridge.followWithControl=function(npc,k,actor,rank)
+    assert(k==key and npc.actions:isEmpty() and actor==f.actor and rank==0)
+    npc.motion='FOLLOW_ACTIVE' return 'FOLLOW_STARTED'
+end
 bridge.moveWithControl=function(npc,k,actor,x,y,z)
     assert(k==key and npc.actions:isEmpty()) npc.x=x npc.motion='REACHED' return 'MOVE_REQUESTED'
 end
@@ -44,7 +48,7 @@ ISTimedActionQueue.clear=function(npc)
     if q then q.queue={} end
 end
 local function fresh()
-    local macro=package.loaded['EmberRoutesProbe/MembershipService'].view(f.npc.id)
+    local macro=package.loaded['EmberRoutesProbe/Settlement/MembershipService'].view(f.npc.id)
     macro.context='SETTLEMENT' macro.leaderId=nil
     f.Probe.controlledExecution=false
     Runtime.reset()
@@ -116,7 +120,7 @@ r=f.Craft.record(f.npc.id)
 check(r.uncertain and not r.released and f.nativeCalls()==1 and key==nil,'unknown commit is retained while safe body closes')
 local result=f.Craft.execute(f.actor,'resume',nil,f.npc.id,true)
 check(result~='QUEUED' and f.nativeCalls()==1,'unknown commit is never automatically repeated')
-local Companion=require 'EmberRoutesProbe/Companion'
+local Companion=require 'EmberRoutesProbe/Settlement/Companion'
 log,saw=fresh()
 check(run()=='QUEUED','handoff fixture accepted')
 for _=1,300 do
@@ -126,19 +130,19 @@ for _=1,300 do
 end
 check(f.queued() and f.queued().craftRecipe,'handoff interrupts actual queued saw action before commit')
 jobId=f.Craft.record(f.npc.id).id
-local member=package.loaded['EmberRoutesProbe/MembershipService'].view(f.npc.id)
-member.context='FOLLOW' member.leaderId='fixture-leader'
+local member=package.loaded['EmberRoutesProbe/Settlement/MembershipService'].view(f.npc.id)
+member.context='FOLLOW' member.leaderId='fixture-leader' member.followSlot=0
 check(Companion.startFor(f.actor,f.npc.id,member.revision),'authorized follow adapter submits against current production owner')
 for _=1,25 do tick(false) end
 check(f.Craft.record(f.npc.id).state=='PAUSED' and Companion.exportState(f.npc.id).mode=='FOLLOW',
     'confirmed production stop grants body to actual companion adapter')
 check(f.Store.owner(log.id) and f.Store.owner(saw.id) and f.nativeCalls()==0,'follow preserves paused production originals and never crafts')
-local Service=require 'EmberRoutesProbe/CraftingService'
+local Service=require 'EmberRoutesProbe/Crafting/CraftingService'
 local snapshot=Service.status(f.actor,f.entry.id)
 local worker
 for _,row in ipairs(snapshot.workers) do if row.id==f.npc.id then worker=row break end end
 check(worker and worker.busy and not worker.orderBusy and worker.order.resumable,'following worker exposes paused production independently of body ownership')
-local Monitor=require 'EmberRoutesProbe/OrderMonitorService'
+local Monitor=require 'EmberRoutesProbe/Warehouse/OrderMonitorService'
 local monitored=Monitor.status(f.actor,f.entry.id).rows[1]
 check(monitored and monitored.jobId==jobId and monitored.bodyMode=='FOLLOW' and monitored.canResume,
     'actual monitor projects retained saw Job and current follow independently')
@@ -161,7 +165,7 @@ check(run()=='QUEUED','same NPC can accept another order after safe rejection')
 pump()
 check(f.Craft.record(f.npc.id).state=='DONE','new order completes after capacity corrected')
 log,saw=fresh() f.npc.maxWeight=6 log.weight=9 saw.weight=0.7
-local preflight=require('EmberRoutesProbe/ProductionChain').new(f.actor,f.npc,f.entry,f.recipe.key,3,nil,'offer:test',false)
+local preflight=require('EmberRoutesProbe/Crafting/ProductionChain').new(f.actor,f.npc,f.entry,f.recipe.key,3,nil,'offer:test',false)
 local result,blocked
 for _=1,2000 do result,blocked=preflight:step() if result or blocked then break end end
 check(not result and blocked=='CAPACITY_UNAVAILABLE' and not f.Craft.record(f.npc.id)
@@ -209,7 +213,7 @@ pump()
 r=f.Craft.record(f.npc.id)
 check(r.state=='CANCELLED' and r.released and saw.container==f.tools.container,
     'cancel skips credited output while returning all remaining originals')
-check(require('EmberRoutesProbe/BusinessJobs').retire(r.id) and not f.Craft.record(f.npc.id),
+check(require('EmberRoutesProbe/Work/BusinessJobs').retire(r.id) and not f.Craft.record(f.npc.id),
     'actual cancellation retires after original tool and remaining outputs are returned')
 log,saw=fresh()
 check(run()=='QUEUED','missing original fixture accepted')
@@ -223,12 +227,12 @@ pump()
 r=f.Craft.record(f.npc.id)
 check(r.reason=='ITEM_MISSING' and not r.released and f.Store.owner(log.id) and substitute.container==f.materials.container,
     'genuine missing original retains claim and never substitutes same-type item')
-check(not require('EmberRoutesProbe/BusinessJobs').retire(r.id) and f.registry.data().taskJobs.byId[r.id],
+check(not require('EmberRoutesProbe/Work/BusinessJobs').retire(r.id) and f.registry.data().taskJobs.byId[r.id],
     'failed cancellation remains visible for original reconciliation')
 log,saw=fresh()
 f.Probe.runtimeReady=true
 member.context='SETTLEMENT' member.leaderId=nil
-local Public=require 'EmberRoutesProbe/PublicWork'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 check(Public.setPriority(f.actor,f.entry.id,f.npc.id,'crafting',1)=='PRIORITY_SAVED','minimal per-NPC craft priority saved')
 check(Public.setPriority(f.actor,f.entry.id,f.npc.id,'hauling',0)=='PRIORITY_SAVED','hauling may be independently disabled')
 local publicRequest=Public.requestId()
@@ -264,12 +268,12 @@ for _=1,2000 do
 end
 check(#Public.orders(f.entry.id)==1 and Public.orders(f.entry.id)[1].id==nextOrder,
     'only successor remains in the work list')
-local history=require('EmberRoutesProbe/BusinessJobs').records('CRAFT')
+local history=require('EmberRoutesProbe/Work/BusinessJobs').records('CRAFT')
 local current=f.Craft.record(f.npc.id)
 check(current and current.orderId==nextOrder and current.state=='DONE' and not history[firstJob] and f.nativeCalls()==2,
     'successor completes once without retaining predecessor history')
 for _=1,30 do tick(true) if not Runtime.current():owns(f.npc.id) then break end end
-require('EmberRoutesProbe/TaskRetirement').install()
+require('EmberRoutesProbe/Runtime/TaskRetirement').install()
 f.Probe.tickRetirement()
 check(#Public.orders(f.entry.id)==0 and not f.registry.data().taskJobs.byId[current.id],
     'normal background retirement hook clears successor after settlement')
@@ -290,19 +294,19 @@ for cold=1,2 do
     local loaded=facts(f.registry.data())
     Runtime.reset() Production.reset()
     f.registry.data=function() return loaded end
-    require('EmberRoutesProbe/ProductionJobs').prepareRecovery()
+    require('EmberRoutesProbe/Crafting/ProductionJobs').prepareRecovery()
     f.Store.data()
     local restored=f.Craft.record(f.npc.id)
     check(restored.id==savedId and restored.format==4 and restored.state=='PAUSED' and not restored.released
 	and f.Store.owner(log.id).taskId==savedId,'cold '..cold..' reopens typed Job and protects the same carried original')
-    check(assert(require('EmberRoutesProbe/JobStore').open(loaded)):get(savedId).payload.executor=='PRODUCTION',
+    check(assert(require('EmberRoutesProbe/Kernel/JobStore').open(loaded)):get(savedId).payload.executor=='PRODUCTION',
 	'cold '..cold..' persistent envelope remains valid after recovery')
 end
 f.registry.data=rootReader
 -- Irreversible native results: exercise actual action/observer, not only a
 -- synthesized payload. Claim conflict and stale revision retain produced IDs.
-local Execution=require 'EmberRoutesProbe/ProductionJobs'
-local JobStore=require 'EmberRoutesProbe/TaskJobs'
+local Execution=require 'EmberRoutesProbe/Crafting/ProductionJobs'
+local JobStore=require 'EmberRoutesProbe/Runtime/TaskJobs'
 log,saw=fresh()
 local mutate=f.Store.mutateJob local rejectedIntent=false
 f.Store.mutateJob=function(id,rev,payload,mutation)
@@ -365,12 +369,12 @@ for _,fault in ipairs({'CLAIM','CAS'}) do
 	check(f.Store.owner(asset.id).kind=='SYSTEM_QUARANTINE',fault..' every observed output is protected')
 	quarantineCount=quarantineCount+1
     end
-    check(quarantineCount>0 and not require('EmberRoutesProbe/BusinessJobs').canRetire(saved.id),fault..' unknown output cannot retire')
+    check(quarantineCount>0 and not require('EmberRoutesProbe/Work/BusinessJobs').canRetire(saved.id),fault..' unknown output cannot retire')
     check(JobStore.current():scopeBlocked(saved.scopeId,'another-job'),fault..' unresolved result fences other execution in same scope')
     local admitted,admitWhy=JobStore.current():create({id='scope-probe-'..fault,npcId='scope-worker',providerType='PROBE',
 	scopeId=saved.scopeId,revision=1,state='PREPARING',effects='KNOWN',obligations={},payload={}})
     check(not admitted and admitWhy=='CRAFT_SCOPE_RECONCILE_REQUIRED',fault..' scope fence rejects new authoritative Job')
-    local reopened=assert(require('EmberRoutesProbe/JobStore').open(facts(f.registry.data())))
+    local reopened=assert(require('EmberRoutesProbe/Kernel/JobStore').open(facts(f.registry.data())))
     check(reopened:scopeBlocked(saved.scopeId,'another-job') and not reopened:scopeBlocked('unrelated-scope'),
 	fault..' cold scope index preserves protection without blocking unrelated scopes')
     local rev=saved.revision local claimsRev=f.Store.claimsVersion()

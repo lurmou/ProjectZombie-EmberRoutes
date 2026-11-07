@@ -10,8 +10,8 @@ end
 local world,bridgePath={},false
 ModData={getOrCreate=function(key) check(key=='EmberRoutes/Work/v1','correct root') return world end}
 EmberRoutesProbeJava={cachedModData=function() if bridgePath then return world end end}
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Jobs=require 'EmberRoutesProbe/JobStore'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
 local function rejected(root,reason)
     world=root local before=copy(root) local originalJobs,originalContainers=root.taskJobs,root.containers
     local ok,why=pcall(Registry.data)
@@ -72,10 +72,10 @@ local raw={} check(Jobs.check(raw) and raw.taskJobs==nil,'JobStore check is read
 local engineRoot={} local staleRoot=world
 ModData.getOrCreate=function() return engineRoot end
 local callback
-package.loaded['EmberRoutesProbe/Boot']={}
-package.loaded['EmberRoutesProbe/MembershipRuntime']={install=function() end}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={}
+package.loaded['EmberRoutesProbe/Settlement/MembershipRuntime']={install=function() end}
 Events={OnInitGlobalModData={Add=function(fn) callback=fn end},OnNewGame={Add=function() end}}
-local Lifecycle=require 'EmberRoutesProbe/MembershipLifecycle'
+local Lifecycle=require 'EmberRoutesProbe/Settlement/MembershipLifecycle'
 Lifecycle.install() callback(true)
 check(engineRoot.format==1 and engineRoot.npcMembership and world==staleRoot,'new world admitted before membership writes despite stale cache')
 local unsupported={format=99} engineRoot=unsupported
@@ -85,15 +85,15 @@ ModData.getOrCreate=function() return world end
 -- hooks themselves would mutate ModData or reset runtime state.
 local hooks=0
 local function recovered() hooks=hooks+1 end
-package.loaded['EmberRoutesProbe/Boot']={prepareMembershipRecovery=recovered,resetStock=recovered}
-package.loaded['EmberRoutesProbe/TaskRuntime']={}
-package.loaded['EmberRoutesProbe/LaborStore']={data=recovered}
-package.loaded['EmberRoutesProbe/CraftProbe']={prepareRecovery=recovered}
-package.loaded['EmberRoutesProbe/Companion']={}
-package.loaded['EmberRoutesProbe/Actions']={}
+package.loaded['EmberRoutesProbe/Kernel/Boot']={prepareMembershipRecovery=recovered,resetStock=recovered}
+package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={data=recovered}
+package.loaded['EmberRoutesProbe/Crafting/CraftProbe']={prepareRecovery=recovered}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={}
+package.loaded['EmberRoutesProbe/Runtime/Actions']={}
 package.loaded['EmberRoutesProbe/Hauling/Haul']={}
-package.loaded['EmberRoutesProbe/TaskPersistence']=nil
-local Save=require 'EmberRoutesProbe/TaskPersistence'
+package.loaded['EmberRoutesProbe/Runtime/TaskPersistence']=nil
+local Save=require 'EmberRoutesProbe/Runtime/TaskPersistence'
 world={format=1,taskJobs={format=77,byId={}}}
 local before=copy(world)
 check(not pcall(Save.load),'save recovery refuses unsupported format')

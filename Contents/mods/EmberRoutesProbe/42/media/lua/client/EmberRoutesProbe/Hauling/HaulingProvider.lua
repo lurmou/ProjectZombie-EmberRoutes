@@ -1,7 +1,7 @@
-local DeliveryService = require 'EmberRoutesProbe/DeliveryService'
-local Logistics = require 'EmberRoutesProbe/LogisticsService'
-local Work = require 'EmberRoutesProbe/Work'
-local Runtime = require 'EmberRoutesProbe/TaskRuntime'
+local DeliveryService = require 'EmberRoutesProbe/Logistics/DeliveryService'
+local Logistics = require 'EmberRoutesProbe/Logistics/LogisticsService'
+local Work = require 'EmberRoutesProbe/Work/Work'
+local Runtime = require 'EmberRoutesProbe/Runtime/TaskRuntime'
 
 local hauling = {}
 
@@ -51,7 +51,7 @@ function HaulingProvider.claim(selected, npcId, jobId, env)
 end
 
 function HaulingProvider.reconcile()
-    local Log = require 'EmberRoutesProbe/Log'
+    local Log = require 'EmberRoutesProbe/Kernel/Log'
     for key, h in pairs(hauling) do
         local r = Work.record(h.npcId)
         if r and r.id == h.jobId and r.state == 'DONE' then
@@ -61,10 +61,14 @@ function HaulingProvider.reconcile()
         elseif (not r or r.id ~= h.jobId) and not Runtime.current():status(h.npcId, h.jobId) then
             -- Missing business record or dead session CANNOT prove effects are known or obligations cleared.
             -- Retain responsibility and enter diagnostic state instead of falsely releasing the directory offer.
-            h.state = 'RECONCILE_REQUIRED'
-            h.reason = 'HAUL_RECORD_MISSING'
-            if Log and Log.write then
-                Log.write('HAUL', 'RECONCILE_REQUIRED npc=' .. h.npcId .. ' job=' .. h.jobId .. ' reason=HAUL_RECORD_MISSING')
+            -- Announce the transition once: repeating it every cycle only floods the log with
+            -- the same unresolved responsibility.
+            if h.state ~= 'RECONCILE_REQUIRED' or h.reason ~= 'HAUL_RECORD_MISSING' then
+                h.state = 'RECONCILE_REQUIRED'
+                h.reason = 'HAUL_RECORD_MISSING'
+                if Log and Log.write then
+                    Log.write('HAUL', 'RECONCILE_REQUIRED npc=' .. h.npcId .. ' job=' .. h.jobId .. ' reason=HAUL_RECORD_MISSING')
+                end
             end
         end
     end

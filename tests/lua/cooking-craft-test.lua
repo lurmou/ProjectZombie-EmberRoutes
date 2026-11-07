@@ -8,14 +8,14 @@ local function list(values)
     return result
 end
 ArrayList={new=function() return list() end}
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Fluids=require 'EmberRoutesProbe/CraftFluids'
-local Stations=require 'EmberRoutesProbe/CraftStations'
-local Actions=require 'EmberRoutesProbe/CookingActions'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Fluids=require 'EmberRoutesProbe/Crafting/CraftFluids'
+local Stations=require 'EmberRoutesProbe/Crafting/CraftStations'
+local Actions=require 'EmberRoutesProbe/Cooking/CookingActions'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 ResourceType={Item='Item',Fluid='Fluid'} ComponentType={CraftBench='CraftBench'}
 CharacterTrait={ALL_THUMBS='allthumbs'} DebugType={CraftLogic='CraftLogic'}
 function npc:hasTrait() return false end function npc:isWearingAwkwardGloves() return false end
@@ -98,7 +98,7 @@ function object:getComponent(kind) return kind=='CraftBench' and bench end
 function object:getUsingPlayer() return self.user end
 function object:isUsingPlayer(p) return self.user==p end function object:setUsingPlayer(p) self.user=p end
 square.objects:add(object)
-local Ledger=require 'EmberRoutesProbe/SettlementLedger'
+local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local permitted=true
 Ledger.view=function(actor,id)
     if actor==f.fixture.actor and id=='kitchen' and permitted then return {id=id,areas={{x=0,y=0,w=10,h=10}}} end

@@ -1,1 +1,1 @@
-require "EmberRoutesProbe/Boot"
+require "EmberRoutesProbe/Kernel/Boot"

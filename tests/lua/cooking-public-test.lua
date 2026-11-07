@@ -1,10 +1,10 @@
 -- End-to-end provider admission/recovery with real selection, Jobs and Runtime.
 local prior=dofile('tests/lua/cooking-handoff-test.lua') local h=prior.h local f=h.f local npc=f.npc
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Directory=require 'EmberRoutesProbe/TaskDirectory'
-local Observer=require 'EmberRoutesProbe/NeedsObserver'
-local Work=require 'EmberRoutesProbe/Work'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory'
+local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
+local Work=require 'EmberRoutesProbe/Work/Work'
 local root={containers={},taskJobs={format=1,byId={}},npcMembership={format=1,byNpc={}}}
 Registry.data=function() return root end
 h.entry.factionId='f'
@@ -15,7 +15,7 @@ function getGameTime() return {getWorldAgeHours=function() return now/3600000 en
 Observer.sample=function() return {safe=true,observedAt=now} end
 function npc:isOnFire() return false end function npc:getSurroundingAttackingZombies() return 0 end
 Work.busy=function() return false end Work.hasCargo=function() return false end
-package.loaded['EmberRoutesProbe/PublicWork']={priorities=function() return {cooking=3} end}
+package.loaded['EmberRoutesProbe/Work/PublicWork']={priorities=function() return {cooking=3} end}
 EmberRoutesProbeJava.carrierFor=function(id) if id==npc.id then return npc end end
 EmberRoutesProbeJava.workerCount=function() return 1 end EmberRoutesProbeJava.workerIdAt=function() return npc.id end
 local runtime=Runtime.new() Runtime.current=function() return runtime end
@@ -35,7 +35,7 @@ pot.fluid={amount=10,capacity=10,kind='Water',getAmount=function(self) return se
  isFilledWithCleanWater=function() return true end}
 function pot:getFluidContainer() return self.fluid end
 for _=1,4 do f.item('Base.Carrot',true,source.container) end
-local Service=require 'EmberRoutesProbe/CookingService'
+local Service=require 'EmberRoutesProbe/Cooking/CookingService'
 local directory=Directory.new() local provider=Service.provider
 local env={actor=f.fixture.actor,npc=npc,npcId=npc.id,entry=h.entry,candidates={},now=now,
  upsertOffer=function(key,revision,category,scope) return directory:upsert(key,revision,category,scope) end}
@@ -50,7 +50,7 @@ local selected=assert(env.candidates[1],tostring(Service.status(npc.id)))
 check(directory:claim(selected.key,selected.revision,npc.id,'auto-job'),'existing public directory arbitrates one cooking offer')
 check(provider.claim(selected,npc.id,'auto-job',{actor=env.actor,entry=h.entry,now=now,directory=directory})=='QUEUED',
  'provider prepares original claims and submits to existing Runtime')
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 local stopped=false local active=false
 for _=1,600 do
  now=now+50 runtime:step()
@@ -72,8 +72,8 @@ provider.reconcile()
 check(directory:upsert(selected.key,1,'cooking',h.entry.id).jobId==nil,'only settled original Job releases its public offer')
 check(not Service.retained(npc.id),'settled cooking no longer blocks other ordinary work')
 -- Self-care uses the existing predecessor relation, rather than starving behind a COOKING kind.
-local Resume=require 'EmberRoutesProbe/TaskResume'
-local Care=require 'EmberRoutesProbe/SelfCareRecord'
+local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Care=require 'EmberRoutesProbe/SelfCare/SelfCareRecord'
 local pot2=f.item('Base.Pot',false,source.container) pot2.fluid=pot.fluid
 function pot2:getFluidContainer() return self.fluid end
 -- Fixture mutations bypass native container events; publish the same stock
@@ -119,9 +119,9 @@ check(Service.retire(8)==2 and not Jobs:get('auto-job') and not Jobs:get('care-c
 -- An explicit request has the same physical/native execution path and reports
 -- progress only after real output delivery, even though its estimate is larger.
 function recipe:getName() return 'Soup' end
-local Members=require 'EmberRoutesProbe/MembershipService'
+local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
 Members.members=function() return {npc.id} end
-local Orders=require 'EmberRoutesProbe/CookingOrders'
+local Orders=require 'EmberRoutesProbe/Cooking/CookingOrders'
 local request={id='soup-order',category='cooking',recipeId='evolved:Soup',settlementId=h.entry.id,
     product='Base.PotOfSoupRecipe',name='Soup',quantity=1,target=1,delivered=0,sequence=1,revision=1,state='WAITING'}
 root.publicWork={orders={[request.id]=request}}

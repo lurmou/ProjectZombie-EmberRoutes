@@ -1,12 +1,12 @@
 -- Actual installed add/toggle Lua with fake engine objects. Transfer port is a
 -- double at its real transferItem effect boundary. No animation/gameplay claim.
 local f=dofile('tests/lua/multi-worker-test.lua')
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Filter=require 'EmberRoutesProbe/StorageFilter'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Context=require 'EmberRoutesProbe/CookingContext'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Jobs=require('EmberRoutesProbe/TaskJobs').current()
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Context=require 'EmberRoutesProbe/Cooking/CookingContext'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
 local list=f.fixture.ctx.list local npc=f.a local root=npc:getInventory()
 local checks=0 local function check(v,m) checks=checks+1 assert(v,m) end
 local previous=instanceof
@@ -135,9 +135,9 @@ function recipe:addItem(base,ingredient)
     if throwAfterReplacement then error('native failure after replacement') end
     return result
 end
-local A=require 'EmberRoutesProbe/CookingActions'
-local Duty=require 'EmberRoutesProbe/CookingDuty'
-local Inventory=require 'EmberRoutesProbe/CookingInventory'
+local A=require 'EmberRoutesProbe/Cooking/CookingActions'
+local Duty=require 'EmberRoutesProbe/Cooking/CookingDuty'
+local Inventory=require 'EmberRoutesProbe/Cooking/CookingInventory'
 local base,carrot=item('Base.Pot',false),item('Base.Carrot',true)
 local c=context({base,carrot})
 local add=assert(A.add(c,1,recipe,base,carrot))

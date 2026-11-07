@@ -4,15 +4,15 @@ local f=dofile('tests/lua/repose-sites-test.lua')
 local checks=0 local function check(v,why) checks=checks+1 assert(v,why) end
 local entry=f.entry entry.factionId='f' entry.revision=1 entry.name='Home'
 local foreign={id='foreign',factionId='f',revision=1,areas={{x=40,y=40,w=4,h=4}}}
-local ledger=package.loaded['EmberRoutesProbe/SettlementLedger']
+local ledger=package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']
 ledger.data=function() return {factionId='f',entries={s=entry,foreign=foreign}} end
 local md={}
 f.actor.isDead=function() return false end f.actor.getModData=function() return md end
-package.loaded['EmberRoutesProbe/Driver'].bindId=function(_,id) return {id=id,handle=f.npc} end
+package.loaded['EmberRoutesProbe/Runtime/Driver'].bindId=function(_,id) return {id=id,handle=f.npc} end
 f.furniture.bed=true f.other.bed=true
-package.loaded['EmberRoutesProbe/MembershipService']=nil
-local S=require 'EmberRoutesProbe/MembershipService'
-local Sites=f.sites local Index=require 'EmberRoutesProbe/SettlementFacilities'
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']=nil
+local S=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Sites=f.sites local Index=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
 Index.invalidate(0,0)
 assert(S.newWorld())
 local function send(id,kind,scope)
@@ -69,11 +69,11 @@ f.cell.getGridSquare=grid S.reconcileBed('a')
 -- Posting is membership data, not a new target or a priority override.
 local zones={home={id='home',settlementId='s',enabled=true,areas={{x=0,y=0,w=4,h=4,z=0}}},
     away={id='away',settlementId='foreign',enabled=true,areas={{x=40,y=40,w=4,h=4,z=0}}}}
-package.loaded['EmberRoutesProbe/SettlementZones']={get=function(id) return zones[id],'ZONE_MISSING' end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={get=function(id) return zones[id],'ZONE_MISSING' end,
     coveredZone=function(e,z) return e.id==z.settlementId end,
     contains=function(z,x,y,zlevel) return z and x>=0 and x<4 and y>=0 and y<4 and zlevel==0 end,
     list=function() return {zones.home} end}
-package.loaded['EmberRoutesProbe/PublicWork']={provider=function(cat) return cat=='crafting' and {} or nil end,categories=function() return {'crafting'} end}
+package.loaded['EmberRoutesProbe/Work/PublicWork']={provider=function(cat) return cat=='crafting' and {} or nil end,categories=function() return {'crafting'} end}
 local macroStops=0 S.changed=function() macroStops=macroStops+1 end
 local memberRevision=S.view('a').revision
 local function posting(value) return S.setPosting(f.actor,'a',value,S.view('a').revision,S.view('a').postingRevision or 0) end
@@ -83,20 +83,20 @@ check(posting({zoneId='home',category='crafting'})=='POSTING_SAVED','settled res
 check(macroStops==0 and S.view('a').revision==memberRevision,'posting is configuration and never stops bodies or changes macro generation')
 check(S.setPosting(f.actor,'a',nil,memberRevision,0)=='POSTING_CHANGED','separate posting revision rejects stale configuration')
 S.changed=nil
-local Filter=require 'EmberRoutesProbe/MembershipPosting'
+local Filter=require 'EmberRoutesProbe/Settlement/MembershipPosting'
 local chosen={key='existing',category='crafting',point={x=1,y=1,z=0},allowed=true}
 check(Filter.allows(S.view('a').posting,zones.home,chosen),'existing in-zone candidate survives posting filter')
 check(not Filter.allows(S.view('a').posting,zones.home,{category='hauling',point=chosen.point}), 'posting filters category')
 check(not Filter.allows(S.view('a').posting,zones.home,{category='crafting',point={x=20,y=1,z=0}}),'posting filters worksite')
 check(not Filter.allows(S.view('a').posting,zones.home,{category='crafting'}),'missing worksite is refused, not invented')
-check(not require('EmberRoutesProbe/WorkSelector').choose({chosen},{crafting=0}),'posting cannot override Priority 0')
+check(not require('EmberRoutesProbe/Work/WorkSelector').choose({chosen},{crafting=0}),'posting cannot override Priority 0')
 -- Pending command + live responsibility survive a detached save round-trip.
 local pending=send('a','WAIT')
 assert(not S.advance('a',f.actor,{{kind='TOOL_CUSTODY',itemId='tool-1'}},false))
 local function copy(value) if type(value)~='table' then return value end local result={}
     for k,v in pairs(value) do result[k]=copy(v) end return result end
 f.root.npcMembership=copy(f.root.npcMembership)
-package.loaded['EmberRoutesProbe/MembershipService']=nil S=require 'EmberRoutesProbe/MembershipService'
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']=nil S=require 'EmberRoutesProbe/Settlement/MembershipService'
 check(S.load() and S.view('a').bedId==bedId and S.view('a').posting.zoneId=='home'
     and S.view('a').pending.requestId==pending.requestId and S.view('a').obligations[1].itemId=='tool-1',
     'reload retains bed, posting, pending request and unresolved tool responsibility without reroll')
@@ -110,10 +110,10 @@ check(not S.load(),'corrupt bed locator rejected before writes')
 f.root.npcMembership.byNpc.a.bedLocation=location
 -- Macro calls are per resident and per revision, never atomic.
 getText=function(key) return key end getTextOrNull=getText
-package.loaded['EmberRoutesProbe/DisplayNames']={name=function(id) return id end}
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function(id) return id end}
 local spoken={} f.actor.Say=function(_,line) spoken[#spoken+1]=line end
-package.loaded['EmberRoutesProbe/MembershipMenu']=nil
-local Menu=require 'EmberRoutesProbe/MembershipMenu'
+package.loaded['EmberRoutesProbe/Integration/MembershipMenu']=nil
+local Menu=require 'EmberRoutesProbe/Integration/MembershipMenu'
 check(Menu.commandStatus('a','WAIT',pending).state=='BLOCKED','blocked accepted command has separate status and reason')
 commit('a')
 check(Menu.commandStatus('a','WAIT',pending).state=='COMPLETED','WAIT reports completion only after commit')

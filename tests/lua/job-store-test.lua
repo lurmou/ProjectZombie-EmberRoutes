@@ -1,4 +1,4 @@
-local Store=require 'EmberRoutesProbe/JobStore'
+local Store=require 'EmberRoutesProbe/Kernel/JobStore'
 local n=0 local function check(ok,label) n=n+1 assert(ok,label) end
 local root={} local store=assert(Store.open(root))
 local function job(key) return {id=key,npcId='a',providerType='craft',scopeId='s',revision=1,state='PREPARING',
@@ -54,7 +54,7 @@ assert(store:update('counted',1,{state='SETTLING'})) assert(store:update('counte
 check(store:removeSettled('counted',3) and store:ordinaryCount()==1,'safe retirement releases counted capacity exactly once')
 print('PASS '..n..' independent Job store checks; persistence table only, game/save codec NOT RUN')
 
-local Contracts=require 'EmberRoutesProbe/JobContracts'
+local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 check(Contracts.register('TEST_DOMAIN',{
     validate=function(j) return type(j.payload.work)=='number' end,
     transition=function(a,b) return b.payload.work>=a.payload.work,'TEST_WORK_REVERSED' end,

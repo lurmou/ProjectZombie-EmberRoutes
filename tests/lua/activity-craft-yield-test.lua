@@ -1,7 +1,7 @@
 -- Reuse the established native-craft substitute, not a second item/recipe model.
 local f=dofile('tests/lua/craft-probe-test.lua')
-local Yield=require 'EmberRoutesProbe/ProductionYield'
-local Production=require 'EmberRoutesProbe/Production'
+local Yield=require 'EmberRoutesProbe/Crafting/ProductionYield'
+local Production=require 'EmberRoutesProbe/Crafting/Production'
 local checks=0
 local function check(v,label) assert(v,label) checks=checks+1 end
 f.Probe.controlledExecution=false
@@ -71,7 +71,7 @@ local root=f.registry.data()
 root.publicWork={format=1,sequence=1,orders={saved={id='saved',requestId='request-saved',settlementId=f.entry.id,
     recipeId=f.recipe.key,product=r.chain.goal.product,name='Saved demand',quantity=9,target=9,
     sequence=1,revision=1,state='RUNNING',jobId=r.id,npcId=f.npc.id}},priorities={},rules={},requests={}}
-local Public=require 'EmberRoutesProbe/PublicWork'
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 Public.prepareRecovery()
 Public.provider('crafting').reconcile()
 local persisted=assert(Public.order('saved'))
@@ -87,8 +87,8 @@ f.Probe.activityContext=nil f.fresh(3)
 assert(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,chain=true,nonPreemptive=true})=='STARTED')
 for _=1,1500 do f.tick(true) if f.nativeCalls()==1 then break end end
 local manualId=f.Craft.record(f.npc.id).id
-local Resume=require 'EmberRoutesProbe/TaskResume'
-local m=require('EmberRoutesProbe/MembershipService').view(f.npc.id)
+local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local m=require('EmberRoutesProbe/Settlement/MembershipService').view(f.npc.id)
 f.Probe.activityContext=function() return {eventId='manual-party',settlementId=f.entry.id,
     commandEpoch=Resume.epoch(f.npc.id),membershipRevision=m.revision} end
 for _=1,1500 do f.tick(true) if not f.Work.busy(f.npc.id) then break end end
@@ -96,7 +96,7 @@ local manual=f.Craft.record(f.npc.id)
 check(manual.id==manualId and not manual.released and Yield.assetFree(manual),'manual goal stays in the same asset-free suspended Job')
 check(manual.activityContinuation.delivered==3 and manual.requested==6 and f.nativeCalls()==1,'manual continuation credits only the completed first unit')
 check(Production.status(manual).delivered==3 and Production.status(manual).requested==9,'manual UI retains original goal and delivered progress')
-local envelope=require('EmberRoutesProbe/TaskJobs').current():peek(manualId)
+local envelope=require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(manualId)
 check(envelope.state=='SUSPENDED' and not envelope.obligations.business,'asset-free intent is not an outstanding original-item obligation')
 Production.tickPending()
 check(Yield.assetFree(manual) and f.nativeCalls()==1,'active gathering prevents automatic work resume')

@@ -1,22 +1,22 @@
 -- TEST ONLY frozen HEAD 47de22c; never loaded by production.
 -- Public offers and recovery coordination only. Bodies run in TaskRuntime.
-local Registry=require 'EmberRoutesProbe/ContainerRegistry'
-local Jobs=require 'EmberRoutesProbe/TaskJobs'
-local Store=require 'EmberRoutesProbe/LaborStore'
-local Record=require 'EmberRoutesProbe/CookingRecord'
-local Policy=require 'EmberRoutesProbe/CookingPolicy'
-local Supply=require 'EmberRoutesProbe/CookingSupplyService'
-local Menu=require 'EmberRoutesProbe/CookingMenu'
-local Evolved=require 'EmberRoutesProbe/CookingEvolved'
-local Profiles=require 'EmberRoutesProbe/CookingProfiles'
-local Runtime=require 'EmberRoutesProbe/TaskRuntime'
-local Driver=require 'EmberRoutesProbe/Driver'
-local Members=require 'EmberRoutesProbe/MembershipService'
-local Observer=require 'EmberRoutesProbe/NeedsObserver'
-local Work=require 'EmberRoutesProbe/Work'
-local Signals=require 'EmberRoutesProbe/LaborSignals'
-local Orders=require 'EmberRoutesProbe/CookingOrders'
-local Wake=require 'EmberRoutesProbe/PlanningWake'
+local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local Policy=require 'EmberRoutesProbe/Cooking/CookingPolicy'
+local Supply=require 'EmberRoutesProbe/Cooking/CookingSupplyService'
+local Menu=require 'EmberRoutesProbe/Integration/CookingMenu'
+local Evolved=require 'EmberRoutesProbe/Cooking/CookingEvolved'
+local Profiles=require 'EmberRoutesProbe/Cooking/CookingProfiles'
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
+local Work=require 'EmberRoutesProbe/Work/Work'
+local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
+local Orders=require 'EmberRoutesProbe/Cooking/CookingOrders'
+local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
 local S={}
 local world,plans,order,cursor,retained,jobCursor,offers,samples,nextPump,budget,frame,retryJobs,sites
 local crewScan,nextCrew=nil,0
@@ -59,7 +59,7 @@ local function idle(actor,id,careId)
     local runtime=Runtime.current() local binding=Driver.bindId(actor,id)
     if not runtime or not binding or not Driver.valid(binding) or runtime:owns(id) or binding.handle:isDead()
         or Work.busy(id) or Work.hasCargo(actor,id,'COOKING') then return end
-    if require('EmberRoutesProbe/SelfCare').blocksWork(id) then
+    if require('EmberRoutesProbe/SelfCare/SelfCare').blocksWork(id) then
         local care=careId and Jobs.current():peek(careId)
         if not care or care.npcId~=id or care.providerType~='SELF_CARE' or care.effects~='KNOWN'
             or #care.payload.claims>0 then return end
@@ -73,19 +73,19 @@ local function submit(actor,binding,job,settle)
         local fixed=job.payload.fixed local made=false
         for _,r in ipairs(job.payload.bindings or {}) do if r.sequence==fixed.craftSequence then made=true end end
         if not made then
-            local facts,why=require('EmberRoutesProbe/CookingCraft').profile(fixed.recipeId)
+            local facts,why=require('EmberRoutesProbe/Cooking/CookingCraft').profile(fixed.recipeId)
             if not facts then return nil,why end
             if facts.facts.workstation or facts.facts.surface then
             local entry=Members.entry(binding.id,job.scopeId) if not entry then return nil,'NO_MEMBERSHIP' end
             local search=sites[job.id]
-            if not search then search=require('EmberRoutesProbe/CraftStations').search(entry,facts.facts,function(object) return require('EmberRoutesProbe/CookingDirectives').kitchen(entry.id,object) end) sites[job.id]=search end
+            if not search then search=require('EmberRoutesProbe/Crafting/CraftStations').search(entry,facts.facts,function(object) return require('EmberRoutesProbe/Cooking/CookingDirectives').kitchen(entry.id,object) end) sites[job.id]=search end
             local b=budgets() local n=math.min(16,b.scan) if n<1 then return nil,'SITE_OBSERVING' end b.scan=b.scan-n
             local candidate,reason=search:step(n) if not candidate then return nil,reason end
             object=candidate.object
             end
         end
     end
-    local spec,why=require('EmberRoutesProbe/CookingAgent').new(actor,binding,job,object,budgets,
+    local spec,why=require('EmberRoutesProbe/Cooking/CookingAgent').new(actor,binding,job,object,budgets,
         function() return safe(binding,getTimestampMs()) end,{settleOnly=settle})
     if not spec then return nil,why end
     return Runtime.current():submit(spec)
@@ -114,7 +114,7 @@ local function recover(actor,job)
     local binding=idle(actor,job.npcId)
     local work=binding and Members.check(binding.id,'WORK',{x=binding.handle:getX(),y=binding.handle:getY(),
         z=binding.handle:getZ(),scopeId=job.scopeId})
-    local priority=binding and require('EmberRoutesProbe/PublicWork').priorities(binding.id).cooking or 0
+    local priority=binding and require('EmberRoutesProbe/Work/PublicWork').priorities(binding.id).cooking or 0
     local request=job.payload.source=='REQUEST' and Orders.get(job.payload.sourceId)
     local cancelled=job.payload.cancelRequested or request and (request.cancelRequested or request.stopBatchRequested)
     local paused=job.payload.pauseRequested or request and request.pauseRequested
@@ -135,7 +135,7 @@ local function recover(actor,job)
         local id=EmberRoutesProbeJava.workerIdAt(S.rescueCursor) S.rescueCursor=(S.rescueCursor+1)%count
         local nextBinding=id~=job.npcId and idle(actor,id)
         if nextBinding then
-            local nextJob=require('EmberRoutesProbe/CookingHandoff').transfer(actor,job,nextBinding)
+            local nextJob=require('EmberRoutesProbe/Cooking/CookingHandoff').transfer(actor,job,nextBinding)
             if nextJob then submit(actor,nextBinding,nextJob,true) Signals.changed(id) return end
         end
     end
@@ -143,7 +143,7 @@ end
 local function requestPlan(row,o,entry,binding,b,actor)
     if not row.gate then
         row.cold={entry=entry,npc=binding.handle}
-        row.gate=require('EmberRoutesProbe/CookingCargo').coldGate(row.cold,.001)
+        row.gate=require('EmberRoutesProbe/Cooking/CookingCargo').coldGate(row.cold,.001)
     end
     row.cold.budget=b
     local cold=row.gate.run()
@@ -156,10 +156,10 @@ local function requestPlan(row,o,entry,binding,b,actor)
         if not binding.handle:isRecipeKnown(spec.recipe,true) then
             row.reason='NPC_RECIPE_UNKNOWN' row.studyTarget=Orders.study(o,spec) return
         end
-        local knownOk,knownWhy=require('EmberRoutesProbe/CookingCraft').known(binding.handle,spec.recipe)
+        local knownOk,knownWhy=require('EmberRoutesProbe/Cooking/CookingCraft').known(binding.handle,spec.recipe)
         if not knownOk then row.reason=knownWhy return end
         if spec.profile.facts.workstation or spec.profile.facts.surface then
-            if not row.stationScan then row.stationScan=require('EmberRoutesProbe/CraftStations').search(entry,spec.profile.facts,function(object) return require('EmberRoutesProbe/CookingDirectives').kitchen(entry.id,object) end) end
+            if not row.stationScan then row.stationScan=require('EmberRoutesProbe/Crafting/CraftStations').search(entry,spec.profile.facts,function(object) return require('EmberRoutesProbe/Cooking/CookingDirectives').kitchen(entry.id,object) end) end
             local allowance=math.min(16,b.scan) if allowance<1 then return end b.scan=b.scan-allowance
             local site,why=row.stationScan:step(allowance)
             if not site then row.reason=why return end
@@ -171,14 +171,14 @@ local function requestPlan(row,o,entry,binding,b,actor)
             if plan then
                 row.bomScan=nil row.fixedScan=nil row.retry=getTimestampMs()+2000
                 if #plan.nodes>1 then
-                    local result=require('EmberRoutesProbe/PublicWork').createPrerequisite(actor,o.id,plan.nodes[1])
+                    local result=require('EmberRoutesProbe/Work/PublicWork').createPrerequisite(actor,o.id,plan.nodes[1])
                     row.reason=result=='ORDER_CREATED' and 'COOKING_PREREQUISITE_WAIT' or result
                 else row.reason='INPUT_CHANGED' end
             elseif err then row.bomScan=nil row.reason=err row.retry=getTimestampMs()+2000 end
             return
         end
         if not row.fixedScan then
-            row.fixedScan,row.reason=require('EmberRoutesProbe/CookingSupply').new(entry,binding.handle,spec.recipeId,'offer:'..o.id)
+            row.fixedScan,row.reason=require('EmberRoutesProbe/Cooking/CookingSupply').new(entry,binding.handle,spec.recipeId,'offer:'..o.id)
         end
         if not row.fixedScan then return end
         local allowance=math.min(32,b.scan) if allowance<1 then return end b.scan=b.scan-allowance
@@ -187,7 +187,7 @@ local function requestPlan(row,o,entry,binding,b,actor)
         elseif err then
             row.reason=err row.fixedScan=nil row.retry=getTimestampMs()+2000
             if err=='MATERIALS_UNAVAILABLE' or err=='TOOLS_UNAVAILABLE' then
-                row.bomScan,row.reason=require('EmberRoutesProbe/CookingSupply').chain(actor,entry,binding.handle,
+                row.bomScan,row.reason=require('EmberRoutesProbe/Cooking/CookingSupply').chain(actor,entry,binding.handle,
                     spec.recipeId,row.station,o.id,o.preferences)
                 if row.bomScan then row.reason='COOKING_PREREQUISITE_CHECK' row.retry=0 end
             end
@@ -230,7 +230,7 @@ function S.advance(env)
                 local id=scope.ids[scope.index] scope.index=scope.index+1 remaining=remaining-1
                 local member=Members.view(id)
                 if member and not member.retired and member.context=='SETTLEMENT'
-                    and (require('EmberRoutesProbe/PublicWork').priorities(id).cooking or 0)>0 then scope.enabled=true end
+                    and (require('EmberRoutesProbe/Work/PublicWork').priorities(id).cooking or 0)>0 then scope.enabled=true end
             end
             if not scope.enabled and scope.index<=#scope.ids then done=false end
         end
@@ -253,7 +253,7 @@ function S.advance(env)
         if row and now>=row.retry then
             local binding=idle(env.actor,id)
             local entry=binding and Members.entry(id,row.entry.id)
-            local priority=require('EmberRoutesProbe/PublicWork').priorities(id).cooking or 0
+            local priority=require('EmberRoutesProbe/Work/PublicWork').priorities(id).cooking or 0
             if not binding or not entry or priority==0 then plans[id]=nil
             else
                 if row.revision~=entry.revision or row.watch and Wake.changed(row.watch)
@@ -295,7 +295,7 @@ function S.advance(env)
                     else
                         if not row.gate then
                             row.cold={entry=entry,npc=binding.handle}
-                            row.gate=require('EmberRoutesProbe/CookingCargo').coldGate(row.cold,.001)
+                            row.gate=require('EmberRoutesProbe/Cooking/CookingCargo').coldGate(row.cold,.001)
                         end
                         row.cold.budget=b
                         local state=row.gate.run()
@@ -375,9 +375,9 @@ function S.claim(selected,npcId,jobId,env)
             selection,reason=row.menu:result() if not selection then return reason end
             selection,reason=Menu.fit(selection,.3) if not selection then return reason end
         else
-            local knownOk,knownWhy=require('EmberRoutesProbe/CookingCraft').known(binding.handle,descriptor.recipe)
+            local knownOk,knownWhy=require('EmberRoutesProbe/Cooking/CookingCraft').known(binding.handle,descriptor.recipe)
             if not knownOk then return knownWhy end
-            local bound,why=require('EmberRoutesProbe/CraftRecipeInputs').bind(descriptor.profile.facts,selection.entries,binding.handle)
+            local bound,why=require('EmberRoutesProbe/Crafting/CraftRecipeInputs').bind(descriptor.profile.facts,selection.entries,binding.handle)
             if not bound then return why end
             for _,r in ipairs(selection.entries) do
                 if r.item:getContainer()~=(r.endpoint and r.endpoint.container or binding.handle:getInventory())
@@ -390,16 +390,16 @@ function S.claim(selected,npcId,jobId,env)
         if not job then return 'COOKING_ADMISSION_INVALID' end
         if descriptor.kind=='EVOLVED' then job.payload.mealBatch=true job.payload.expected=selection.estimated end
         if descriptor.kind=='EVOLVED' then prepared,reason=Evolved.prepare(job,descriptor.recipe,selection)
-        else prepared,reason=require('EmberRoutesProbe/CookingBatch').prepare(job,selection) end
+        else prepared,reason=require('EmberRoutesProbe/Cooking/CookingBatch').prepare(job,selection) end
         if not prepared then return reason or 'COOKING_BATCH_INVALID' end
-        local book=require('EmberRoutesProbe/CookingBudget').open(world,Jobs.current())
+        local book=require('EmberRoutesProbe/Cooking/CookingBudget').open(world,Jobs.current())
         local view=book and book:view(row.entry.id) if not view then return 'COOKING_SUPPLY_CHANGED' end
         ok,reason=book:reserve(job,{scopeId=row.entry.id,stamp=view.stamp,complete=true})
     else
         local selection,why=row.menu:result() if not selection then plans[npcId]=nil return why end
         local snapshot,err=Supply.observe(row.entry,env.now,getGameTime():getWorldAgeHours(),budgets()) if not snapshot then return err end
         if not snapshot.demand.active then return 'MEALS_SUFFICIENT' end
-        local directives=require('EmberRoutesProbe/JobPolicyService').get(row.entry.id,'cooking')
+        local directives=require('EmberRoutesProbe/Work/JobPolicyService').get(row.entry.id,'cooking')
         local gap=directives.batchMeals==false and math.min(snapshot.demand.gap,selection.minimum) or snapshot.demand.gap
         selection,why=Menu.fit(selection,gap) if not selection then return why end
         local batch,err2=Policy.batch(snapshot.demand,selection.minimum) if not batch then return err2 end
@@ -443,7 +443,7 @@ function S.reconcile()
                     if entry then failedAuto[entry.id]={watch=Wake.capture(entry),untilWall=getTimestampMs()+30000,
                         reason=j.payload.reason or j.payload.heat.reason or 'HEAT_STOPPED_BEFORE_COOKED'} end
                 end
-                require('EmberRoutesProbe/Log').write('COOKING','SETTLED job='..j.id..' npc='..j.npcId
+                require('EmberRoutesProbe/Kernel/Log').write('COOKING','SETTLED job='..j.id..' npc='..j.npcId
                     ..' state='..j.state..' profile='..j.payload.profileId..' reason='..tostring(j.payload.reason or j.payload.heat and j.payload.heat.reason))
                 offers[key]=nil
             end
@@ -487,14 +487,14 @@ function S.retire(limit)
 end
 function S.status(id) load() local row=plans[id] return row and row.reason end
 function S.stock(actor,rule)
-    local entry=require('EmberRoutesProbe/SettlementLedger').view(actor,rule.settlementId)
+    local entry=require('EmberRoutesProbe/Settlement/SettlementLedger').view(actor,rule.settlementId)
     if not entry then return nil,'ACCESS_DENIED' end
     local snapshot,why=Supply.observe(entry,getTimestampMs(),getGameTime():getWorldAgeHours(),budgets())
     if not snapshot then return nil,why end
     return {state='READY',complete=true,knownCount=(snapshot.readyByType or {})[rule.product] or 0}
 end
 function S.command(actor,scopeId,jobId,action)
-    local entry,reason=require('EmberRoutesProbe/SettlementLedger').view(actor,scopeId)
+    local entry,reason=require('EmberRoutesProbe/Settlement/SettlementLedger').view(actor,scopeId)
     if not entry then return reason or 'ACCESS_DENIED' end
     load()
     local job=Jobs.current():peek(jobId)

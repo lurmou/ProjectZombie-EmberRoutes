@@ -40,9 +40,9 @@ check(Cards.phaseIndex({phase='HEATING'})==3,'legacy cooking stages remain suppo
 local oldSignature=Cards.signature(row)
 row.stages[2].labelKey='new-route' row.stages[2].status='PLANNED'
 check(Cards.signature(row)~=oldSignature,'step changes invalidate cache even when phase and job version stay the same')
-package.loaded['EmberRoutesProbe/MembershipService']={view=function() end}
-package.loaded['EmberRoutesProbe/DisplayNames']={name=function() return 'Worker' end}
-local projector=require 'EmberRoutesProbe/FieldWorkMonitor'
+package.loaded['EmberRoutesProbe/Settlement/MembershipService']={view=function() end}
+package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function() return 'Worker' end}
+local projector=require 'EmberRoutesProbe/Field/FieldWorkMonitor'
 local fieldJob={id='clean',npcId='n',revision=1,state='RUNNING',effects='KNOWN',payload={category='cleaning',
     phase='WORK',target={kind='STAIN',x=1,y=1,z=0},assets={}}}
 local view=projector.project({bind=function() end},fieldJob)

@@ -1,8 +1,9 @@
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
-local oldLog=package.loaded['EmberRoutesProbe/Log']
+local oldLog=package.loaded['EmberRoutesProbe/Kernel/Log']
 local logs=0 local logger=oldLog or {} local oldWrite=logger.write
-logger.write=function() logs=logs+1 end package.loaded['EmberRoutesProbe/Log']=logger
-local Metrics=require 'EmberRoutesProbe/WarehouseMetrics'
+logger.write=function() logs=logs+1 end package.loaded['EmberRoutesProbe/Kernel/Log']=logger
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseMetrics']=nil
+local Metrics=require 'EmberRoutesProbe/Warehouse/WarehouseMetrics'
 local previous=_G.EmberRoutesProbeJava
 local reads,clock=0,0
 EmberRoutesProbeJava={diagnosticTimeNanos=function() reads=reads+1 clock=clock+1000 return clock end}
@@ -17,5 +18,5 @@ check(report['ui.query'].recentP95Ms==0.001,'recent percentile reflects the boun
 local calls=reads Metrics.begin('ui.query')
 check(reads==calls and logs==1,'stop disables timers and emits one aggregate per sampled stage')
 Metrics.start() check(not Metrics.report()['ui.query'],'new sampling session drops old measurements') Metrics.stop()
-EmberRoutesProbeJava=previous logger.write=oldWrite package.loaded['EmberRoutesProbe/Log']=oldLog
+EmberRoutesProbeJava=previous logger.write=oldWrite package.loaded['EmberRoutesProbe/Kernel/Log']=oldLog
 print('PASS '..n..' bounded CPU metrics checks; GPU timing NOT RUN')

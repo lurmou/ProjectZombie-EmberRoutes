@@ -1,8 +1,8 @@
 -- Production reading leaf; native action is a contract-shaped double.
 package.loaded['TimedActions/ISReadABook']=true
-package.loaded['EmberRoutesProbe/LibraryIndex']={useful=function() return true end}
-package.loaded['EmberRoutesProbe/RuntimeMetrics']={active=function() return false end}
-package.loaded['EmberRoutesProbe/StudyService']={completed=function() end}
+package.loaded['EmberRoutesProbe/Leisure/LibraryIndex']={useful=function() return true end}
+package.loaded['EmberRoutesProbe/Kernel/RuntimeMetrics']={active=function() return false end}
+package.loaded['EmberRoutesProbe/Leisure/StudyService']={completed=function() end}
 local queued local learned=0
 local root={}
 local item={getContainer=function() return root end,getID=function() return 7 end,getFullType=function() return 'Base.Magazine' end,
@@ -19,7 +19,7 @@ ISTimedActionQueue={hasAction=function(a) return a==queued end}
 local c={npc=npc,job={npcId='n'},effects='KNOWN',payload={attemptId='a',itemId=7,study={orderId='assigned-study'}},
  persist=function() return true end,valid=function() return true end,sameAttempt=function() return true end,
  body={current=function() return true end,retained=function() return true end,add=function(a) queued=a return true end}}
-local leaf=require('EmberRoutesProbe/StudyActions').read(c,item)
+local leaf=require('EmberRoutesProbe/Leisure/StudyActions').read(c,item)
 assert(leaf.run()=='Running') local action=queued action:start() action:complete() action:perform()
 assert(learned==1 and leaf.run()=='Success' and c.effects=='KNOWN','assigned study preserves character effects without player UI/map side effects')
 print('PASS assigned NPC study UI boundary; native reading engine NOT RUN')

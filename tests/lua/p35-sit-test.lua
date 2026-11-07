@@ -7,21 +7,21 @@ CharacterStat={PAIN='pain'} CharacterTrait={SMOKER='smoker'}
 local idle={} IdleState={instance=function() return idle end}
 local entry={id='home',revision=1}
 dofile('tests/lua/membership-fixture.lua')(function() return entry end,{'a'})
-package.loaded['EmberRoutesProbe/ContainerRegistry']={data=function() return root end,id=function() return 'x' end}
-package.loaded['EmberRoutesProbe/TaskJobs']={current=function() return {forNpc=function() return {} end} end}
-package.loaded['EmberRoutesProbe/StudyService']={changed=function() end}
-package.loaded['EmberRoutesProbe/Companion']={exportState=function() return {mode='HOLD'} end}
+package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() return 'x' end}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs']={current=function() return {forNpc=function() return {} end} end}
+package.loaded['EmberRoutesProbe/Leisure/StudyService']={changed=function() end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={exportState=function() return {mode='HOLD'} end}
 local settlementRoot={format=1,revision=1,entries={[entry.id]=entry},publicLifeZones={format=1,revision=0,byId={}}}
-package.loaded['EmberRoutesProbe/SettlementLedger']={view=function() return entry end,data=function() return settlementRoot end}
-package.loaded['EmberRoutesProbe/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/LibraryIndex']={choose=function() return nil,true end}
-package.loaded['EmberRoutesProbe/SettlementFacilities']={describe=function() end,watch=function() return {slots={}} end,
+package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() return entry end,data=function() return settlementRoot end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
+package.loaded['EmberRoutesProbe/Leisure/LibraryIndex']={choose=function() return nil,true end}
+package.loaded['EmberRoutesProbe/Settlement/SettlementFacilities']={describe=function() end,watch=function() return {slots={}} end,
     advance=function() return 0 end,reason=function() return 'PENDING' end}
 getCell=function() return {getGridSquare=function() end} end
 local seat={}
 local prepared={id='s1',partId='p1',revision=1,parts={},key='seat:1'}
 local resolvedKind,resolvedOwner
-package.loaded['EmberRoutesProbe/ReposeSites']={
+package.loaded['EmberRoutesProbe/SelfCare/ReposeSites']={
     new=function() return {step=function() return {object=seat,revision=1,key='seat:1',settlementId='home'},true end} end,
     prepare=function() return prepared end,
     keys=function(proof,kind) assert(kind=='REST') return {'repose:s1:p1'} end,
@@ -36,7 +36,7 @@ local npc={getX=function() return 1 end,getY=function() return 1 end,getZ=functi
     getPrimaryHandItem=function() end,getSecondaryHandItem=function() end,hasTrait=function() return false end,
     getFitness=function() return fitness end,getCurrentState=function() return idle end,
     isAsleep=function() return false end,isResting=function() return sitResting end}
-local Service=require 'EmberRoutesProbe/LeisureService'
+local Service=require 'EmberRoutesProbe/Leisure/LeisureService'
 local binding={id='a',handle=npc}
 local s={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
 -- Without the native repose bridge the seat branch must not even scan.
@@ -51,7 +51,7 @@ assert(candidate and candidate.leisure.activity=='SIT','seat scan yields a sitti
 assert(candidate.site==prepared and candidate.claims[1]=='repose:s1:p1','proof and repose keys ride the payload')
 assert(Service.valid({},npc,'a',{settlementId='home',leisure={activity='SIT'}})==false,'SIT without site proof is rejected')
 assert(Service.valid({},npc,'a',{settlementId='home',membershipRevision=1,settlementRevision=1,leisure={activity='OBSERVE'}})==true)
-assert(require('EmberRoutesProbe/LeisureRecord').valid({kind='LEISURE',settlementId='home',
+assert(require('EmberRoutesProbe/Leisure/LeisureRecord').valid({kind='LEISURE',settlementId='home',
     leisure={format=1,activity='SIT',hours=1,started=true,untilHours=2}}),'record accepts SIT payloads')
 
 -- Execution leaf: enter REST through the body capability, sit out the game
@@ -67,8 +67,8 @@ local function context(jobId)
         persist=function() return true end,valid=function() return true end,sameAttempt=function() return true end,
         body=body}
 end
-package.loaded['EmberRoutesProbe/LeisurePosture']={new=function() return {enter=function() return 'Success' end,leave=function() return true end} end}
-local S=require 'EmberRoutesProbe/LeisureSit'
+package.loaded['EmberRoutesProbe/Leisure/LeisurePosture']={new=function() return {enter=function() return 'Success' end,leave=function() return true end} end}
+local S=require 'EmberRoutesProbe/Leisure/LeisureSit'
 local switch,reviews=false,0
 Service.review=function() reviews=reviews+1 return switch end
 local c=context('j1')

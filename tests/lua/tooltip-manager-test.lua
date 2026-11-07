@@ -76,7 +76,7 @@ local panel = { parent = page }
 local w1 = makeWidget()
 local originalPrerender = w1.prerender
 
-TooltipManager.attach(w1, "prerender", panel)
+TooltipManager.register(w1,{method="prerender",owner=panel})
 check(
     w1.prerender ~= originalPrerender,
     "register installs native method wrapper"
@@ -161,17 +161,17 @@ check(
 )
 
 ----------------------------------------------------------------
--- 6. Legacy clearOwner remains temporary
+-- 6. dismissOwner hides temporarily without unregistering
 ----------------------------------------------------------------
 w1.tooltipUI:setVisible(true)
-TooltipManager.clearOwner(page)
+TooltipManager.dismissOwner(page)
 check(
     not w1.tooltipUI:getIsVisible(),
-    "legacy clearOwner still dismisses"
+    "dismissOwner hides active tooltips"
 )
 check(
     w1.prerender == hookedPrerender,
-    "legacy clearOwner does not unregister"
+    "dismissOwner preserves registration"
 )
 
 TooltipManager.unregister(w1)
@@ -188,11 +188,7 @@ local nestedPanel = { parent = nestedPage }
 local w2 = makeWidget()
 local originalW2 = w2.prerender
 
-TooltipManager.attach(
-    w2,
-    "prerender",
-    nestedPanel
-)
+TooltipManager.register(w2,{method="prerender",owner=nestedPanel})
 w2.tooltipUI:setVisible(true)
 
 local removed = TooltipManager.unregisterOwner(nestedPage)
@@ -221,7 +217,7 @@ local ownerB = {}
 local w3 = makeWidget()
 local originalW3 = w3.prerender
 
-TooltipManager.attach(w3, "prerender", ownerA)
+TooltipManager.register(w3,{method="prerender",owner=ownerA})
 local w3Hook = w3.prerender
 
 TooltipManager.register(w3, { method = "prerender", owner = ownerB })
@@ -264,7 +260,7 @@ w4.prerender = function(self)
     return nil, 42, nil, "tail"
 end
 
-TooltipManager.attach(w4, "prerender", page)
+TooltipManager.register(w4,{method="prerender",owner=page})
 local returnCount = select("#", w4:prerender())
 check(
     returnCount == 4,
@@ -294,7 +290,7 @@ w5.updateTooltip = function(self)
 end
 local originalUpdate = w5.updateTooltip
 
-TooltipManager.attach(w5, "prerender", page)
+TooltipManager.register(w5,{method="prerender",owner=page})
 TooltipManager.register(w5, { method = "updateTooltip", owner = page })
 check(
     w5.prerender == originalPre,
@@ -322,7 +318,7 @@ check(
 ----------------------------------------------------------------
 local w6 = makeWidget()
 local externalCalls = 0
-TooltipManager.attach(w6, "prerender", page)
+TooltipManager.register(w6,{method="prerender",owner=page})
 
 local externalMethod = function(self)
     externalCalls = externalCalls + 1
@@ -381,7 +377,7 @@ cycleA.parent = cycleB
 cycleB.owner = cycleA
 
 local w8 = makeWidget()
-TooltipManager.attach(w8, "prerender", cycleA)
+TooltipManager.register(w8,{method="prerender",owner=cycleA})
 w8.tooltipUI:setVisible(true)
 
 check(
@@ -399,7 +395,7 @@ check(
 local w9 = makeWidget()
 local originalW9 = w9.prerender
 
-TooltipManager.attach(w9, "prerender", page)
+TooltipManager.register(w9,{method="prerender",owner=page})
 check(
     TooltipManager.unregister(w9),
     "first direct unregister succeeds"
@@ -419,7 +415,7 @@ check(
 local w10 = makeWidget()
 local originalW10 = w10.prerender
 
-TooltipManager.attach(w10, "prerender", page)
+TooltipManager.register(w10,{method="prerender",owner=page})
 local removedAll = TooltipManager.clearAll()
 check(
     removedAll == 1,
@@ -448,10 +444,10 @@ local origZonePrerender = zoneBtn.prerender
 local origCartPrerender = cartBtn.prerender
 
 -- Step A: Attach all 4 native Warehouse buttons
-TooltipManager.attach(zoneBtn, "prerender", whPage)
-TooltipManager.attach(helpBtn, "prerender", whPage)
-TooltipManager.attach(cartBtn, "prerender", whPage)
-TooltipManager.attach(pillBtn, "prerender", whPage)
+TooltipManager.register(zoneBtn,{method="prerender",owner=whPage})
+TooltipManager.register(helpBtn,{method="prerender",owner=whPage})
+TooltipManager.register(cartBtn,{method="prerender",owner=whPage})
+TooltipManager.register(pillBtn,{method="prerender",owner=whPage})
 
 -- Show tooltips
 zoneBtn.tooltipUI:setVisible(true)
@@ -463,7 +459,7 @@ pillBtn.tooltipUI:setVisible(true)
 local drawerInstance1 = { Type = "DeliveryCartDrawer", owner = whPage }
 local drawerBtn1 = makeWidget()
 local origDrawerBtn1Prerender = drawerBtn1.prerender
-TooltipManager.attach(drawerBtn1, "prerender", drawerInstance1)
+TooltipManager.register(drawerBtn1,{method="prerender",owner=drawerInstance1})
 drawerBtn1.tooltipUI:setVisible(true)
 
 check(zoneBtn.tooltipUI:getIsVisible() == true, "warehouse button tooltip visible before switch")
@@ -488,7 +484,7 @@ zoneBtn.tooltipUI:setVisible(true)
 local drawerInstance2 = { Type = "DeliveryCartDrawer", owner = whPage }
 local drawerBtn2 = makeWidget()
 local origDrawerBtn2Prerender = drawerBtn2.prerender
-TooltipManager.attach(drawerBtn2, "prerender", drawerInstance2)
+TooltipManager.register(drawerBtn2,{method="prerender",owner=drawerInstance2})
 drawerBtn2.tooltipUI:setVisible(true)
 
 -- Step E: Repeated page switch (deactivate again)
