@@ -11,7 +11,11 @@ import zombie.iso.IsoCamera;
 import zombie.iso.IsoCell;
 import zombie.network.GameClient;
 import zombie.network.GameServer;
+import zombie.pathfind.Path;
 import zombie.pathfind.PathFindBehavior2;
+import emberroutes.probe.nav.EmberPathfinder;
+import emberroutes.probe.nav.NavRaycast;
+import java.util.List;
 
 /** Owned single-player carrier experiment. No upstream NPC implementation is embedded. */
 public final class ProbeNpc extends IsoPlayer {
@@ -595,9 +599,12 @@ public final class ProbeNpc extends IsoPlayer {
         getPathFindBehavior2().pathNextIsSet=false;
         setPath2(null);
         movement.begin(x,y,z,now);
-        moveResult="MOVING"; pathResult="REQUESTED";
         moveStartX=getX(); moveStartY=getY(); nextProgressLog=now+1_000_000_000L;
-        getPathFindBehavior2().pathToLocationF(x,y,z);
+        if (dispatchCustomRoute(x, y, z)) {
+            moveResult="MOVING"; pathResult="FOUND";
+        } else {
+            moveResult="BLOCKED"; pathResult="NO_PATH";
+        }
     }
     /** Locomotion-only halt while the follow session keeps its body grant. */
     void holdFollowMovement() {
@@ -645,14 +652,43 @@ public final class ProbeNpc extends IsoPlayer {
         long timeout=(long)Math.min(180_000_000_000.0,10_000_000_000.0+distance*3_000_000_000.0);
         movement.begin(x,y,z,now,timeout);
         nextProgressLog = now + 1_000_000_000L;
-        pathResult = "REQUESTED";
-        moveResult = "MOVING";
-        // The player action group has no PathFindState. Set only the native
-        // request here; doDeferredMovement below supplies its movement intent.
-        getPathFindBehavior2().pathNextIsSet = false;
-        getPathFindBehavior2().pathToLocationF(x, y, z);
-        ProbeRuntime.log("MOVE_TARGET origin=" + getX() + "," + getY() + "," + getZ()
-                + " target=" + x + "," + y + "," + z + " distance=" + movement.distance(getX(), getY(), getZ()));
+
+        if (dispatchCustomRoute(x, y, z)) {
+            pathResult = "FOUND";
+            moveResult = "MOVING";
+            ProbeRuntime.log("MOVE_TARGET origin=" + getX() + "," + getY() + "," + getZ()
+                    + " target=" + x + "," + y + "," + z + " distance=" + movement.distance(getX(), getY(), getZ()));
+        } else {
+            registerMoveFailure(now);
+            pathResult = "NO_PATH";
+            moveResult = "BLOCKED";
+            stopProbe();
+            ProbeRuntime.log("MOVE_BLOCKED origin=" + getX() + "," + getY() + "," + getZ()
+                    + " target=" + x + "," + y + "," + z + " (no path found or blocked)");
+        }
+    }
+
+    private boolean dispatchCustomRoute(float x, float y, float z) {
+        List<NavRaycast.Waypoint> waypoints = EmberPathfinder.findPath(
+                this,
+                (int) Math.floor(getX()), (int) Math.floor(getY()), (int) getZ(),
+                (int) Math.floor(x), (int) Math.floor(y), (int) z,
+                EmberPathfinder.DEFAULT_MAX_NODES
+        );
+
+        if (waypoints != null && !waypoints.isEmpty()) {
+            Path nativePath = new Path();
+            for (int i = 0; i < waypoints.size(); i++) {
+                NavRaycast.Waypoint wp = waypoints.get(i);
+                nativePath.addNode(wp.x, wp.y, wp.z);
+            }
+            var pathBehavior = getPathFindBehavior2();
+            pathBehavior.cancel();
+            pathBehavior.setData(x, y, z);
+            pathBehavior.Succeeded(nativePath, this);
+            return true;
+        }
+        return false;
     }
 
     /** Exponential path-request backoff: 1.5s, 3s, 6s, capped at 8s. */

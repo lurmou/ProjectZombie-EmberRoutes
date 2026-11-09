@@ -159,6 +159,11 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix Environment interaction test compilati
 & $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.EnvironmentInteractionTest'
 if ($LASTEXITCODE -ne 0) { throw "$prefix Environment interaction tests failed" }
 
+& $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/NavPathfinderTest.java')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Nav pathfinder test compilation failed" }
+& $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.NavPathfinderTest'
+if ($LASTEXITCODE -ne 0) { throw "$prefix Nav pathfinder tests failed" }
+
 & $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/FollowMetricsTest.java')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Follow metrics test compilation failed" }
 & $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.FollowMetricsTest'
