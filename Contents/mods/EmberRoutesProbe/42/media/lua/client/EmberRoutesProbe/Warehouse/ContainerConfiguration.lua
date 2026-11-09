@@ -8,7 +8,7 @@ local Config={presets={
     "weapons","weapons.guns","weapons.ammo",
     "apparel","literature","tools","materials","trade","scrap",
     "kit.fishing","kit.farming","kit.tailoring","kit.mechanic"
-}}
+}, priorities={1, 2, 3, 4, 5}}
 local clipboard=setmetatable({},{__mode="k"})
 function Config.text(key)
     for _,prefix in ipairs({"IGUI_EmberRoutesProbe_Filter_","IGUI_EmberRoutesProbe_WorkCode_","IGUI_EmberRoutesProbe_Logistics_"}) do
@@ -59,7 +59,9 @@ function Config.paste(actor,target)
 end
 function Config.summary(config,role,registered)
     if not config then return Config.text("configUnregistered") end
-    local state=Config.text(config.private and "privateShort" or "configShared").." | "..Config.text(config.enabled and "configEnabled" or "disabled")
+    local prio = config.priority or 3
+    local prioText = Config.text("priority" .. prio)
+    local state=Config.text(config.private and "privateShort" or "configShared").." | "..Config.text(config.enabled and "configEnabled" or "disabled").." | "..prioText
     local allowed,denied,yes,no={},{},0,0
     for _,id in ipairs(Filter.order) do
         if config.groups[id]==true then allowed[#allowed+1]=Config.text(id)

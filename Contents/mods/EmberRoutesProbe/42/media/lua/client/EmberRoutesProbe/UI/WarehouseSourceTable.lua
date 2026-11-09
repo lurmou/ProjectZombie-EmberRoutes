@@ -1,3 +1,4 @@
+local Visual=require "EmberRoutesProbe/UI/StatusVisual"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local SourceTable={}
@@ -61,7 +62,7 @@ function SourceTable.style(presentation,name,secondary)
             local v,c=entry.item.visual,list.emberColumns
             if list.selected==entry.index then
                 Theme.rect(list,0,y,list.width,height,Theme.selected)
-                Theme.rect(list,0,y,math.max(2,h/6),height,Theme.accent)
+                Theme.rect(list,0,y,list.width,height,Theme.selectedBorder or Theme.border,true)
             elseif list.mouseoverselected==entry.index then
                 Theme.rect(list,0,y,list.width,height,Theme.hover)
             end
@@ -78,7 +79,7 @@ function SourceTable.style(presentation,name,secondary)
                     Theme.text(list,"?",p+c.icon/3,iconY+(c.icon-h)/2,Theme.muted)
                 end
                 if v.pinned then
-                    Theme.text(list,"★",p+1,iconY-1,Theme.gold)
+                    Visual.icon(list,p+1,iconY-1,10,"star",Theme.gold)
                 end
             end
 

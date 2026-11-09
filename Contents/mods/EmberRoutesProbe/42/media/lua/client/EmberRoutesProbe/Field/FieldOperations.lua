@@ -159,7 +159,7 @@ local function corpse(c,t)
         local p=Discovery.policy('cleaning',c.job.scopeId)
         local zone=require('EmberRoutesProbe/Settlement/SettlementZones').get(p.corpseZoneId)
         if not zone or not zone.enabled or zone.settlementId~=c.job.scopeId then c.reason='FIELD_CORPSE_ZONE_REQUIRED' return 'Failure' end
-        local a=(zone.areas or {})[1] if not a then return 'Failure' end
+        local a=(zone.areas or {})[1] if not a then c.reason='FIELD_CORPSE_ZONE_EMPTY' return 'Failure' end
         local dest=Spatial.square({x=a.x,y=a.y,z=a.z or 0})
         local own=c.npc:getCurrentSquare()
         local arrived=dest and own==dest and (c.npc:getX()-(a.x+0.5))^2+(c.npc:getY()-(a.y+0.5))^2<=0.16
@@ -185,7 +185,8 @@ local function corpse(c,t)
                     ..' square='..sq:getX()..','..sq:getY()..','..sq:getZ()..' delivered='..tostring(delivered)) end
                 return saved,delivered
             end})
-        return c.node and 'Running' or 'Failure'
+        if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
+    return 'Running'
     end
     if c.npc:isDraggingCorpse() then c.reason='FIELD_NPC_ALREADY_DRAGGING_CORPSE' return 'Failure' end
     local b=Discovery.object(t)
@@ -211,10 +212,14 @@ local function corpse(c,t)
     if secondary and secondary~=primary then hands[#hands+1]=secondary end
     for _,item in ipairs(hands) do
         if item then
-            local owner=Store.owner(item:getID()) if owner and owner.taskId~=c.job.id then return 'Failure' end
+            local id=item:getID()
+            local owner=Store.owner(id)
+            local allowed=not owner or owner.taskId==c.job.id or Store.canClaimTool(c.job.npcId,id)
+            if not allowed then c.reason='FIELD_HANDS_OCCUPIED' return 'Failure' end
             c.node=Native.new(c,{kind='UNEQUIP',create=function() return ISUnequipAction:new(c.npc,item,50) end,
                 observe=function(ok,finished) return true,c.npc:getPrimaryHandItem()~=item and c.npc:getSecondaryHandItem()~=item,not finished end})
-            return c.node and 'Running' or 'Failure'
+            if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
+            return 'Running'
         end
     end
     c.node=Native.new(c,{kind='GRAB_CORPSE',create=function() return ISGrabCorpseAction:new(c.npc,b) end,
@@ -232,7 +237,8 @@ local function corpse(c,t)
             if not finished and targetStillWorld then return true,false,true end
             return false,false
         end})
-    return c.node and 'Running' or 'Failure'
+    if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
+    return 'Running'
 end
 local function work(c,t,tools)
     local square=Spatial.square(t) if not square then c.reason='FIELD_TARGET_UNLOADED' return 'Failure' end
@@ -378,7 +384,8 @@ local function work(c,t,tools)
         h.afterPerform=function() return zone.forageIcons[t.iconId]==nil end
     end
     c.node=Native.new(c,h)
-    return c.node and 'Running' or 'Failure'
+    if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
+    return 'Running'
 end
 local function waste(c,t)
     local entry=require('EmberRoutesProbe/Settlement/SettlementLedger').get(c.job.scopeId)
@@ -418,7 +425,8 @@ local function waste(c,t)
             end
             return item:getContainer()==ep.container,false,not finished
         end})
-    return c.node and 'Running' or 'Failure'
+    if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
+    return 'Running'
 end
 function O.step(c)
     local previous=c.job.payload.attempt

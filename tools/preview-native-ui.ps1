@@ -3,7 +3,7 @@
 param(
     [string]$GameRoot = 'D:/Software/GameApp/steam/steamapps/common/ProjectZomboid',
     [switch]$Smoke,
-    [ValidateSet('native','widgets','squad','settlement','layout')][string]$Scene = 'native',
+    [ValidateSet('native','widgets','squad','settlement','settlement-empty','layout','styles','storage')][string]$Scene = 'native',
     [ValidateSet('CN','EN')][string]$Language = 'CN',
     [ValidateRange(640,3840)][int]$Width = 960,
     [ValidateRange(480,2160)][int]$Height = 600,

@@ -113,7 +113,7 @@ function Details.new(owner,bounds,presentation)
     -- Pin button at top-right of hero card (measured against both states + padded to avoid right overflow)
     local pinTitleDefault = text("pin") or "收藏"
     local tm = getTextManager()
-    local wPin = tm:MeasureStringX(UIFont.Small, text("pin") or "★ 收藏置顶")
+    local wPin = tm:MeasureStringX(UIFont.Small, text("pin") or "收藏置顶")
     local wUnpin = tm:MeasureStringX(UIFont.Small, text("unpin") or "取消置顶")
     local pinW = math.max(68, math.max(wPin, wUnpin) + p * 2 + 10)
     local pinH = math.floor(h * 1.35)

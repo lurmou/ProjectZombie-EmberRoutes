@@ -99,13 +99,15 @@ end
 function M.retireSettled(limit)
     load()
     if store:ordinaryCount()==0 then return 0 end
-    local ids={}
-    for id,j in pairs(world.taskJobs.byId) do
-        if j.providerType~='SELF_CARE' and (j.state=='DONE' or j.state=='CANCELLED') then ids[#ids+1]=id end
-    end
-    table.sort(ids)
     local n=0
-    for _,id in ipairs(ids) do if M.retire(id) then n=n+1 if n>=limit then break end end end
+    for id,j in pairs(world.taskJobs.byId) do
+        if j.providerType~='SELF_CARE' and (j.state=='DONE' or j.state=='CANCELLED') then
+            if M.retire(id) then
+                n=n+1
+                if n>=limit then break end
+            end
+        end
+    end
     return n
 end
 return M

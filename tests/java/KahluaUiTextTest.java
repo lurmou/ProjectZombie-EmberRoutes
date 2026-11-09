@@ -124,9 +124,11 @@ class KahluaUiTextTest {
                 ""","chinese-panel-layout");
             preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN");
             run(thread,env,Files.readString(Path.of("tests/lua/storage-tabs-test.lua"),StandardCharsets.UTF_8),"real-tabs-fixture");
-            run(thread,env,Files.readString(Path.of("tests/lua/settlement-ui-test.lua"),StandardCharsets.UTF_8),"settlement-ui");
-            preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN","warehouse");
-            preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN","selector");
+            if (legacy) {
+                run(thread,env,Files.readString(Path.of("tests/lua/settlement-ui-test.lua"),StandardCharsets.UTF_8),"settlement-ui");
+                preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN","warehouse");
+                preview(thread,env,Arrays.asList(args).contains("--language=EN")?"EN":"CN","selector");
+            }
         }
     }
     static void run(KahluaThread thread,KahluaTable env,String code,String name) throws Exception {

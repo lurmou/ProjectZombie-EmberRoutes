@@ -1,5 +1,5 @@
 require 'ISUI/ISCollapsableWindow'
-require 'ISUI/ISComboBox'
+local Dropdown = require 'EmberRoutesProbe/UI/Dropdown'
 require 'ISUI/ISButton'
 local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
@@ -37,10 +37,12 @@ function Dialog:createChildren()
         local columns=assert(Layout.axis(row,{{grow=1},{grow=1}},{gap=p}))
         self.labels[#self.labels+1]={text=text(id),x=columns[1].x,y=columns[1].y}
         local r=columns[2]
-        local combo=ISComboBox:new(r.x,r.y,r.width,math.min(r.height,h+p),self,nil)
+        local combo=Dropdown:new(r.x,r.y,r.width,math.min(r.height,h+p),self,nil)
         combo:initialise() self:addChild(combo)
-        for n=0,2 do combo:addOption(text('rule'..n)) end
-        combo.selected=(self.zone.rules[id] or 1)+1 self.fields[id]=combo
+        local ruleOpts={}
+        for n=0,2 do table.insert(ruleOpts,{id=n,label=text('rule'..n)}) end
+        combo:setOptions(ruleOpts,self.zone.rules[id] or 1)
+        self.fields[id]=combo
     end
     self.noticeBounds=rows[#rows-1]
     local r=rows[#rows]
@@ -48,7 +50,7 @@ function Dialog:createChildren()
     button:initialise() Theme.button(button,true) self:addChild(button)
 end
 function Dialog:apply()
-    local rules={} for id,combo in pairs(self.fields) do rules[id]=combo.selected-1 end
+    local rules={} for id,combo in pairs(self.fields) do rules[id]=combo:getSelectedData() or 0 end
     local zone,why=Zones.save(self.actor,self.zone.settlementId,self.zone.id,self.zone.revision,
         {name=self.zone.name,area=self.zone.area,enabled=self.zone.enabled,rules=rules})
     if zone then self.zone=zone self.notice=text('saved') else self.notice=text(why) end

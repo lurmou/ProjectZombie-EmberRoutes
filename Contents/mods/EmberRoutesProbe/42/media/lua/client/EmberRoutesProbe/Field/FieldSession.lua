@@ -59,7 +59,7 @@ function S.spec(c,def,cooldowns)
         return require('EmberRoutesProbe/Runtime/TaskBusinessStop').new({controller=controller,ticket=ticket,
             npc=c.npc,npcId=job.npcId,jobId=job.id,same=c.same,
             pause=function(reason)
-                c.stopping=true c.reason=c.reason or reason
+                c.stopping=true c.reason=c.reason or (c.abandon and 'FIELD_ABANDONED' or reason)
                 require('EmberRoutesProbe/Kernel/Log').write('FIELD_SESSION','STOP job='..c.job.id..' reason='..tostring(c.reason)
                     ..' phase='..c.job.payload.phase..' workDone='..tostring(c.job.payload.workDone)
                     ..' holding='..tostring(c.job.payload.holding)..' mask='..tostring(c.body.snapshot().nativeMask))
@@ -111,8 +111,16 @@ function S.spec(c,def,cooldowns)
                         j.payload.phase='SETTLED' j.payload.claims={} j.obligations={}
                         j.payload.toolSupply=nil
                     end)
-                    if c.abandon then cooldowns[c.job.payload.offerKey]=getTimestampMs()
-                        +((c.job.payload.approachFails or 0)>=3 and 600000 or 10000) end
+                    if c.abandon then
+                        local failsKey=c.job.payload.offerKey..':fails'
+                        local fails=(cooldowns[failsKey] or 0)+1
+                        cooldowns[failsKey]=fails
+                        local duration=(fails>=3 or (c.job.payload.approachFails or 0)>=3) and 600000 or (fails*10000)
+                        cooldowns[c.job.payload.offerKey]=getTimestampMs()+duration
+                    else
+                        cooldowns[c.job.payload.offerKey..':fails']=nil
+                    end
+
                 end
                 if ok then Signals.changed(job.npcId) end
                 return ok

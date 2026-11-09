@@ -38,11 +38,17 @@ end
 function Base:ensureVisible() end
 function Base:onJoypadDown() end
 function Base:addOption(opt) self.options=self.options or {} table.insert(self.options,opt) end
+function Base:addOptionWithData(opt, data) self.options=self.options or {} table.insert(self.options,{text=opt,data=data}) end
+function Base:getOptionData(index) return self.options and self.options[index] and self.options[index].data end
+function Base:getOptionText(index) return self.options and self.options[index] and (self.options[index].text or self.options[index]) or "" end
+function Base:isMouseOver() return false end
 ISCollapsableWindow=Base
 ISScrollingListBox=Base
 ISButton=Base
 ISComboBox=Base
-for _,name in ipairs({"ISCollapsableWindow","ISScrollingListBox","ISButton","ISComboBox"}) do package.loaded['ISUI/'..name]=true end
+ISPanel=Base
+ISTextEntryBox=Base
+for _,name in ipairs({"ISCollapsableWindow","ISScrollingListBox","ISButton","ISComboBox","ISPanel","ISTextEntryBox"}) do package.loaded['ISUI/'..name]=true end
 UIFont={Small=1}
 Keyboard={KEY_UP=1,KEY_DOWN=2,KEY_SPACE=3,KEY_RETURN=4,KEY_ESCAPE=5}
 Joypad={AButton=1,BButton=2,XButton=3}

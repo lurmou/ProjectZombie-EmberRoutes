@@ -1,5 +1,6 @@
 require 'ISUI/ISPanel'
 local Node = require 'EmberRoutesProbe/UI/LayoutNode'
+local UICache = require 'EmberRoutesProbe/UI/UICache'
 local Host = ISPanel:derive('EmberRoutesLayoutHost')
 local owners = setmetatable({}, {__mode='k'})
 
@@ -7,7 +8,7 @@ local function same(a,b) return a==b or (a~=a and b~=b) end
 local function finite(n) return type(n)=='number' and n==n and n>-math.huge and n<math.huge end
 
 local KNOWN_CONTAINER_PROPS = { padding=true, gap=true, align=true, justify=true }
-local KNOWN_ITEM_PROPS = { key=true, grow=true, basis=true, margin=true, bind=true, when=true, visible=true }
+local KNOWN_ITEM_PROPS = { key=true, grow=true, basis=true, margin=true, bind=true, when=true, visible=true, pad=true, font=true, autoText=true }
 local VALID_ALIGN = { stretch=true, start=true, center=true, ['end']=true }
 local VALID_JUSTIFY = { start=true, center=true, ['end']=true, ['space-between']=true }
 
@@ -29,11 +30,24 @@ local function makeHandle(host, item, target, kind, key, bounds)
     return setmetatable({ host = host, item = item, target = target, kind = kind, key = key, bounds = bounds }, handleMetatable)
 end
 
+local function resolveAutoBasis(inner, props)
+    local text = props and props.autoText
+    if not text and type(inner)=='table' then
+        text = inner.title or inner.text or inner.label or inner.name
+    end
+    if not text then return 0 end
+    local font = (props and props.font) or (type(inner)=='table' and inner.font) or (UIFont and UIFont.Small)
+    local pad = (props and props.pad) or 16
+    local measured = UICache.measure(font, tostring(text))
+    return measured + pad
+end
+
 function Host:new(x,y,width,height,props)
     local o=ISPanel.new(self,x,y,width,height)
     setmetatable(o,self); self.__index=self
     o.background=false; o.moveWithMouse=false; o.wantMouseEvents=false
     o.rootNode=Node.new(props); o.rootNode:claimRoot(); o._leafItems={}; o._boundSnapshots={}; o._conditionals={}; o._bounds={width=width,height=height}
+    o._autoBasisItems={}; o._debouncers={}; o._layoutRequested=false
     o.scope=false; o.closed=false; o.closing=false; o.sealed=false; o.built=false; o._pending=false
     o.solvedRevision=-1; o.appliedRevision=-1; o.failedSolveRevision=-1; o.failedApplyRevision=-1
     o.errorStage=false; o.errorMessage=false; o.errorSlot=false; o.errorSetter=false
@@ -152,7 +166,13 @@ local function validateItemProps(props)
         assert(finite(props.grow) and props.grow>=0, 'INVALID_GROW')
     end
     if props.basis~=nil then
-        assert(finite(props.basis) and props.basis>=0, 'INVALID_BASIS')
+        assert(props.basis=="auto" or (finite(props.basis) and props.basis>=0), 'INVALID_BASIS')
+    end
+    if props.pad~=nil then
+        assert(finite(props.pad) and props.pad>=0, 'INVALID_PAD')
+    end
+    if props.autoText~=nil then
+        assert(type(props.autoText)=='string', 'INVALID_AUTO_TEXT')
     end
     if props.bind~=nil then
         assert(type(props.bind)=='table' and getmetatable(props.bind)==nil, 'INVALID_BIND_TABLE')
@@ -197,6 +217,7 @@ local function preflight(host,spec,seenSpecs,seenKeys,seenTargets)
             end
             local inner=child.child
             if inner.isLayoutSpec then
+                assert(not child.props or child.props.basis~="auto", 'CONTAINER_AUTO_BASIS_UNSUPPORTED')
                 preflight(host,inner,seenSpecs,seenKeys,seenTargets)
             elseif inner.isSpacer then
                 assert(finite(inner.grow) and inner.grow>=0, 'INVALID_SPACER_GROW')
@@ -222,7 +243,7 @@ local function preflight(host,spec,seenSpecs,seenKeys,seenTargets)
     end
 end
 
-local function stage(host,parentNode,spec,stagedLeaves,candidateHandles,stagedBoundItems,stagedConditionals)
+local function stage(host,parentNode,spec,stagedLeaves,candidateHandles,stagedBoundItems,stagedConditionals,stagedAutoBasis)
     parentNode.direction=spec.type
     local p=spec.props or {}
     if p.gap then parentNode:setGap(p.gap) end
@@ -255,7 +276,7 @@ local function stage(host,parentNode,spec,stagedLeaves,candidateHandles,stagedBo
                     candidateHandles[handleKey]=h
                     if when~=nil then stagedConditionals[#stagedConditionals+1]={handle=h,when=when} end
                 end
-                stage(host,childNode,inner,stagedLeaves,candidateHandles,stagedBoundItems,stagedConditionals)
+                stage(host,childNode,inner,stagedLeaves,candidateHandles,stagedBoundItems,stagedConditionals,stagedAutoBasis)
             elseif inner.isSpacer then
                 local grow=props.grow or inner.grow
                 local item=parentNode:add(nil,{grow=grow,basis=props.basis or 0,margin=props.margin})
@@ -277,7 +298,18 @@ local function stage(host,parentNode,spec,stagedLeaves,candidateHandles,stagedBo
                 else
                     wasVisible=inner.visible
                 end
-                local item=parentNode:add(inner,props)
+                local stagedProps = props
+                local isAuto = props and props.basis == "auto"
+                if isAuto then
+                    local autoBasis = resolveAutoBasis(inner, props)
+                    stagedProps = {}
+                    for k, v in pairs(props) do stagedProps[k] = v end
+                    stagedProps.basis = autoBasis
+                end
+                local item=parentNode:add(inner,stagedProps)
+                if isAuto then
+                    stagedAutoBasis[#stagedAutoBasis+1] = { item = item, inner = inner, props = props }
+                end
                 local entry={kind=kind,target=inner,item=item,wasVisible=wasVisible,attached=false,key=key}
                 stagedLeaves[#stagedLeaves+1]=entry
                 local bounds=bind or (key and {x=0,y=0,width=0,height=0,visible=false} or false)
@@ -333,7 +365,8 @@ function Host:build(spec, initialContext)
     local candidateHandles = {}
     local stagedBoundItems = {}
     local stagedConditionals = {}
-    local okStage, errStage = pcall(stage, self, self.rootNode, spec, stagedLeaves, candidateHandles, stagedBoundItems, stagedConditionals)
+    local stagedAutoBasis = {}
+    local okStage, errStage = pcall(stage, self, self.rootNode, spec, stagedLeaves, candidateHandles, stagedBoundItems, stagedConditionals, stagedAutoBasis)
     if not okStage then
         self.rootNode:dispose()
         self.rootNode=Node.new()
@@ -386,6 +419,9 @@ function Host:build(spec, initialContext)
             self:setItemVisible(c.handle, c.when(initialContext) == true)
         end
     end
+    for i=1,#stagedAutoBasis do
+        self._autoBasisItems[#self._autoBasisItems+1] = stagedAutoBasis[i]
+    end
     self.built=true
     self.rootNode:markDirty()
     return candidateHandles, nil
@@ -408,6 +444,7 @@ function Host:setItemVisible(handle, visible)
         if handle.kind=='native' then handle.target:setVisible(false)
         elseif handle.kind=='rect' then handle.target.visible=false end
     end
+    self:requestLayout()
     -- When visible is true, actual display is deferred to apply() after new geometry is applied
     return true
 end
@@ -479,12 +516,67 @@ local function apply(host)
     end
 end
 
+function Host:requestLayout()
+    if self.closed or self.closing then return end
+    self._layoutRequested = true
+    if self.rootNode then
+        self.rootNode:markDirty()
+    end
+end
+
+function Host:flushLayout()
+    self._layoutRequested = false
+    return self:resolveLayout()
+end
+
+function Host:invalidateAutoBasis()
+    local items = self._autoBasisItems
+    if not items or #items == 0 then return end
+    for i = 1, #items do
+        local entry = items[i]
+        local newBasis = resolveAutoBasis(entry.inner, entry.props)
+        if entry.item and entry.item.owner then
+            entry.item.owner:setItemBasis(entry.item, newBasis)
+        end
+    end
+    self:requestLayout()
+end
+
+function Host:_tickDebouncers(now)
+    local ds = self._debouncers
+    if not ds or #ds == 0 then return end
+    now = now or (getTimestampMs and getTimestampMs() or (os.time() * 1000))
+    for i = 1, #ds do
+        ds[i]:tick(now)
+    end
+end
+
+function Host:registerDebouncer(d)
+    assert(d and type(d.tick) == 'function', 'INVALID_DEBOUNCER')
+    self._debouncers = self._debouncers or {}
+    for i = 1, #self._debouncers do
+        if self._debouncers[i] == d then return end
+    end
+    self._debouncers[#self._debouncers + 1] = d
+end
+
+function Host:unregisterDebouncer(d)
+    if not self._debouncers then return end
+    for i = 1, #self._debouncers do
+        if self._debouncers[i] == d then
+            table.remove(self._debouncers, i)
+            return
+        end
+    end
+end
+
 function Host:resolveLayout()
     if not self:isActivationValid() then return nil,'INACTIVE' end
     local parent=self:getParent()
     if not self.javaObject or not parent or self.javaObject:getParent()~=parent.javaObject then
         return nil,'HOST_NOT_MOUNTED'
     end
+    self._layoutRequested = false
     self:_syncBounds()
     local revision=self.rootNode.revision
     if self.rootNode.dirty then
@@ -517,7 +609,14 @@ end
 
 function Host:update()
     ISPanel.update(self)
-    if self:isActivationValid() then self:resolveLayout() end
+    if not self.closed and not self.closing then
+        self:_tickDebouncers()
+        if self:isActivationValid() then
+            if self._layoutRequested or self.rootNode.dirty then
+                self:flushLayout()
+            end
+        end
+    end
 end
 
 function Host:dispose()
@@ -541,6 +640,14 @@ function Host:dispose()
     self.rootNode:dispose()
     self._boundSnapshots={}
     self._conditionals={}
+    if self._debouncers then
+        for i = 1, #self._debouncers do
+            self._debouncers[i]:cancel()
+        end
+        self._debouncers = {}
+    end
+    self._autoBasisItems = {}
+    self._layoutRequested = false
     self.closed=true; self.closing=false
     self.errorStage=false; self.errorMessage=false; self.errorSlot=false; self.errorSetter=false
     return true

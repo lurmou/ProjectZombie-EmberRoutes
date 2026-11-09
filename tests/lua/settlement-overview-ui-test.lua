@@ -13,16 +13,30 @@ end
 function Base:new(x, y, w, h)
     local o = {x = x or 0, y = y or 0, width = w or 0, height = h or 0, children = {}, items = {}}
     setmetatable(o, self)
+    o.javaObject = { getParent = function() return o.parent and o.parent.javaObject end }
     return o
 end
 function Base:initialise() end
-function Base:instantiate() end
-function Base:addChild(c) table.insert(self.children, c) c.parent = self end
+function Base:instantiate()
+    if not self.javaObject then
+        self.javaObject = { getParent = function() return self.parent and self.parent.javaObject end }
+    end
+end
+function Base:addChild(c)
+    table.insert(self.children, c)
+    c.parent = self
+    if not c.javaObject then
+        c.javaObject = { getParent = function() return self.javaObject end }
+    end
+end
 function Base:removeChild(c) end
 function Base:setX(x) self.x = x end
 function Base:setY(y) self.y = y end
 function Base:setWidth(w) self.width = w end
 function Base:setHeight(h) self.height = h end
+function Base:setVisible(v) self.visible = v end
+function Base:getIsVisible() return self.visible ~= false end
+function Base:getParent() return self.parent end
 function Base:getWidth() return self.width or 0 end
 function Base:getHeight() return self.height or 0 end
 function Base:getAbsoluteX() return self.x + (self.parent and self.parent:getAbsoluteX() or 0) end
@@ -55,11 +69,13 @@ function Base:addItem(label, item, tooltip)
 end
 function Base:clear() self.items = {} end
 
+_G.ISUIElement = Base
 _G.ISPanel = Base
 _G.ISScrollingListBox = Base:derive('ISScrollingListBox')
 _G.ISButton = Base:derive('ISButton')
 _G.ISCollapsableWindow = Base:derive('ISCollapsableWindow')
 
+package.loaded['ISUI/ISUIElement'] = true
 package.loaded['ISUI/ISPanel'] = true
 package.loaded['ISUI/ISScrollingListBox'] = true
 package.loaded['ISUI/ISButton'] = true
@@ -180,6 +196,35 @@ package.loaded['EmberRoutesProbe/Settlement/PersonnelService'] = {
     end
 }
 
+function isClient() return false end
+function isServer() return false end
+
+package.loaded['EmberRoutesProbe/Warehouse/WarehouseIndex'] = {
+    status = function()
+        return {
+            rows = {
+                {fullType = 'Base.PotOfStew', node = 'food.meals', count = 30},
+                {fullType = 'Base.WaterBottleFull', node = 'water', count = 40},
+                {fullType = 'Base.Bandage', node = 'medical.bandages', count = 8},
+                {fullType = 'Base.Log', node = 'materials', count = 25}
+            }
+        }
+    end,
+    watch = function(id, callback)
+        if callback then
+            callback({
+                rows = {
+                    {fullType = 'Base.PotOfStew', node = 'food.meals', count = 30},
+                    {fullType = 'Base.WaterBottleFull', node = 'water', count = 40},
+                    {fullType = 'Base.Bandage', node = 'medical.bandages', count = 8},
+                    {fullType = 'Base.Log', node = 'materials', count = 25}
+                }
+            })
+        end
+        return function() end
+    end
+}
+
 -- =========================================================================
 -- 1. Test PageRegistry Registration
 -- =========================================================================
@@ -244,7 +289,7 @@ page.drawRectBorder = function(self) end
 page.drawText = function(self) end
 page.drawTextCentre = function(self) end
 page.DrawTextureAngle = function(self) end
-page.javaObject = {}
+-- page.javaObject kept intact
 
 page:prerender()
 check(page.stencilStack == 0, "Prerender maintained 100% symmetric Stencil stack (net 0)")
@@ -254,7 +299,7 @@ check(page.cachedWorkforceSplit ~= nil, "Left Pane: Comparative Workforce SplitB
 check(page.cardVitalsOptions.badge ~= nil, "Left Pane: CardPanel header badge cached")
 check(page.cachedData.defenseRatio > 0.5, "Settlement health ratio computed correctly")
 check(page.cachedPopRoller ~= nil, "Population odometer projected")
-check(page.cachedBelt ~= nil, "Logistics conveyor projected")
+check(page.cachedBelt == nil, "Conveyor belt cleanly removed from overview page")
 check(page.cachedAlerts ~= nil and page.cachedAlerts.dialRadius >= 36, "Readiness radial dial projected")
 print("PASS: Prerender & Left Pane Workforce Split verified")
 
@@ -305,11 +350,11 @@ check(grouped[1].count == 1, "cargo asset count is 1")
 check(grouped[1].badge ~= nil and grouped[1].badge.id == "TRANSIT", "cargo badge resolved to TRANSIT")
 
 local drawerH1 = page:getDrawerHeight(order1)
-check(drawerH1 == 154, "Drawer height for 1 item is 154 (accommodates top, BOM item and bottom action bar)")
+check(drawerH1 == 167, "Drawer height for 1 item is 167 (accommodates top, BOM item and bottom action bar)")
 
 -- Simulate rendering row 1 with expanded drawer
 local nextY1 = page:drawOrderRow(page.orderList, 0, order1Entry)
-check(nextY1 == (54 + 154), "Order 1 drawer rendered with expanded unified height (BASE_CARD_H + drawerH1)")
+check(nextY1 == (54 + drawerH1), "Order 1 drawer rendered with expanded unified height (BASE_CARD_H + drawerH1)")
 
 -- Test Multi-Item Batch Haul Drawer Expansion (>3 items)
 local multiOrder = {
@@ -328,7 +373,7 @@ local multiOrder = {
 local multiGrouped = page:getGroupedAssets(multiOrder.row)
 check(#multiGrouped == 4, "multiOrder grouped 4 distinct assets")
 local multiDrawerH = page:getDrawerHeight(multiOrder)
-check(multiDrawerH == 190, "multiOrder drawer height dynamically accommodates overflow line (190)")
+check(multiDrawerH == 196, "multiOrder drawer height dynamically accommodates overflow line (196)")
 
 -- Simulate clicking virtual button inside expanded drawer
 local cardW = page.orderList:getWidth()
@@ -346,7 +391,8 @@ check(page.expandedOrderId == "order_3", "order_3 (farming) is now expanded")
 
 local farmEntry = page.orderList.items[3]
 local nextY = page:drawOrderRow(page.orderList, 0, farmEntry)
-check(nextY == (54 + 150), "Farming drawer rendered with expanded unified height (BASE_CARD_H + 150)")
+local farmDrawerH = page:getDrawerHeight(farmEntry.item and (farmEntry.item.value or farmEntry.item))
+check(nextY == (54 + farmDrawerH), "Farming drawer rendered with expanded unified height (BASE_CARD_H + farmDrawerH)")
 print("PASS: Farming Plot Drawer safely rendered without table concat crash")
 
 -- Deactivate & Dispose

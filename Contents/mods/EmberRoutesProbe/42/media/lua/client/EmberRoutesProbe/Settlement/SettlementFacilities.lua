@@ -198,7 +198,9 @@ function Index.tick(budget,now)
     if #ordered==0 then return end
     nextTick=now+Config.facilitiesMs
     local idle=0
-    for _=1,budget do
+    local maxBudget=math.min(budget or 8,8)
+    local startMs=getTimestampMs and getTimestampMs() or 0
+    for _=1,maxBudget do
         cursor=cursor%#ordered+1
         local row=rows[ordered[cursor]]
         -- Pump only rows with actual work: a frame in flight, dirty chunks, an
@@ -211,6 +213,7 @@ function Index.tick(budget,now)
             pump(row)
             idle=0
         else idle=idle+1 if idle>=#ordered then break end end
+        if startMs>0 and (getTimestampMs()-startMs)>=0.8 then break end
     end
 end
 function Index.pending(row)

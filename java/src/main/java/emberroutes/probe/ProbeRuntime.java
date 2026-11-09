@@ -437,6 +437,8 @@ public final class ProbeRuntime {
     public static String begin(boolean enable) {
         saveReceipt=null;
         modDataCache.clear();
+        ProbeMasterScheduler.reset();
+        PathSearchArbiter.reset();
         WarehouseFastIndex.reset(); // ModData reloads with the world; never reuse old roots.
         thread=Thread.currentThread(); enabled=enable;
         var world=zombie.iso.IsoWorld.instance;
@@ -506,9 +508,44 @@ public final class ProbeRuntime {
         if (runtime.body()!=null) { slots.put(id,runtime); catalogue.add(runtime); selected=runtime; refresh(runtime); }
         return result;
     }
+    public static boolean nativeActionStart(IsoPlayer character, String anim, int durationTicks, boolean blockMovement) {
+        return NativeActionSystem.startAction(character, anim, durationTicks, blockMovement);
+    }
+    public static boolean nativeActionFinished(IsoPlayer character) {
+        return NativeActionSystem.isActionFinished(character);
+    }
+    public static boolean nativeActionRunning(IsoPlayer character) {
+        return NativeActionSystem.isActionRunning(character);
+    }
+    public static void nativeActionStop(IsoPlayer character) {
+        NativeActionSystem.stopAction(character);
+    }
+    public static boolean cadenceIs60Hz() {
+        return ProbeMasterScheduler.is60Hz();
+    }
+    public static boolean cadenceIs15Hz() {
+        return ProbeMasterScheduler.is15Hz();
+    }
+    public static boolean cadenceIs5Hz() {
+        return ProbeMasterScheduler.is5Hz();
+    }
+    public static boolean cadenceIs1Hz() {
+        return ProbeMasterScheduler.is1Hz();
+    }
+    public static boolean macroReachable(zombie.iso.IsoGridSquare from, zombie.iso.IsoGridSquare to) {
+        return SettlementReachabilityGraph.canReachMacro(from, to);
+    }
+    public static se.krka.kahlua.vm.KahluaTable resolveInteractionTile(zombie.iso.IsoGridSquare target, IsoPlayer npc, se.krka.kahlua.vm.KahluaTable excluded) {
+        return InteractionPointFastResolver.resolveAdjacentTile(target, npc, excluded);
+    }
     public static void tick() {
         if (Thread.currentThread()!=thread) return;
+        ProbeMasterScheduler.tick();
         active.advance(8,runtime->{ runtime.tick(); refresh(runtime); });
+    }
+    static void advanceRetirement() {
+        if (Thread.currentThread()!=thread) return;
+        active.advance(8,runtime->{ runtime.retirementTick(); refresh(runtime); });
     }
     public static void retirementTick() {
         if (Thread.currentThread()!=thread) return;
@@ -519,6 +556,7 @@ public final class ProbeRuntime {
         authority.retire();
         saveReceipt=null;
         modDataCache.clear();
+        PathSearchArbiter.reset();
         String result="ABSENT";
         boolean pending=false,failed=false;
         for (CarrierRuntime runtime:slots.values()) {

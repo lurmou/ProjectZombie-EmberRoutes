@@ -7,11 +7,12 @@
 
 require 'ISUI/ISPanel'
 require 'ISUI/ISButton'
-require 'ISUI/ISComboBox'
+local Dropdown = require 'EmberRoutesProbe/UI/Dropdown'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
 local Visual = require 'EmberRoutesProbe/UI/StatusVisual'
 local Zones = require 'EmberRoutesProbe/Settlement/SettlementZones'
 local LifeZoneSelector = require 'EmberRoutesProbe/UI/LifeZoneSelector'
+local StepperInput = require 'EmberRoutesProbe/UI/StepperInput'
 
 local Editors = {}
 local Text=require 'EmberRoutesProbe/UI/Text'
@@ -69,63 +70,17 @@ Editors.toggle = {
 ---2. Slider / Stepper Numeric Editor
 Editors.slider = {
     create = function(parent, bounds, fieldDef, initialValue, onChanged, context)
-        local h = parent.fontHeight or 18
-        local p = parent.pad or 4
         local minVal = fieldDef.min or 0
         local maxVal = fieldDef.max or 100
         local stepVal = fieldDef.step or 1
-        local unit = fieldDef.unit and getTextOrNull("IGUI_EmberRoutesProbe_Unit_" .. fieldDef.unit) or (fieldDef.unit or "")
+        local steps = {-stepVal * 5, -stepVal, stepVal, stepVal * 5}
+        local val = type(initialValue) == 'number' and initialValue or minVal
 
-        local panel = ISPanel:new(bounds.x, bounds.y, bounds.width, bounds.height)
-        panel:initialise()
-        panel.background = false
-        panel.policyValue = type(initialValue) == 'number' and initialValue or minVal
-
-        local btnW = math.max(26, math.floor(h * 1.8))
-        local valW = bounds.width - (btnW * 2 + p * 2)
-
-        local btnMinus = ISButton:new(0, 0, btnW, bounds.height, "-", panel, nil)
-        btnMinus:initialise()
-        Theme.button(btnMinus, false)
-        panel:addChild(btnMinus)
-
-        local valDisplay = ISPanel:new(btnW + p, 0, valW, bounds.height)
-        valDisplay:initialise()
-        valDisplay.background = false
-        panel:addChild(valDisplay)
-
-        local btnPlus = ISButton:new(btnW + p + valW + p, 0, btnW, bounds.height, "+", panel, nil)
-        btnPlus:initialise()
-        Theme.button(btnPlus, false)
-        panel:addChild(btnPlus)
-
-        valDisplay.prerender = function(self)
-            ISPanel.prerender(self)
-            Theme.rect(self, 0, 0, self.width, self.height, Theme.panel)
-            Theme.rect(self, 0, 0, self.width, self.height, Theme.border, true)
-            local txt = tostring(panel.policyValue) .. (unit ~= "" and (" " .. unit) or "")
-            local tw = getTextManager():MeasureStringX(UIFont.Small, txt)
-            Theme.text(self, txt, (self.width - tw) / 2, (self.height - h) / 2, Theme.textColor)
-        end
-
-        btnMinus.onclick = function()
-            local nv = math.max(minVal, panel.policyValue - stepVal)
-            if nv ~= panel.policyValue then
-                panel.policyValue = nv
-                onChanged(fieldDef.key, panel.policyValue)
-            end
-        end
-
-        btnPlus.onclick = function()
-            local nv = math.min(maxVal, panel.policyValue + stepVal)
-            if nv ~= panel.policyValue then
-                panel.policyValue = nv
-                onChanged(fieldDef.key, panel.policyValue)
-            end
-        end
-
-        parent:addChild(panel)
-        return panel
+        local stepper = StepperInput:new(bounds.x, bounds.y, bounds.width, bounds.height, val, minVal, maxVal, steps, function(newVal)
+            onChanged(fieldDef.key, newVal)
+        end)
+        parent:addChild(stepper)
+        return stepper
     end
 }
 
@@ -144,7 +99,11 @@ Editors.zone_dropdown = {
         local btnNewW = math.max(68, math.floor(h * 4.5))
         local comboW = bounds.width - btnNewW - p
 
-        local combo = ISComboBox:new(0, 0, comboW, bounds.height, panel, nil)
+        local currentVal = initialValue or ""
+        local combo = Dropdown:new(0, 0, comboW, bounds.height, panel, function(target, selectedVal)
+            currentVal = selectedVal or ""
+            onChanged(fieldDef.key, currentVal)
+        end)
         combo:initialise()
         panel:addChild(combo)
 
@@ -153,32 +112,20 @@ Editors.zone_dropdown = {
         Theme.button(btnNew, false)
         panel:addChild(btnNew)
 
-        local currentVal = initialValue or ""
-
         local function populateCombo()
-            combo:clear()
-            -- Option 1: None / Default
-            combo:addOptionWithData(getText("IGUI_EmberRoutesProbe_Policy_zoneNone"), "")
-            local selIndex = 1
+            local opts = {
+                { id = "", label = getText("IGUI_EmberRoutesProbe_Policy_zoneNone") }
+            }
             if settlementId then
                 local zones = Zones.list(settlementId) or {}
-                for i, zone in ipairs(zones) do
-                    combo:addOptionWithData(zone.name, zone.id)
-                    if zone.id == currentVal then
-                        selIndex = i + 1
-                    end
+                for _, zone in ipairs(zones) do
+                    table.insert(opts, { id = zone.id, label = zone.name })
                 end
             end
-            combo.selected = selIndex
+            combo:setOptions(opts, currentVal)
         end
 
         populateCombo()
-
-        combo.onChange = function()
-            local opt = combo:getOptionData(combo.selected)
-            currentVal = opt or ""
-            onChanged(fieldDef.key, currentVal)
-        end
 
         btnNew.onclick = function()
             if actor and settlementId then

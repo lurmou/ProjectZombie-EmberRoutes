@@ -16,6 +16,9 @@ function Policy.specificity(filter,description,item)
 end
 function Policy.better(candidate,best)
     if not best then return true end
+    local p1=candidate.priority or (candidate.endpoint and candidate.endpoint.filter and candidate.endpoint.filter.priority) or (candidate.filter and candidate.filter.priority) or 3
+    local p2=best.priority or (best.endpoint and best.endpoint.filter and best.endpoint.filter.priority) or (best.filter and best.filter.priority) or 3
+    if p1~=p2 then return p1>p2 end
     if candidate.specificity~=best.specificity then return candidate.specificity>best.specificity end
     if candidate.distance~=best.distance then return candidate.distance<best.distance end
     return candidate.id<best.id

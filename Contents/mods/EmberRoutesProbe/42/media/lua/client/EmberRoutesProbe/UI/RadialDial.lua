@@ -36,6 +36,10 @@ local COLOR_BLUE   = {r = 0.28, g = 0.76, b = 1.00, a = 1.0}
 local NUM_SEGMENTS = 16
 local PRECOMPUTED_COS = {}
 local PRECOMPUTED_SIN = {}
+local PERCENT_STRINGS = {}
+for i = 0, 100 do
+    PERCENT_STRINGS[i] = tostring(i) .. "%"
+end
 
 do
     local startDeg = 135
@@ -153,7 +157,8 @@ function RadialDial.draw(owner, cx, cy, radius, fraction, opts)
     local font = opts.font or (radius >= 44 and UIFont.Medium or UIFont.Small)
     local text = opts.label
     if not text and opts.showPercent ~= false then
-        text = math.floor(f * 100) .. "%"
+        local pct = math.floor(f * 100 + 0.5)
+        text = PERCENT_STRINGS[pct] or (tostring(pct) .. "%")
     end
 
     if text and text ~= "" then

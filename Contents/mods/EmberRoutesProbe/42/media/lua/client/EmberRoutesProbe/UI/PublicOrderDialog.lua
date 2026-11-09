@@ -1,7 +1,7 @@
 require 'ISUI/ISCollapsableWindow'
 require 'ISUI/ISButton'
-require 'ISUI/ISTextEntryBox'
-require 'ISUI/ISComboBox'
+local SearchInput = require 'EmberRoutesProbe/UI/SearchInput'
+local Dropdown = require 'EmberRoutesProbe/UI/Dropdown'
 local Crafting=require 'EmberRoutesProbe/Crafting/CraftingService'
 local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local Draft=require 'EmberRoutesProbe/Work/PublicOrderDraft'
@@ -132,23 +132,20 @@ function EmberRoutesPublicOrderDialog:createChildren()
     local r1=assert(Layout.axis(recipeRows[1],{{basis=h*5},{grow=1}},{gap=p/4}))
     self.searchLabel=r1[1]
     local defaultSearch=self.context.recipeName or (self.context.productType and getItemNameFromFullType(self.context.productType)) or ''
-    self.search=ISTextEntryBox:new(defaultSearch,r1[2].x,r1[2].y,r1[2].width,r1[2].height)
-    self.search:initialise()
-    self.search.target=self
-    self.search.onTextChangeFunction=function()
+    self.search=SearchInput:new(r1[2].x,r1[2].y,r1[2].width,r1[2].height,"",self,function()
         self.notice=nil
         self.page=1
         self:query()
-    end
+    end)
+    if defaultSearch~="" then self.search:setText(defaultSearch) end
     self:addChild(self.search)
 
-    self.recipeCombo=ISComboBox:new(recipeRows[2].x,recipeRows[2].y,recipeRows[2].width,recipeRows[2].height,self,function()
-        self.notice=nil
-        local row=self.rows[self.recipeCombo.selected]
-        self.selectedRecipe=row and row.id or false
-        self.preferences={}
-        self:loadRule()
-        self:describe()
+    self.recipeCombo=Dropdown:new(recipeRows[2].x,recipeRows[2].y,recipeRows[2].width,recipeRows[2].height,self,function(target,selectedRecipeId)
+        target.notice=nil
+        target.selectedRecipe=selectedRecipeId or false
+        target.preferences={}
+        target:loadRule()
+        target:describe()
     end)
     self.recipeCombo:initialise()
     self:addChild(self.recipeCombo)
@@ -175,19 +172,17 @@ function EmberRoutesPublicOrderDialog:createChildren()
     -- 3. Surface Selection (Row 1: Label, Row 2: Combo)
     local surfRows=assert(Layout.axis(self.surfaceRegion,{{basis=h},{basis=h+p/4}},{direction='column',gap=p/4}))
     self.surfaceLabel=surfRows[1]
-    self.surfaceCombo=ISComboBox:new(surfRows[2].x,surfRows[2].y,surfRows[2].width,surfRows[2].height,self,function()
-        self.notice=nil
-        self:describe()
+    self.surfaceCombo=Dropdown:new(surfRows[2].x,surfRows[2].y,surfRows[2].width,surfRows[2].height,self,function(target,selectedSurfaceId)
+        target.notice=nil
+        target:describe()
     end)
     self.surfaceCombo:initialise()
     self:addChild(self.surfaceCombo)
-    self.surfaces={false}
-    self.surfaceCombo:addOption(text('noSurface'))
+    local surfOptions={{id=false,label=text('noSurface')}}
     for _,surface in ipairs(require('EmberRoutesProbe/Crafting/CraftSurfaces').list(self.entry)) do
-        self.surfaces[#self.surfaces+1]=surface.id
-        self.surfaceCombo:addOption(text('surfaceAt',surface.x,surface.y,surface.z))
-        if surface.id==self.context.surfaceId then self.surfaceCombo.selected=#self.surfaces end
+        table.insert(surfOptions,{id=surface.id,label=text('surfaceAt',surface.x,surface.y,surface.z)})
     end
+    self.surfaceCombo:setOptions(surfOptions,self.context.surfaceId or false)
 
     -- 4. Dynamic Parameter Form Controls
     -- A. Quantity (Single Order: Row 1 Label, Row 2 Stepper Bar)
@@ -293,9 +288,7 @@ function EmberRoutesPublicOrderDialog:query()
         if spec then
             local desc=cooking or Recipe.describe(spec)
             self.rows={desc}
-            self.recipeCombo:clear()
-            self.recipeCombo:addOption(desc.name or spec.name)
-            self.recipeCombo.selected=1
+            self.recipeCombo:setOptions({{id=targetId,label=desc.name or spec.name}},targetId)
             self.selectedRecipe=targetId
             self.context.recipeId=nil
             self.page=1
@@ -315,18 +308,16 @@ function EmberRoutesPublicOrderDialog:query()
         if not activation:isCurrent() or self.catalogToken~=token then return end
         if not self.owner:valid() then self:close() return end
         self.rows=snapshot.rows or {}
-        self.recipeCombo:clear()
-        local selected=1
+        local recipeOptions={}
+        local targetRecipeId=self.context.recipeId or self.selectedRecipe
         for i,row in ipairs(self.rows) do
-            self.recipeCombo:addOption(row.name)
-            if row.id==(self.context.recipeId or self.selectedRecipe) then
-                selected=i
-            elseif self.context.productType and row.product==self.context.productType and selected==1 then
-                selected=i
+            table.insert(recipeOptions,{id=row.id,label=row.name})
+            if not targetRecipeId and self.context.productType and row.product==self.context.productType then
+                targetRecipeId=row.id
             end
         end
-        self.recipeCombo.selected=selected
-        local chosen=self.rows[selected] and self.rows[selected].id or false
+        self.recipeCombo:setOptions(recipeOptions,targetRecipeId or (self.rows[1] and self.rows[1].id or false))
+        local chosen=self.recipeCombo:getSelectedData() or false
         if chosen~=self.selectedRecipe then
             self.preferences={}
         end
@@ -425,7 +416,7 @@ function EmberRoutesPublicOrderDialog:describe()
     local row=self.rows[self.recipeCombo.selected]
     local quantity=tonumber(self.quantity:getText())
     if self.activeTab=='order' and row and quantity and quantity>=1 and quantity<=9999 and quantity==math.floor(quantity) then
-        local surface=self.surfaces[self.surfaceCombo.selected]
+        local surface=self.surfaceCombo:getSelectedData() or false
         if not row.surface then surface=nil end
         local d=Draft.update(self.actor,self.entry.id,row.id,quantity,surface,self.preferences,row.product)
         if self.requestId~=d.requestId then self.notice=nil end
@@ -474,7 +465,7 @@ function EmberRoutesPublicOrderDialog:requestPreview()
     if self.activeTab=='stock' then
         qty=tonumber(self.batch:getText()) or 10
     end
-    local surfaceId=self.surfaces[self.surfaceCombo.selected]
+    local surfaceId=self.surfaceCombo:getSelectedData() or false
 
     local activation=self.activationScope
     local token={} self.previewToken=token
@@ -744,7 +735,7 @@ function EmberRoutesPublicOrderDialog:submitOrder()
 
     local ok,result=pcall(function()
         return Public.create(self.actor,self.entry.id,self.selectedRecipe,math.floor(qty),
-            self.surfaces[self.surfaceCombo.selected],self.requestId,self.preferences)
+            self.surfaceCombo:getSelectedData() or false,self.requestId,self.preferences)
     end)
 
     if not ok then
@@ -782,7 +773,7 @@ function EmberRoutesPublicOrderDialog:submitRule()
 
     local ok,result=pcall(function()
         return Public.saveRule(self.actor,self.entry.id,self.selectedRecipe,math.floor(minVal),
-            math.floor(batchVal),self.surfaces[self.surfaceCombo.selected],self.preferences)
+            math.floor(batchVal),self.surfaceCombo:getSelectedData() or false,self.preferences)
     end)
 
     if not ok then
@@ -917,8 +908,8 @@ function EmberRoutesPublicOrderDialog:close()
     if self.releaseCatalog then self.releaseCatalog() self.releaseCatalog=nil end
     if self.cancelPreview then self.cancelPreview() self.cancelPreview=nil end
     if self.presentation then self.presentation:clear() end
-    self.recipeCombo:hidePopup()
-    self.surfaceCombo:hidePopup()
+    if self.recipeCombo.closePopup then self.recipeCombo:closePopup() elseif self.recipeCombo.hidePopup then self.recipeCombo:hidePopup() end
+    if self.surfaceCombo.closePopup then self.surfaceCombo:closePopup() elseif self.surfaceCombo.hidePopup then self.surfaceCombo:hidePopup() end
     Tooltip.clear(self.recipeCombo)
     Tooltip.clear(self.surfaceCombo)
     Tooltip.clear(self.quantity)

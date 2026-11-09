@@ -26,13 +26,6 @@ local COLOR_SOCKET_BG     = {r = 0.03, g = 0.04, b = 0.06, a = 0.98}
 local COLOR_SLOT_TROUGH   = {r = 0.07, g = 0.09, b = 0.12, a = 1.00}
 local COLOR_BORDER_OUTER  = {r = 0.18, g = 0.24, b = 0.30, a = 0.90}
 local COLOR_BORDER_INNER  = {r = 0.30, g = 0.40, b = 0.50, a = 0.85}
-local COLOR_FLAP_LINE     = {r = 0.01, g = 0.02, b = 0.03, a = 0.85}
-local COLOR_FLAP_HILIGHT  = {r = 0.45, g = 0.55, b = 0.65, a = 0.25}
-
--- Cylindrical shadow bands (top and bottom gradient falloff)
-local SHADOW_BAND_1 = {r = 0.00, g = 0.00, b = 0.00, a = 0.55}
-local SHADOW_BAND_2 = {r = 0.00, g = 0.00, b = 0.00, a = 0.35}
-local SHADOW_BAND_3 = {r = 0.00, g = 0.00, b = 0.00, a = 0.15}
 
 ---Creates a scalar state container for smooth interpolation.
 ---@param numDigits number?
@@ -135,53 +128,21 @@ function MechanicalRoller.draw(owner, x, y, state, opts)
 
         local slotX = startX + (numDigits - 1 - i) * (digitW + gap)
 
-        -- 2. Hardware Stencil clipping viewport for this individual digit drum
-        owner:setStencilRect(slotX, slotY, digitW, digitH)
-
-        -- 3. Slot recessed drum trough background
+        -- 2. Slot recessed drum trough background
         Theme.rect(owner, slotX, slotY, digitW, digitH, COLOR_SLOT_TROUGH)
 
-        -- 4. Digits vertical translation & rendering
+        -- 3. Clean digit text rendering (Centered, crisp, Zero-GC, No Stencil, No middle slice)
         local intDigit = math.floor(slotVal) % 10
-        local rollFrac = slotVal - math.floor(slotVal)
-        local nextDigit = (intDigit + 1) % 10
-
-        local d1_Y = slotY + textOffsetY - math.floor(rollFrac * digitH)
-        local d2_Y = d1_Y + digitH
-        
-        -- Center digit string inside slot
-        local digitStr1 = DIGIT_STRINGS[intDigit]
-        local digitStr2 = DIGIT_STRINGS[nextDigit]
-        local strW = UICache.measure(font, digitStr1)
+        local digitStr = DIGIT_STRINGS[intDigit]
+        local strW = UICache.measure(font, digitStr)
         local textX = slotX + math.floor((digitW - strW) / 2)
+        local textY = slotY + textOffsetY
 
         local tColor = opts.textColor or Theme.textColor
-        Theme.text(owner, digitStr1, textX, d1_Y, tColor, font)
-        if rollFrac > 0.001 then
-            Theme.text(owner, digitStr2, textX, d2_Y, tColor, font)
-        end
+        Theme.text(owner, digitStr, textX, textY, tColor, font)
 
-        -- 5. 3D Cylindrical Shading Overlays (Creating true drum depth)
-        -- Top shadow bands (curvature away from viewer)
-        Theme.rect(owner, slotX, slotY,     digitW, 2, SHADOW_BAND_1)
-        Theme.rect(owner, slotX, slotY + 2, digitW, 2, SHADOW_BAND_2)
-        Theme.rect(owner, slotX, slotY + 4, digitW, 2, SHADOW_BAND_3)
-
-        -- Bottom shadow bands (curvature away from viewer)
-        Theme.rect(owner, slotX, slotY + digitH - 6, digitW, 2, SHADOW_BAND_3)
-        Theme.rect(owner, slotX, slotY + digitH - 4, digitW, 2, SHADOW_BAND_2)
-        Theme.rect(owner, slotX, slotY + digitH - 2, digitW, 2, SHADOW_BAND_1)
-
-        -- 6. Split-Flap Middle Slit Line & Specular Micro-Highlight
-        local midY = slotY + math.floor(digitH / 2)
-        Theme.rect(owner, slotX, midY - 1, digitW, 1, COLOR_FLAP_HILIGHT)
-        Theme.rect(owner, slotX, midY,     digitW, 1, COLOR_FLAP_LINE)
-
-        -- 7. Slot Inner Edge Contour
+        -- 4. Slot Inner Edge Contour
         Theme.rect(owner, slotX, slotY, digitW, digitH, COLOR_BORDER_INNER, true)
-
-        -- 8. 100% Symmetric Stencil Cleanup
-        owner:clearStencilRect()
     end
 
     return totalOuterW

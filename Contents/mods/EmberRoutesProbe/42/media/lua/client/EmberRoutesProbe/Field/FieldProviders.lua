@@ -19,10 +19,20 @@ local function corpseZoneReady(category,entry)
     return zone and zone.enabled and zone.settlementId==entry.id or false
 end
 local function claim(category,selected,npc,entry,jobId)
+    local npcId= (EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc))
     local t,keys,why=Discovery.claim(selected.point,npc,entry,category)
     if not t then return nil,nil,why end
-    if t.kind=='CORPSE' and not corpseZoneReady(category,entry) then
-	return nil,nil,'FIELD_CORPSE_ZONE_REQUIRED'
+    if t.kind=='CORPSE' then
+        if not corpseZoneReady(category,entry) then return nil,nil,'FIELD_CORPSE_ZONE_REQUIRED' end
+        local hands={npc:getPrimaryHandItem(),npc:getSecondaryHandItem()}
+        for _,item in ipairs(hands) do
+            if item then
+                local id=item:getID()
+                local owner=Store.owner(id)
+                local allowed=not owner or (npcId and Store.canClaimTool(npcId,id))
+                if not allowed then return nil,nil,'FIELD_HANDS_OCCUPIED' end
+            end
+        end
     end
     -- CURE must pick the spray that matches this plant's disease, not any spray.
     local filter=t.kind=='CURE' and t.disease and function(i)
@@ -31,7 +41,7 @@ local function claim(category,selected,npc,entry,jobId)
     local supplies=ToolDiscovery.findSupplies(entry,npc,t.kind,t.needUses,filter)
     if not supplies then return nil,nil,'FIELD_TOOLS_UNAVAILABLE' end
     t.tools={}
-    local npcId=EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc)
+    npcId=npcId or (EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc))
     if type(npcId)~='string' or npcId=='' then return nil end
     local toolSupplyReqs={}
     local createdCustodies={}

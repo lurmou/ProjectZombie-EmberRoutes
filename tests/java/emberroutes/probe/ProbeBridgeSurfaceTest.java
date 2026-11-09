@@ -9,18 +9,19 @@ import java.util.TreeSet;
 public final class ProbeBridgeSurfaceTest {
     private static final String CONTRACT = """
         acquireBodyControl actionCarrier armSaveReceipt bedPoseReady begin bindingValid
-        blockAllCheckpoints blockCheckpoint bodyStopMask cachedModData captureCheckpointFor
+        blockAllCheckpoints blockCheckpoint bodyStopMask cadenceIs60Hz cadenceIs15Hz cadenceIs5Hz cadenceIs1Hz cachedModData captureCheckpointFor
         carrierActive carrierFor carrierId carrierPresent checkpointHasHome checkpointHomeX
         checkpointHomeY checkpointHomeZ checkpointMode cleaningScanCorpses cleaningScanStains
         cleaningScanTargets cleaningScanTargetsSlice cleaningSquareHasStains clearForSave command commandFor controlledCarrier
         deliveryReceived
         deliverySelectSlice diagnosticTimeNanos dispatchChoose floorSleepSafe followMetrics followWithControl freezeBodyControl
         furniturePoseWithControl getPortraitTexture inventoryIndex inventoryIndexBegin inventoryIndexStep
-        inventoryReadSlice jobDataCopy laborCancel laborCreate laborMutate lumberjackScanTrees
+        inventoryReadSlice jobDataCopy laborCancel laborCreate laborMutate lumberjackScanTrees macroReachable
         motionResult moveBedWithControl moveCorpseWithControl moveSeatWithControl moveSleepSeatWithControl
+        nativeActionFinished nativeActionRunning nativeActionStart nativeActionStop
         moveWithControl observerSample ownedCarrierId planningWakeCapture planningWakeChanged
         planningWakeContainerChanged planningWakeLoad planningWakeNew planningWakeRevision
-        planningWakeScopeChanged reachedSeat recipeHasCallbacks recipeHasSpecialOutputs recipeKey
+        planningWakeScopeChanged reachedSeat recipeHasCallbacks recipeHasSpecialOutputs recipeKey resolveInteractionTile
         releaseBodyControl removeIdleCarrier reportCheckpoint reposeAtWithControl reposeWithControl
         reset restoreCheckpoint restoreCheckpointFor retireBodyControl retirementTick saveBodyReady
         saveCheckpoint saveCheckpointFor selectCarrier selectedId socialVisible spawnAdditional
@@ -33,7 +34,7 @@ public final class ProbeBridgeSurfaceTest {
 
     public static void main(String[] args) throws Exception {
         Set<String> expected = new TreeSet<>(Arrays.asList(CONTRACT.trim().split("\\s+")));
-        if (expected.size() != 104) throw new AssertionError("invalid contract fixture");
+        if (expected.size() != 114) throw new AssertionError("invalid contract fixture");
         Class<?> runtime = Class.forName("emberroutes.probe.ProbeRuntime", false,
                 ClassLoader.getSystemClassLoader());
         Set<String> actual = new TreeSet<>();
@@ -54,6 +55,6 @@ public final class ProbeBridgeSurfaceTest {
         for (var method : runtime.getDeclaredMethods())
             if (method.getName().equals("lumberjackSquareHasTree"))
                 throw new AssertionError("unused bridge forwarding method retained");
-        System.out.println("PASS 104 public bridge methods; dynamic kernel entries retained; metadata only, game NOT RUN");
+        System.out.println("PASS 114 public bridge methods; dynamic kernel entries retained; metadata only, game NOT RUN");
     }
 }

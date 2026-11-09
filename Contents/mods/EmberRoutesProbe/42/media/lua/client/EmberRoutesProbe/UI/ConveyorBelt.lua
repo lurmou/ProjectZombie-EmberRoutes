@@ -69,6 +69,19 @@ function ConveyorBelt.update(state, isActive, rateMultiplier)
     state.offset = (state.offset + state.currentSpeed * dt) % (state.period or 20)
 end
 
+local function drawClampedRect(owner, rx, ry, rw, rh, col, minX, maxX)
+    if rx < minX then
+        rw = rw - (minX - rx)
+        rx = minX
+    end
+    if rx + rw > maxX then
+        rw = maxX - rx
+    end
+    if rw > 0 then
+        Theme.rect(owner, rx, ry, rw, rh, col)
+    end
+end
+
 ---Draws animated conveyor or hazard striping.
 ---@param owner ISPanel
 ---@param x number
@@ -88,11 +101,13 @@ function ConveyorBelt.draw(owner, x, y, w, h, mode, state, opts)
     Theme.rect(owner, x, y, w, h, COLOR_TROUGH_DARK)
     Theme.rect(owner, x, y, w, h, COLOR_FRAME_BORDER, true)
 
-    -- 2. Hardware Stencil clipping viewport (keeps scrolling slats cleanly inside track)
-    owner:setStencilRect(x + 1, y + 1, w - 2, h - 2)
-
+    -- 2. Zero-Stencil Clamped Slat Rendering (Pipeline stall-free, Zero GC)
+    local minX = x + 1
+    local maxX = x + w - 1
     local startX = x - period + math.floor(offset)
     local endX = x + w + period
+
+    local isRunning = (type(state) == "table" and (state.active or (state.currentSpeed and state.currentSpeed > 0.05)))
 
     if mode == "hazard" then
         -- Industrial Diagonal Hazard Stripes (Yellow / Black alternating)
@@ -101,7 +116,7 @@ function ConveyorBelt.draw(owner, x, y, w, h, mode, state, opts)
         local index = 0
         while curX < endX do
             local col = (index % 2 == 0) and COLOR_HAZARD_YELLOW or COLOR_HAZARD_BLACK
-            Theme.rect(owner, curX, y + 1, stripeW, h - 2, col)
+            drawClampedRect(owner, curX, y + 1, stripeW, h - 2, col, minX, maxX)
             curX = curX + stripeW
             index = index + 1
         end
@@ -110,38 +125,39 @@ function ConveyorBelt.draw(owner, x, y, w, h, mode, state, opts)
         Theme.rect(owner, x + 1, y + 1, w - 2, h - 2, {r = 0.12, g = 0.08, b = 0.08, a = 0.90})
         local curX = x + 1
         while curX < x + w do
-            Theme.rect(owner, curX, y + 1, 4, h - 2, COLOR_HALTED_RED)
+            drawClampedRect(owner, curX, y + 1, 4, h - 2, COLOR_HALTED_RED, minX, maxX)
             curX = curX + 16
         end
-    else
-        -- Active Logistics Conveyor (Forward Chevrons)
+    elseif isRunning then
+        -- Active Logistics Conveyor (Forward Chevrons only when running)
         local curX = startX
         local halfH = math.floor(h / 2)
         while curX < endX do
             -- Base slat spacer
-            Theme.rect(owner, curX, y + 1, 2, h - 2, COLOR_SLAT_BASE)
+            drawClampedRect(owner, curX, y + 1, 2, h - 2, COLOR_SLAT_BASE, minX, maxX)
 
             -- Stylized Forward Chevron Arrow ('>' shape)
             local tipX = curX + math.floor(period * 0.6)
             local midY = y + halfH
             
             -- Chevron arrow spine
-            Theme.rect(owner, curX + 4, midY - 3, 4, 6, COLOR_CHEVRON_CYAN)
-            Theme.rect(owner, curX + 7, midY - 2, 3, 4, COLOR_CHEVRON_GLOW)
-            Theme.rect(owner, tipX,     midY - 1, 2, 2, COLOR_CHEVRON_GLOW)
+            drawClampedRect(owner, curX + 4, midY - 3, 4, 6, COLOR_CHEVRON_CYAN, minX, maxX)
+            drawClampedRect(owner, curX + 7, midY - 2, 3, 4, COLOR_CHEVRON_GLOW, minX, maxX)
+            drawClampedRect(owner, tipX,     midY - 1, 2, 2, COLOR_CHEVRON_GLOW, minX, maxX)
 
             curX = curX + period
         end
+    else
+        -- Quiet Idle Track: Muted base slats on ends without high-frequency render
+        drawClampedRect(owner, x + 4, y + 2, 8, h - 4, COLOR_SLAT_BASE, minX, maxX)
+        drawClampedRect(owner, x + w - 12, y + 2, 8, h - 4, COLOR_SLAT_BASE, minX, maxX)
     end
 
     -- 3. Top and Bottom Guide Rails (Metallic edge lines)
     Theme.rect(owner, x + 1, y + 1, w - 2, 1, COLOR_FRAME_INNER)
     Theme.rect(owner, x + 1, y + h - 2, w - 2, 1, COLOR_FRAME_INNER)
 
-    -- 4. 100% Symmetric Stencil Cleanup
-    owner:clearStencilRect()
-
-    -- 5. Optional Centered Badge/Label
+    -- 4. Optional Centered Badge/Label
     if opts.label and opts.label ~= "" then
         local font = opts.font or UIFont.Small
         local tm = getTextManager()

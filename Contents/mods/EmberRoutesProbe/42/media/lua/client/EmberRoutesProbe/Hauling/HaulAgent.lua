@@ -206,7 +206,7 @@ function A.new(npcId)
             r.returnForNextBatch=true
         end
         for _,id in ipairs(intent.items) do r.items[#r.items+1]=id end
-	r.plannedCount=#r.items r.manifest=Manifest.create(r,nil,intent.itemSources)
+	r.plannedCount=#r.items r.manifest=Manifest.create(r,nil,intent.itemSources,intent.itemDestinations)
         if r.producer=='DELIVERY' then
             -- Queued admission must already own a durable Job and its originals.
             -- Saving before the body grant can then safely recover the same segment.
@@ -254,7 +254,7 @@ function A.new(npcId)
             fromId=kind=='TAKE' and endpoint.id or npcId,toId=kind=='TAKE' and npcId or endpoint.id,
             routeRevision=r.routeRevision,sessionGeneration=c.generation}
         local s={attempt=a,item=item,from=from,to=to,fromEndpoint=kind=='TAKE' and endpoint or nil,toEndpoint=kind=='PUT' and endpoint or nil}
-        line.plannedDestinationId=kind=='PUT' and endpoint.id or c.destination and c.destination.id
+        line.plannedDestinationId=kind=='PUT' and endpoint.id or line.destinationId or c.destination and c.destination.id
         local frozen={actor=c.actor,npc=c.npc,job=r,body=c.body,source=kind=='TAKE' and endpoint or nil,destination=kind=='PUT' and endpoint or nil,
             deliveryContext=r.producer=='DELIVERY' and c or nil}
         frozen.valid=function() return valid(c) and r.activeAttempt==a and r.routeRevision==a.routeRevision
@@ -262,7 +262,7 @@ function A.new(npcId)
                 or not endpoint.playerId and Registry.revalidate(endpoint,kind=='TAKE' and 'take' or 'put',r.scopeId)~=nil) end
         frozen.eligible=function(value)
             return Producers.eligible(value) and (r.producer=='DELIVERY' or kind=='PUT' and Routing.accept(c,endpoint,value)
-                or kind=='TAKE' and Routing.accept(c,c.destination,value))
+                or kind=='TAKE')
         end
 	frozen.transferred=function() return knownTransfer(c,s) end
         r.itemTypes=r.itemTypes or {} r.itemTypes[tostring(line.itemId)]=item:getFullType()
@@ -305,11 +305,6 @@ function A.new(npcId)
                 if order and order.destinationId and Delivery.takeReason(c,value,nextItem.line.sourceId) then return end
 		if r.deliveryOnly or r.returning or Producers.freeCarry(c.npc)<value:getUnequippedWeight()
 		    or not first.to:hasRoomFor(c.npc,value) or not Producers.transfer(c,value,first.from,first.to) then return end
-		if r.producer~='DELIVERY' then
-		    if not Routing.accept(c,c.destination,value)
-			or not Store.capacity(c.token,value:getID(),c.destination.id,value:getUnequippedWeight(),
-			    c.destination.container:getFreeCapacity(c.npc)) then return end
-		end
 	    elseif not endpoint.playerId then
 		if not Routing.accept(c,endpoint,value) or not first.to:hasRoomFor(c.npc,value)
 		    or not Producers.transfer(c,value,first.from,first.to)
@@ -323,13 +318,43 @@ function A.new(npcId)
 	first.context.nextTransfer=continuation
 	return Transfer.item(first.context,first.item,first.from,first.to,endpoint)
     end
+    local function setBackoff(c,endpointId,durationMs,reason,now)
+        if not endpointId then return end
+        now=now or getTimestampMs()
+        local count,oldest,earliest=0,nil,math.huge
+        for id,deadline in pairs(c.backoff) do
+            if deadline<=now then c.backoff[id]=nil
+            else count=count+1 if deadline<earliest then oldest,earliest=id,deadline end end
+        end
+        if count>=90 and oldest then c.backoff[oldest]=nil end
+        local retryAt=now+(durationMs or 15000)
+        c.backoff[endpointId]=retryAt
+        Log.write('HAUL_ROUTE','BACKOFF job='..c.job.id..' endpoint='..endpointId
+            ..' reason='..tostring(reason)..' retryAt='..tostring(retryAt))
+    end
+    local function nextSource(r)
+        for _,line in ipairs(r.manifest) do if line.custodyState=='UNCOLLECTED' then return line.sourceId end end
+    end
     local function nextStep(c)
         if c.job.producer=='DELIVERY' then return require('EmberRoutesProbe/Logistics/DeliveryFlow').next(c,snapshotStep,withdraw) end
         local r=c.job
-        local source=not r.deliveryOnly and Registry.resolve(r.source,'take',r.scopeId) or nil
+        local sourceId=not r.deliveryOnly and (nextSource(r) or r.source) or nil
+        local source=sourceId and Registry.resolve(sourceId,'take',r.scopeId) or nil
+        if sourceId and not source then
+            local changes={}
+            for _,line in ipairs(r.manifest) do
+                if line.custodyState=='UNCOLLECTED' and line.sourceId==sourceId then
+                    changes[#changes+1]={itemId=line.itemId,state='WITHDRAWN'}
+                end
+            end
+            if #changes>0 then assert(Store.settleHaulLines(r,c.token,c.generation,changes)) end
+            c.scan=nil
+            return nil,'SCAN_PENDING'
+        end
+        if c.scanSourceId~=sourceId then c.scan=nil end
         if not c.scan then
             local containers={c.npc:getInventory()} if source then containers[2]=source.container end
-            c.scan=View.scan(containers)
+            c.scan=View.scan(containers) c.scanSourceId=sourceId
         end
         local index,why=c.scan:step(32)
         if not index then if why=='INVENTORY_CHANGED' then c.scan=nil end return nil,'SCAN_PENDING' end
@@ -340,8 +365,10 @@ function A.new(npcId)
                 local item,where,reason=View.find(index,l.itemId)
                 if item and where==1 then l.custodyState='CARRIED' held[#held+1]=item
                 elseif l.custodyState=='CARRIED' then return nil,'RECONCILE_REQUIRED'
-                elseif item and where==2 then uncollected=uncollected or {line=l,item=item}
-                elseif reason~='ITEM_MISSING' then return nil,'RECONCILE_REQUIRED' end
+                elseif l.sourceId==sourceId then
+                    if item and where==2 then uncollected=uncollected or {line=l,item=item}
+                    elseif reason~='ITEM_MISSING' then return nil,'RECONCILE_REQUIRED' end
+                end
             end
         end
         if r.deliveryOnly then withdraw(c) end
@@ -350,15 +377,12 @@ function A.new(npcId)
                 r.routingWait={reason='PATH_BACKOFF'}
                 return nil,'ROUTING_WAIT'
             end
-            local target=Registry.resolve(r.destination,'put',r.scopeId)
-            c.source,c.destination=source,target
-            if source and target and Routing.accept(c,target,uncollected.item)
-                and Producers.transfer(c,uncollected.item,source.container,c.npc:getInventory())
+            local destId=uncollected.line.destinationId or r.destination
+            local target=destId and Registry.resolve(destId,'put',r.scopeId)
+            c.source=source
+            if source and target and Producers.transfer(c,uncollected.item,source.container,c.npc:getInventory())
                 and Producers.freeCarry(c.npc)>=uncollected.item:getUnequippedWeight()
                 and c.npc:getInventory():hasRoomFor(c.npc,uncollected.item) then
-                local reserved=Store.capacity(c.token,uncollected.item:getID(),target.id,
-                    uncollected.item:getUnequippedWeight(),target.container:getFreeCapacity(c.npc))
-                if not reserved then withdraw(c) return nil,'SCAN_PENDING' end
                 if not Transfer.reachable(c.npc,source) then
                     c.moveEndpoint=source c.moveRule={target=target,item=uncollected.item}
                     return Transfer.move(c,source)
@@ -367,7 +391,12 @@ function A.new(npcId)
             end
             withdraw(c)
         elseif not r.deliveryOnly then
-            if not source then withdraw(c) end r.phase='DELIVER'
+            if nextSource(r) then
+                c.scan=nil
+                return nil,'SCAN_PENDING'
+            end
+            if not source then withdraw(c) end
+            r.phase='DELIVER'
         end
         if #held==0 then
             if #Manifest.claimItemIds(r)==0 then return nil,'DONE' end
@@ -376,6 +405,19 @@ function A.new(npcId)
         local selected,target
         local old=c.destination or Registry.resolve(r.destination,'put',r.scopeId)
         for _,item in ipairs(held) do if Routing.accept(c,old,item) and getTimestampMs()>=(c.backoff[old.id] or 0) then selected,target=item,old break end end
+        if not target then
+            for _,item in ipairs(held) do
+                local line=Manifest.line(r,item:getID())
+                local destId=line and line.destinationId
+                if destId and destId~=(old and old.id) and getTimestampMs()>=(c.backoff[destId] or 0) then
+                    local candidate=Registry.resolve(destId,'put',r.scopeId)
+                    if candidate and Routing.accept(c,candidate,item) then
+                        selected,target=item,candidate
+                        break
+                    end
+                end
+            end
+        end
         if not target then
             if not r.deliveryOnly then withdraw(c) end
             if not c.search then c.search=Routing.new(c,held) end
@@ -395,7 +437,11 @@ function A.new(npcId)
         if not Routing.accept(c,target,selected) then return nil,'SCAN_PENDING' end
         r.activeStop={destinationId=target.id,itemIds={selected:getID()}}
         local ok=Store.capacity(c.token,selected:getID(),target.id,selected:getUnequippedWeight(),target.container:getFreeCapacity(c.npc))
-        if not ok then c.destination=nil return nil,'SCAN_PENDING' end
+        if not ok then
+            c.destination=nil
+            setBackoff(c,target.id,18000,'CAPACITY_FULL',getTimestampMs())
+            return nil,'SCAN_PENDING'
+        end
         if not Transfer.reachable(c.npc,target) then c.moveEndpoint=target c.moveRule={target=target,item=selected} return Transfer.move(c,target) end
 	return snapshotStep(c,Manifest.line(r,selected:getID()),selected,target,'PUT',index)
     end
@@ -425,16 +471,8 @@ function A.new(npcId)
     end
     local function moveFailed(c,now,cause)
         if not c.moveEndpoint then return end
-        local count,oldest,earliest=0,nil,math.huge
-        for id,deadline in pairs(c.backoff) do
-            if deadline<=now then c.backoff[id]=nil
-            else count=count+1 if deadline<earliest then oldest,earliest=id,deadline end end
-        end
-        if count>=90 and oldest then c.backoff[oldest]=nil end
-        c.backoff[c.moveEndpoint.id]=now+15000
+        setBackoff(c,c.moveEndpoint.id,15000,cause,now)
         c.job.routingWait={reason='PATH_BACKOFF'}
-        Log.write('HAUL_ROUTE','WAIT job='..c.job.id..' endpoint='..c.moveEndpoint.id
-            ..' cause='..tostring(cause)..' retryAt='..tostring(now+15000))
     end
     local function tick()
         local c=current if not c then return end

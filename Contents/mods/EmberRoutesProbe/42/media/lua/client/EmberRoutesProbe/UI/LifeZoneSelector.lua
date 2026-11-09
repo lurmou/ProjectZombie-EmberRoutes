@@ -123,6 +123,22 @@ function Selector:update()
         or math.floor(self.actor:getZ())~=self.lockedZ then self:close() end
 end
 
+function Selector:renderWorldHighlights()
+    if not self.actor or (self.actor.isDead and self.actor:isDead()) or (self.isVisible and not self:isVisible()) then return end
+    local playerNum=self.actor:getIndex()
+    local z=self.lockedZ or self.previewZ or math.floor(self.actor:getZ())
+
+    -- Render parent settlement territory boundary (cool translucent cyan/blue overlay)
+    local entry=Ledger.view(self.actor,self.scope) or Ledger.get(self.scope)
+    if entry and entry.areas and _G.addAreaHighlightForPlayer then
+        for _,r in ipairs(entry.areas) do
+            addAreaHighlightForPlayer(playerNum,r.x,r.y,r.x+r.w,r.y+r.h,z,0.20,0.60,0.95,0.18)
+        end
+    end
+
+    Base.renderWorldHighlights(self)
+end
+
 function Selector:close()
     if self.disposed then return end self.disposed=true
     Base.close(self) if active==self then active=nil end

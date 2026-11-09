@@ -16,11 +16,18 @@ end
 function Policy.choose(sample,previous,context,offers)
     if not context or context.safe~=true then return nil,'SAFETY_UNKNOWN_OR_UNSAFE' end
     if sample.medical and sample.medical.needsCare and offers.MEDICAL then return 'MEDICAL' end
+    local isWorking=context and context.isWorking==true
     local best,score
     for _,r in ipairs(rules) do
         local v=sample[r.field]
         local active=previous==r.kind
         local threshold=active and r.leave or r.enter
+        if isWorking and not active then
+            if r.kind=='DRINK' then threshold=0.45
+            elseif r.kind=='EAT' then threshold=0.50
+            elseif r.kind=='SLEEP' then threshold=0.85
+            elseif r.kind=='REST' then threshold=0.15 end
+        end
         if type(v)=='number' and v==v and v>=0 and v<=1
             and (r.inverse and v<threshold or not r.inverse and v>threshold)
             and offers[r.kind]==true then

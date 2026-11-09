@@ -73,7 +73,7 @@ end
 local function readCraftSkill(handle)
     if not handle or not handle.getPerkLevel or not Perks then return nil end
     local maxLvl=nil
-    local craftingPerks={Perks.Woodwork,Perks.MetalWelding,Perks.Electricity,Perks.Mechanics,Perks.Tailoring,Perks.Cooking}
+    local craftingPerks={Perks.Woodwork,Perks.MetalWelding,Perks.Blacksmith,Perks.Electricity,Perks.Mechanics,Perks.Tailoring,Perks.Cooking}
     for _,perk in ipairs(craftingPerks) do
         if perk then
             local ok,lvl=pcall(function() return handle:getPerkLevel(perk) end)

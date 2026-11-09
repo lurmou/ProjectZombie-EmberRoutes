@@ -32,7 +32,7 @@ function Cards.workers()
             if visible+v.height<0 or visible>=list.height then return y+v.height end
             if list.selected==entry.index then
                 Theme.rect(list,0,y,list.width,v.height,Theme.selected)
-                Theme.rect(list,0,y,math.max(2,p/4),v.height,Theme.accent)
+                Theme.rect(list,0,y,list.width,v.height,Theme.selectedBorder or Theme.border,true)
             elseif list.mouseoverselected==entry.index then Theme.rect(list,0,y,list.width,v.height,Theme.hover) end
             Theme.text(list,v.name,p,y+p/2,Theme.textColor)
             if v.workerName then Theme.text(list,v.workerName,p,y+h+p/2,Theme.muted) end

@@ -5,7 +5,6 @@ local Batch = require "EmberRoutesProbe/Runtime/Batch"
 local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
-require "TimedActions/ISInventoryTransferAction"
 
 local Haul = { endpoints = {}, fixtures = {}, batch = nil }
 local controlled
@@ -145,65 +144,75 @@ local function moveStep(name, endpoint)
 end
 
 local function transferStep(name, fixture, source, destination, endpoint)
-    local body=Haul.body
+    local body = Haul.body
     local step = { name = name }
-    local action, performed, attempted, stopped, settle
+    local started, performed, stopped, settle
+
+    local function endpointsOK()
+        return endpointsValid()
+            and (not body or body.current())
+            and EmberRoutesProbeJava.carrierActive(Haul.npc)
+            and reachable(endpoint)
+            and Rules.item(fixture.item, { fixture.root, fixture.source, fixture.destination }, source, fixture)
+    end
+
     function step.start()
         if body and not body.current() then return 'FAILED','CONTROL_REQUIRED' end
         if not EmberRoutesProbeJava.carrierActive(Haul.npc) or not reachable(endpoint) then return "FAILED", "NOT_AT_CONTAINER" end
         if fixture.item:getContainer() ~= source or not source:getItems():contains(fixture.item) then return "FAILED", "SOURCE_CHANGED" end
         if not destination:hasRoomFor(Haul.npc, fixture.item) then return "FAILED", "DESTINATION_FULL" end
-        if not Haul.npc:getCharacterActions():isEmpty() then return "FAILED", "NATIVE_ACTION_BUSY" end
-        action = ISInventoryTransferAction:new(Haul.npc, fixture.item, source, destination, 90)
-        action.useProgressBar, action.forceProgressBar = false, false
-        local nativeAnim, nativeUpdate = action.startActionAnim, action.update
-        local nativePerform, nativeStop, nativeValid = action.perform, action.stop, action.isValid
-        action.isValid = function(self)
-            local endpointsOK = endpointsValid()
-            return (not body or body.current()) and endpointsOK and EmberRoutesProbeJava.carrierActive(self.character) and reachable(endpoint)
-                and Rules.item(fixture.item, { fixture.root, fixture.source, fixture.destination }, source, fixture)
-                and nativeValid(self)
+        if not endpointsOK() then return "FAILED", "TRANSFER_PRECONDITION" end
+
+        if endpoint and endpoint.object and Haul.npc.faceThisObject then
+            Haul.npc:faceThisObject(endpoint.object)
         end
-        action.startActionAnim = function(self)
-            if body and not body.current() then return end
-            nativeAnim(self)
-            -- World-container actions normally select a real player's loot UI.
-            -- This instance keeps the native animation/effects, without that selection.
-            self.selectedContainer = nil
+
+        local duration = 40
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
+            EmberRoutesProbeJava.nativeActionStart(Haul.npc, "Loot", duration, true)
         end
-        action.update = function(self)
-            if body and not body.current() then return end
-            nativeUpdate(self)
-            self.character:faceThisObject(endpoint.object)
-        end
-        action.perform = function(self)
-            if body and (attempted or stopped or not body.current()) then return end
-            attempted=true
-            -- Revalidate at the actual effect boundary, including revocation after the last Lua tick.
-            if not self:isValid() then
-                self:stop()
-                log("TRANSFER_REFUSED current tag, location or instance state invalid")
-                return
-            end
-            nativePerform(self)
-            performed = true
-        end
-        action.stop = function(self)
-            if body and (performed or stopped or not body.retained()) then return end
-            stopped=true nativeStop(self)
-        end
-        if body then assert(body.add(action),'CONTROL_REQUIRED') else ISTimedActionQueue.add(action) end
+        started = true
     end
+
     function step.poll(time)
-        if ISTimedActionQueue.hasAction(action) then return "WAIT" end
-        if not performed or stopped then return "FAILED", "native action ended without completion" end
+        if stopped then return "FAILED", "native action ended without completion" end
+        if not started then return "FAILED", "NOT_STARTED" end
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionFinished then
+            if not EmberRoutesProbeJava.nativeActionFinished(Haul.npc) then
+                return "WAIT"
+            end
+        end
+
+        if not endpointsOK() then
+            stopped = true
+            if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
+                EmberRoutesProbeJava.nativeActionStop(Haul.npc)
+            end
+            log("TRANSFER_REFUSED current tag, location or instance state invalid")
+            return "FAILED", "TRANSFER_REFUSED"
+        end
+
+        -- Atomic physical transfer
+        source:DoRemoveItem(fixture.item)
+        destination:AddItem(fixture.item)
+        performed = true
+
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
+            EmberRoutesProbeJava.nativeActionStop(Haul.npc)
+        end
+
         if not settle then settle = time + 250 end
         if time < settle then return "WAIT" end
         local valid, details = Rules.item(fixture.item, { fixture.root, fixture.source, fixture.destination }, destination, fixture)
         return valid and "PASSED" or "FAILED", details
     end
+
     function step.cancel()
-        if body then body.clear() elseif Haul.npc then ISTimedActionQueue.clear(Haul.npc) end
+        stopped = true
+        if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
+            EmberRoutesProbeJava.nativeActionStop(Haul.npc)
+        end
+        if body then body.clear() end
     end
     return step
 end
@@ -367,7 +376,7 @@ end
 function Haul.execute(actor, command, object)
     local ok, result = pcall(dispatch, actor, command, object)
     if not ok then Haul.cancel("ERROR") log("ERROR " .. tostring(result)) result = "ERROR" end
-    if result == "INJURED" then actor:Say(getText("IGUI_EmberRoutesProbe_HaulInjured"))
+    if result == "INJURED" then actor:Say(getText("IGUI_EmberRoutesProbe_HaulInjured")) require("EmberRoutesProbe/Chatter/ChatterService").onActionResult(actor, "INJURED")
     else actor:Say(getText("IGUI_EmberRoutesProbe_HaulResult") .. " " .. tostring(result)) end
     return result
 end
@@ -388,7 +397,7 @@ function Haul.tick(context)
     if reason then
         Haul.cancel(reason)
         if not Haul.actor:isDead() then
-            if reason == "INJURED" then Haul.actor:Say(getText("IGUI_EmberRoutesProbe_HaulInjured"))
+            if reason == "INJURED" then Haul.actor:Say(getText("IGUI_EmberRoutesProbe_HaulInjured")) require("EmberRoutesProbe/Chatter/ChatterService").onActionResult(Haul.actor, "INJURED")
             else Haul.actor:Say(getText("IGUI_EmberRoutesProbe_HaulResult") .. " CANCELLED " .. reason) end
         end
         return

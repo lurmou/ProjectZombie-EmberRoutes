@@ -1,7 +1,6 @@
-require "ISUI/ISScrollBar"
 require "ISUI/ISTextEntryBox"
-require "ISUI/ISComboBox"
 require "ISUI/ISButton"
+local Dropdown = require "EmberRoutesProbe/UI/Dropdown"
 local UI = require "EmberRoutesProbe/UI/UI"
 local Theme = require "EmberRoutesProbe/UI/Theme"
 local Tooltip = require "EmberRoutesProbe/UI/TooltipManager"
@@ -12,7 +11,7 @@ local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_" .. k
 
 function Controls.new(owner, nativeParent, bounds)
     assert(bounds.x == 0 and bounds.y == 0, "EXPECTED_HOST_LOCAL_BOUNDS")
-    local self = { host = nativeParent, categoryIds = { false }, sortIds = Controls.sorts, buttons = {} }
+    local self = { host = nativeParent, buttons = {} }
 
     self.search = ISTextEntryBox:new("", 0, 0, 0, bounds.height)
     self.search:initialise()
@@ -26,19 +25,25 @@ function Controls.new(owner, nativeParent, bounds)
     self.search.borderColor = Theme.border
     Tooltip.register(self.search, { method = "prerender", owner = owner })
 
-    self.category = ISComboBox:new(0, 0, 0, bounds.height, owner, owner.queryChanged)
-    self.category:initialise()
-    self.category:addOption(text("allCategories"))
+    local categoryOptions = {
+        { id = false, label = text("allCategories") }
+    }
     for _, id in ipairs(Filter.order) do
         if not Filter.nodes[id].parent then
-            self.category:addOption(getText("IGUI_EmberRoutesProbe_Filter_" .. id))
-            self.categoryIds[#self.categoryIds + 1] = id
+            table.insert(categoryOptions, { id = id, label = getText("IGUI_EmberRoutesProbe_Filter_" .. id) })
         end
     end
+    self.category = Dropdown:new(0, 0, 0, bounds.height, owner, owner.queryChanged)
+    self.category:initialise()
+    self.category:setOptions(categoryOptions, false)
 
-    self.sort = ISComboBox:new(0, 0, 0, bounds.height, owner, owner.queryChanged)
+    local sortOptions = {}
+    for _, id in ipairs(Controls.sorts) do
+        table.insert(sortOptions, { id = id, label = text("sort_" .. id) })
+    end
+    self.sort = Dropdown:new(0, 0, 0, bounds.height, owner, owner.queryChanged)
     self.sort:initialise()
-    for _, id in ipairs(Controls.sorts) do self.sort:addOption(text("sort_" .. id)) end
+    self.sort:setOptions(sortOptions, "default")
     self.sort:setToolTipMap({ defaultTooltip = text("sortHint") })
     Tooltip.register(self.sort, { method = "prerender", owner = owner })
 

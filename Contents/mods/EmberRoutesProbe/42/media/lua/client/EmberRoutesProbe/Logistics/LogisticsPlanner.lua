@@ -13,6 +13,7 @@ function Planner.new(entry,settings,npc,compiled)
     if not ids then return nil,reason end
     local plan={ids=ids,settings=settings,npc=npc,index=compiled and compiled.index or Sort.index(),
         phase=compiled and "SOURCES" or "TARGETS",position=1,read=0,reason="NO_ROUTE",compiled=compiled,
+        coords={},destWeights={},
         stats={accessible=0,inputs=0,storage=0,sources=0,protected=0,candidates=0,claimed=0}}
     function plan:waitingReason()
         local stats=self.stats
@@ -55,7 +56,10 @@ function Planner.new(entry,settings,npc,compiled)
                 end
             elseif self.phase=="SOURCES" then
                 local id=self.ids[self.position]
-                if not id then return nil,"DONE",spent,self:waitingReason() end
+                if not id then
+                    if self.batch then return self.batch,"FOUND",spent end
+                    return nil,"DONE",spent,self:waitingReason()
+                end
                 self.position=self.position+1
                 local source=Registry.resolve(id,"take","local-world")
                 if source then
@@ -74,7 +78,9 @@ function Planner.new(entry,settings,npc,compiled)
                 local source=self.source
                 if not sourceValid(source) then return nil,"CHANGED",spent,"INVENTORY_CHANGED" end
                 if source.position>=source.size then
-                    if self.batch then return self.batch,"FOUND",spent end
+                    if self.batch and (#self.batch.items>=30 or (Producers.freeCarry(self.npc)-self.batchWeight)<1.0) then
+                        return self.batch,"FOUND",spent
+                    end
                     self.phase="SOURCES"
                 else
                     self.read=self.read+1
@@ -98,21 +104,30 @@ function Planner.new(entry,settings,npc,compiled)
                 if done then
                     if self.best then
                         local weight=item:getUnequippedWeight()
-                        if not self.batch or (self.best.id==self.batch.destination and self.mode==self.batch.sourceMode) then
+                        if not self.batch or self.mode==self.batch.sourceMode then
                             local endpoint=Registry.resolve(self.best.id,"put","local-world")
                             local total=(self.batchWeight or 0)+weight
+                            local destTotal=(self.destWeights[self.best.id] or 0)+weight
                             if endpoint and Registry.logistics(endpoint)=="STORAGE" and Registry.accepts(endpoint,item)
                                 and Sort.source(Registry.logistics(source),self.settings,Registry.filter(source.object,source.container),item)==self.mode
                                 and total<=Producers.freeCarry(self.npc)
-                                and total<=Claims.availableCapacity(endpoint.id,endpoint.container:getFreeCapacity(self.npc)) then
+                                and destTotal<=Claims.availableCapacity(endpoint.id,endpoint.container:getFreeCapacity(self.npc)) then
                                 if not self.batch then
                                     self.batch={producer="LOGISTICS",settlementId=entry.id,sourceMode=self.mode,
-                                        source=source.id,destination=self.best.id,items={},weights={}}
+                                        source=source.id,destination=self.best.id,items={},weights={},
+                                        itemSources={},itemDestinations={}}
                                     self.batchWeight=0
+                                    self.destWeights={}
                                 end
-                                self.batch.items[#self.batch.items+1]=item:getID() self.batchWeight=self.batchWeight+weight
+                                self.batch.items[#self.batch.items+1]=item:getID()
+                                self.batchWeight=total
+                                self.destWeights[endpoint.id]=destTotal
                                 self.batch.weights[item:getID()]=weight
-                                if #self.batch.items>=30 then return self.batch,"FOUND",spent end
+                                self.batch.itemSources[tostring(item:getID())]=source.id
+                                self.batch.itemDestinations[tostring(item:getID())]=endpoint.id
+                                if #self.batch.items>=30 or (Producers.freeCarry(self.npc)-self.batchWeight)<0.1 then
+                                    return self.batch,"FOUND",spent
+                                end
                             end
                         end
                     end
@@ -124,12 +139,24 @@ function Planner.new(entry,settings,npc,compiled)
                         if current.container:hasRoomFor(self.npc,item) and self.npc:getInventory():hasRoomFor(self.npc,item)
                             and Producers.freeCarry(self.npc)>=weight
                             and Claims.availableCapacity(current.id,current.container:getFreeCapacity(self.npc))>=weight then
-                            local square=current.object:getSquare() local origin=source.object:getSquare()
-                            local distance=(square:getX()-origin:getX())^2+(square:getY()-origin:getY())^2+(square:getZ()-origin:getZ())^2
                             local score=Sort.specificity(Registry.filter(current.object,current.container),self.targets.description,item)
                             if score then
-                                local candidate={id=current.id,specificity=score,distance=distance}
-                                if Sort.better(candidate,self.best) then self.best=candidate end
+                                local c1=self.coords[source.id]
+                                if not c1 then
+                                    local sq=source.object and source.object:getSquare()
+                                    if sq then c1={x=sq:getX(),y=sq:getY(),z=sq:getZ()} self.coords[source.id]=c1 end
+                                end
+                                local c2=self.coords[current.id]
+                                if not c2 then
+                                    local sq=current.object and current.object:getSquare()
+                                    if sq then c2={x=sq:getX(),y=sq:getY(),z=sq:getZ()} self.coords[current.id]=c2 end
+                                end
+                                local distance=c1 and c2 and ((c2.x-c1.x)^2+(c2.y-c1.y)^2+(c2.z-c1.z)^2) or 0
+                                local pFilter=Registry.filter(current.object,current.container)
+                                local candidate={id=current.id,priority=pFilter and pFilter.priority or 3,specificity=score,distance=distance}
+                                if Sort.better(candidate,self.best) then
+                                    self.best=candidate
+                                end
                             end
                         elseif Producers.freeCarry(self.npc)<weight or not self.npc:getInventory():hasRoomFor(self.npc,item) then
                             self.reason="NPC_INVENTORY_FULL"

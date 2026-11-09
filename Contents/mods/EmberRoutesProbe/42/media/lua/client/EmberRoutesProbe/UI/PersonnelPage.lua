@@ -11,6 +11,9 @@ local Text=require 'EmberRoutesProbe/UI/Text'
 local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local Crafting=require 'EmberRoutesProbe/Crafting/CraftingService'
 local DossierDrawer=require 'EmberRoutesProbe/UI/PersonnelDossierDrawer'
+local LayoutHost=require 'EmberRoutesProbe/UI/LayoutHost'
+local UI=require 'EmberRoutesProbe/UI/UI'
+local FilterChips=require 'EmberRoutesProbe/UI/FilterChips'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..key,...) end
 local function pubText(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
@@ -32,6 +35,7 @@ local PRIORITY_COLORS={
 ---@field pad number
 ---@field store table
 ---@field matrixList EmberRoutesCachedList
+---@field pageHost EmberRoutesLayoutHost
 ---@field active boolean?
 ---@field disposed boolean?
 EmberRoutesPersonnelPage=ISPanel:derive('EmberRoutesPersonnelPage')
@@ -39,6 +43,12 @@ function EmberRoutesPersonnelPage.floorLabel(z)
     local floor=math.floor(z+0.5)
     return floor==0 and getText('IGUI_EmberRoutesProbe_Settlement_floorGround')
         or ((floor+1)..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel'))
+end
+
+local function initRect(t, defH)
+    t = t or {}
+    t.x = t.x or 0; t.y = t.y or 0; t.width = t.width or 0; t.height = t.height or (defH or 0); t.visible = (t.visible ~= false)
+    return t
 end
 
 ---@param owner EmberRoutesSettlementDashboard
@@ -50,7 +60,13 @@ function EmberRoutesPersonnelPage:new(owner,bounds)
     o.actor,o.entry=owner.actor,owner.entry
     o.fontHeight,o.pad=owner.fontHeight,owner.pad
     o.background=false o.workFilter='all' o.overview={byNpc={}}
-    o.bottomNoticeBounds={x=0,y=bounds.height-o.fontHeight,width=bounds.width,height=o.fontHeight}
+    o.topInfoBounds=initRect(o.topInfoBounds,o.fontHeight+o.pad)
+    o.matrixBounds=initRect(o.matrixBounds)
+    o.detailsBounds=initRect(o.detailsBounds)
+    o.headerBounds=initRect(o.headerBounds,o.fontHeight*2+math.floor(o.pad/2))
+    o.matrixListBounds=initRect(o.matrixListBounds)
+    o.infoBounds=initRect(o.infoBounds)
+    o.bottomNoticeBounds={x=0,y=bounds.height-o.fontHeight,width=bounds.width,height=o.fontHeight,visible=false}
     o.store=State.new({workers={},selected=nil,notice='',revision=0})
     return o
 end
@@ -61,20 +77,18 @@ function EmberRoutesPersonnelPage:createChildren()
     ISPanel.createChildren(self)
     local h,p=self.fontHeight,self.pad
 
-    local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},
-        {{basis=h+p},{grow=1},{basis=h}},
-        {direction='column',padding=p,gap=p/2}))
+    self.pageHost=LayoutHost:new(0,0,self.width,self.height,{direction='column'})
+    self.pageHost:initialise()
+    self:addChild(self.pageHost)
 
-    local top=assert(Layout.axis(regions[1],{{grow=1},{basis=h*6}},{gap=p}))
-    self.topInfoBounds=top[1]
-    self.workFilters=require('EmberRoutesProbe/UI/FilterChips'):new(top[1].x,top[1].y,top[1].width,top[1].height,function(key)
+    self.workFilters=FilterChips:new(0,0,0,h+p,function(key)
         self.workFilter=key self.store:setState({revision=self.store.value.revision+1})
     end)
     local options={}
     for _,key in ipairs({'all','working','idle','blocked'}) do options[#options+1]={id=key,label=getText('IGUI_EmberRoutesProbe_Distributed_'..key)} end
-    self.workFilters:setOptions(options,self.workFilter) self:addChild(self.workFilters)
+    self.workFilters:setOptions(options,self.workFilter)
 
-    self.refreshButton=ISButton:new(top[2].x,top[2].y,top[2].width,top[2].height,getText('IGUI_EmberRoutesProbe_Monitor_refresh'),self,function()
+    self.refreshButton=ISButton:new(0,0,0,h+p,getText('IGUI_EmberRoutesProbe_Monitor_refresh'),self,function()
         self:refresh()
     end)
     self.refreshButton:initialise()
@@ -84,76 +98,80 @@ function EmberRoutesPersonnelPage:createChildren()
         if sel then require('EmberRoutesProbe/Settlement/PersonnelService').invalidate(sel.id) end
         self:refresh()
     end
-    self:addChild(self.refreshButton)
 
-    local mainCols=assert(Layout.axis(regions[2],{{grow=74},{grow=26}},{gap=p}))
-    self.matrixBounds=mainCols[1]
-    self.detailsBounds=mainCols[2]
+    self.dossierButton=ISButton:new(0,0,0,h+p,text('viewDossier'),self,function() self:toggleDossierDrawer() end)
+    self.dossierButton:initialise()
+    Theme.button(self.dossierButton)
 
-    local rightParts=assert(Layout.axis(self.detailsBounds,{{basis=h+p},{grow=1},{basis=(h+p)*2+p/2}},{direction='column',gap=p/2}))
-    self.infoBounds=rightParts[2]
-    self.dossierButton=ISButton:new(rightParts[1].x,rightParts[1].y,rightParts[1].width,rightParts[1].height,
-        text('viewDossier'),self,function() self:toggleDossierDrawer() end)
-    self.dossierButton:initialise() Theme.button(self.dossierButton) self:addChild(self.dossierButton)
     self.info=require('EmberRoutesProbe/UI/InfoList').new(self,self.infoBounds)
-    self.workCommands={}
-    local actionRows=assert(Layout.axis(rightParts[3],{{grow=1},{grow=1}},{direction='column',gap=p/2}))
-    local commands={}
-    for _,row in ipairs(actionRows) do
-        for _,b in ipairs(assert(Layout.axis(row,{{grow=1},{grow=1}},{gap=p/2}))) do commands[#commands+1]=b end
-    end
-    for i,key in ipairs({'stop','resume','return','stopBody'}) do
-        local b=commands[i]
-        local button=ISButton:new(b.x,b.y,b.width,b.height,getText('IGUI_EmberRoutesProbe_Distributed_'..key),self,function()
-            if not self.active or not self.activationScope:isCurrent() then return end
-            local result=require('EmberRoutesProbe/Work/WorkCommandAdapter').command(self.actor,self.entry.id,self.currentWork and self.currentWork.row,key)
-            self.store:setState({notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)}) self:refresh()
-        end)
-        button:initialise() Theme.button(button) button:setVisible(false) self:addChild(button) self.workCommands[key]=button
-    end
 
-    local matrixParts=assert(Layout.axis(self.matrixBounds,{{basis=h*2+p/2},{grow=1}},{direction='column',gap=p/4}))
-    self.headerBounds=matrixParts[1]
-    self.headerBounds.width=math.max(1,self.headerBounds.width-16)
+    self.workCommands={}
+    for _,key in ipairs({'stop','resume','return','stopBody'}) do
+        local button=ISButton:new(0,0,0,0,getText('IGUI_EmberRoutesProbe_Distributed_'..key),self,function()
+            if not self.active or not self.activationScope or not self.activationScope:isCurrent() then return end
+            local result=require('EmberRoutesProbe/Work/WorkCommandAdapter').command(self.actor,self.entry.id,self.currentWork and self.currentWork.row,key)
+            self.store:setState({notice=require('EmberRoutesProbe/UI/OrderMonitorCards').reason(result)})
+            self:refresh()
+        end)
+        button:initialise()
+        Theme.button(button)
+        button:setVisible(false)
+        self.workCommands[key]=button
+    end
 
     self.workCategories=Public.categories()
     self.matrixNameRatio=#self.workCategories>4 and .22 or .4
     self.priorityHeaders={}
     local colTracks={{grow=self.matrixNameRatio*100}}
     for _ in ipairs(self.workCategories) do colTracks[#colTracks+1]={grow=(1-self.matrixNameRatio)*100/#self.workCategories} end
-    self.colHeaders=assert(Layout.axis(self.headerBounds,colTracks,{gap=p/3}))
+    self.colTracks=colTracks
+
     for i,category in ipairs(self.workCategories) do
-        local key=category local bounds=self.colHeaders[i+1]
-        local button=ISButton:new(bounds.x,bounds.y,bounds.width,bounds.height,pubText(key),self,function() self:batchCycle(key) end)
-        button:initialise() Theme.button(button) button.tooltip=text('priorityHint')
+        local key=category
+        local button=ISButton:new(0,0,0,0,pubText(key),self,function() self:batchCycle(key) end)
+        button:initialise()
+        Theme.button(button)
         local fullTitle=pubText(key)
-        local lines=Text.wrapLimited(fullTitle,bounds.width-p/2,UIFont.Small,2)
-        button.title='' button.tooltip=fullTitle..'\n'..text('priorityHint')
-        local widths={} for i,label in ipairs(lines) do widths[i]=getTextManager():MeasureStringX(UIFont.Small,label) end
+        button.title=''
+        button.tooltip=fullTitle..'\n'..text('priorityHint')
         local originalRender=button.render
         button.render=function(btn)
             if originalRender then originalRender(btn) end
+            local lines=btn.lines or {}
+            local widths=btn.widths or {}
             for line,label in ipairs(lines) do
-                local tw=widths[line]
+                local tw=widths[line] or 0
                 Theme.text(btn,label,(btn.width-tw)/2,(btn.height-#lines*h)/2+(line-1)*h,Theme.textColor)
             end
         end
-        Tooltip.register(button,{method='prerender',owner=self}) self:addChild(button) self.priorityHeaders[#self.priorityHeaders+1]=button
+        Tooltip.register(button,{method='prerender',owner=self})
+        self:addChild(button)
+        self.priorityHeaders[#self.priorityHeaders+1]=button
     end
-    local listBounds=matrixParts[2]
-    local listStyle={emptyColor=Theme.muted,
+
+    local listStyle={
+        emptyColor=Theme.muted,
         prepare=function(list,value)
             local cells={}
             for _,key in ipairs(self.workCategories) do
-                local n=value.priorities[key] or 3 local label=n==0 and '-' or tostring(n)
+                local n=value.priorities and value.priorities[key] or 3
+                local label=n==0 and '-' or tostring(n)
                 cells[#cells+1]={value=n,label=label,width=getTextManager():MeasureStringX(UIFont.Small,label)}
             end
-            return {height=math.floor(h*2.2),work=Text.wrapLimited(value.workLine or '',list.width-p*2,UIFont.Small,1)[1] or '',name=Text.wrapLimited(value.name,self.colHeaders[1].width-p*2,UIFont.Small,1)[1] or '',cells=cells}
+            local nameColW=(self.colHeaders and self.colHeaders[1]) and self.colHeaders[1].width or 100
+            return {
+                height=math.floor(h*2.2),
+                work=Text.wrapLimited(value.workLine or '',list.width-p*2,UIFont.Small,1)[1] or '',
+                name=Text.wrapLimited(value.name,nameColW-p*2,UIFont.Small,1)[1] or '',
+                cells=cells
+            }
         end,
         draw=function(list,y,entry)
             local item=entry.item.value local rowH=entry.height
             if y+list:getYScroll()+rowH<0 or y+list:getYScroll()>=list.height then return y+rowH end
-            if list.selected==entry.index then Theme.rect(list,0,y,list.width,rowH,Theme.selected)
+            if list.selected==entry.index then
+                Theme.rect(list,0,y,list.width,rowH,Theme.selected)
+                Theme.rect(list,0,y,list.width,rowH,Theme.selectedBorder or Theme.border,true)
             elseif list.mouseoverselected==entry.index then Theme.rect(list,0,y,list.width,rowH,Theme.hover) end
             local dot=item.busy and Theme.gold or Theme.accent
             Theme.rect(list,p/2,y+rowH/2-3,6,6,dot)
@@ -161,28 +179,47 @@ function EmberRoutesPersonnelPage:createChildren()
             Theme.text(list,entry.item.visual.work,p/2,y+rowH-h,Theme.muted)
             local mx=list:getMouseX()
             for i,cell in ipairs(entry.item.visual.cells) do
-                local r=self.colHeaders[i+1]
-                local x=r.x-self.headerBounds.x+p/4 local w=r.width-p/2
-                local style=PRIORITY_COLORS[cell.value] or PRIORITY_COLORS[3]
-                local hovered=list.mouseoverselected==entry.index and mx>=x and mx<=x+w
-                Theme.rect(list,x,y,w,rowH-h,style.bg) Theme.rect(list,x,y,w,rowH-h,hovered and Theme.accent or style.border,true)
-                Theme.text(list,cell.label,x+(w-cell.width)/2,y+(rowH-h*2)/2,style.text)
+                local r=self.colHeaders and self.colHeaders[i+1]
+                if r then
+                    local x=r.x-self.headerBounds.x+p/4 local w=r.width-p/2
+                    local style=PRIORITY_COLORS[cell.value] or PRIORITY_COLORS[3]
+                    local hovered=list.mouseoverselected==entry.index and mx>=x and mx<=x+w
+                    Theme.rect(list,x,y,w,rowH-h,style.bg) Theme.rect(list,x,y,w,rowH-h,hovered and Theme.accent or style.border,true)
+                    Theme.text(list,cell.label,x+(w-cell.width)/2,y+(rowH-h*2)/2,style.text)
+                end
             end
             return y+rowH
-        end}
+        end
+    }
 
-    self.matrixList=Cached.create(self,listBounds,function(_,row)
+    self.matrixList=Cached.create(self,self.matrixListBounds,function(_,row)
         self.store:setState({selected=row})
     end,listStyle)
     Theme.list(self.matrixList)
     self.matrixList.itemheight=math.floor(h*2.2)
-    self.matrixList.emberEmptyLines=Text.wrap(text('noWorkers'),listBounds.width-p*2,UIFont.Small)
+    self.matrixList.emberEmptyState={
+        icon='person',
+        iconSize=36,
+        title=text('noWorkers'),
+        hint=text('emptyFilterHint'),
+        action=text('resetFilters'),
+        onAction=function()
+            self.workFilter='all'
+            self.workFilters:setSelected('all')
+            self.store:setState({revision=self.store.value.revision+1})
+            self:refresh()
+        end
+    }
     self:addChild(self.matrixList)
 
     local function categoryAt(list,x)
+        if not self.colHeaders or not self.headerBounds then return end
         for i,key in ipairs(self.workCategories) do
-            local r=self.colHeaders[i+1] local left=r.x-self.headerBounds.x+p/4
-            if x>=left and x<=left+r.width-p/2 then return key end
+            local r=self.colHeaders[i+1]
+            if r then
+                local left=r.x-self.headerBounds.x+p/4
+                if x>=left and x<=left+r.width-p/2 then return key end
+            end
         end
     end
     local origMouseDown=self.matrixList.onMouseDown
@@ -211,9 +248,151 @@ function EmberRoutesPersonnelPage:createChildren()
         if row then self.store:setState({selected=row.item.value}) self:onListActivate() return true end
         return false
     end
-    -- Wheel scrolls the roster; priority changes require an explicit left/right click.
 
-    self.bottomNoticeBounds=regions[3]
+    local spec=UI.Column({padding=p,gap=p/2,align="stretch"},{
+        UI.Item(
+            UI.Row({gap=p,align="stretch"},{
+                UI.Item(self.workFilters,{grow=1,bind=self.topInfoBounds}),
+                UI.Item(self.refreshButton,{basis=h*6})
+            }),
+            {grow=0,basis=h+p}
+        ),
+        UI.Item(
+            UI.Row({gap=p,align="stretch"},{
+                UI.Item(
+                    UI.Column({gap=p/4,align="stretch"},{
+                        UI.Item(self.headerBounds,{
+                            key="matrixHeader",
+                            basis=h*2+p/2,
+                            bind=self.headerBounds,
+                            margin={right=16}
+                        }),
+                        UI.Item(self.matrixListBounds,{
+                            key="matrixList",
+                            grow=1,
+                            bind=self.matrixListBounds
+                        })
+                    }),
+                    {key="matrixPane",grow=74,bind=self.matrixBounds}
+                ),
+                UI.Item(
+                    UI.Column({gap=p/2,align="stretch"},{
+                        UI.Item(self.dossierButton,{basis=h+p}),
+                        UI.Item(self.infoBounds,{key="info",grow=1,bind=self.infoBounds}),
+                        UI.Grid({columns=2,gap=p/2,height=(h+p)*2+p/2,grow=0,when=function() return self:hasWorkCommands() end},
+                            self.workCommands.stop,
+                            self.workCommands.resume,
+                            self.workCommands['return'],
+                            self.workCommands.stopBody
+                        )
+                    }),
+                    {key="detailsPane",grow=26,bind=self.detailsBounds}
+                )
+            }),
+            {grow=1}
+        ),
+        UI.Item(self.bottomNoticeBounds,{
+            key="bottomNotice",
+            basis=h,
+            bind=self.bottomNoticeBounds
+        })
+    })
+
+    local handles,err=self.pageHost:build(spec)
+    assert(handles,err)
+    self.layoutHandles=handles
+end
+
+function EmberRoutesPersonnelPage:syncLayoutAliases()
+    local p=self.pad
+    if self.matrixList and self.matrixListBounds then
+        self.matrixList:setX(self.matrixListBounds.x)
+        self.matrixList:setY(self.matrixListBounds.y)
+        self.matrixList:setWidth(self.matrixListBounds.width)
+        self.matrixList:setHeight(self.matrixListBounds.height)
+        if self.matrixList.vscroll then
+            self.matrixList.vscroll:setX(self.matrixListBounds.width-16)
+            self.matrixList.vscroll:setHeight(self.matrixListBounds.height)
+        end
+        self.matrixList.emberEmptyState={
+        icon='person',
+        iconSize=36,
+        title=text('noWorkers'),
+        hint=text('emptyFilterHint'),
+        action=text('resetFilters'),
+        onAction=function()
+            self.workFilter='all'
+            self.workFilters:setSelected('all')
+            self.store:setState({revision=self.store.value.revision+1})
+            self:refresh()
+        end
+    }
+    end
+    if self.info and self.info.list and self.infoBounds then
+        self.info.list:setX(self.infoBounds.x)
+        self.info.list:setY(self.infoBounds.y)
+        self.info.list:setWidth(self.infoBounds.width)
+        self.info.list:setHeight(self.infoBounds.height)
+        if self.info.list.vscroll then
+            self.info.list.vscroll:setX(self.infoBounds.width-16)
+            self.info.list.vscroll:setHeight(self.infoBounds.height)
+        end
+    end
+    self:syncHeaderLayout()
+    self:syncCommandVisibility()
+end
+
+function EmberRoutesPersonnelPage:syncHeaderLayout()
+    if not self.headerBounds or not self.colTracks or self.headerBounds.width<=0 then return end
+    local h,p=self.fontHeight,self.pad
+    self.colHeaders=assert(Layout.axis(self.headerBounds,self.colTracks,{gap=p/3}))
+    for i,category in ipairs(self.workCategories) do
+        local button=self.priorityHeaders and self.priorityHeaders[i]
+        local bounds=self.colHeaders and self.colHeaders[i+1]
+        if button and bounds then
+            button:setX(bounds.x)
+            button:setY(bounds.y)
+            button:setWidth(bounds.width)
+            button:setHeight(bounds.height)
+            local fullTitle=pubText(category)
+            local lines=Text.wrapLimited(fullTitle,math.max(1,bounds.width-p/2),UIFont.Small,2)
+            button.lines=lines
+            local widths={}
+            for lineIdx,label in ipairs(lines) do
+                widths[lineIdx]=getTextManager():MeasureStringX(UIFont.Small,label)
+            end
+            button.widths=widths
+        end
+    end
+end
+
+function EmberRoutesPersonnelPage:hasWorkCommands()
+    if not self.workCommands then return false end
+    local caps=(self.currentWork and self.currentWork.row) and require('EmberRoutesProbe/Work/WorkCommandAdapter').capabilities(self.currentWork.row) or {}
+    return (caps.stop or caps.resume or caps['return'] or caps.stopBody) == true
+end
+
+function EmberRoutesPersonnelPage:syncCommandVisibility()
+    if not self.workCommands then return end
+    local caps=(self.currentWork and self.currentWork.row) and require('EmberRoutesProbe/Work/WorkCommandAdapter').capabilities(self.currentWork.row) or {}
+    for key,button in pairs(self.workCommands) do
+        button:setVisible(caps[key]==true)
+    end
+    if self.pageHost and self.pageHost:isActivationValid() then
+        self.pageHost:syncVisibility()
+    end
+end
+
+function EmberRoutesPersonnelPage:onResize()
+    if ISPanel.onResize then ISPanel.onResize(self) end
+    if self.pageHost then
+        self.pageHost:setWidth(self.width)
+        self.pageHost:setHeight(self.height)
+        if self.pageHost:isActivationValid() then
+            self.pageHost:resolveLayout()
+            self:syncLayoutAliases()
+        end
+    end
 end
 
 function EmberRoutesPersonnelPage:setWorkerPriority(worker,category,value)
@@ -284,12 +463,18 @@ function EmberRoutesPersonnelPage:activate()
         if snapshot and snapshot.reason=="WORLD_RESET" then self.owner:close() return end
         self:refresh()
     end)
-    if mounted and self.active then
+    if mounted then
+        self.active=true
+        if self.pageHost and self.activationScope and self.activationScope:isCurrent() then
+            self.pageHost:setActivation(self.activationScope)
+            self:syncLayoutAliases()
+        end
         self:refresh()
     end
 end
 
 function EmberRoutesPersonnelPage:deactivate()
+    if self.pageHost then self.pageHost:deactivate() end
     Lifecycle.unmount(self)
     self.batchResults=nil self.memberMenu=nil
     Tooltip.dismissOwner(self)
@@ -300,6 +485,7 @@ end
 function EmberRoutesPersonnelPage:dispose()
     self.disposed=true
     if self.dossierDrawer then self.dossierDrawer:dispose() self.dossierDrawer=nil end
+    if self.pageHost then self.pageHost:dispose() end
     self:deactivate()
     Tooltip.unregisterOwner(self)
 end
@@ -398,11 +584,10 @@ function EmberRoutesPersonnelPage:prerender()
     ISPanel.prerender(self)
     local h,p=self.fontHeight,self.pad
 
-    -- Top Info
-
-
     -- Column 1 header (Worker Name)
-    Theme.text(self,text('worker'),self.colHeaders[1].x+p/2,self.colHeaders[1].y+(self.colHeaders[1].height-h)/2,Theme.accent)
+    if self.colHeaders and self.colHeaders[1] then
+        Theme.text(self,text('worker'),self.colHeaders[1].x+p/2,self.colHeaders[1].y+(self.colHeaders[1].height-h)/2,Theme.textColor)
+    end
 
     -- Bottom notice
     local notice=self.store.value.notice or ''

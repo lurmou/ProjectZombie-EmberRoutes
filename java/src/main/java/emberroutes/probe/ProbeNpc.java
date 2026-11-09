@@ -57,6 +57,7 @@ public final class ProbeNpc extends IsoPlayer {
     private boolean furniturePathChecked;
     private boolean advancingPath;
     private boolean consumingPathRootMotion;
+    private float currentSpeedScale = 1.0f;
     private static final java.util.List<String> SLEEP_QUALITIES=java.util.List.of(
             "floor","goodBed","averageBed","badBed","goodBedPillow","averageBedPillow","badBedPillow");
     private static final zombie.iso.IsoDirections[] EXIT_DIRECTIONS={
@@ -606,6 +607,7 @@ public final class ProbeNpc extends IsoPlayer {
         setPath2(null); setVariable("bPathfind",false); setMoving(false);
         isPlayerMoving=false; playerMoveDir.set(0,0); setJustMoved(false);
         setRunning(false); setSprinting(false); discardRootMotion();
+        currentSpeedScale = 1.0f;
         AIComponent ai=getECSComponent(AIComponent.class);
         if (ai!=null) {
             var vars=ai.getHumanControlVars(); vars.justMoved=false; vars.running=false;
@@ -756,6 +758,7 @@ public final class ProbeNpc extends IsoPlayer {
         setRunning(false);
         setSprinting(false);
         discardRootMotion();
+        currentSpeedScale = 1.0f;
         AIComponent ai = getECSComponent(AIComponent.class);
         if (ai != null) {
             AIBrainPlayerControlVars vars = ai.getHumanControlVars();
@@ -910,6 +913,58 @@ public final class ProbeNpc extends IsoPlayer {
         }
     }
 
+    private void updateLocomotionSteering(PathFindBehavior2 path) {
+        if (!path.pathNextIsSet || nativeTraversal()) {
+            currentSpeedScale = 1.0f;
+            playerMoveDir.set(getForwardDirectionX(), getForwardDirectionY());
+            return;
+        }
+
+        var route = getPath2();
+        float w0X = path.pathNextX;
+        float w0Y = path.pathNextY;
+        boolean hasW1 = false;
+        float w1X = w0X;
+        float w1Y = w0Y;
+
+        if (route != null && !route.isEmpty()) {
+            int nodeCount = route.size();
+            for (int i = 0; i < nodeCount; i++) {
+                var node = route.getNode(i);
+                if (Math.abs(node.x - w0X) < 0.05f && Math.abs(node.y - w0Y) < 0.05f) {
+                    if (i + 1 < nodeCount) {
+                        var nextNode = route.getNode(i + 1);
+                        hasW1 = true;
+                        w1X = nextNode.x;
+                        w1Y = nextNode.y;
+                    }
+                    break;
+                }
+            }
+        }
+
+        LocomotionSteering.Plan plan = LocomotionSteering.compute(
+                getX(), getY(),
+                getForwardDirectionX(), getForwardDirectionY(),
+                w0X, w0Y,
+                hasW1, w1X, w1Y,
+                LocomotionSteering.DEFAULT_LOOKAHEAD,
+                isAnimatingBackwards(),
+                nativeTraversal()
+        );
+
+        currentSpeedScale = plan.speedScale;
+        float dirLen = (float) Math.hypot(plan.dirX, plan.dirY);
+        if (dirLen > 0.001f) {
+            if (!isAnimatingBackwards() && !isStrafing() && !isAiming()) {
+                setForwardDirection(plan.dirX, plan.dirY);
+            }
+            playerMoveDir.set(plan.dirX, plan.dirY);
+        } else {
+            playerMoveDir.set(getForwardDirectionX(), getForwardDirectionY());
+        }
+    }
+
     private ProbeMovement.PathResult advancePath() {
         PathFindBehavior2 path = getPathFindBehavior2();
         PathFindBehavior2.BehaviorResult result;
@@ -933,10 +988,14 @@ public final class ProbeNpc extends IsoPlayer {
             getECSComponent(AIComponent.class).getHumanControlVars().justMoved = walking;
             setMoving(walking);
             isPlayerMoving = walking;
-            if (walking) playerMoveDir.set(getForwardDirectionX(),getForwardDirectionY());
-            else playerMoveDir.set(0,0);
+            if (walking) updateLocomotionSteering(path);
+            else {
+                currentSpeedScale = 1.0f;
+                playerMoveDir.set(0, 0);
+            }
             return ProbeMovement.PathResult.WORKING;
         }
+        currentSpeedScale = 1.0f;
         return result == PathFindBehavior2.BehaviorResult.Failed
                 ? ProbeMovement.PathResult.FAILED : ProbeMovement.PathResult.SUCCEEDED;
     }
@@ -967,7 +1026,8 @@ public final class ProbeNpc extends IsoPlayer {
             if (path.pathNextIsSet) {
                 float scale=ProbeMovement.rootMotionScale(result.x,result.y,
                         path.pathNextX-getX(),path.pathNextY-getY());
-                if (scale==0) result.set(0,0);
+                scale *= currentSpeedScale;
+                if (scale<=0.001f) result.set(0,0);
                 else result.scale(scale);
             }
         }

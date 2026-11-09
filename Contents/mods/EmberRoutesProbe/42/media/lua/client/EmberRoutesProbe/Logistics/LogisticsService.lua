@@ -191,6 +191,7 @@ function Service.preparePublic(actor,entry,recovery)
     if not ctx or not ctx.public then
         ctx={id=entry.id,actor=actor,running=true,public=true,publicPlans={},publicWait={},members={}} contexts[entry.id]=ctx
     end
+    if ctx.compiled and ctx.compiled.revision~=entry.revision then ctx.compiled=nil end
     ctx.running=true ctx.actor=actor
     return ctx
 end
@@ -201,9 +202,10 @@ function Service.publicOffer(actor,entry,npc)
     local now=getTimestampMs()
     if now<(ctx.publicWait[id] or 0) then return nil end
     local plan=ctx.publicPlans[id]
-    if not plan then plan=Planner.new(entry,settings,npc) ctx.publicPlans[id]=plan end
+    if not plan then plan=Planner.new(entry,settings,npc,ctx.compiled) ctx.publicPlans[id]=plan end
     if not plan then ctx.publicWait[id]=now+2000 return nil end
     local intent,state=plan:step(Service.BUDGET)
+    if plan.compiled and not ctx.compiled then ctx.compiled=plan.compiled end
     if intent or state~='WAIT' then
         ctx.publicPlans[id]=nil
         -- An exhausted search is not new work. Events wake it immediately;

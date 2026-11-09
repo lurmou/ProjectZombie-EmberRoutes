@@ -25,6 +25,42 @@ local function waiting(o, e)
         and e.generation == (planGenerations[o.id] or 0)
 end
 
+local function calculateSkillScore(npc, recipeId)
+    if not npc or not recipeId then return 0 end
+    local spec = Recipe.read(recipeId)
+    if not spec or not spec.recipe then return 0 end
+    local skillCount = spec.recipe.getRequiredSkillCount and spec.recipe:getRequiredSkillCount() or 0
+    local totalSkill = 0
+    if skillCount > 0 then
+        for i = 0, skillCount - 1 do
+            local req = spec.recipe:getRequiredSkill(i)
+            local perk = req and req.getPerk and req:getPerk()
+            if perk and npc.getPerkLevel then
+                local ok, level = pcall(function() return npc:getPerkLevel(perk) end)
+                if ok and type(level) == 'number' then
+                    totalSkill = totalSkill + level
+                end
+            end
+        end
+    else
+        local category = spec.recipe.getCategory and spec.recipe:getCategory()
+        if category == 'Blacksmithing' or category == 'Blade' then
+            local perk = Perks and (Perks.Blacksmith or Perks.MetalWelding)
+            if perk and npc.getPerkLevel then
+                local ok, level = pcall(function() return npc:getPerkLevel(perk) end)
+                if ok and type(level) == 'number' then
+                    totalSkill = level
+                end
+            end
+        end
+    end
+    return totalSkill
+end
+
+function CraftingProvider.calculateSkillScore(npc, recipeId)
+    return calculateSkillScore(npc, recipeId)
+end
+
 function CraftingProvider.waiting(o, e)
     return waiting(o, e)
 end
@@ -37,6 +73,11 @@ end
 
 function CraftingProvider.evaluations()
     return evaluations
+end
+
+function CraftingProvider.pendingScore(npcId)
+    local e = evaluations:get(npcId)
+    return e and e.score or 0
 end
 
 function CraftingProvider.pending(npcId)
@@ -90,7 +131,7 @@ function CraftingProvider.discover(env)
                     key = offer.key,
                     category = 'crafting',
                     allowed = true,
-                    score = 1 / (o.sequence + 1),
+                    score = evaluation.score or (1 / (o.sequence + 1) + calculateSkillScore(env.npc, o.recipeId) * 0.05),
                     order = o,
                     object = evaluation.object,
                     revision = offer.revision
@@ -265,6 +306,9 @@ function CraftingProvider.step(env)
         if plan then
             e.ready = true
             e.expires = env.now + 1000
+            local binding = env.eligible and env.eligible(env.actor, id, e.scopeId)
+            local npc = binding and binding.handle
+            e.score = 1 / (e.order.sequence + 1) + calculateSkillScore(npc, e.order.recipeId) * 0.05
             if env.onReady then env.onReady(id) end
         else
             local scan = decisionScans[id]

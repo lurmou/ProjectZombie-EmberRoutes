@@ -20,13 +20,17 @@ local function unwatch(ctx,token)
     if not ctx.listeners[token] then return end
     ctx.listeners[token]=nil ctx.consumers=ctx.consumers-1
     if ctx.consumers==0 and contexts[ctx.id]==ctx then
+        -- AE2 Invariant: DO NOT destroy contexts[ctx.id] or ctx.snapshot!
+        -- ctx.snapshot is an immutable front snapshot table containing only scalar numbers and strings.
+        -- Retaining it preserves the zero-wait instant display on interface reopening.
+        ctx.active=nil
+        ctx.merge=nil
         if not (EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseApplyContainer) then
-            contexts[ctx.id]=nil ctx.active=nil ctx.merge=nil ctx.rowByType=nil ctx.results={} ctx.dirty={}
             for i=#order,1,-1 do if order[i]==ctx.id then table.remove(order,i) end end
         else
             -- Release mounted container references while no view is watching;
             -- they would otherwise pin unloaded ItemContainer objects forever.
-            ctx.active=nil ctx.merge=nil ctx.handles=nil
+            ctx.handles=nil
             for i=#order,1,-1 do if order[i]==ctx.id then table.remove(order,i) end end
         end
     end
@@ -38,7 +42,9 @@ end
 local function publish(ctx,state,rows,counts,reason)
     ctx.snapshot={format=1,settlementId=ctx.id,revision=ctx.generation,settlementRevision=ctx.scopeRevision,coverage="ROOT_ONLY",state=state,
         rows=rows or {},counts=counts or {},reason=reason,readAt=Index.clock}
-    if state=="UPDATING" then
+    if state=="READY" then
+        ctx.lastReadySnapshot=ctx.snapshot
+    elseif state=="UPDATING" then
         local dirty={}
         for id in pairs(ctx.viewDirty or {}) do dirty[id]=true end
         ctx.snapshot.retain=not ctx.viewReset ctx.snapshot.dirtyAll=ctx.viewAll or false ctx.snapshot.dirtySources=dirty
@@ -94,7 +100,8 @@ local function acceptSnapshot(ctx,snapshot)
     if not snapshot or snapshot.state~="READY" then return false end
     -- The native index returns the same compiled snapshot while nothing changed.
     -- Republishing it would rebuild every subscribed view on each dispatch.
-    if snapshot==ctx.publishedScan and not ctx.membershipDirty then return true end
+    -- If ctx.snapshot is not in READY state, we must publish so the view receives READY.
+    if snapshot==ctx.publishedScan and not ctx.membershipDirty and ctx.snapshot and ctx.snapshot.state=="READY" then return true end
     ctx.publishedScan=snapshot
     local rowByType={}
     for _,r in ipairs(snapshot.rows or {}) do
@@ -261,7 +268,12 @@ function Index.watch(id,listener)
     else
         local inOrder=false
         for _,oId in ipairs(order) do if oId==id then inOrder=true break end end
-        if not inOrder then order[#order+1]=id end
+        if not inOrder then
+            order[#order+1]=id
+            if not (EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseApplyContainer) then
+                Index.refresh(id)
+            end
+        end
         if EmberRoutesProbeJava and EmberRoutesProbeJava.warehouseApplyContainer
                 and (not ctx.snapshot or ctx.snapshot.state~="READY") then
             mountHandles(ctx)
@@ -269,7 +281,8 @@ function Index.watch(id,listener)
     end
     local token={}
     ctx.listeners[token]=listener ctx.consumers=ctx.consumers+1
-    local ok,reason=pcall(listener,ctx.snapshot)
+    local initialSnapshot = (ctx.snapshot and ctx.snapshot.state == "READY") and ctx.snapshot or (ctx.lastReadySnapshot or ctx.snapshot)
+    local ok,reason=pcall(listener,initialSnapshot)
     if not ok then
         unwatch(ctx,token) Log.write("WAREHOUSE","OBSERVER_REMOVED "..tostring(reason))
         return nil,"UI_SUBSCRIBER_ERROR"
@@ -586,6 +599,13 @@ function Index.registryChanged(id)
     Index.changed(id,true)
     for _,ctx in pairs(contexts) do ctx.membershipDirty=true end
 end
+function Index.snapshot(id)
+    local ctx=contexts[id]
+    if not ctx then return nil end
+    if ctx.snapshot and ctx.snapshot.state=="READY" then return ctx.snapshot end
+    return ctx.lastReadySnapshot or ctx.snapshot
+end
+
 Registry.listeners[#Registry.listeners+1]=Index.registryChanged
 Registry.inventoryListeners[#Registry.inventoryListeners+1]=function(id)
     for _,ctx in pairs(contexts) do if ctx.members and ctx.members[id] then invalidate(ctx,id,false) end end

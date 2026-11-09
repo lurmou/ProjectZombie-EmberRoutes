@@ -88,8 +88,10 @@ function HaulingProvider.blocksDecision(actor,npcId,entry)
     local current=Work.record(npcId)
     if not current or current.state=='DONE' then return false end
     if current.producer=='LOGISTICS' and current.settlementId==entry.id
-	and (current.reason=='SAVE' or current.reason=='LOAD_RECOVERY')
-	and not current.controlUncertain and Logistics.preparePublic(actor,entry) then Work.resumeFor(actor,npcId) end
+        and not current.controlUncertain and not current.manualPaused
+        and Logistics.preparePublic(actor,entry) then
+        Work.resumeFor(actor,npcId)
+    end
     return true
 end
 return HaulingProvider

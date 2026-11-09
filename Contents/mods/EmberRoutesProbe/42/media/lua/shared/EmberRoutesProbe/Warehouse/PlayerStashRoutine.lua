@@ -86,14 +86,15 @@ function PlayerStashRoutine.plan(player, accessibleContainers, options)
     for _, item in ipairs(candidates) do
         local desc = Filter.describe(item)
         local bestEp = nil
-        local bestSpecificity = -1
+        local bestCand = nil
 
         for _, ep in ipairs(validEndpoints) do
             if Filter.matches(ep.filter, item) then
                 local spec = SortPolicy.specificity(ep.filter, desc, item) or 0
-                -- Prefer higher specificity; break ties with distance
-                if spec > bestSpecificity or (spec == bestSpecificity and bestEp and ep.dist < bestEp.dist) then
-                    bestSpecificity = spec
+                local prio = ep.filter and ep.filter.priority or 3
+                local cand = { id = ep.id or tostring(ep), priority = prio, specificity = spec, distance = ep.dist }
+                if not bestCand or SortPolicy.better(cand, bestCand) then
+                    bestCand = cand
                     bestEp = ep
                 end
             end

@@ -117,6 +117,45 @@ final class PreviewSession implements AutoCloseable {
         return result;
     }
 
+    private static final Map<Character, Character> S2T = Map.ofEntries(
+        Map.entry('许', '許'), Map.entry('载', '載'), Map.entry('级', '級'), Map.entry('键', '鍵'),
+        Map.entry('识', '識'), Map.entry('别', '別'), Map.entry('预', '預'), Map.entry('贴', '貼'),
+        Map.entry('粘', '貼'), Map.entry('应', '應'), Map.entry('医', '醫'), Map.entry('药', '藥'),
+        Map.entry('开', '開'), Map.entry('叠', '疊'), Map.entry('个', '個'), Map.entry('总', '總'),
+        Map.entry('两', '兩'), Map.entry('关', '關'), Map.entry('单', '單'), Map.entry('体', '體'),
+        Map.entry('数', '數'), Map.entry('据', '據'), Map.entry('联', '聯'), Map.entry('机', '機'),
+        Map.entry('车', '車'), Map.entry('队', '隊'), Map.entry('给', '給'), Map.entry('还', '還'),
+        Map.entry('动', '動'), Map.entry('态', '態'), Map.entry('画', '畫'), Map.entry('结', '結'),
+        Map.entry('显', '顯'), Map.entry('进', '進'), Map.entry('选', '選'), Map.entry('择', '擇'),
+        Map.entry('项', '項'), Map.entry('设', '設'), Map.entry('类', '類'), Map.entry('权', '權'),
+        Map.entry('仓', '倉'), Map.entry('库', '庫'), Map.entry('这', '這'), Map.entry('无', '無'),
+        Map.entry('写', '寫'), Map.entry('读', '讀'), Map.entry('档', '檔'), Map.entry('区', '區'),
+        Map.entry('块', '塊'), Map.entry('划', '劃'), Map.entry('间', '間'), Map.entry('门', '門'),
+        Map.entry('墙', '牆'), Map.entry('视', '視'), Map.entry('标', '標'), Map.entry('题', '題'),
+        Map.entry('栏', '欄'), Map.entry('钮', '鈕'), Map.entry('紧', '緊'), Map.entry('凑', '湊'),
+        Map.entry('现', '現'), Map.entry('构', '構'), Map.entry('顶', '頂'), Map.entry('胶', '膠'),
+        Map.entry('树', '樹'), Map.entry('优', '優'), Map.entry('势', '勢'), Map.entry('层', '層'),
+        Map.entry('双', '雙'), Map.entry('导', '導'), Map.entry('台', '臺'), Map.entry('观', '觀'),
+        Map.entry('换', '換'), Map.entry('输', '輸'), Map.entry('纯', '純'), Map.entry('净', '淨'),
+        Map.entry('质', '質'), Map.entry('彻', '徹'), Map.entry('极', '極'), Map.entry('创', '創'),
+        Map.entry('调', '調'), Map.entry('虚', '虛'), Map.entry('图', '圖'), Map.entry('挡', '擋'),
+        Map.entry('审', '審'), Map.entry('独', '獨'), Map.entry('复', '復'), Map.entry('余', '餘'),
+        Map.entry('并', '併'), Map.entry('点', '點'), Map.entry('击', '擊'), Map.entry('觉', '覺'),
+        Map.entry('资', '資'), Map.entry('备', '備'), Map.entry('条', '條'), Map.entry('认', '認'),
+        Map.entry('军', '軍'), Map.entry('枪', '槍'), Map.entry('战', '戰'), Map.entry('疗', '療'),
+        Map.entry('业', '業')
+    );
+
+    private static String s2t(String input) {
+        if (input == null || input.isEmpty()) return input;
+        StringBuilder sb = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            sb.append(S2T.getOrDefault(c, c));
+        }
+        return sb.toString();
+    }
+
     private void installTranslations(String language) throws IOException {
         Path path=repo.resolve("Contents/mods/EmberRoutesProbe/42/media/lua/shared/Translate/"+language+"/IG_UI.json");
         sources.put(path,PreviewLiveControl.Stamp.read(path));
@@ -128,11 +167,14 @@ final class PreviewSession implements AutoCloseable {
                 if (dictionary.has(key)) {
                     String value=dictionary.getString(key);
                     for (int i=1;i<count;i++) value=value.replace("%"+i,String.valueOf(frame.get(i)));
+                    if ("CN".equals(language)) value = s2t(value);
                     return frame.push(value);
                 }
                 Object[] args=new Object[count];
                 for (int i=0;i<count;i++) args[i]=frame.get(i);
-                return frame.push(LuaManager.thread.call(nativeFunction,args));
+                Object res = LuaManager.thread.call(nativeFunction,args);
+                if (res instanceof String s && "CN".equals(language)) res = s2t(s);
+                return frame.push(res);
             });
         }
     }
@@ -162,6 +204,8 @@ final class PreviewSession implements AutoCloseable {
                     Path candidate=base.resolve(dir).resolve(module+".lua").toAbsolutePath().normalize();
                     sources.put(candidate,PreviewLiveControl.Stamp.read(candidate));
                     if (Files.isRegularFile(candidate)) { source=candidate; break; }
+                    Path candidateVehicles=base.resolve(dir).resolve("Vehicles").resolve(module+".lua").toAbsolutePath().normalize();
+                    if (Files.isRegularFile(candidateVehicles)) { source=candidateVehicles; break; }
                 }
                 if (source==null) throw new IllegalArgumentException("Missing UI module: "+module);
                 Object[] result=execute(source);

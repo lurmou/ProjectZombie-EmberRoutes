@@ -1,5 +1,7 @@
 -- Native metadata only. Reading a recipe never grants permission to execute it.
 local Facts={inputLimit=64,outputLimit=32,choiceLimit=512}
+local factsCache={}
+function Facts.clearCache() factsCache={} end
 local function resource(value)
     for _,name in ipairs({'Item','Fluid','Energy'}) do
         if ResourceType[name] and value==ResourceType[name] then return name end
@@ -26,6 +28,7 @@ local function inputStamp(row)
 end
 function Facts.read(id,native)
     if type(id)~='string' or id=='' or #id>200 then return nil,'RECIPE_UNAVAILABLE' end
+    if not native and factsCache[id] then return factsCache[id] end
     if not ResourceType or not ResourceType.Item then return nil,'CRAFT_API_UNAVAILABLE' end
     if not native then
         local manager=getScriptManager()
@@ -90,6 +93,7 @@ function Facts.read(id,native)
     end
     result.signature=table.concat(signature,'\n')
     if #result.signature>16384 then return nil,'RECIPE_FACTS_LIMIT' end
+    if not native then factsCache[id]=result end
     return result
 end
 return Facts

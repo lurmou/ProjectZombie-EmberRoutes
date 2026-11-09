@@ -1,12 +1,13 @@
 -- In-page delivery review panel. No inventory mutation or order authority.
 require 'ISUI/ISCollapsableWindow'
 require 'ISUI/ISButton'
-require 'ISUI/ISComboBox'
+local Dropdown = require 'EmberRoutesProbe/UI/Dropdown'
 require 'ISUI/ISScrollingListBox'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local Text=require 'EmberRoutesProbe/UI/Text'
 local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
+local Cached=require 'EmberRoutesProbe/UI/CachedList'
 
 ---@class EmberRoutesDeliveryCartDrawer:ISCollapsableWindow
 local Drawer=ISCollapsableWindow:derive('EmberRoutesDeliveryCartDrawer')
@@ -57,10 +58,10 @@ function Drawer:createChildren()
         {direction='column',padding=p,gap=p/2}))
     self.header,self.summary=blocks[1],blocks[3]
     local function picker(y,field,label)
-        local combo=ISComboBox:new(p,y,self.width-p*2,buttonH,self,function(_,box)
-            self.owner[field]=box.endpointIds[box.selected]
-            self.owner.deliveryRequestId=nil
-            self:refresh()
+        local combo=Dropdown:new(p,y,self.width-p*2,buttonH,self,function(target,selectedEndpointId)
+            target.owner[field]=selectedEndpointId or false
+            target.owner.deliveryRequestId=nil
+            target:refresh()
         end)
         combo:initialise() self:addChild(combo)
         combo.defaultLabel=label
@@ -72,8 +73,8 @@ function Drawer:createChildren()
 
 
     local b=blocks[2]
-    self.list=ISScrollingListBox:new(b.x,b.y,b.width,b.height)
-    self.list:initialise() self.list.font=UIFont.Small
+    self.list=Cached.create(self,b,nil,nil)
+    self.list.font=UIFont.Small
     self.list.itemheight=math.ceil(h*2.8)
     self.list.backgroundColor=Theme.panel self.list.borderColor=Theme.border self.list.drawBorder=true
     self.list.doDrawItem=function(list,y,item,alt) return self:drawItemRow(list,y,item,alt) end
@@ -130,19 +131,27 @@ function Drawer:refresh()
     if not self.list then return end
     local Service=require 'EmberRoutesProbe/Logistics/DeliveryService'
     local function refreshPicker(combo,mode,selectedId)
-        combo:clear() combo.endpointIds={}
-        combo:addOption(combo.defaultLabel) combo.selected=1
+        local options = {
+            { id = false, label = combo.defaultLabel }
+        }
+        local matched = false
         for _,endpoint in ipairs(Service.containers(self.owner.actor,self.owner.entry.id,mode)) do
-            combo:addOption(endpoint.id..' ('..endpoint.x..','..endpoint.y..','..endpoint.z..')')
-            local index=#combo.options combo.endpointIds[index]=endpoint.id
-            if endpoint.id==selectedId then combo.selected=index end
+            table.insert(options, {
+                id = endpoint.id,
+                label = endpoint.id..' ('..endpoint.x..','..endpoint.y..','..endpoint.z..')'
+            })
+            if endpoint.id == selectedId then
+                matched = true
+            end
         end
-        -- Removal must remain an explicit rejected destination, never become player delivery.
-        combo.invalidEndpoint=selectedId~=nil and combo.selected==1
+        combo.invalidEndpoint = selectedId ~= nil and selectedId ~= false and not matched
         if combo.invalidEndpoint then
-            combo:addOption(text('cartEndpointRemoved',selectedId))
-            combo.selected=#combo.options combo.endpointIds[combo.selected]=selectedId
+            table.insert(options, {
+                id = selectedId,
+                label = text('cartEndpointRemoved',selectedId)
+            })
         end
+        combo:setOptions(options, selectedId or false)
     end
     refreshPicker(self.sourcePicker,'take',self.owner.deliverySourceId)
     refreshPicker(self.destinationPicker,'put',self.owner.deliveryDestinationId)
@@ -233,6 +242,8 @@ function Drawer:prerender()
 end
 
 function Drawer:close()
+    if self.sourcePicker and self.sourcePicker.closePopup then self.sourcePicker:closePopup() end
+    if self.destinationPicker and self.destinationPicker.closePopup then self.destinationPicker:closePopup() end
     self:removeFromUIManager()
     self:setVisible(false)
     -- Drawer may be reopened, so preserve registrations.

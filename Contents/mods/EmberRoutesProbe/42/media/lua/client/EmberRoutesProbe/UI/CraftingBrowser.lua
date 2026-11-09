@@ -1,7 +1,7 @@
 require "ISUI/ISPanel"
 require "ISUI/ISButton"
-require "ISUI/ISComboBox"
-require "ISUI/ISTextEntryBox"
+local Dropdown=require "EmberRoutesProbe/UI/Dropdown"
+local SearchInput=require "EmberRoutesProbe/UI/SearchInput"
 local Service=require "EmberRoutesProbe/Crafting/CraftingService"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local State=require "EmberRoutesProbe/UI/State"
@@ -24,8 +24,7 @@ local text=Words.get
 ---@field grid any
 ---@field draft table
 ---@field search ISTextEntryBox
----@field category ISComboBox
----@field categories table
+---@field category EmberRoutesDropdown
 ---@field unsupported ISButton
 ---@field previous ISButton
 ---@field next ISButton
@@ -53,7 +52,7 @@ function EmberRoutesCraftingBrowser:new(shell,bounds)
     ---@type EmberRoutesCraftingBrowser
     local o=ISPanel.new(self,bounds.x,bounds.y,bounds.width,bounds.height)
     o.shell=shell o.owner=shell.owner o.actor=shell.actor o.entry=shell.entry o.fontHeight=shell.fontHeight o.pad=shell.pad
-    o.background=false o.categories={false}
+    o.background=false
     o.store=State.new({snapshot={workers={},surfaces={}},catalog={rows={},categories={},page=1,pages=1,loading=true},
         search="",category=false,unsupported=false,page=1,recipeId=false,surface=false,quantity=1,
         preview={state="CHECKING",conditions={},counts={}},notice=""})
@@ -65,16 +64,16 @@ function EmberRoutesCraftingBrowser:createChildren()
     self.columns=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},{{grow=4},{grow=5}},{padding=p,gap=p}))
     local left=self.columns[1]
     local regions=assert(Layout.axis(left,{{basis=h+p},{basis=h+p},{grow=1},{basis=h+p},{basis=h}},{direction="column",gap=p/2}))
-    self.search=ISTextEntryBox:new("",regions[1].x,regions[1].y,regions[1].width,regions[1].height)
-    self.search:initialise() self.search:setPlaceholderText(text("searchRecipes")) self.search.target=self
-    self.search.onTextChangeFunction=function() self:change({search=string.sub(self.search:getText(),1,160),page=1}) end
+    self.search=SearchInput:new(regions[1].x,regions[1].y,regions[1].width,regions[1].height,text("searchRecipes"),self,function()
+        self:change({search=string.sub(self.search:getText(),1,160),page=1})
+    end)
     self:addChild(self.search)
     local controls=assert(Layout.axis(regions[2],{{grow=2},{grow=1}},{gap=p/2}))
     local r=controls[1]
-    self.category=ISComboBox:new(r.x,r.y,r.width,r.height,self,function()
-        if not self.syncing then self:change({category=self.categories[self.category.selected] or false,page=1}) end
+    self.category=Dropdown:new(r.x,r.y,r.width,r.height,self,function(target,selectedCat)
+        if not target.syncing then target:change({category=selectedCat or false,page=1}) end
     end)
-    self.category:initialise() self.category:addOption(text("allCategories")) self:addChild(self.category)
+    self.category:initialise() self.category:setOptions({{id=false,label=text("allCategories")}},false) self:addChild(self.category)
     r=controls[2]
     self.unsupported=ISButton:new(r.x,r.y,r.width,r.height,text("supportedOnly"),self,function() self:change({unsupported=not self.store.value.unsupported,page=1}) end)
     self.unsupported:initialise() Theme.button(self.unsupported) self:addChild(self.unsupported)
@@ -94,6 +93,84 @@ function EmberRoutesCraftingBrowser:createChildren()
     self.refreshButton:initialise() Theme.button(self.refreshButton) self:addChild(self.refreshButton)
     self.statusLines={bounds=regions[5],lines={}}
     self.draft=Draft.new(self,self.columns[2])
+end
+
+function EmberRoutesCraftingBrowser:onResize()
+    if ISPanel.onResize then ISPanel.onResize(self) end
+    local h, p = self.fontHeight, self.pad
+    self.columns = Layout.axis({x = 0, y = 0, width = self.width, height = self.height}, {{grow = 4}, {grow = 5}}, {padding = p, gap = p})
+    if not self.columns then return end
+    local left = self.columns[1]
+    local regions = Layout.axis(left, {{basis = h + p}, {basis = h + p}, {grow = 1}, {basis = h + p}, {basis = h}}, {direction = "column", gap = p / 2})
+    if not regions then return end
+
+    if self.search then
+        self.search:setX(regions[1].x)
+        self.search:setY(regions[1].y)
+        self.search:setWidth(regions[1].width)
+        self.search:setHeight(regions[1].height)
+    end
+
+    local controls = Layout.axis(regions[2], {{grow = 2}, {grow = 1}}, {gap = p / 2})
+    if controls then
+        if self.category then
+            self.category:setX(controls[1].x)
+            self.category:setY(controls[1].y)
+            self.category:setWidth(controls[1].width)
+            self.category:setHeight(controls[1].height)
+        end
+        if self.unsupported then
+            self.unsupported:setX(controls[2].x)
+            self.unsupported:setY(controls[2].y)
+            self.unsupported:setWidth(controls[2].width)
+            self.unsupported:setHeight(controls[2].height)
+        end
+    end
+
+    if self.grid then
+        self.grid:setX(regions[3].x)
+        self.grid:setY(regions[3].y)
+        self.grid:setWidth(regions[3].width)
+        self.grid:setHeight(regions[3].height)
+        if self.grid.onResize then self.grid:onResize() end
+    end
+
+    local maxRefresh = math.floor(regions[4].width * 0.35)
+    local refreshWidth = math.min(maxRefresh, (getTextManager() and getTextManager():MeasureStringX(UIFont.Small, text("button_refresh")) or 60) + p * 2)
+    local pages = Layout.axis(regions[4], {{grow = 1}, {grow = 2}, {basis = refreshWidth}, {grow = 1}}, {gap = p / 2})
+    if pages then
+        self.paging = pages[2]
+        if self.previous then
+            self.previous:setX(pages[1].x)
+            self.previous:setY(pages[1].y)
+            self.previous:setWidth(pages[1].width)
+            self.previous:setHeight(pages[1].height)
+        end
+        if self.next then
+            self.next:setX(pages[4].x)
+            self.next:setY(pages[4].y)
+            self.next:setWidth(pages[4].width)
+            self.next:setHeight(pages[4].height)
+        end
+        if self.refreshButton then
+            self.refreshButton:setX(pages[3].x)
+            self.refreshButton:setY(pages[3].y)
+            self.refreshButton:setWidth(pages[3].width)
+            self.refreshButton:setHeight(pages[3].height)
+        end
+    end
+
+    if self.statusLines then
+        self.statusLines.bounds = regions[5]
+    end
+
+    if self.draft then
+        if self.draft.setBounds then
+            self.draft:setBounds(self.columns[2])
+        elseif self.draft.onResize then
+            self.draft:onResize(self.columns[2])
+        end
+    end
 end
 function EmberRoutesCraftingBrowser:applyArgs(args)
     self.filterProduct=args.filterProduct
@@ -166,11 +243,13 @@ function EmberRoutesCraftingBrowser:project(value,changes)
         self.pagingWidth=getTextManager():MeasureStringX(UIFont.Small,self.pagingText)
         self.grid:setRows(catalog.rows,value.recipeId)
         self.grid.empty=self.filterProduct and not catalog.loading and catalog.total==0 and getText("IGUI_EmberRoutesProbe_Distributed_noRecipe") or text(catalog.loading and "catalogLoading" or "catalogEmpty")
-        self.syncing=true self.category:clear() self.category:addOption(text("allCategories")) self.categories={false}
+        local catOptions={{id=false,label=text("allCategories")}}
         for _,category in ipairs(catalog.categories) do
-            self.categories[#self.categories+1]=category self.category:addOption(getTextOrNull("IGUI_CraftCategory_"..category) or category)
+            table.insert(catOptions,{id=category,label=getTextOrNull("IGUI_CraftCategory_"..category) or category})
         end
-        self.category.selected=1 for i,id in ipairs(self.categories) do if id==value.category then self.category.selected=i end end
+        self.syncing=true
+        self.category:setOptions(catOptions,value.category or false)
+        self.syncing=false
         self.syncing=false
         Theme.enable(self.previous,catalog.page>1) Theme.enable(self.next,catalog.page<catalog.pages)
         self.unsupported:setTitle(text(value.unsupported and "includingUnsupported" or "supportedOnly"))

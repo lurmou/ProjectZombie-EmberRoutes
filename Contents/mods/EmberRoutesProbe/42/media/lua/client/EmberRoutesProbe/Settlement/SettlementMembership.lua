@@ -56,10 +56,13 @@ function Membership.query(settlement)
     -- record. Fail closed instead of presenting an apparently complete zero.
     if invalidPosition then return nil,"CONTAINER_RECORD_INVALID" end
     local stamp=tostring(settlement.revision)..':'..tostring(generation)
-    local hit=cache[settlement.id]
+    local hit=settlement.id and cache[settlement.id] or nil
     local ids
     if hit and hit.stamp==stamp then ids=hit.ids
-    else ids=compute(settlement,data) cache[settlement.id]={stamp=stamp,ids=ids} end
+    else
+        ids=compute(settlement,data)
+        if settlement.id then cache[settlement.id]={stamp=stamp,ids=ids} end
+    end
     local out={}
     for i=1,#ids do out[i]=ids[i] end
     return out

@@ -4,6 +4,50 @@
 
 ## NPC 架构执行记录
 
+2026-11-08 据点日常物流搬运一对多与多对一闭环（根除单箱折返跑与单件搬运缺陷）：针对实机观察到 NPC 在日常搬运（分拣与箱柜整理）时“一对多与多对一未生效，依然一件一件搬运”的痛点，彻底溯源并打通规划器与执行层生命周期：
+(1) 打通“一对多”规划与交付（LogisticsPlanner.lua / HaulAgent.lua）：废除 LogisticsPlanner.lua:102 中强制要求后续物品最佳目标必须等于首件目标（self.best.id==self.batch.destination）的单标量限制；改为按每个目标箱分别累计预留容量（self.destWeights[endpoint.id]），在不超过 NPC 背包负重与各箱可用容量的前提下，允许分拣箱内去往不同箱子的物品一次性全部装入背包；HaulAgent 在 DELIVER 阶段按背包内物品所属目标箱依次巡回送达交付；
+(2) 打通“多对一”跨源集货（LogisticsPlanner.lua / HaulManifest.lua / HaulAgent.lua）：废除 LogisticsPlanner.lua:78 首箱扫描完毕后盲目立即返回的缺陷，在未达最大件数（30件）或负重仍有充裕（>1.0kg）时持续推进扫描下一个源箱；在 HaulManifest.valid 中放开 LOGISTICS 必须与主记录单一 source 相同的限制，允许每行记录真实 sourceId 与 destinationId；HaulAgent 引入 nextSource(r) 循环遍历多个源箱，逐箱取货直至全量收集；
+(3) 连续取放与容量契约闭环：消除 HaulAgent 在 TAKE 阶段对单目标箱容量的提前硬编码锁死，将真实容器容量预留与结算精准锚定在各 PUT 停靠点；续件 continuation 保持原生单次转移队列接续，实现“单箱批量连续装满 -> 巡回多个目标箱分别交付”的完整闭环。
+全量验证：389 份 Lua 普通/Debug 编译 0 失败、2121 对双语翻译 100% 对齐；haul-multi-target-test（一对多、多对一规划与清单验证）、dec003-haul-migration-test（55项）、hauling-provider-test、work-transfer-continuity-test（13项连续动作）、test-execution-sessions（48项）全数 PASS；build-probe.ps1 Exit 0 产出 0.29.59 构建包；实机由用户测试验收。
+
+2026-11-08 仓储规则过滤控制台重构与视觉层收敛（双栏向导式、附近容器快切、透视虚化与零 Emoji 铁律）：针对容器规则过滤页面视觉层级混乱、缺乏搜索、大窗口挡屏及“配一个箱子关一次窗口”的繁琐交互问题，系统性完成向导式控制台改造与 UI 基础设施封装：
+(1) 双栏向导式控制台（StorageFilterPanel.lua / FilterList.lua）：采用“左定策略、右定物品”的解耦架构。左栏（35%）承载容器角色、公共权限、优先级与智能自动化；右栏（65%）承载实时搜索框（SearchInput）、折叠/展开与分类折叠树；移除多余的“全部允许”与“全部取消”按钮（由顶级大类点击直接切换）；
+(2) 附近容器快速切换（NearbyContainers.lua / Dropdown.lua）：在面板顶部嵌入导航栏，8 格范围内自动发现所有世界容器并计算实时相对距离；支持顶部下拉选择与“< 上一个”/“下一个 >”一键步进，切换时静默保存当前草案并瞬时水合目标容器，彻底告别频繁开关窗口的折返跑；
+(3) 容器详情看板远程直达（ContainerInspectorDialog.lua）：在据点仓储监控列表的容器详情弹窗中新增“[设置]”按钮，以 remoteMode 打开过滤控制台，支持远程直接调整全据点任意容器的过滤策略；
+(4) 窗口临时透视与实体高亮组件（GhostLens.lua）：在窗口右上角提供专属“[👁]”透视按钮，按住时窗口透明度降至 0.12，松开瞬时恢复；在切换目标容器或触发透视时联动 addAreaHighlightForPlayer 在地面投射 800ms 柔和光圈脉冲，清晰定位实体箱柜；
+(5) UI 基础设施封装与零 Emoji 铁律：新增 Flat 2.0 规范的 Dropdown.lua（替换原有灰阶原生 ISComboBox，支持数据绑定与矢量 Chevron 图标）；在 Theme.lua 中扩展 Theme.combo 与 Theme.input；彻底清查全库及 CN/EN 语言包，清零所有 Unicode Emoji（改用 Flat 2.0 纯矢量图标与文本）；并在离线原生渲染中补齐 AngelCode 字体 S2T 兼容映射。
+全量验证：389 份 Lua 普通/Debug 编译 0 失败、2121 对双语翻译 100% 对齐；Kahlua 存储与 UI 全套测试通过；build-probe.ps1 Exit 0 产出 0.29.59 构建包；pwsh tools/preview-native-ui.ps1 -Scene storage -Smoke 离线 OpenGL 原生渲染生成 CN 与 EN 截图回读全要素验证通过。
+
+2026-11-08 NPC 移动到达生命周期收敛与宏观门禁修正（根除坐姿平移与全员停摆）：针对实机观察到的“NPC 走到椅子刚准备坐下就被推开平移走”、“闲暇与空闲状态高速反复跳动”以及“除原地锻炼外无法进行其他工作”的严重问题，彻底穿透全链路排查根因并系统性收口：
+(1) 到达解绑紧急关停（ProbeNpc.java:906）：根除在 movement.tick 产出 REACHED 时错误调用全局关停方法 stopProbe() 的致命缺陷。stopProbe() 带有 furnitureExit.request()、forceGetUp=true 及清空动作队列等全局注销副作用，导致 NPC 刚走到椅子前就被强制触发起立平移与退座中断；将其修正为单纯的位移生命周期释放（movement.cancel()、清理解析器与路径标记），完整保留 reachedFurniture 姿态就位，彻底消除平移推开与 Leisure 状态震荡；
+(2) 宏观连通门禁去伪存真（SettlementReachabilityGraph.java）：消除对 PZ 引擎门状态 door.isLocked() 默认值为 true 的过度保守假设；修正通行门禁——除真正钉死木板（door.isBarricaded()）外均视为合法通道；室内同建筑不同房间直接放行内部连通；楼梯采样改为连续步进并提供安全退避；彻底恢复物流搬运、原件取用、农务与清洁的正常跨房间作业。
+全量验证：385 份 Lua 普通/Debug 编译 0 失败、114 项公共 Java 桥面契约、94 项核心逻辑断言、2088 对双语翻译 100% 对齐；test-execution-sessions.ps1（48 项）、test-ui-kahlua.ps1（近千项 UI 断言）、test-ui-kahlua.ps1 -SettlementTabs（598 断言）全部通过；build-probe.ps1 Exit 0 产出 0.29.59 构建包；pwsh tools/preview-native-ui.ps1 -Scene settlement -Smoke OpenGL 离线渲染生成 preview-r1.png 验证通过。
+
+2026-11-08 NPC 移动与寻路帧峰值消除（借鉴 RimWorld 宏观连通图与 ProjectRemnants 单帧寻路仲裁）：针对多 NPC 同时行动时引发的 50~80ms 主线程卡顿峰值，通过 Java 原生寻路仲裁器、宏观连通性检查与相邻站立点快搜，实现全链路卡顿根除：
+(1) 单帧 16ms 寻路仲裁器（PathSearchArbiter.java）：借鉴 ProjectRemnants (NavMover.reserveSearchSlot)，严格限制每个 16ms 物理帧仅允许 1 名 NPC 触发同步 A* 寻路（pathToLocationF）；其余寻路请求进入 FIFO 队列平摊至后续帧（0ms, 16ms, 32ms...），彻底平滑多 NPC 同时起跑造成的瞬时计算洪峰；
+(2) 500ms 失败寻路防风暴缓存（PathSearchArbiter.FAILED_QUERIES）：目标不可达时记录失败坐标，500ms 内直接拒止无意义重复寻路，消除主线程频繁死寻路震荡；
+(3) 环世界连通子区域宏观图（SettlementReachabilityGraph.java）：在调用 A* 寻路前进行 O(1) 宏观连通性预检，快速校验跨楼层楼梯连通性与建筑/房间门锁通行状态，未连通直接阻断，杜绝无效全图搜索；
+(4) 原生 8 向相邻站立点解析器（InteractionPointFastResolver.java）：在 Java 层直接完成 8 方向地面、障碍物与碰撞检测（canStandAt / isFree），一键返回最优站立点，彻底省去 Lua 层 AdjacentFreeTileFinder.Find 8 次循环往返 JNI 跨语言调用开销；
+(5) 业务层静默对接与守卫校验：WorkTransfer.lua 与 FieldContext.lua 对接 fast resolver 与 macro reachability 门禁，运动中保持静默避免高频 canReachTo 射线穿透开销；
+(6) 严格桥契约白名单更新：ProbeRuntime.java 暴露 macroReachable 与 resolveInteractionTile，ProbeBridgeSurfaceTest.java 契约白名单自 112 严格增至 114 项；
+全量验证：381 份 Lua 普通/Debug 编译 0 失败、114 项公共 Java 桥面契约、94 项核心逻辑断言、2087 对双语翻译 100% 对齐；test-execution-sessions.ps1（48 项）、test-ui-kahlua.ps1（近千项 UI 断言）、test-ui-kahlua.ps1 -SettlementTabs（598 断言）全部通过；build-probe.ps1 Exit 0 产出 0.29.59 构建包；pwsh tools/preview-native-ui.ps1 -Scene settlement -Smoke OpenGL 离线渲染生成 preview-r1.png 验证通过。
+
+2026-11-08 仓储 AE2 架构重开即显优化与生命周期修复：针对重新打开仓储界面时清空网格、等待片刻扫描才显示物品（违背 AE2 零等待秒开展现契约）的问题，彻底追溯根因并实施系统级修复：
+(1) 根除缓存析构与脱节：修复 WarehouseIndex.lua:20 unwatch 在 consumers=0 时清空 contexts[ctx.id] 或抛弃 snapshot 的隐患；明确 ctx.snapshot 仅包含标量字符串与数值（零 IsoObject 引用，无内存泄漏风险），在页面关闭与切出期间完整保留持久只读前台快照（lastReadySnapshot）；
+(2) 修复 acceptSnapshot 假死门禁：修复行 108 acceptSnapshot 在 snapshot == ctx.publishedScan 时盲目 return true 导致 ctx.snapshot 被卡死在 UPDATING 状态的严重缺陷，增加 ctx.snapshot.state == "READY" 守卫，杜绝状态丢失；
+(3) 恢复 EvenPaused 响应调度与预算：将 WarehouseIndex.step 与 StockService.tick 从 Boot.lua 15Hz OnTick 循环中解绑，重新接入 EvenPaused 单点调度；彻底解决 PZ 单人游戏在暂停（Space/F2）时 OnTick 停止触发导致仓储后台停摆的问题；恢复 BUDGET=128 并移除 0.8ms 硬性打断；
+(4) 跨页面实例即时水合：WarehouseIndex 新增 Index.snapshot(id) 直接只读导出；WarehousePage:new 构造阶段直接注入已就绪快照；WarehouseRows.project 增加 baseRows 兜底，确保在重新打开新建 Page 实例或并发更新时，界面在第 0 帧直接渲染完整物品网格（零延迟展示），并在后台增量比对差异；
+(5) 解耦 Boot 循环依赖：移除 WarehouseIndex.lua 顶层的 local Probe = require 'Boot'，杜绝测试环境循环初始化崩溃。
+全量验证：381 份 Lua 普通/Debug 编译 0 失败、112 项公共 Java 桥面契约、94 项核心逻辑断言、27 项 WarehouseFastIndex 高速聚合断言、2085 对双语翻译 100% 对齐；health-gate-b-warehouse-test（65 断言）、warehouse-ae2-test（20 断言）、warehouse-locator-test（13 断言）、warehouse-query-test（26 断言）全部通过；build-probe.ps1 Exit 0 产出 0.29.59 包；pwsh tools/preview-native-ui.ps1 -Scene settlement -Smoke OpenGL 离线渲染生成 preview-r1.png 验证通过。
+
+2026-11-08 多NPC调度解耦与帧峰值优化（单向数据流与 RimWorld 范式改造）：针对 4-NPC 场景仅 1 人作业、后序工人木桩发呆（reason=WORK_OBSERVING）及 80ms 帧峰值，完成全链路契约解耦与性能减负：
+(1) 彻底根除 cross-domain 侧信道：全库删除 Probe.leisureWorkState 及 magic TTLs（涉及 LeisureService.lua、PublicWork.lua、SelfCare.lua 及测试），废除跨领域外挂状态推送；LeisureService 改造为纯粹的 Pull 消费者，闲置 NPC 直接穿透至据点设施与社交，彻底杜绝无端假性 OBSERVE 木桩；
+(2) 工作发现与工单上下文净化：CookingService.lua:335 仅在存在有效工单或菜单步进中时置 env.pending=true，根除新工人 plans 默认 not row.reason 导致的调度假性锁定；
+(3) 公平轮询调度：PublicWork.lua 修复 cursor=(cursor+1)%count 跨帧真实轮询，调度启动者在各帧平摊轮换，彻底杜绝 NPC 1 独占掠夺与后序 NPC 饥饿；
+(4) 静态休闲轻量化：LeisureTimed.lua:16 原地休闲有效性核验放宽至 200ms 缓存，削减每 20s 8600+ 次 JNI 与几何扫描；
+(5) 仓储容器索引复用：LogisticsService.lua:194, 205-207 启用 ctx.compiled 容器目标索引复用，消除每工人 5.8ms 的重复箱柜扫描。
+381 份 Lua 普通/Debug 编译 0 失败、94 项核心逻辑断言、27 项高速仓储索引断言、2085 对翻译一致性验证全数 PASS；build-probe.ps1 exit 0 产出 0.29.59 构建包；pwsh tools/preview-native-ui.ps1 -Scene settlement -Smoke 原生 OpenGL 离线渲染回读 preview-r1.png 验收通过。
+
 2026-11-07 声明式布局 Phase 2 仓储工具栏试点已接入：新增 LayoutHost，显式 native/rect 登记，Root-local 几何应用，公开 Lua setter，独立求解/应用版本、同版失败抑制、完整重应用及清理失败重试；Node 增加 revision/同值 Setter 门禁和 Host 根认领，未改现役 Layout.lua。WarehouseControls 分离 Page owner 与原生 Host，Page 接入激活/失活/释放，回调/Store/Tooltip 保持原归属。安装版原生 `layout` 场景 CN/EN、960/800宽 smoke 与截图回读通过，覆盖焦点、真实点击/共享弹层、异常回滚与重试；Phase 1 的136项安装版 Kahlua回归、376份 Lua双模式编译、构建和静态/i18n门禁通过。局部五文件 LuaLS 0 error /139 warning，完整模组类型检查未完成；既有 settlement-ui-test 在已不存在的 itemList.emberColumns 断言失败，未删断言或加生产兼容字段。游戏仓储业务、IME/物理键盘、其他缩放和 GC/性能未实机验证；Phase 3/全库迁移未启动。详见[证据与最终源码哈希](reviews/2026-11-07/layout-host.md)。
 
 2026-11-07 声明式几何内核 Phase 1 已收口：仅修改 `UI/LayoutNode.lua`、`UI/LayoutSolver.lua`，不改现役 Layout.lua、Java Runner，不交付新测试脚本。构建期装配子树时隐藏旧池槽位，首次成功发布后禁止独立根再挂入其他根；删除子树递归释放、不提升新根，统一 remove/dispose 链，保留业务控件。修复已销毁 Setter 先写后拒绝及极大有限 grow 计算溢出。安装版 Kahlua 临时定向执行 136 项检查通过（含坐标/容差/残差/失败整池保留/墓碑/销毁/复用）；最终 build-probe.ps1 exit 0 / BUILD_OK，375 份 Lua 普通/Debug 编译、模块边界、固定依赖哈希及 2084 对翻译键通过。日志位于 `build/layout-phase1/`，产出 0.29.59 包（包含工作区已有改动，非隔离发布包）。详见[源码哈希、闭环位置与验证证据](reviews/2026-11-07/declarative-layout.md)。数学证据仅覆盖已执行案例；原生渲染、实机交互及 GC/性能测量未验证；Phase 2/3 未实施。

@@ -149,8 +149,7 @@ function methods:draw(owner)
     -- Pill 1: Total Items & Categories
     Theme.rect(owner, p1.x, p1.y, p1.width, p1.height, Theme.panel)
     Theme.rect(owner, p1.x, p1.y, p1.width, p1.height, Theme.border, true)
-    Theme.rect(owner, p1.x, p1.y, math.max(2, math.floor(p / 4)), p1.height, Theme.accent)
-    Theme.text(owner, self.itemsLabel, p1.x + p, p1.y + textY, Theme.gold)
+    Theme.text(owner, self.itemsLabel, p1.x + p, p1.y + textY, Theme.textColor)
 
     -- Pill 2: Master Container & Volume Capsule (Clickable, Outer Frame)
     Theme.rect(owner, p2.x, p2.y, p2.width, p2.height, self.probeBg)

@@ -1,13 +1,14 @@
 -- Colonist Dossier Drawer: side-attached flyout window for full traits, skill tree, and searchable recipe library.
 require 'ISUI/ISCollapsableWindow'
 require 'ISUI/ISButton'
-require 'ISUI/ISTextEntryBox'
 require 'ISUI/ISScrollingListBox'
+local SearchInput=require 'EmberRoutesProbe/UI/SearchInput'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Layout=require 'EmberRoutesProbe/UI/Layout'
 local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
 local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
 local Visual=require 'EmberRoutesProbe/UI/StatusVisual'
+local Cached=require 'EmberRoutesProbe/UI/CachedList'
 
 ---@class EmberRoutesPersonnelDossierDrawer:ISCollapsableWindow
 local DossierDrawer=ISCollapsableWindow:derive('EmberRoutesPersonnelDossierDrawer')
@@ -63,9 +64,8 @@ function DossierDrawer:createChildren()
     self.overview=require('EmberRoutesProbe/UI/InfoList').new(self,{x=p,y=contentY,width=self.width-p*2,height=contentH})
     self.tabOverviewBtn=ISButton:new(p,th+p/2,tabW,btnH,getText('IGUI_EmberRoutesProbe_Layout_overview'),self,function() self:selectTab('overview') end)
     self.tabOverviewBtn:initialise() Theme.button(self.tabOverviewBtn) self:addChild(self.tabOverviewBtn)
-    -- 1. Skills & Traits List
-    self.skillsList=ISScrollingListBox:new(p,contentY,self.width-p*2,contentH)
-    self.skillsList:initialise()
+    -- 1. Skills & Traits List (Flat 2.0 CachedList)
+    self.skillsList=Cached.create(self,{x=p,y=contentY,width=self.width-p*2,height=contentH},nil,nil)
     self.skillsList.font=UIFont.Small
     self.skillsList.itemheight=math.ceil(h*2.2)
     self.skillsList.backgroundColor=Theme.panel
@@ -76,20 +76,16 @@ function DossierDrawer:createChildren()
 
     -- 2. Recipe Search & List
     local searchH=math.ceil(h*1.6)
-    self.searchBox=ISTextEntryBox:new('',p,contentY,self.width-p*2,searchH)
-    self.searchBox:initialise()
-    self.searchBox:instantiate()
-    self.searchBox.font=UIFont.Small
-    self.searchBox.onTextChange=function()
+    self.searchBox=SearchInput:new(p,contentY,self.width-p*2,searchH,getText('IGUI_EmberRoutesProbe_Settlement_searchPrompt'),self,function()
         self.searchQuery=string.lower(self.searchBox:getText() or '')
         self:rebuildRecipeList()
-    end
+    end)
     self:addChild(self.searchBox)
 
     local recipeListY=contentY+searchH+p/2
     local recipeListH=self.height-recipeListY-p
-    self.recipesList=ISScrollingListBox:new(p,recipeListY,self.width-p*2,recipeListH)
-    self.recipesList:initialise()
+    -- 2. Recipe Search & List (Flat 2.0 CachedList)
+    self.recipesList=Cached.create(self,{x=p,y=recipeListY,width=self.width-p*2,height=recipeListH},nil,nil)
     self.recipesList.font=UIFont.Small
     self.recipesList.itemheight=math.ceil(h*1.8)
     self.recipesList.backgroundColor=Theme.panel
@@ -265,7 +261,7 @@ function DossierDrawer:drawSkillItem(list,y,entry,alt)
         Theme.text(list,s.name,p+6,y+(itemH-h)/2,nameColor)
 
         -- Right: Vanilla PZ 10-pip square progress bar
-        local pipSize=math.max(10,math.floor(h*0.72))
+        local pipSize=math.max(12,math.floor(h*0.8))
         local pipGap=2
         local totalPipW=10*pipSize+9*pipGap
         local multW=(s.multiplier and s.multiplier>1) and 34 or 0
@@ -323,7 +319,7 @@ function DossierDrawer:drawRecipeItem(list,y,entry,alt)
     local itemH=entry.height or list.itemheight
     if y+list:getYScroll()+itemH<=0 or y+list:getYScroll()>=list.height then return y+itemH end
     if alt then Theme.rect(list,0,y,list.width,itemH,Theme.panel) end
-    local ms=math.max(6,math.min(h-2,10))
+    local ms=math.max(8,math.floor(h*0.55))
     Visual.mark(list,p,y+(itemH-ms)/2,ms,'bullet',Theme.accent)
     Theme.text(list,entry.item.recipe or entry.text,p+h,y+(itemH-h)/2,Theme.textColor)
     return y+itemH

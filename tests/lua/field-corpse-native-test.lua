@@ -10,7 +10,7 @@ for _,name in ipairs({'ISCleanBlood','ISChopTreeAction','ISGrabCorpseAction','IS
  package.loaded['TimedActions/'..name]=true
 end
 for _,name in ipairs({'Farming/TimedActions/ISWaterPlantAction','Farming/TimedActions/ISHarvestPlantAction',
- 'Farming/TimedActions/ISShovelAction','Farming/ISUI/ISFarmingMenu','Foraging/ISForageAction','Foraging/ISSearchManager','Foraging/ISForageIcon'}) do package.loaded[name]=true end
+ 'Farming/TimedActions/ISShovelAction','Farming/TimedActions/ISCurePlantAction','Farming/TimedActions/ISSeedActionNew','Farming/TimedActions/ISPlowAction','Farming/ISUI/ISFarmingMenu','Foraging/ISForageAction','Foraging/ISSearchManager','Foraging/ISForageIcon'}) do package.loaded[name]=true end
 local now=0 getTimestampMs=function() return now end
 getText=function(s) return s end isClient=function() return false end isMultiplayer=function() return false end
 getPlayerData=function() return nil end forceDropHeavyItems=function() end ISLogSystem={logAction=function() end}

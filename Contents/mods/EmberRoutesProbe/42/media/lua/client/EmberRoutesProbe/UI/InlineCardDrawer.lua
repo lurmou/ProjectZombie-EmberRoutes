@@ -58,17 +58,24 @@ function InlineCardDrawer.draw(list, y, baseHeight, drawerHeight, cardX, cardW, 
     return y + baseHeight + drawerHeight - 2
 end
 
----Skin-free virtual button primitive. Text metrics and colours are supplied
----by the caller so the per-frame draw pass performs no JNI measurement and
----allocates no tables. Coordinates match the legacy drawVirtualButton exactly.
+---Skin-free virtual button primitive with Flat 2.0 tactile feedback.
 ---@param list ISScrollingListBox
 ---@param tw number Pre-measured label width (UIFont.Small)
 ---@param th number Pre-measured font height
-function InlineCardDrawer.drawButton(list, bx, by, bw, bh, label, tw, th, bg, border, textColor)
-    Theme.rect(list, bx, by, bw, bh, bg)
-    Theme.rect(list, bx, by, bw, bh, border, true)
-    Theme.text(list, label, bx + math.floor((bw - tw) / 2),
-        by + math.floor((bh - th) / 2), textColor)
+---@param isHover boolean?
+---@param isDown boolean?
+function InlineCardDrawer.drawButton(list, bx, by, bw, bh, label, tw, th, bg, border, textColor, isHover, isDown)
+    local bCol = isHover and (Theme.accent or border) or border
+    local bgCol = isDown and {r = bg.r * 0.75, g = bg.g * 0.75, b = bg.b * 0.75, a = bg.a or 1}
+               or (isHover and COLOR_BTN_HOVER or bg)
+    local off = isDown and 1 or 0
+    Theme.rect(list, bx, by, bw, bh, bgCol)
+    Theme.rect(list, bx, by, bw, bh, bCol, true)
+    if isDown then
+        Theme.rect(list, bx, by, bw, 1, {r = 0, g = 0, b = 0, a = 0.65})
+    end
+    Theme.text(list, label, bx + math.floor((bw - tw) / 2) + off,
+        by + math.floor((bh - th) / 2) + off, textColor)
 end
 
 ---Backwards-compatible convenience wrapper (legacy palette, measures text).

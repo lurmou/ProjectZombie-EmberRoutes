@@ -1,4 +1,4 @@
-require "ISUI/ISComboBox"
+local Dropdown=require "EmberRoutesProbe/UI/Dropdown"
 require "ISUI/ISTextEntryBox"
 require "ISUI/ISButton"
 require "ISUI/ISModalDialog"
@@ -14,7 +14,7 @@ local text=Words.get
 local Draft={}
 function Draft.new(owner,bounds)
     local h,p=owner.fontHeight,owner.pad
-    local self={owner=owner,bounds=bounds,presentation=Presentation.new(),expanded={},surfaceIds={}}
+    local self={owner=owner,bounds=bounds,presentation=Presentation.new(),expanded={},}
 
     function self:activate(row)
         if not row then return end
@@ -84,9 +84,7 @@ function Draft.new(owner,bounds)
             local nameW=math.max(0,(hasSurface and surfaceX-gap or right)-nameX)
             local function fit(label,width)
                 if not label or width<=0 then return "" end
-                local clipped=Text.wrapLimited(label,width,UIFont.Small,1)[1] or ""
-                -- wrapLimited permits a single glyph wider than an extremely narrow column.
-                return manager:MeasureStringX(UIFont.Small,clipped)<=width and clipped or ""
+                return Text.wrapLimited(label,width,UIFont.Small,1)[1] or ""
             end
             return {
                 width=list.width,
@@ -351,8 +349,8 @@ function Draft.new(owner,bounds)
         function modal:destroy() self:setVisible(false) self:removeFromUIManager() end
         self.helpModal=modal modal:initialise() modal:addToUIManager()
     end)
-    self.platform=ISComboBox:new(bounds.x,bounds.y,bounds.width,h+p,owner,function()
-        if not self.syncing then owner:change({surface=self.surfaceIds[self.platform.selected] or false}) end
+    self.platform=Dropdown:new(bounds.x,bounds.y,bounds.width,h+p,owner,function(target,selectedSurface)
+        if not self.syncing then target:change({surface=selectedSurface or false}) end
     end)
     self.platform:initialise() owner:addChild(self.platform)
 
@@ -542,6 +540,17 @@ function Draft.new(owner,bounds)
             Tooltip.clear(control)
         end
     end
+    function self:setBounds(newBounds)
+        if not newBounds then return end
+        self.bounds = newBounds
+        bounds = newBounds
+        if self.recipe and self.preview then
+            self:set(self.recipe, self.preview, owner.snapshot or {}, owner.store and owner.store.value or {})
+        elseif self.list then
+            position(self.list, newBounds)
+        end
+    end
+    self.onResize = self.setBounds
     return self
 end
 return Draft

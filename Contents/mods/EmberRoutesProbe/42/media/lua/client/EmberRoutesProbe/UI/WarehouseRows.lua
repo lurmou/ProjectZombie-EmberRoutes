@@ -17,12 +17,13 @@ local function row(old,count,sources,pending)
         count=count,sources=sources,pending=pending,pinned=old.pinned}
 end
 function Rows.project(snapshot,oldRows,resolveName)
+    local baseRows=(oldRows and #oldRows>0) and oldRows or (snapshot.rows or {})
     if snapshot.state=="UPDATING" then
         if not snapshot.retain then return {} end
         local result={}
-        for _,old in ipairs(oldRows) do
+        for _,old in ipairs(baseRows) do
             local sources,pending={},false
-            for _,source in ipairs(old.sources) do
+            for _,source in ipairs(old.sources or {}) do
                 if source.pending or snapshot.dirtyAll or (snapshot.dirtySources and snapshot.dirtySources[source.id]) then
                     local copy={}
                     for key,value in pairs(source) do copy[key]=value end
@@ -37,10 +38,10 @@ function Rows.project(snapshot,oldRows,resolveName)
     end
     if snapshot.state~="READY" then return {} end
     local byType,result={},{}
-    for _,old in ipairs(oldRows) do byType[old.fullType]=old end
+    for _,old in ipairs(baseRows) do byType[old.fullType]=old end
     for _,value in ipairs(snapshot.rows) do
         local old=byType[value.fullType]
-        if old and old.node==value.node then
+        if old and old.label and old.node==value.node then
             result[#result+1]=row(old,value.count,value.sources,nil)
         else
             local label=resolveName(value.fullType)

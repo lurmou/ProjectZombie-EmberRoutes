@@ -16,7 +16,6 @@ if Registry.inventoryListeners then
         inventoryRevision=inventoryRevision+1
     end
 end
-local BLOCKED_CALLS=4
 
 local D={}
 local world,searches
@@ -85,22 +84,14 @@ function D.findSupplies(entry,npc,kind,needUses,roleFilter)
     if #containerIds==0 then return nil,'FIELD_TOOLS_UNAVAILABLE',{complete=true,missingRoles=neededRoles} end
 
     local key=entry.id..':'..npcId..':'..kind
-    local stamp=tostring(entry.revision)..':'..tostring(inventoryRevision)..':'..table.concat(containerIds,'|')
+    local claimsRev=Store.claimsVersion and Store.claimsVersion() or 0
+    local stamp=tostring(entry.revision)..':'..tostring(inventoryRevision)..':'..tostring(claimsRev)..':'..table.concat(containerIds,'|')
     local scan=searches[key]
     if not scan or scan.stamp~=stamp then
         scan={stamp=stamp,container=1,item=0,found={},unknown=false,reserved=false}
         searches[key]=scan
     elseif scan.blocked then
-        -- A negative result describes the warehouse, not one candidate. Keep
-        -- the partial scan instead of discarding it, and answer from the cached
-        -- fact until the inventory changes or a few passes have elapsed.
-        scan.blockedCalls=(scan.blockedCalls or 0)+1
-        if scan.blockedCalls<BLOCKED_CALLS then
-            return nil,scan.blockedReason,scan.blockedDetail
-        end
-        scan.blocked=false scan.blockedCalls=0
-        scan.container=1 scan.item=0 scan.found={}
-        scan.unknown=false scan.reserved=false
+        return nil,scan.blockedReason,scan.blockedDetail
     end
     -- Retain partial observations across budget slices, but revalidate originals
     -- and their endpoints before returning them as an actionable plan.
@@ -174,7 +165,7 @@ function D.findSupplies(entry,npc,kind,needUses,roleFilter)
     if #neededRoles>0 then
         local missing={}
         for i,role in ipairs(neededRoles) do missing[i]=role end
-        scan.blocked=true scan.blockedCalls=0
+        scan.blocked=true
         scan.container=1 scan.item=0
         scan.blockedReason=unknown and 'FIELD_OBSERVING' or reserved and 'FIELD_TOOL_RESERVED' or 'FIELD_TOOLS_UNAVAILABLE'
         scan.blockedDetail={complete=not unknown,missingRoles=missing}

@@ -5,7 +5,7 @@
     Architectural Compliance:
       - Left Pane: Content-sized Settler Vitals & True Stockpile Reserves (CardPanel + StatMeter),
           a readiness / alert card with the radial dial, population odometer and docked actions.
-      - Right Pane (Top): Logistics & Production Drive Monitor (MechanicalGears + ConveyorBelt).
+      - Right Pane (Top): Production Drive Monitor (MechanicalGears).
       - All four kinetic mechanisms are both advanced and drawn; no update-only state.
       - Right Pane (Bottom): ProjectRemnants Seamless Inline Expanding Drawer Work Orders (CachedList):
           * 2px Seam Erasure (Welded physics drawer)
@@ -33,7 +33,6 @@ local StatMeter        = require 'EmberRoutesProbe/UI/StatMeter'
 local StatusVisual     = require 'EmberRoutesProbe/UI/StatusVisual'
 local SemanticBadge    = require 'EmberRoutesProbe/UI/SemanticBadge'
 local MechanicalGears  = require 'EmberRoutesProbe/UI/MechanicalGears'
-local ConveyorBelt     = require 'EmberRoutesProbe/UI/ConveyorBelt'
 local MechanicalRoller = require 'EmberRoutesProbe/UI/MechanicalRoller'
 local RadialDial       = require 'EmberRoutesProbe/UI/RadialDial'
 local InlineCardDrawer = require 'EmberRoutesProbe/UI/InlineCardDrawer'
@@ -45,6 +44,9 @@ local CraftingService  = require 'EmberRoutesProbe/Crafting/CraftingService'
 local SupplyEstimate   = require 'EmberRoutesProbe/Warehouse/SupplyEstimate'
 local Cards            = require 'EmberRoutesProbe/UI/OrderMonitorCards'
 local ItemPresentation = require 'EmberRoutesProbe/UI/ItemPresentation'
+local EmptyState       = require 'EmberRoutesProbe/UI/EmptyState'
+local SkeletonView     = require 'EmberRoutesProbe/UI/SkeletonView'
+local Toast            = require 'EmberRoutesProbe/UI/ToastManager'
 local Log = require 'EmberRoutesProbe/Kernel/Log'
 
 ---@class EmberRoutesSettlementOverviewPage:ISPanel
@@ -94,8 +96,6 @@ local INJURY_JUMP_BG  = {r = 0.35, g = 0.15, b = 0.15, a = 0.85}
 local DRIVE_GEAR_OPTS = {drivenAngle = -math.pi / 4}
 local ROLLER_OPTS     = {digitWidth = 14, digitHeight = 18, gap = 2, font = UIFont.Small}
 local DIAL_OPTS       = {mode = "health"}
-local BELT_ACTIVE_OPTS = {label = getText('IGUI_EmberRoutesProbe_Overview_beltHauling')}
-local BELT_IDLE_OPTS   = {label = getText('IGUI_EmberRoutesProbe_Overview_beltIdle')}
 
 local DIRECTION_LABELS = {
     N  = getText('IGUI_EmberRoutesProbe_Overview_dirN'),
@@ -186,7 +186,6 @@ function EmberRoutesSettlementOverviewPage:new(arg1, arg2, width, height, actor,
     o.cachedInjuredJump  = nil
     o.cachedAlerts = nil
     o.cachedPopRoller = nil
-    o.cachedBelt = nil
     o.cachedEndRule = nil
 
     -- Order list height follows its rows; these are recomputed on every
@@ -199,7 +198,6 @@ function EmberRoutesSettlementOverviewPage:new(arg1, arg2, width, height, actor,
     o.popRollerState = MechanicalRoller.createState(3, 8.0)
     o.defenseDialState = RadialDial.createState(7.0)
     o.gearsState = MechanicalGears.createState(7, 5)
-    o.conveyorState = ConveyorBelt.createState(22.0, 18)
 
     -- Right Pane Kinetic Indicators Cache
     o.cachedData = {
@@ -245,7 +243,8 @@ function EmberRoutesSettlementOverviewPage:syncLayoutAliases()
         self.orderList:setWidth(self.listBounds.width)
         self.orderList:setHeight(self.listBounds.height)
         if self.orderList.vscroll then
-            self.orderList.vscroll:setX(self.listBounds.width - 16)
+            self.orderList.vscroll:setX(self.listBounds.width - 6)
+            self.orderList.vscroll:setWidth(6)
             self.orderList.vscroll:setHeight(self.listBounds.height)
         end
         self.listMaxHeight = self.listBounds.height
@@ -275,7 +274,7 @@ function EmberRoutesSettlementOverviewPage:rebuildLayout()
         -- 1. Pre-allocated bounds tables for zero-GC presentation rendering
         local function initRect(t, defH)
             t = t or {}
-            t.x = t.x or 0; t.y = t.y or 0; t.width = t.width or 0; t.height = t.height or (defH or 0); t.visible = t.visible or false
+            t.x = t.x or 0; t.y = t.y or 0; t.width = t.width or 0; t.height = t.height or (defH or 0); t.visible = (t.visible ~= false)
             return t
         end
         self.leftBounds       = initRect(self.leftBounds)
@@ -287,7 +286,6 @@ function EmberRoutesSettlementOverviewPage:rebuildLayout()
         self.autoZoneBounds   = initRect(self.autoZoneBounds)
         self.rightBounds      = initRect(self.rightBounds)
         self.rightDriveBounds = initRect(self.rightDriveBounds, 28)
-        self.rightBeltBounds  = initRect(self.rightBeltBounds, 20)
         self.filterBounds     = initRect(self.filterBounds, filterH)
         self.listBounds       = initRect(self.listBounds)
 
@@ -333,6 +331,21 @@ function EmberRoutesSettlementOverviewPage:rebuildLayout()
         self.orderList.onMouseDown = function(list, lx, ly)
             return self:onListMouseDown(list, lx, ly)
         end
+        local origListRender = self.orderList.render
+        self.orderList.render = function(list)
+            if origListRender then origListRender(list) end
+            if self.isLoading then
+                SkeletonView.list(list, {x = 0, y = 0, width = list.width, height = list.height}, 4, BASE_CARD_H, 6)
+            elseif #list.items == 0 then
+                EmptyState.draw(list, {x = 0, y = 0, width = list.width, height = list.height}, {
+                    icon = "box",
+                    iconSize = 36,
+                    title = getText("IGUI_EmberRoutesProbe_Overview_noOrders"),
+                    hint = getText("IGUI_EmberRoutesProbe_Overview_noOrdersHint"),
+                    action = getText("IGUI_EmberRoutesProbe_Overview_gotoPolicies")
+                })
+            end
+        end
         self:addChild(self.orderList)
 
         -- 3. Declare full page declarative spec with automatic Zero-GC bounds binding
@@ -342,15 +355,14 @@ function EmberRoutesSettlementOverviewPage:rebuildLayout()
                 UI.Column({ gap = cardGap, align = "stretch" }, {
                     UI.Item(self.leftVitalsBounds, { key = "vitals", basis = vitalsH, bind = self.leftVitalsBounds }),
                     UI.Item(self.leftStockBounds,  { key = "stock",  basis = stockH,  bind = self.leftStockBounds }),
-                    UI.Item(self.leftAlertsBounds, { key = "alerts", basis = 140,     bind = self.leftAlertsBounds }),
+                    UI.Item(self.leftAlertsBounds, { key = "alerts", grow = 1, basis = 140, bind = self.leftAlertsBounds }),
                     UI.Item(
                         UI.Row({ gap = p, align = "stretch" }, {
                             UI.Item(self.editAreaButton, { key = "editArea", grow = 1, bind = self.editAreaBounds }),
                             UI.Item(self.autoZoneButton, { key = "autoZone", grow = 1, bind = self.autoZoneBounds })
                         }),
                         { key = "actions", basis = actionH, grow = 0, bind = self.leftActionBounds }
-                    ),
-                    UI.Spacer(1)
+                    )
                 }),
                 { key = "leftPane", grow = 38, bind = self.leftBounds }
             ),
@@ -359,7 +371,6 @@ function EmberRoutesSettlementOverviewPage:rebuildLayout()
             UI.Item(
                 UI.Column({ gap = 4, align = "stretch" }, {
                     UI.Item(self.rightDriveBounds, { key = "drive",  basis = 28,      bind = self.rightDriveBounds }),
-                    UI.Item(self.rightBeltBounds,  { key = "belt",   basis = 20,      bind = self.rightBeltBounds }),
                     UI.Item(self.filterChips,      { key = "filter", basis = filterH, bind = self.filterBounds, margin = { top = math.floor(p * 0.75) } }),
                     UI.Item(self.listBounds,       { key = "orders", grow = 1,        bind = self.listBounds,   margin = { top = math.floor(p / 2) } })
                 }),
@@ -392,6 +403,7 @@ end
 function EmberRoutesSettlementOverviewPage:activate()
     local scope = Lifecycle.createActivationScope(self)
     if not scope then return end
+    self.active = true
 
     -- Mount Watch 1: Work Overview & Personnel
     if WorkOverviewService.watch then
@@ -494,6 +506,8 @@ function EmberRoutesSettlementOverviewPage:refresh()
         local work = byNpc[w.id]
         if work and (work.state == 'working' or work.state == 'running') then
             vitals.working = vitals.working + 1
+            if work.category == 'hauling' then isHauling = true end
+            if work.category == 'crafting' then isCrafting = true end
         else
             vitals.idle = vitals.idle + 1
         end
@@ -756,6 +770,8 @@ function EmberRoutesSettlementOverviewPage:updatePresentationCache()
 
     local stockGauges = {}
     local sy = stockY + h + p
+    local iconSize = 14
+    local iconGap = 5
     local labelColW = math.floor(cardW * 0.38)
     local barW = math.floor(cardW * 0.28)
     local barH = 8
@@ -766,8 +782,12 @@ function EmberRoutesSettlementOverviewPage:updatePresentationCache()
                       or (st.isWarning and Theme.status.UPDATING or st.defaultColor)
 
         stockGauges[#stockGauges + 1] = {
+            key = st.key,
+            iconX = left.x + p,
+            iconY = sy + math.floor((h - iconSize) / 2),
+            iconSize = iconSize,
             label = st.label,
-            labelX = left.x + p,
+            labelX = left.x + p + iconSize + iconGap,
             valText = st.valText,
             valX = left.x + cardW + p - valWidth,
             valColor = st.isCritical and Theme.status.ERROR or Theme.textColor,
@@ -887,11 +907,7 @@ function EmberRoutesSettlementOverviewPage:updatePresentationCache()
         self.cachedDriveStrip = nil
     end
 
-    -- 6. Logistics belt: drawn from the very state prerender advances.
-    local belt = self.rightBeltBounds
-    self.cachedBelt = belt and {x = belt.x, y = belt.y, width = belt.width, height = belt.height} or nil
-
-    -- 7. Readiness / alert card: the radial dial needs >= 72px, so it lives
+    -- 6. Readiness / alert card: the radial dial needs >= 72px, so it lives
     --    here rather than in the 28px drive header. Leftover height that used
     --    to be an empty stretched card now carries alert details or an empty state.
     local ab = self.leftAlertsBounds
@@ -932,19 +948,7 @@ function EmberRoutesSettlementOverviewPage:updatePresentationCache()
         self.cachedAlerts = nil
     end
 
-    -- 8. Both columns are content-sized now; mark the end of content instead
-    --    of leaving two half-empty full-height panels.
-    local leftEnd = self.leftActionBounds and (self.leftActionBounds.y + self.leftActionBounds.height) or (p + 200)
-    local listEnd = self.listBounds and (self.listBounds.y + self.listBounds.height) or 0
-    local endY = math.max(leftEnd, listEnd) + p
-    local endText = getText('IGUI_EmberRoutesProbe_Overview_noMoreOrders')
-    local endTextW = tm and tm:MeasureStringX(UIFont.Small, endText) or 120
-    self.cachedEndRule = {
-        x = p, y = endY, width = self.width - p * 2,
-        text = endText,
-        textX = p + math.floor((self.width - p * 2 - endTextW) / 2),
-        textY = endY + 8
-    }
+    self.cachedEndRule = nil
 end
 
 function EmberRoutesSettlementOverviewPage:update()
@@ -1042,7 +1046,7 @@ function EmberRoutesSettlementOverviewPage:getGroupedAssets(row)
 end
 
 function EmberRoutesSettlementOverviewPage:getDrawerHeight(item)
-    if not item then return 150 end
+    if not item then return 160 end
     local row = item.row or {}
     local assets = self:getGroupedAssets(row)
     if item._cachedDrawerH and item._cachedDrawerAssets == assets and item._cachedDrawerAssetSig == (row and row._cachedAssetSig) then
@@ -1051,7 +1055,7 @@ function EmberRoutesSettlementOverviewPage:getDrawerHeight(item)
 
     -- 1. Top Section Height (padding + locStr + stage steps track)
     local locH = 22
-    local trackH = (row._cachedTrack and row._cachedTrack.height) or 48
+    local trackH = (row._cachedTrack and row._cachedTrack.height) or (self.fontHeight * 3 + self.pad)
     local topH = 8 + locH + trackH + 8
 
     -- 2. Middle Content Height (assets / progress / recipe)
@@ -1068,41 +1072,30 @@ function EmberRoutesSettlementOverviewPage:getDrawerHeight(item)
         contentH = 10
     end
 
-    -- 3. Bottom Action Bar Height (View Dossier & Stop Body buttons)
+    -- 3. Bottom Action Bar Height (Divider + View Dossier & Stop Body buttons)
     local npcId = item.npcId or row.npcId
     local canStop = (row.kind == 'FIELD_WORK' and row.jobId ~= nil and row.generation ~= nil and not row.closed and row.carrierAvailable and row.bucket == 'active') or (row.canPause == true)
-    local bottomBarH = 12
+    local bottomBarH = 16
     if npcId or canStop then
-        bottomBarH = 12 + 22 + 10 -- topMargin(12) + btnH(22) + bottomMargin(10)
+        bottomBarH = 14 + 1 + 8 + 22 + 10 -- gap(14) + divider(1) + margin(8) + btnH(22) + bottomMargin(10)
     end
 
-    local h = math.max(150, topH + contentH + bottomBarH)
+    local h = topH + contentH + bottomBarH
     item._cachedDrawerH = h
     item._cachedDrawerAssets = assets
     item._cachedDrawerAssetSig = row and row._cachedAssetSig
     return h
 end
 
----Keeps the list viewport as tall as its rows, never taller than the page.
----Height and hit-testing stay in the existing coordinate system.
+---Keeps the list viewport at the full allocated layout height.
 function EmberRoutesSettlementOverviewPage:applyListHeight()
     if not self.listBounds or not self.orderList then return end
-    local maxH = self.listMaxHeight or self.listBounds.height
-    local wanted = math.max(BASE_CARD_H, math.min(maxH, self.listContentH or maxH))
-    self.listBounds.height = wanted
-    self.rightBottomBounds = self.listBounds
-    self.orderList:setHeight(wanted)
+    local fullH = self.listMaxHeight or self.listBounds.height
+    self.orderList:setHeight(fullH)
     if self.orderList.vscroll then
-        self.orderList.vscroll:setX(self.listBounds.width - 16)
-        self.orderList.vscroll:setHeight(wanted)
-    end
-    -- The footer rule tracks the shorter viewport without re-measuring text.
-    local e = self.cachedEndRule
-    if e then
-        local leftEnd = self.leftActionBounds and (self.leftActionBounds.y + self.leftActionBounds.height) or 0
-        local listEnd = self.listBounds.y + self.listBounds.height
-        e.y = math.max(leftEnd, listEnd) + self.pad
-        e.textY = e.y + 8
+        self.orderList.vscroll:setX(self.listBounds.width - 6)
+        self.orderList.vscroll:setWidth(6)
+        self.orderList.vscroll:setHeight(fullH)
     end
 end
 
@@ -1182,7 +1175,8 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
     local item = entry.item and (entry.item.value or entry.item)
     if not item then return y + (entry.height or BASE_CARD_H) end
 
-    local cardW = list:getWidth() - (list.vscroll and 16 or 0)
+    local hasScroll = list.isVScrollBarVisible and list:isVScrollBarVisible()
+    local cardW = list:getWidth() - (hasScroll and 6 or 0)
     local isExpanded = (self.expandedKey == (item.key or item.id))
     local drawerH = isExpanded and self:getDrawerHeight(item) or 0
     local targetH = isExpanded and (BASE_CARD_H + drawerH) or BASE_CARD_H
@@ -1268,11 +1262,13 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
         item._cachedBadge = SemanticBadge.resolve(mappedTone, stateLabel)
         item._cachedState = item.state
     end
-    SemanticBadge.draw(list, cardW - 120, y + math.floor((BASE_CARD_H - 18) / 2), 76, 18, item._cachedBadge)
+    local padX = 10
+    local inW = cardW - padX * 2
+    SemanticBadge.draw(list, cardW - padX - 86, y + math.floor((BASE_CARD_H - 18) / 2), 76, 18, item._cachedBadge)
 
     -- Expand indicator: geometric chevron from the shared status visual module.
     local markSize = 10
-    StatusVisual.mark(list, cardW - markSize - 12, y + 10, markSize,
+    StatusVisual.mark(list, cardW - padX - 6, y + 10, markSize,
         isExpanded and "chevronUp" or "chevronDown", Theme.accent)
 
     -- 2. If Expanded: Draw Unified Integrated Drawer
@@ -1285,14 +1281,14 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
         Theme.rect(list, 1, shelfY, cardW - 2, shelfH - 1, bgDrawer)
 
         -- Subtle inner soft divider line (inset, low contrast, zero harsh yellow border)
-        Theme.rect(list, 14, shelfY, cardW - 28, 1, {r = borderCol.r, g = borderCol.g, b = borderCol.b, a = 0.18})
+        Theme.rect(list, padX, shelfY, inW, 1, {r = borderCol.r, g = borderCol.g, b = borderCol.b, a = 0.18})
 
         local curY = shelfY + 8
 
         -- A. Route information projected to a named area + compass bearing.
         local locStr = self:formatRouteLabel(item, row)
         if locStr then
-            Theme.text(list, locStr, 14, curY, {r = 0.85, g = 0.90, b = 0.95, a = 0.95}, UIFont.Small)
+            Theme.text(list, locStr, padX + 4, curY, {r = 0.85, g = 0.90, b = 0.95, a = 0.95}, UIFont.Small)
             curY = curY + 22
         else
             curY = curY + 16
@@ -1304,7 +1300,7 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
         local stageIdx = (row.stages and #row.stages > 0) and Cards.phaseIndex(row)
             or (STAGE_INDEX[currentPhase] or (currentPhase == 'COLLECT' and 3 or (currentPhase == 'DELIVER' and 4 or (item.state == 'working' and 2 or 1))))
         local visualState = (item.state == 'blocked') and 'blocked' or ((item.state == 'paused') and 'paused' or 'active')
-        local trackSig = tostring(stageIdx) .. ":" .. tostring(visualState) .. ":" .. tostring(cardW)
+        local trackSig = tostring(stageIdx) .. ":" .. tostring(visualState) .. ":" .. tostring(inW)
         if row.stages then
             for _, s in ipairs(row.stages) do
                 trackSig = trackSig .. "|" .. tostring(s.key) .. ":" .. tostring(s.status) .. ":" .. tostring(s.progress)
@@ -1321,9 +1317,9 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
             else
                 kinds = DEFAULT_STAGE_GLYPHS
             end
-            row._cachedTrack = StatusVisual.steps(stages, math.max(1, cardW - 28), self.fontHeight, self.pad, stageIdx, visualState, kinds)
+            row._cachedTrack = StatusVisual.steps(stages, inW, self.fontHeight, self.pad, stageIdx, visualState, kinds)
         end
-        StatusVisual.drawSteps(list, 14, curY, row._cachedTrack)
+        StatusVisual.drawSteps(list, padX, curY, row._cachedTrack)
         curY = curY + row._cachedTrack.height + 6
 
         -- C. BOM Items Material Table OR Progress Bar
@@ -1331,16 +1327,16 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
         if assets and #assets > 0 then
             local maxItems = math.min(3, #assets)
             local podH = maxItems * 24 + ((#assets > 3) and 20 or 0)
-            Theme.rect(list, 14, curY, cardW - 28, podH, {r = 0.06, g = 0.08, b = 0.11, a = 0.80})
-            Theme.rect(list, 14, curY, cardW - 28, podH, {r = 0.20, g = 0.28, b = 0.38, a = 0.50}, true)
+            Theme.rect(list, padX, curY, inW, podH, {r = 0.06, g = 0.08, b = 0.11, a = 0.80})
+            Theme.rect(list, padX, curY, inW, podH, {r = 0.20, g = 0.28, b = 0.38, a = 0.50}, true)
             for i = 1, maxItems do
                 local g = assets[i]
                 local icon = self.itemIcons and self.itemIcons:icon(g.fullType)
                 if icon then
-                    list:drawTextureScaledAspect(icon, 22, curY + 2, 18, 18, 1, 1, 1, 1)
+                    list:drawTextureScaledAspect(icon, padX + 8, curY + 2, 18, 18, 1, 1, 1, 1)
                 end
-                Theme.text(list, g.displayName, 46, curY + 4, Theme.textColor, UIFont.Small)
-                SemanticBadge.draw(list, cardW - 110, curY + 2, 90, 18, g.badge)
+                Theme.text(list, g.displayName, padX + 32, curY + 4, Theme.textColor, UIFont.Small)
+                SemanticBadge.draw(list, cardW - padX - 98, curY + 2, 90, 18, g.badge)
                 curY = curY + 24
             end
             if #assets > 3 then
@@ -1348,46 +1344,61 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
                     row._cachedMoreCount = #assets - 3
                     row._cachedMoreText = "+ " .. tostring(row._cachedMoreCount) .. " " .. getText('IGUI_EmberRoutesProbe_Overview_unitCount') .. "..."
                 end
-                Theme.text(list, row._cachedMoreText, 46, curY + 2, Theme.muted, UIFont.Small)
+                Theme.text(list, row._cachedMoreText, padX + 32, curY + 2, Theme.muted, UIFont.Small)
                 curY = curY + 20
             end
         elseif row.targetCount and row.targetCount > 0 then
             local curCount = row.deliveredCount or 0
             local fillRatio = math.max(0, math.min(1.0, curCount / row.targetCount))
             local progPrefix = getText('IGUI_EmberRoutesProbe_Overview_progress') .. ": "
-            Theme.text(list, progPrefix, 14, curY, Theme.muted, UIFont.Small)
+            Theme.text(list, progPrefix, padX, curY, Theme.muted, UIFont.Small)
             local pfw = tm and tm:MeasureStringX(UIFont.Small, progPrefix) or 60
-            local barW = math.min(200, cardW - 14 - pfw - 140)
+            local barW = math.min(200, inW - pfw - 140)
             local progLabel = tostring(curCount) .. " / " .. tostring(row.targetCount)
-            StatMeter.draw(list, 14 + pfw + 4, curY + 2, barW, 12, fillRatio, {
+            StatMeter.draw(list, padX + pfw + 4, curY + 2, barW, 12, fillRatio, {
                 mode = "progress",
                 label = progLabel,
                 labelW = tm and tm:MeasureStringX(UIFont.Small, progLabel) or (#progLabel * 8)
             })
+            curY = curY + 24
         elseif row.recipeName then
             if not row._cachedRecipeProgress then
                 row._cachedRecipeProgress = getText('IGUI_EmberRoutesProbe_Overview_progress') .. ": " .. tostring(row.recipeName)
             end
-            Theme.text(list, row._cachedRecipeProgress, 14, curY, Theme.muted, UIFont.Small)
+            Theme.text(list, row._cachedRecipeProgress, padX, curY, Theme.muted, UIFont.Small)
+            curY = curY + 20
         end
 
         -- D. Virtual Action Buttons Dock (View Dossier & Stop Body Preemption)
-        Theme.rect(list, 14, shelfY + shelfH - 22 - 16, cardW - 28, 1, {r = borderCol.r, g = borderCol.g, b = borderCol.b, a = 0.18})
+        curY = curY + 8
         local btnH = 22
-        local btnY = shelfY + shelfH - btnH - 10
-        local curX = cardW - 14
+        local divY = curY
+        Theme.rect(list, padX, divY, inW, 1, {r = borderCol.r, g = borderCol.g, b = borderCol.b, a = 0.18})
+        local btnY = divY + 8
+        item._cachedBtnY = btnY - shelfY
 
-
+        -- Left: Colonist Identity Telemetry (Balances the dock)
         local npcId = item.npcId or row.npcId
+        local workerName = item.workerName or (npcId and self:getNpcName(npcId))
+        if workerName then
+            StatusVisual.glyph(list, padX + 2, btnY + 4, 14, 'person', Theme.muted)
+            Theme.text(list, workerName, padX + 20, btnY + 4, Theme.textColor, UIFont.Small)
+        end
+
+        local curX = cardW - padX
+
         if npcId then
             if not self._cachedDossierW then
                 self._cachedDossierLabel = getText('IGUI_EmberRoutesProbe_Overview_viewDossier')
-                self._cachedDossierW = tm and (tm:MeasureStringX(UIFont.Small, self._cachedDossierLabel) + 16) or 80
+                local tw = tm and tm:MeasureStringX(UIFont.Small, self._cachedDossierLabel) or 72
+                self._cachedDossierTextW = tw
+                self._cachedDossierW = tw + 20
             end
             local bw = self._cachedDossierW
+            local tw = self._cachedDossierTextW or (bw - 20)
             curX = curX - bw
             InlineCardDrawer.drawButton(list, curX, btnY, bw, btnH, self._cachedDossierLabel,
-                bw - 16, self.fontHeight, Theme.control, Theme.border, Theme.textColor)
+                tw, self.fontHeight, Theme.control, Theme.border, Theme.textColor)
             curX = curX - 8
         end
 
@@ -1395,12 +1406,15 @@ function EmberRoutesSettlementOverviewPage:drawOrderRow(list, y, entry)
         if canStop then
             if not self._cachedStopW then
                 self._cachedStopLabel = getText('IGUI_EmberRoutesProbe_Distributed_stopBody')
-                self._cachedStopW = tm and (tm:MeasureStringX(UIFont.Small, self._cachedStopLabel) + 16) or 90
+                local tw = tm and tm:MeasureStringX(UIFont.Small, self._cachedStopLabel) or 80
+                self._cachedStopTextW = tw
+                self._cachedStopW = tw + 20
             end
             local bw = self._cachedStopW
+            local tw = self._cachedStopTextW or (bw - 20)
             curX = curX - bw
             InlineCardDrawer.drawButton(list, curX, btnY, bw, btnH, self._cachedStopLabel,
-                bw - 16, self.fontHeight, Theme.control, Theme.status.ERROR, Theme.status.ERROR)
+                tw, self.fontHeight, Theme.control, Theme.status.ERROR, Theme.status.ERROR)
         end
     end
 
@@ -1409,7 +1423,15 @@ end
 
 ---Autonomous Cumulative Row Height Hit-testing (ProjectRemnants parity).
 function EmberRoutesSettlementOverviewPage:onListMouseDown(list, lx, ly)
-    if not list.items or #list.items == 0 then return false end
+    if not list.items or #list.items == 0 then
+        if EmptyState.hitTest(list, lx, ly) then
+            if self.owner and self.owner.selectTab then
+                self.owner:selectTab('workPolicy')
+                return true
+            end
+        end
+        return false
+    end
 
     local yScroll = list:getYScroll()
     local targetY = ly - yScroll
@@ -1453,13 +1475,14 @@ function EmberRoutesSettlementOverviewPage:onListMouseDown(list, lx, ly)
     -- 2. Click inside expanded drawer (localY > BASE_CARD_H): Virtual Buttons
     if self.expandedKey == (item.key or item.id) then
         local drawerLocalY = localY - BASE_CARD_H
-        local cardW = list:getWidth() - (list.vscroll and 16 or 0)
+        local hasScroll = list.isVScrollBarVisible and list:isVScrollBarVisible()
+        local cardW = list:getWidth() - (hasScroll and 6 or 0)
+        local padX = 10
         local tm = getTextManager()
         local btnH = 22
         local drawerH = self:getDrawerHeight(item)
-        local btnY = drawerH - btnH - 10
-        local curX = cardW - 14
-
+        local btnY = item._cachedBtnY or (drawerH - btnH - 8)
+        local curX = cardW - padX
 
         local row = item.row or {}
         local npcId = item.npcId or row.npcId
@@ -1467,7 +1490,7 @@ function EmberRoutesSettlementOverviewPage:onListMouseDown(list, lx, ly)
         -- Hit test: Dossier button
         if npcId then
             local label = getText('IGUI_EmberRoutesProbe_Overview_viewDossier')
-            local bw = tm:MeasureStringX(UIFont.Small, label) + 16
+            local bw = self._cachedDossierW or ((tm and tm:MeasureStringX(UIFont.Small, label) or 72) + 20)
             curX = curX - bw
             if InlineCardDrawer.hitTest(lx, drawerLocalY, curX, btnY, bw, btnH) then
                 if self.owner and self.owner.selectTab then
@@ -1484,7 +1507,7 @@ function EmberRoutesSettlementOverviewPage:onListMouseDown(list, lx, ly)
         local caps = WorkCommandAdapter.capabilities(row)
         if caps.stopBody or caps.stop then
             local label = getText('IGUI_EmberRoutesProbe_Distributed_stopBody')
-            local bw = tm:MeasureStringX(UIFont.Small, label) + 16
+            local bw = self._cachedStopW or ((tm and tm:MeasureStringX(UIFont.Small, label) or 80) + 20)
             curX = curX - bw
             if InlineCardDrawer.hitTest(lx, drawerLocalY, curX, btnY, bw, btnH) then
                 local cmd = caps.stopBody and 'stopBody' or 'stop'
@@ -1535,7 +1558,6 @@ function EmberRoutesSettlementOverviewPage:prerender()
     -- 1. Advance every mechanism that is drawn in this same pass. No update
     --    without a matching draw, and no hand-written interpolation here.
     MechanicalGears.update(self.gearsState, self.cachedData.workingCount > 0, 1.0)
-    ConveyorBelt.update(self.conveyorState, self.cachedData.isHauling, 1.0)
     MechanicalRoller.update(self.popRollerState, self.cachedData.popCount)
     RadialDial.update(self.defenseDialState, self.cachedData.defenseRatio)
 
@@ -1584,6 +1606,9 @@ function EmberRoutesSettlementOverviewPage:prerender()
     CardPanel.draw(self, left.x, stockY, left.width, stockH, self.cardStockpileOptions)
 
     for _, item in ipairs(self.cachedStockpileLines or {}) do
+        if item.key then
+            StatusVisual.icon(self, item.iconX, item.iconY, item.iconSize, item.key)
+        end
         Theme.text(self, item.label, item.labelX, item.y, Theme.textColor, UIFont.Small)
         StatMeter.draw(self, item.barX, item.barY, item.barW, item.barH, item.fraction, item.meterOpts)
         Theme.text(self, item.valText, item.valX, item.y, item.valColor, UIFont.Small)
@@ -1627,23 +1652,6 @@ function EmberRoutesSettlementOverviewPage:prerender()
         end
         SemanticBadge.draw(self, d.badgeX, d.badgeY, 84, 18, d.badge)
     end
-
-    -- 4b. Animated logistics belt: chevrons scroll only while hauling; the
-    --     label capsule and sunken track are drawn in every state.
-    local belt = self.cachedBelt
-    if belt then
-        ConveyorBelt.draw(self, belt.x, belt.y, belt.width, belt.height, "conveyor",
-            self.conveyorState,
-            self.cachedData.isHauling and BELT_ACTIVE_OPTS or BELT_IDLE_OPTS)
-    end
-
-    -- 4c. Both columns are content-sized; an explicit end-of-content rule
-    --     replaces the two half-empty full-height panels.
-    local e = self.cachedEndRule
-    if e then
-        Theme.rect(self, e.x, e.y, e.width, 1, Theme.border)
-        Theme.text(self, e.text, e.textX, e.textY, Theme.muted, UIFont.Small)
-    end
 end
 
 
@@ -1666,25 +1674,27 @@ function EmberRoutesSettlementOverviewPage:onAutoZone()
     if not actor or not entry then return end
     local Ledger = require "EmberRoutesProbe/Settlement/SettlementLedger"
     local freshEntry = Ledger.get(entry.id) or entry
-    local sw, sh = getCore():getScreenWidth(), getCore():getScreenHeight()
-    local modalW, modalH = 380, 140
     local prompt = getText("IGUI_EmberRoutesProbe_Warehouse_autoZonePrompt")
-    local modal = ISModalDialog:new((sw - modalW) / 2, (sh - modalH) / 2, modalW, modalH, prompt, true, self, function(_, button)
-        if button.internal == "YES" then
+    local Modal = require "EmberRoutesProbe/UI/ModalDialog"
+    Modal.confirm(actor, {
+        title = getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneBtn"),
+        message = prompt,
+        width = 420,
+        height = 160,
+        onConfirm = function()
             local Batch = require "EmberRoutesProbe/Warehouse/BatchStoragePainting"
             local containers = Batch.scanSettlement(freshEntry)
             if #containers == 0 then
+                Toast.show(getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneEmpty"), "warning")
                 actor:Say(getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneEmpty"))
                 return
             end
             local result = Batch.apply(containers, "auto", actor)
             local msg = getText("IGUI_EmberRoutesProbe_Warehouse_autoZoneSuccess", tostring(result.updated))
+            Toast.show(msg, "success")
             actor:Say(msg)
         end
-    end)
-    modal:initialise()
-    modal:addToUIManager()
-    if actor:getJoypadBind() ~= -1 then setJoypadFocus(actor:getIndex(), modal) end
+    })
 end
 
 return EmberRoutesSettlementOverviewPage

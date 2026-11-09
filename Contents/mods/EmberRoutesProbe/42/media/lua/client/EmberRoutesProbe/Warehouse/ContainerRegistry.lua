@@ -196,7 +196,7 @@ function Registry.tag(actor, object, name, deferNotification, container, bypassD
     return "TAGGED " .. name .. " id=" .. tag.id
 end
 
-function Registry.configure(actor,object,config,container,logisticsRole,bypassDistance)
+function Registry.configure(actor,object,config,container,logisticsRole,bypassDistance,deferNotification)
     if not Gate.isSinglePlayer() or (actor and not Gate.isLiveActor(actor)) then return "DRIVER_UNAVAILABLE" end
     local copy,reason=Filter.copy(config)
     if not copy then return reason end
@@ -208,7 +208,7 @@ function Registry.configure(actor,object,config,container,logisticsRole,bypassDi
     tag.filter=copy
     tag.tag=nil
     if logisticsRole then tag.logisticsRole=logisticsRole end
-    Registry.changed(tag.id)
+    if not deferNotification then Registry.changed(tag.id) end
     return "FILTER_CONFIGURED"
 end
 

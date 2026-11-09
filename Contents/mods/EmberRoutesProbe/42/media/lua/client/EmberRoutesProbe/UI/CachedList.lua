@@ -2,6 +2,7 @@ local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 require "ISUI/ISScrollingListBox"
 local Text=require "EmberRoutesProbe/UI/Text"
 local Metrics=require "EmberRoutesProbe/Warehouse/WarehouseMetrics"
+local Theme=require "EmberRoutesProbe/UI/Theme"
 local Cached={}
 ---@class EmberRoutesCachedList:ISScrollingListBox
 ---@field emberPad number
@@ -30,6 +31,30 @@ function Cached.create(owner,bounds,select,style)
     list:initialise() Tooltip.register(list,{method="updateTooltip",owner=owner}) list.font=UIFont.Small
     list.emberPad,list.emberFontHeight=owner.pad,owner.fontHeight
     list.emberStyle=style
+
+    -- Modern Flat 2.0 Overlay Slim Scrollbar (replaces chunky 16px retro bar)
+    if list.vscroll then
+        list.vscroll.background = false
+        list.vscroll.doSetStencil = false
+        list.vscroll.render = function(self)
+            local sh = self.parent:getScrollHeight()
+            if sh and sh > self:getHeight() then
+                local del = self:getHeight() / sh
+                local boxheight = math.max(18, math.ceil(del * self:getHeight()))
+                local dif = (self:getHeight() - boxheight) * (self.pos or 0)
+                local thumbY = math.ceil(dif)
+                self.barx = self.width - 5
+                self.bary = thumbY
+                self.barwidth = 4
+                self.barheight = boxheight
+                local mx = self:getMouseX()
+                local my = self:getMouseY()
+                local isHover = self.scrolling or (self:isMouseOver() and self:isPointOverThumb(mx, my))
+                local a = isHover and 0.65 or 0.28
+                self:drawRect(self.width - 5, thumbY, 4, boxheight, a, 0.85, 0.90, 0.95)
+            end
+        end
+    end
     local function clampScroll(self)
         local total=(self.getScrollHeight and self:getScrollHeight()) or (self.items and #self.items*(self.itemheight or 0)) or 0
         local height=self.height or 0
@@ -89,14 +114,43 @@ function Cached.create(owner,bounds,select,style)
         list.render=function(self)
             if native then native(self) end
             if #self.items==0 then
-                require("EmberRoutesProbe/UI/Viewport").draw(self,{x=0,y=0,width=self.width,height=self.height},function()
-                local c=self.emberStyle.emptyColor
-                for i,line in ipairs(self.emberEmptyLines or {}) do
-                    self:drawText(line,self.emberPad,self.emberPad+(i-1)*self.emberFontHeight,c.r,c.g,c.b,c.a,UIFont.Small)
+                if self.emberEmptyState then
+                    local EmptyState=require "EmberRoutesProbe/UI/EmptyState"
+                    if not self._cachedEmptyBounds then
+                        self._cachedEmptyBounds={x=0,y=0,width=self.width,height=self.height}
+                    else
+                        self._cachedEmptyBounds.width=self.width
+                        self._cachedEmptyBounds.height=self.height
+                    end
+                    EmptyState.draw(self,self._cachedEmptyBounds,self.emberEmptyState)
+                elseif self.emberEmptyLines and #self.emberEmptyLines>0 then
+                    local EmptyState=require "EmberRoutesProbe/UI/EmptyState"
+                    if not self._cachedEmptyBounds then
+                        self._cachedEmptyBounds={x=0,y=0,width=self.width,height=self.height}
+                    else
+                        self._cachedEmptyBounds.width=self.width
+                        self._cachedEmptyBounds.height=self.height
+                    end
+                    EmptyState.draw(self,self._cachedEmptyBounds,{
+                        icon="box",
+                        title=self.emberEmptyLines[1] or "",
+                        hint=self.emberEmptyLines[2] or "",
+                        iconSize=32
+                    })
                 end
-                end)
             end
         end
+    end
+    local origMouseDown=list.onMouseDown
+    list.onMouseDown=function(self,x,y)
+        if #self.items==0 and self._cachedEmptyBounds and self.emberEmptyState and self.emberEmptyState.onAction then
+            local EmptyState=require "EmberRoutesProbe/UI/EmptyState"
+            if EmptyState.hitTest(self._cachedEmptyBounds,x,y) then
+                self.emberEmptyState.onAction(self)
+                return true
+            end
+        end
+        return origMouseDown and origMouseDown(self,x,y) or true
     end
     list.itemheight=owner.fontHeight+owner.pad list.doDrawItem=Cached.draw
     if select then

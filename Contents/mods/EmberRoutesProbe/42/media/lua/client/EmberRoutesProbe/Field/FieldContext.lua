@@ -77,6 +77,13 @@ function C.new(actor,job,binding,def,root)
         if not square then c.reason='FIELD_NO_APPROACH' return 'Failure' end
         local key=square:getX()..':'..square:getY()..':'..square:getZ()
         if not c.path or c.path.key~=key then
+            local currentSq = c.npc and c.npc.getCurrentSquare and c.npc:getCurrentSquare()
+            if currentSq and square and EmberRoutesProbeJava and EmberRoutesProbeJava.macroReachable then
+                if not EmberRoutesProbeJava.macroReachable(currentSq, square) then
+                    c.reason='MACRO_UNREACHABLE'
+                    return 'Failure'
+                end
+            end
             local ok,result=c.body.move(actor,{x=square:getX()+0.5,y=square:getY()+0.5,z=square:getZ()})
             if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then
                 c.reason=tostring(result) return 'Failure'

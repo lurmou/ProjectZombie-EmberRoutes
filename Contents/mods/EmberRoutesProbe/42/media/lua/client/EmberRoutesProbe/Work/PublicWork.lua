@@ -70,7 +70,13 @@ local function business()
     Business=Business or require 'EmberRoutesProbe/Work/BusinessJobs'
     return Business
 end
-if Signals.watch then Signals.watch(function(id) dispatchDirty=true if id then idle:clear(id) end end) end
+local workerBackoff={}
+if Signals.watch then
+    Signals.watch(function(id)
+        dispatchDirty=true
+        if id then idle:clear(id) workerBackoff[id]=nil else workerBackoff={} end
+    end)
+end
 -- hauling state encapsulated in HaulingProvider
 local stockWatches,ruleCursor={},0
 local retryAt={}
@@ -83,7 +89,7 @@ local tickOps,tickSlices=0,0
 local FAULT_RETRY_MS,FAULT_LIMIT=1000,5
 local faultWorld,faultUntil
 local faultCount=0
-local leisureStops={}
+local leisureStops,careWaking={},{}
 -- Enabled-rule projection with a stable id order; rebuilt only when the rule
 -- set changes (saveRule bumps the revision) or the world root is replaced.
 local rulesCache={world=nil,revision=-1,list={}}
@@ -100,13 +106,13 @@ local function load()
         data=OrderStore.load(root)
         world=root directory=Directory.new()
         CraftingProvider.reset()
-        retryAt={} leisureStops={} faultWorld=nil faultUntil=nil faultCount=0
+        retryAt={} leisureStops={} careWaking={} faultWorld=nil faultUntil=nil faultCount=0
         metrics=Metrics.new() readyWorkers={}
         cursor,nextTick,orderCursor=0,0,0 HaulingProvider.reset()
         nextPrecheck,nextWake,observedWake,dispatchDirty=0,0,nil,true
         nextWakePoll=0 discoveryActive=false providerDue=false workerFaults={}
         nextReconcile,nextStock=0,0
-        decideAt,decidePhase={},{} Members=nil
+        decideAt,decidePhase={},{} workerBackoff={} Members=nil
     end
     return data
 end
@@ -423,10 +429,8 @@ function Service.retireSettled(limit)
     reconcile()
     if not any then return 0 end -- Hauling offer release still runs without public craft orders.
     local Jobs=require 'EmberRoutesProbe/Work/BusinessJobs'
-    local ids={} for id in pairs(data.orders) do ids[#ids+1]=id end table.sort(ids)
     local count=0
-    for _,id in ipairs(ids) do
-        local o=data.orders[id]
+    for id,o in pairs(data.orders) do
         local settled=o.state=='DONE' or o.state=='CANCELLED'
         -- An unclaimed cancellation has never acquired originals. Claimed
         -- work must prove its exact Job is closed, not merely absent.
@@ -504,12 +508,14 @@ local function decide(actor,npcId,now,binding,entry)
 	Providers.capacityBlocked(npcId,data.orders,signal)
 	Providers.cancelPending(npcId) return
     end
+    local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
+    if not probing then leisureStops[npcId]=nil end
     local priorities=Service.priorities(npcId) local candidates={} local studyTarget
     local member=Members and Members.view and Members.view(npcId)
     local stamp=entry.id..':'..tostring(entry.revision)..':'..tostring(member and member.revision)
         ..':'..tostring(member and member.postingRevision)..':'..tostring(priorities.revision)..':'..tostring(catalogEpoch[entry.id] or 0)
     if not Providers.hasPending(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Providers.discoveryChanged) then
-        if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,'IDLE') end
+
         for _,provider in ipairs(Providers.all()) do
             if (priorities[provider.category] or 0)>0 and provider.idle then
                 provider.idle(npcId,entry,idleStudyTargets[npcId])
@@ -535,80 +541,109 @@ local function decide(actor,npcId,now,binding,entry)
             return directory:upsert(key,rev,cat,scope or entry.id)
         end
     }
+    local providersByTier={{},{},{},{}}
     for _,provider in ipairs(Providers.all()) do
         local p=priorities[provider.category] or 0
-        if p>0 and provider.discover then
-            envDiscover.priority=p
-            if Perf.active() then
-                local name=discoverName[provider.category]
-                if not name then name='PublicWork.discover:'..provider.category discoverName[provider.category]=name end
-                measured(name,provider.discover,envDiscover)
-            else
-                provider.discover(envDiscover)
-            end
+        if p>=1 and p<=4 and provider.discover then
+            local tier=providersByTier[p]
+            tier[#tier+1]=provider
         end
     end
 
     local posting=member and member.posting
-    if posting then
-        local Filter=require 'EmberRoutesProbe/Settlement/MembershipPosting'
-        local zone,why=Filter.zone(posting,entry)
-        local reason=why or ((priorities[posting.category] or 0)==0 and 'POSTING_PRIORITY_ZERO' or 'POSTING_NO_ELIGIBLE_WORK')
-        local accepted=false
-        for _,candidate in ipairs(candidates) do
-            local allowed,blocked=Filter.allows(posting,zone,candidate)
-            if not allowed then candidate.allowed=false
-                if blocked=='POSTING_TARGET_UNAVAILABLE' then reason=blocked end
-            elseif candidate.allowed then accepted=true end
-        end
-        if Members.notePosting then
-            if accepted then Members.notePosting(npcId,nil) else Members.notePosting(npcId,reason) end
+    local Filter=posting and require('EmberRoutesProbe/Settlement/MembershipPosting')
+    local zone,why=posting and Filter.zone(posting,entry)
+    local postingReason=why or (posting and (priorities[posting.category] or 0)==0 and 'POSTING_PRIORITY_ZERO' or 'POSTING_NO_ELIGIBLE_WORK')
+    local postingAccepted=false
+
+    local selected,jobId
+    for tierIdx=1,4 do
+        local tierProviders=providersByTier[tierIdx]
+        if #tierProviders>0 then
+            envDiscover.priority=tierIdx
+            for _,provider in ipairs(tierProviders) do
+                if Perf.active() then
+                    local name=discoverName[provider.category]
+                    if not name then name='PublicWork.discover:'..provider.category discoverName[provider.category]=name end
+                    measured(name,provider.discover,envDiscover)
+                else
+                    provider.discover(envDiscover)
+                end
+            end
+
+            if posting and #candidates>0 then
+                for _,candidate in ipairs(candidates) do
+                    if candidate.allowed~=false then
+                        local allowed,blocked=Filter.allows(posting,zone,candidate)
+                        if not allowed then
+                            candidate.allowed=false
+                            if blocked=='POSTING_TARGET_UNAVAILABLE' then postingReason=blocked end
+                        elseif candidate.allowed then
+                            postingAccepted=true
+                        end
+                    end
+                end
+            end
+
+            if #candidates>0 then
+                local firstMap=OrderQuery.firstLiveByProduct()
+                for _,candidate in ipairs(candidates) do
+                    if candidate.allowed~=false then
+                        local order=candidate.order or candidate.orderId and data.orders[candidate.orderId]
+                        local reason=order and OrderQuery.reasonFor(order,firstMap)
+                        if reason then candidate.allowed=false signal(order,reason) end
+                        if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
+                    end
+                end
+            end
+
+            if Providers.holdSelection(envDiscover) then return end
+
+            for _=1,3 do
+                selected=Selector.choose(candidates,priorities)
+                if not selected then break end
+                if probing then
+                    if now>=(leisureStops[npcId] or 0) then
+                        leisureStops[npcId]=now+1500
+                        if Probe.leisureWorkReady then Probe.leisureWorkReady(npcId) end
+                    end
+                    careWaking[npcId]=true
+                    idle:clear(npcId)
+                    return
+                end
+                jobId=Registry.id()
+                if directory:claim(selected.key,selected.revision,npcId,jobId) then break end
+                cool({id=selected.key},npcId,{watch=Wake.capture(entry)},'CLAIM_BUSY',now)
+                selected.allowed=false selected=nil
+            end
+
+            if selected then break end
         end
     end
 
-    local firstMap=candidates[1] and OrderQuery.firstLiveByProduct() or nil
-    for _,candidate in ipairs(candidates) do
-        local order=candidate.order or candidate.orderId and data.orders[candidate.orderId]
-        local reason=order and OrderQuery.reasonFor(order,firstMap)
-        if reason then candidate.allowed=false signal(order,reason) end
-        if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
+    if posting and Members.notePosting then
+        if postingAccepted then Members.notePosting(npcId,nil) else Members.notePosting(npcId,postingReason) end
     end
-    if Providers.holdSelection(envDiscover) then return end
-    local selected,jobId
-    for _=1,3 do
-        selected=Selector.choose(candidates,priorities)
-        if not selected then
+
+    if not selected then
+            workerBackoff[npcId]=(workerBackoff[npcId] or 0)+1
             local orders=OrderQuery.orderIds(entry.id)
 	    local complete,scanWatch=Providers.scanStatus(npcId,orders)
             if envDiscover.pending then complete=false end
             idleStudyTargets[npcId]=studyTarget
             idle:empty(npcId,now,stamp,Wake.revision and Wake.revision() or 0,scanWatch,
 		complete and not Providers.hasPending(npcId),retryWake[npcId])
-            if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,
-		complete and not Providers.hasPending(npcId) and 'IDLE' or 'OBSERVING')
-	    elseif complete and not Providers.hasPending(npcId) and Probe.idleLeisure then Probe.idleLeisure(npcId,entry) end
+            if not probing and complete and not Providers.hasPending(npcId) and Probe.idleLeisure then
+                Probe.idleLeisure(npcId,entry)
+            end
             for _,provider in ipairs(Providers.all()) do
-		if (priorities[provider.category] or 0)>0 and not Providers.hasPending(npcId) and provider.idle then
+		if not probing and (priorities[provider.category] or 0)>0 and not Providers.hasPending(npcId) and provider.idle then
                     provider.idle(npcId,entry,studyTarget)
                 end
             end
             return
-        end
-        idle:clear(npcId)
-        if Probe.leisureWorkState then Probe.leisureWorkState(npcId,entry,'READY') end
-        if Probe.careProbeWork and Probe.careProbeWork(npcId) then
-            if now>=(leisureStops[npcId] or 0) then
-                leisureStops[npcId]=now+10000
-                if Probe.leisureWorkReady then Probe.leisureWorkReady(npcId) end
-            end
-            return
-        end
-        jobId=Registry.id()
-        if directory:claim(selected.key,selected.revision,npcId,jobId) then break end
-        cool({id=selected.key},npcId,{watch=Wake.capture(entry)},'CLAIM_BUSY',now)
-        selected.allowed=false selected=nil
     end
-    if not selected then return end
+    idle:clear(npcId)
     Providers.cancelPending(npcId)
     Providers.beforeClaim(selected,npcId)
     local result
@@ -618,8 +653,11 @@ local function decide(actor,npcId,now,binding,entry)
             releaseOffer=function(k,j,p) return directory:release(k,j,p) end})
     end
     if result~='QUEUED' and result~='STARTED' then
+        workerBackoff[npcId]=(workerBackoff[npcId] or 0)+1
         cool({id=selected.key},npcId,{watch=Wake.capture(entry)},result,now)
         directory:release(selected.key,jobId,{effects='KNOWN',obligationsCleared=true})
+    else
+        workerBackoff[npcId]=nil
     end
     if result=='QUEUED' or result=='STARTED' then metrics.claims=metrics.claims+1 end
     Signals.changed(npcId) Log.write('DISPATCH','npc='..npcId..' offer='..selected.key..' job='..jobId..' result='..tostring(result))
@@ -672,6 +710,11 @@ local function advance(now,discover,providerDue,precheckDue)
         })
         tickOps,tickSlices=ops,slices
         local ready=readyWorkers readyWorkers={}
+        if #ready>1 then
+            table.sort(ready,function(a,b)
+                return Providers.pendingScore(a)>Providers.pendingScore(b)
+            end)
+        end
 	for _,id in ipairs(ready) do if Providers.hasPending(id) then measured('PublicWork.decide',safeDecide,actor,id,now) end end
     end
     if not discover then return end
@@ -679,11 +722,13 @@ local function advance(now,discover,providerDue,precheckDue)
     nextTick=now+(discoveryActive and Config.discoveryMs or Config.discoveryIdleMs)
     if now>=nextReconcile then nextReconcile=now+1000 measured('PublicWork.reconcile',reconcile) end
     if now>=nextStock then nextStock=now+1000 measured('PublicWork.stock',stock,actor,now) end
-    local window=EmberRoutesProbeJava.workerDecisionWindow and EmberRoutesProbeJava.workerDecisionWindow(cursor,16)
+    local startCursor=cursor
+    local window=EmberRoutesProbeJava.workerDecisionWindow and EmberRoutesProbeJava.workerDecisionWindow(startCursor,16)
     local count=window and window.count or EmberRoutesProbeJava.workerCount() if count<1 or count>256 then discoveryActive=false return end
+    cursor=(cursor+1)%count
     local decisions=0
     for _=1,math.min(16,count) do
-	cursor=cursor%count+1 local id=window and window.ids[_] or EmberRoutesProbeJava.workerIdAt(cursor-1)
+        local id=window and window.ids[_] or EmberRoutesProbeJava.workerIdAt((startCursor+_-1)%count)
         local due=decideAt[id]
         if not due then due=now+decidePhaseMs(id) decideAt[id]=due end
         if now>=due then
@@ -696,11 +741,24 @@ local function advance(now,discover,providerDue,precheckDue)
             -- Carriers far from the player think less often instead of being
             -- dropped: this project has no meta simulation to keep them busy.
             local period=Config.discoveryMs
-            local handle=binding and binding.handle
-            if handle then
-                local radius=Config.workerRemoteRadius or 48
-                local dx=handle:getX()-actor:getX() local dy=handle:getY()-actor:getY()
-                if dx*dx+dy*dy>radius*radius then period=Config.workerRemoteMs or 2000 end
+            if careWaking[id] then
+                careWaking[id]=nil
+                period=50
+                dispatchDirty=true
+                nextWake=now+50
+            else
+                local backoff=workerBackoff[id] or 0
+                if backoff>0 then
+                    if backoff==1 then period=math.max(period,2000)
+                    elseif backoff==2 then period=math.max(period,5000)
+                    else period=math.max(period,15000) end
+                end
+                local handle=binding and binding.handle
+                if handle then
+                    local radius=Config.workerRemoteRadius or 48
+                    local dx=handle:getX()-actor:getX() local dy=handle:getY()-actor:getY()
+                    if dx*dx+dy*dy>radius*radius then period=math.max(period,Config.workerRemoteMs or 2000) end
+                end
             end
             decideAt[id]=now+period
         end

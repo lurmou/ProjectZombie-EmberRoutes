@@ -5,7 +5,7 @@ dofile(vanilla..'ISBaseObject.lua') package.loaded.ISBaseObject=true
 dofile(vanilla..'TimedActions/ISBaseTimedAction.lua') package.loaded['TimedActions/ISBaseTimedAction']=true
 dofile(vanilla..'TimedActions/ISEquipWeaponAction.lua')
 for _,name in ipairs({'ISCleanBlood','ISChopTreeAction','ISGrabCorpseAction','ISDropCorpseAction','ISUnequipAction','ISEquipWeaponAction'}) do package.loaded['TimedActions/'..name]=true end
-for _,name in ipairs({'Farming/TimedActions/ISWaterPlantAction','Farming/TimedActions/ISHarvestPlantAction','Farming/TimedActions/ISShovelAction','Farming/ISUI/ISFarmingMenu','Foraging/ISForageAction','Foraging/ISSearchManager','Foraging/ISForageIcon'}) do package.loaded[name]=true end
+for _,name in ipairs({'Farming/TimedActions/ISWaterPlantAction','Farming/TimedActions/ISHarvestPlantAction','Farming/TimedActions/ISShovelAction','Farming/TimedActions/ISCurePlantAction','Farming/TimedActions/ISSeedActionNew','Farming/TimedActions/ISPlowAction','Farming/ISUI/ISFarmingMenu','Foraging/ISForageAction','Foraging/ISSearchManager','Foraging/ISForageIcon'}) do package.loaded[name]=true end
 getText=function(s) return s end isServer=function() return false end
 getPlayerHotbar=function() end getPlayerInventory=function() return {refreshBackpacks=function() end} end
 instanceof=function(item,kind) return kind=='HandWeapon' and item.weapon==true end
@@ -26,7 +26,7 @@ local npc={getInventory=function() return root end,getPrimaryHandItem=function()
  isEquippedClothing=function() return false end,getCurrentSquare=function() return {} end,
  getPlayerNum=function() return -1 end,isTimedActionInstant=function() return false end}
 package.loaded['EmberRoutesProbe/Work/LaborStore']={validField=function() return true end,validToolUse=function() return true end}
-package.loaded['EmberRoutesProbe/Field/ToolRequirements']={}
+package.loaded['EmberRoutesProbe/Field/ToolRequirements']={matchPhysical=function() return true end}
 local square={}
 package.loaded['EmberRoutesProbe/Field/FieldSpatial']={square=function() return square end,reachable=function() return true end,walkway=function() return true end,adjacent=function() return square end}
 package.loaded['EmberRoutesProbe/Field/FieldDiscovery']={object=function() end}
@@ -76,4 +76,36 @@ O.step(c) check(spec.kind=='EQUIP','tree tool is equipped through native action'
 action=spec.create() check(not action.twoHands,'tree preparation preserves occupied secondary hand like vanilla doChopTree')
 ISEquipWeaponAction.complete(action)
 check(primary==mop and secondary==fluid,'native axe equip keeps existing secondary original')
+
+-- Corpse cleaning hand item and custody unequip lifecycle checks
+local corpseObj={getStaticMovingObjectIndex=function() return 0 end,getSquare=function() return square end}
+discovery.object=function() return corpseObj end
+require('EmberRoutesProbe/Field/FieldSpatial').identity=function() return 'corpse_1' end
+EmberRoutesProbeJava={motionResult=function() return 'REACHED' end,carrierId=function() return 'n' end}
+c.npc.isDraggingCorpse=function() return false end
+c.npc.getSquare=function() return square end
+square.canReachTo=function() return true end
+c.body.move=function() return true,'MOVE_REQUESTED_CORPSE' end
+
+local custodyMop=mop
+package.loaded['EmberRoutesProbe/Work/LaborStore'].owner=function(id)
+    if id==1 then return {taskId='custody:n:1'} end
+    if id==999 then return {taskId='other_job'} end
+    return nil
+end
+package.loaded['EmberRoutesProbe/Work/LaborStore'].canClaimTool=function(npcId,id)
+    return npcId=='n' and id==1
+end
+
+c.node=nil c.job.payload.target={kind='CORPSE',identity='corpse_1'} c.job.payload.workDone=nil
+c.corpseApproach={body=corpseObj,reached=true}
+primary=custodyMop secondary=nil
+local state=O.step(c)
+check(state=='Running' and spec.kind=='UNEQUIP','held custody tool triggers UNEQUIP instead of Failure')
+
+local illegalItem=item(999,false)
+primary=illegalItem secondary=nil c.node=nil c.corpseApproach={body=corpseObj,reached=true}
+state=O.step(c)
+check(state=='Failure' and c.reason=='FIELD_HANDS_OCCUPIED','unauthorized held item is rejected with FIELD_HANDS_OCCUPIED')
+
 print('PASS '..n..' installed native cleaning equipment checks; animation/physics NOT RUN')

@@ -243,11 +243,10 @@ function FilterChips:prerender()
             local indX = math.floor(self.indicator.a)
             local indW = math.floor(self.indicator.b)
             if underline then
-                Theme.rect(self, indX, self.height - 2, indW, 2, Theme.accent)
+                Theme.rect(self, indX, self.height - 2, indW, 2, Theme.selectedBorder or Theme.border)
             else
                 Theme.rect(self, indX, 0, indW, self.height, Theme.selected)
-                Theme.rect(self, indX, 0, indW, self.height, Theme.accent, true)
-                Theme.rect(self, indX, 0, math.max(2, math.floor(p / 3)), self.height, Theme.accent)
+                Theme.rect(self, indX, 0, indW, self.height, Theme.selectedBorder or Theme.border, true)
             end
         end
     else

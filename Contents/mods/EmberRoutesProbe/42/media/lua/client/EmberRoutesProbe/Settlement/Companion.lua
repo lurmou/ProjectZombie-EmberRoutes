@@ -63,6 +63,9 @@ local function request(actor,worker,binding,command,intent)
             worker.membershipRevision=membershipRevision
             if intent then return worker.restoreState(actor,intent,body) end
             local value=worker.execute(actor,command,body,binding)
+            if value=='FOLLOW' then require('EmberRoutesProbe/Chatter/ChatterService').speak(binding.handle or actor,'CMD_FOLLOW')
+            elseif value=='HOLD' then require('EmberRoutesProbe/Chatter/ChatterService').speak(binding.handle or actor,'CMD_HOLD')
+            elseif value=='RETURNING' then require('EmberRoutesProbe/Chatter/ChatterService').speak(binding.handle or actor,'CMD_HOME') end
             return value=='FOLLOW' or value=='RETURNING' or value=='HOLD' or value=='HOME_SET',value
         end,
         tick=function() worker.tick() end,

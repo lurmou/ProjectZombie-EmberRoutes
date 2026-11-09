@@ -1,3 +1,4 @@
+package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local checks=0
 local function check(v,s) checks=checks+1 assert(v,s) end
 local root={} local serial=0 local now=0 local allowed=true local accepting=true
@@ -233,12 +234,11 @@ root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={
 local production=package.loaded['EmberRoutesProbe/Crafting/Production']
 local originalExecute=production.execute local failedStarts=0
 production.execute=function() failedStarts=failedStarts+1 return 'RESOURCE_CHANGED' end
-boot.leisureWorkState=function() end
 Public.create(actor,'s','saw',1,nil,'admission-failure') tick() tick()
 check(failedStarts==1,'actual admission failure observed once')
 for i=1,5 do tick() end
 check(failedStarts==1,'failed NPC/offer is backed off while world evidence is unchanged')
-production.execute=originalExecute boot.leisureWorkState=nil
+production.execute=originalExecute
 root={} busy={} cargo={} records={} craftRecords={} calls={} offers={} workers={'alice'}
 local logistics=package.loaded['EmberRoutesProbe/Logistics/LogisticsService']
 local oldOffer=logistics.publicOffer local discoveries=0

@@ -279,19 +279,47 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
                 if not task.action then
                     if not transferAllowed() then task.failed=true return end
                     task.committed=true
-                    task.action=ISInventoryTransferAction:new(npc,task.item,inv,task.endpoint.container,60)
-                    local action=task.action local valid,transfer=action.isValid,action.transferItem
-                    action.isValid=function(self) return transferAllowed() and valid(self) end
-                    action.transferItem=function(self,item)
-                        if item~=task.item or not transferAllowed() then return false end
-                        return transfer(self,item)
+                    if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
+                        task.action='NATIVE'
+                        task.startedAt=getTimestampMs()
+                        EmberRoutesProbeJava.nativeActionStart(npc,"Loot",20,true)
+                    else
+                        task.action=ISInventoryTransferAction:new(npc,task.item,inv,task.endpoint.container,60)
+                        local action=task.action local valid,transfer=action.isValid,action.transferItem
+                        action.isValid=function(self) return transferAllowed() and valid(self) end
+                        action.transferItem=function(self,item)
+                            if item~=task.item or not transferAllowed() then return false end
+                            return transfer(self,item)
+                        end
+                        action.canMergeAction=function() return false end
+                        action.checkQueueList=function() end
+                        local ok,why=task.body.add(task.action)
+                        if not ok then
+                            task.failed=true
+                            task.record.state='FAILED'
+                            Signals.changed(npcId)
+                        end
                     end
-                    action.canMergeAction=function() return false end
-                    action.checkQueueList=function() end
-                    local ok,why=task.body.add(task.action)
-                    if not ok then
+                    return
+                end
+
+                if task.action=='NATIVE' then
+                    if not transferAllowed() then
+                        if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
+                            EmberRoutesProbeJava.nativeActionStop(npc)
+                        end
                         task.failed=true
                         task.record.state='FAILED'
+                        Signals.changed(npcId)
+                        return
+                    end
+                    if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionFinished and EmberRoutesProbeJava.nativeActionFinished(npc) then
+                        inv:DoRemoveItem(task.item)
+                        task.endpoint.container:AddItem(task.item)
+                        Registry.inventoryChanged(inv)
+                        Registry.inventoryChanged(task.endpoint.container)
+                        task.phase='SETTLED' task.finished=true
+                        task.record.phase='SETTLED'
                         Signals.changed(npcId)
                     end
                     return
@@ -333,6 +361,9 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
                 pause=function(reason)
                     task.stopReason=reason
                     task.stopping=true
+                    if task.action=='NATIVE' and EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
+                        EmberRoutesProbeJava.nativeActionStop(npc)
+                    end
                     return task.body.clear()
                 end,
                 effects=function() return (arrived() or retained()) and 'KNOWN' or 'UNKNOWN' end,

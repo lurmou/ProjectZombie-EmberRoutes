@@ -14,7 +14,7 @@ function M.observe(npc,id,sample,now)
         ..':'..tostring(facts and facts.partIndex)..':'..tostring(facts and facts.replace)
     observed[id]={facts=facts,reason=reason,scope=member and member.settlementId,at=now,
         state=state,signature=signature,blocker=facts and facts.needsCare and previous and previous.blocker or nil}
-    if signature~=(previous and previous.signature) then require('EmberRoutesProbe/Work/LaborSignals').changed(id) end
+    if signature~=(previous and previous.signature) then require('EmberRoutesProbe/Work/LaborSignals').changed(id) if facts then require('EmberRoutesProbe/Chatter/ChatterService').observeHealth(npc,facts) end end
 end
 function M.eligible(item)
     return item and item.getBandagePower and item:getBandagePower()>0

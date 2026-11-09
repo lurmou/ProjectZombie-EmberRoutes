@@ -193,14 +193,6 @@ function Service.tick()
     end
 end
 Probe.tickCraftView=Service.tick
--- Sample the standalone read ticker (catalog/preview stepping). Metrics module
--- resolved at load - a per-call require was measurable at 163 calls/s.
-local RuntimeMetrics=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
-local rawReadTick=Service.readTick
-function Service.readTick()
-    if RuntimeMetrics.active() then RuntimeMetrics.measure('CraftRead',rawReadTick) else rawReadTick() end
-end
--- Registered through the mod's single even-paused dispatcher.
-require('EmberRoutesProbe/Kernel/EvenPaused').add(Service.readTick)
+Probe.tickCraftRead=Service.readTick
 if Events.OnContainerUpdate then Events.OnContainerUpdate.Add(invalidateDeferred) end
 return Service

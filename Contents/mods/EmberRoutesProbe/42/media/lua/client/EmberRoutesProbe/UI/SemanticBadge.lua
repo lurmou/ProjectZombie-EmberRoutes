@@ -34,7 +34,7 @@ local DEFINITIONS = {
     STORED = {
         markState = "done",
         labelKey = "IGUI_EmberRoutesProbe_Badge_stored",
-        color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
+        color = {r = 0.40, g = 0.92, b = 0.65, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     },
@@ -55,7 +55,7 @@ local DEFINITIONS = {
     TRANSIT = {
         markState = "transit",
         labelKey = "IGUI_EmberRoutesProbe_Badge_transit",
-        color = {r = 0.25, g = 0.75, b = 1.00, a = 1.0},
+        color = {r = 0.35, g = 0.82, b = 1.00, a = 1.0},
         bg = {r = 0.08, g = 0.18, b = 0.26, a = 0.90},
         border = {r = 0.20, g = 0.52, b = 0.75, a = 0.85}
     },
@@ -104,7 +104,7 @@ local DEFINITIONS = {
     COMPLETED = {
         markState = "done",
         labelKey = "IGUI_EmberRoutesProbe_Badge_delivered",
-        color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
+        color = {r = 0.40, g = 0.92, b = 0.65, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     },
@@ -118,14 +118,14 @@ local DEFINITIONS = {
     SATISFIED = {
         markState = "done",
         labelKey = "IGUI_EmberRoutesProbe_Badge_satisfied",
-        color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
+        color = {r = 0.40, g = 0.92, b = 0.65, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     },
     RESTOCKING = {
         markState = "active",
         labelKey = "IGUI_EmberRoutesProbe_Badge_restocking",
-        color = {r = 0.25, g = 0.75, b = 1.00, a = 1.0},
+        color = {r = 0.35, g = 0.82, b = 1.00, a = 1.0},
         bg = {r = 0.08, g = 0.18, b = 0.26, a = 0.90},
         border = {r = 0.20, g = 0.52, b = 0.75, a = 0.85}
     },
@@ -140,7 +140,7 @@ local DEFINITIONS = {
         markState = "active",
         glyph = "hammer",
         labelKey = "IGUI_EmberRoutesProbe_Overview_workBadge",
-        color = {r = 0.25, g = 0.75, b = 1.00, a = 1.0},
+        color = {r = 0.35, g = 0.82, b = 1.00, a = 1.0},
         bg = {r = 0.08, g = 0.18, b = 0.26, a = 0.90},
         border = {r = 0.20, g = 0.52, b = 0.75, a = 0.85}
     },
@@ -148,7 +148,7 @@ local DEFINITIONS = {
         markState = "waiting",
         glyph = "moon",
         labelKey = "IGUI_EmberRoutesProbe_Overview_leisureBadge",
-        color = {r = 0.35, g = 0.88, b = 0.60, a = 1.0},
+        color = {r = 0.40, g = 0.92, b = 0.65, a = 1.0},
         bg = {r = 0.10, g = 0.22, b = 0.16, a = 0.90},
         border = {r = 0.25, g = 0.65, b = 0.45, a = 0.85}
     }
@@ -204,17 +204,18 @@ function SemanticBadge.draw(owner, x, y, width, height, descriptor)
     local h = d.fontHeight or getTextManager():getFontHeight(UIFont.Small)
     local label = d.displayText or d.label
     local tw = d.textWidth or UICache.measure(UIFont.Small, label)
-    local slot = SemanticBadge.ICON_SLOT
-    local markSize = math.max(6, math.min(height - 6, slot - 4))
+    local slot = (height >= 20) and 18 or SemanticBadge.ICON_SLOT
+    local markSize = (height >= 20) and 16 or math.max(6, math.min(height - 6, slot - 4))
     local startX = x + math.max(2, math.floor((width - slot - tw) / 2))
     local ty = y + math.floor((height - h) / 2)
+    local markX = startX + math.floor((slot - markSize) / 2)
+    local markY = y + math.floor((height - markSize) / 2)
     -- Semantic glyph when defined (shape = meaning), else the state mark.
-    -- The larger 16px slot lets a 6x6 glyph render at 12px (2px grid pitch).
-    if d.glyph and Visual.glyph(owner, startX, y + math.floor((height - markSize) / 2),
+    if d.glyph and Visual.glyph(owner, markX, markY,
         markSize, d.glyph, d.color) then
         -- glyph drawn
     else
-        Visual.mark(owner, startX, y + math.floor((height - markSize) / 2),
+        Visual.mark(owner, markX, markY,
             markSize, d.markState, d.color)
     end
     Theme.text(owner, label, startX + slot, ty, d.color)

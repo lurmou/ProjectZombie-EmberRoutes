@@ -5,7 +5,9 @@ getTimestampMs=function() return now end
 package.loaded['TimedActions/ISInventoryTransferAction']=true
 package.loaded['EmberRoutesProbe/Work/LaborProducers']={}
 local moves,motion,arrived={},'MOVING',false
-package.loaded['EmberRoutesProbe/Runtime/Driver']={move=function(binding,actor,p,body)
+package.loaded['EmberRoutesProbe/Runtime/Driver']={
+    suspended=function() return false end,
+    move=function(binding,actor,p,body)
     check(binding.id=='npc' and body=='owned-session','retry retains the same body authority')
     moves[#moves+1]=p motion='MOVING' return 'MOVE_REQUESTED'
 end}

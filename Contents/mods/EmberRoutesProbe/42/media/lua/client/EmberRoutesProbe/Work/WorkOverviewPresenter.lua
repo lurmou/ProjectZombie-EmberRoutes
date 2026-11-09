@@ -10,6 +10,16 @@ function P.state(row)
     if row.bucket=='active' or row.state=='RUNNING' then return 'working' end
     return 'waiting'
 end
+function P.isMacro(row)
+    if not row then return false end
+    if row.isMacro ~= nil then return row.isMacro end
+    if row.kind == 'DELIVERY' or row.orderId ~= nil then return true end
+    if row.kind == 'CRAFT' or row.kind == 'ORDER' then return true end
+    if row.kind == 'DEMAND' then return true end
+    if row.kind == 'HAUL' and not row.orderId and row.producer ~= 'DELIVERY' then return false end
+    if row.kind == 'FIELD_WORK' then return false end
+    return true
+end
 function P.project(rows,workers,problems)
     local out={works={},byNpc={},problems={},counts={waiting=0,blocked=0,paused=0},alerts={}}
     local seen={}
@@ -19,12 +29,16 @@ function P.project(rows,workers,problems)
         if state and row.kind~='TOOL_CUSTODY' and not seen[key] then
             seen[key]=true
             local w={key=key,row=row,state=state,title=row.title or row.kind,category=row.workCategory or (row.providerType=='COOKING' and 'cooking') or categories[row.kind],workerName=row.name,targetLocation=row.targetLocation}
-            out.works[#out.works+1]=w
             if row.npcId then
                 local prior=out.byNpc[row.npcId]
                 if not prior or state=='working' then out.byNpc[row.npcId]=w end
             end
-            if state=='paused' or state=='blocked' and row.npcId or state=='waiting' and not row.npcId then out.counts[state]=out.counts[state]+1 end
+            if P.isMacro(row) then
+                out.works[#out.works+1]=w
+                if state=='paused' or state=='blocked' and row.npcId or state=='waiting' and not row.npcId then
+                    out.counts[state]=out.counts[state]+1
+                end
+            end
         end
     end
     -- Custody monitor IDs are NPC-group summaries, not stable work identities.
@@ -44,8 +58,18 @@ function P.project(rows,workers,problems)
         if not seen[problem.id] then seen[problem.id]=true out.problems[#out.problems+1]=problem end
     end
     -- The current demand source has stock/medical/cleaning facts, no typed food/water facts.
+    local alertSeen={}
     for _,w in ipairs(out.works) do
-        if w.state=='blocked' and w.row.npcId then out.alerts[#out.alerts+1]={kind='blocked',title=w.title,tab='personnel',context={npcId=w.row.npcId}} end
+        if w.state=='blocked' and w.row.npcId and not alertSeen[w.row.npcId] then
+            alertSeen[w.row.npcId]=true
+            out.alerts[#out.alerts+1]={kind='blocked',title=w.title,tab='personnel',context={npcId=w.row.npcId}}
+        end
+    end
+    for _,w in pairs(out.byNpc) do
+        if w.state=='blocked' and w.row and w.row.npcId and not alertSeen[w.row.npcId] then
+            alertSeen[w.row.npcId]=true
+            out.alerts[#out.alerts+1]={kind='blocked',title=w.title,tab='personnel',context={npcId=w.row.npcId}}
+        end
     end
     for _,w in ipairs(out.works) do
         if w.state=='waiting' and not w.row.npcId then

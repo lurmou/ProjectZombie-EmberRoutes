@@ -45,17 +45,17 @@ local function load()
     local root=ContainerRegistry.data() if root~=world then world,offers,statuses=root,{},{ } preferred={} end
 end
 -- PublicWork reports observations; membership, not this report, permits life.
-function Service.workState(id,entry,state)
+function Service.offer(id,entry)
     load()
     local member=require('EmberRoutesProbe/Settlement/MembershipService').view(id)
     if not member or member.pending or member.context~='SETTLEMENT' or member.settlementId~=entry.id then return end
     local row=offers[id]
     if not row or row.entry.id~=entry.id or row.membershipRevision~=member.revision
         or row.entryRevision~=entry.revision then row={entry=entry} offers[id]=row end
-    row.untilTime=getTimestampMs()+3000 row.state=state
+
     row.membershipRevision=member.revision row.entryRevision=entry.revision
 end
-function Service.offer(id,entry) Service.workState(id,entry,'IDLE') end
+
 function Service.status(id)
     load() local s=statuses[id]
     return s and {reason=s.reason,activity=s.activity,at=s.at} or nil
@@ -218,7 +218,7 @@ end
 function Service.seatedSocial(c)
     load()
     local id=c.job.npcId local offer=offers[id]
-    if not offer or offer.state~='IDLE' or not offer.untilTime or offer.untilTime<getTimestampMs()
+    if not offer
         or not c.valid() then Social.withdraw(id) return end
     local seat=Social.seated(id,c.actor)
     if not seat then Social.withdraw(id) return end
@@ -492,7 +492,7 @@ function Service.candidate(actor,binding,sample,budget,memory)
     end
     local now,hours=getTimestampMs(),getGameTime():getWorldAgeHours()
     local point={x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())}
-    local state=offer.untilTime and offer.untilTime>=now and offer.state or 'OBSERVING'
+
     local Activities=require 'EmberRoutesProbe/Activity/ActivityService'
     local gathering=Activities.context(id)
     if gathering then
@@ -523,13 +523,6 @@ function Service.candidate(actor,binding,sample,budget,memory)
             Social.withdraw(id)
             return require('EmberRoutesProbe/Activity/ActivityScripted').candidate(event,id,entry,eligible,gathering,hours)
         end
-        state='IDLE' -- Explicit roster intent suppresses ordinary-work discovery.
-    end
-    if state=='READY' then Social.withdraw(id) noteIdle(id,'WORK_READY') return nil,true end
-    if state~='IDLE' then
-        Social.withdraw(id) noteIdle(id,'WORK_OBSERVING')
-        return {leisure={format=1,activity='OBSERVE',hours=hours,brief=true},entry=entry,pure=true,
-            membershipRevision=eligible.revision,settlementRevision=eligible.entryRevision},true
     end
     if memory and memory.resumeHint then
         local h=memory.resumeHint

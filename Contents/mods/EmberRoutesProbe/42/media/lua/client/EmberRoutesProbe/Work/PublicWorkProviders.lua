@@ -53,6 +53,15 @@ end
 function Registry.cancelPending(npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.cancel then p.cancel(npcId) end end
 end
+function Registry.pendingScore(npcId)
+    for _,kind in ipairs(order) do local p=defs[kind]
+        if p.pendingScore then
+            local s=p.pendingScore(npcId)
+            if s and s>0 then return s end
+        end
+    end
+    return 0
+end
 function Registry.hasPending(npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.pending and p.pending(npcId) then return true end end
     return false

@@ -22,6 +22,14 @@ check(Sort.specificity(exact,description,item)>Sort.specificity(precise,descript
 check(Sort.specificity(precise,description,item)>Sort.specificity(broad,description,item),"deeper category outranks parent")
 check(not Sort.specificity(denied,description,item),"explicit exclusion wins over category")
 check(Sort.better({id="a",specificity=1,distance=1},{id="b",specificity=1,distance=1}),"stable identity breaks equal-distance ties")
+check(Sort.better({id="a",priority=4,specificity=1,distance=100},{id="b",priority=2,specificity=1000,distance=1}),"higher priority outranks higher specificity and closer distance")
+check(not Sort.better({id="a",priority=2,specificity=1000,distance=1},{id="b",priority=4,specificity=1,distance=100}),"lower priority cannot beat higher priority")
+check(Sort.better({id="a",priority=3,specificity=10,distance=10},{id="b",priority=3,specificity=5,distance=10}),"equal priority compares specificity")
+check(broad.priority==3,"default filter priority is 3")
+local copyPrio=Filter.copy({format=1,enabled=true,private=false,priority=5,groups={},types={}})
+check(copyPrio.priority==5,"filter copy preserves valid priority")
+local clampedPrio=Filter.copy({format=1,enabled=true,private=false,priority=99,groups={},types={}})
+check(clampedPrio.priority==3,"filter copy defaults out-of-range priority")
 local index=Sort.index()
 for i,filter in ipairs({broad,precise,exact,denied}) do index:add({id=tostring(i),filter=filter}) end
 local cursor=index:cursor(item) local seen={} local steps=0

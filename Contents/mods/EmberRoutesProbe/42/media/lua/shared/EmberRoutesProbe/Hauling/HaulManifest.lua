@@ -14,7 +14,8 @@ function M.valid(r)
         local l=r.manifest[i]
         if not Validate.finite(id) or seen[id] or type(l)~='table'
             or l.itemId~=id or not states[l.custodyState] or l.deliveryPolicy~=(r.producer=='DELIVERY' and 'PLAYER' or 'AUTO_STORAGE')
-	    or (r.producer=='DELIVERY' and not Validate.stringId(l.sourceId) or r.producer~='DELIVERY' and l.sourceId~=r.source) then return false end
+	    or not Validate.stringId(l.sourceId) then return false end
+        if l.destinationId~=nil and not Validate.stringId(l.destinationId) then return false end
         if l.custodyState=='DELIVERED' and (type(l.deliveryReceipt)~='table'
             or type(l.deliveryReceipt.destinationId)~='string' or type(l.deliveryReceipt.attemptId)~='string') then return false end
         seen[id]=true
@@ -27,13 +28,15 @@ function M.valid(r)
         or type(a.attemptId)~='string' or type(a.fromId)~='string' or type(a.toId)~='string') then return false end
     return true
 end
-function M.create(r,locations,sources)
+function M.create(r,locations,sources,destinations)
     local lines={}
     for _,id in ipairs(r.items) do
         local where=locations and locations[id] or 1
-	local l={itemId=id,sourceId=sources and sources[tostring(id)] or r.source,sourceMode=r.sourceMode,deliveryPolicy=r.producer=='DELIVERY' and 'PLAYER' or 'AUTO_STORAGE',
+	local l={itemId=id,sourceId=sources and sources[tostring(id)] or r.source,
+            destinationId=destinations and destinations[tostring(id)] or r.destination,
+            sourceMode=r.sourceMode,deliveryPolicy=r.producer=='DELIVERY' and 'PLAYER' or 'AUTO_STORAGE',
             custodyState=where==2 and 'CARRIED' or where==3 and 'DELIVERED' or 'UNCOLLECTED'}
-        if where==3 then l.deliveryReceipt={destinationId=r.destination,attemptId=r.id..':upgrade:'..tostring(id)} end
+        if where==3 then l.deliveryReceipt={destinationId=l.destinationId or r.destination,attemptId=r.id..':upgrade:'..tostring(id)} end
         lines[#lines+1]=l
     end
     return lines

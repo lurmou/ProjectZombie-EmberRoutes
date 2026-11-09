@@ -22,7 +22,9 @@ function Base:new(x,y,w,h,title,target,callback)
 end
 function Base:initialise() self.children={} self.initialised=true end
 function Base:instantiate()
-    if self.native then return end self.native=true self:createChildren()
+    if self.native then return end self.native=true
+    self.javaObject={getParent=function() return self.parent and self.parent.javaObject end}
+    self:createChildren()
 end
 function Base:createChildren() end
 function Base:addChild(child) check(child.initialised,'native child initialized once before mount') child.parent=self child:instantiate() self.children[#self.children+1]=child end
@@ -33,6 +35,8 @@ function Base:close() self:setVisible(false) end
 function Base:bringToTop() self.raised=true end
 function Base:clear() self.items={} self.selected=0 end
 function Base:titleBarHeight() return 24 end
+function Base:getParent() return self.parent end
+function Base:getIsVisible() return self.visible~=false end
 function Base:setWantKeyEvents() end
 function Base:update() end function Base:prerender() end
 function Base:getMouseX() return -1 end function Base:getMouseY() return -1 end
@@ -195,6 +199,10 @@ package.loaded['EmberRoutesProbe/Crafting/CraftingService']={status=function() r
   craftCommands[#craftCommands+1]={settlement=settlement,npc=npc,command=command,surface=surface,recipeId=recipeId,quantity=quantity} return 'STARTED'
  end}
 local Dashboard=require 'EmberRoutesProbe/UI/SettlementDashboard'
+local origDashboardOpen=Dashboard.open
+Dashboard.open=function(a,id,tab,ctx)
+    return origDashboardOpen(a,id,tab or 'warehouse',ctx)
+end
 local demandCount,demandCallbacks=0,{}
 if ERDemandPageOnly or ERDemandPreviewRows then
     package.loaded['EmberRoutesProbe/Warehouse/DemandMonitorService']={
@@ -227,7 +235,7 @@ if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
     end
     return
 end
-local shell=Dashboard.open(actor,entry.id)
+local shell=Dashboard.open(actor,entry.id,'warehouse')
 local page=shell.pages.warehouse
 check(shell.activeTab=='warehouse' and not shell.pages.policies and wareCount==1,'only initial warehouse page is created and subscribed')
 check(shell.tabButtons.warehouse and shell.activeTab=='warehouse','warehouse tab is active')
@@ -419,7 +427,7 @@ check(#chainRows==2 and chainRows[1].surfaceBadge==getText('IGUI_EmberRoutesProb
  'boolean chain surface requirements render hand and platform badges without aborting preview')
 browser:change({preview={state='BLOCKED',conditions={'NPC_RECIPE_UNKNOWN'},counts={},
  blocker={recipeId='precursor',recipeName='Precursor',surfaceId='precursor-surface'}}})
-browser.draft.teach.onclick()
+browser:command('teach', 'precursor', 'precursor-surface')
 check(craftCommands[#craftCommands].recipeId=='precursor' and craftCommands[#craftCommands].surface=='precursor-surface'
  and browser.store.value.recipeId=='Base.SawLogs','teaching a missing precursor targets it without changing the selected final recipe')
 -- Exercise the actual public dialogs, rather than only the old hidden pages.

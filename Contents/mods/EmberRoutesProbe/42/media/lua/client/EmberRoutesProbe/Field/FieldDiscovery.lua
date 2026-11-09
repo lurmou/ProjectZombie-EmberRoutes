@@ -8,6 +8,7 @@ local ToolReq=require 'EmberRoutesProbe/Field/ToolRequirements'
 local ToolDiscovery=require 'EmberRoutesProbe/Field/ToolDiscovery'
 local RuntimeMetrics=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local Index=require 'EmberRoutesProbe/Warehouse/WarehouseIndex'
+local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local D={}
 local world,caches,watches=nil,{},{}
 -- RUNTIME_PERF spans are armed only while a sampling session is active; the
@@ -49,10 +50,13 @@ end
 local function cache(env,category)
     reset() local key=env.entry.id..':'..category local row=caches[key]
     local stamp=tostring(env.entry.revision)..':'..tostring(Zones.revision())
-    -- Switching the farm zone must drop rows collected under the previous one.
+    -- Switching the farm zone or corpse zone must drop rows collected under the previous one.
     if category=='farming' then
         local policy=policyOf(env.entry.id,'farming')
         stamp=stamp..':'..tostring(policy and policy.farmZoneId or '')
+    elseif category=='cleaning' then
+        local policy=policyOf(env.entry.id,'cleaning')
+        stamp=stamp..':'..tostring(policy and policy.corpseZoneId or '')
     end
     if not row or row.stamp~=stamp then row={stamp=stamp,targets={},byKey={},index=0,nextAt=0} caches[key]=row end
     return row
@@ -100,6 +104,26 @@ function D.object(t)
         return (not EmberRoutesProbeJava or not EmberRoutesProbeJava.cleaningSquareHasStains or EmberRoutesProbeJava.cleaningSquareHasStains(sq)) and sq or nil
     end
 end
+function D.invalidate(scope,category)
+    if not scope then
+        for _,row in pairs(caches) do
+            row.plantsNextAt=0
+            row.rottenNextAt=0
+            row.nextAt=0
+        end
+        return
+    end
+    local key=tostring(scope)..':'..(category or 'farming')
+    local row=caches[key]
+    if row then
+        row.plantsNextAt=0
+        row.rottenNextAt=0
+        row.nextAt=0
+    end
+end
+if Signals and Signals.watch then
+    Signals.watch(function() D.invalidate() end)
+end
 function D.policy(category,scope) return policyOf(scope,category) end
 function D.waterGoal(plant)
     local props=farming_vegetableconf and farming_vegetableconf.props and farming_vegetableconf.props[plant.typeOfSeed] or {}
@@ -145,8 +169,14 @@ function D.allowed(category,entry,t,npc)
     elseif not Spatial.inside(entry,zone,t.x,t.y,t.z) then return false end
     if category=='cleaning' then
         if t.kind~='STAIN' and p.cleanBloodOnly then return false end
+        if t.kind=='CORPSE' then
+            local corpseZone=p.corpseZoneId and p.corpseZoneId~='' and zoneOf(entry.id,p.corpseZoneId)
+            if corpseZone and corpseZone.settlementId==entry.id and corpseZone.enabled~=false and Zones.contains(corpseZone,t.x,t.y,t.z) then
+                return false
+            end
+        end
         local radius=p.cleanRadius or 20
-        if (npc:getX()-t.x)^2+(npc:getY()-t.y)^2>radius*radius then return false end
+        if npc and (npc:getX()-t.x)^2+(npc:getY()-t.y)^2>radius*radius then return false end
     end
     return true
 end
@@ -200,9 +230,13 @@ local function scanNative(env,category,row)
     for _,pt in ipairs(found.stains or {}) do
         add(row,{kind='STAIN',x=pt.x,y=pt.y,z=pt.z})
     end
+    local corpseZone=p.corpseZoneId and p.corpseZoneId~='' and zoneOf(env.entry.id,p.corpseZoneId)
+    local hasDump=corpseZone and corpseZone.settlementId==env.entry.id and corpseZone.enabled~=false
     for _,pt in ipairs(found.corpses or {}) do
         if pt.body and pt.body:getItem() and pt.body:getItem():getFullType()~='Base.CorpseAnimal' then
-            add(row,{kind='CORPSE',x=pt.x,y=pt.y,z=pt.z,itemId=pt.body:getItem():getID()})
+            if not (hasDump and Zones.contains(corpseZone,pt.x,pt.y,pt.z)) then
+                add(row,{kind='CORPSE',x=pt.x,y=pt.y,z=pt.z,itemId=pt.body:getItem():getID()})
+            end
         end
     end
 end
@@ -219,6 +253,23 @@ local function walkwayRow(zone,x,y,z,walk)
     end
     return false
 end
+-- Consumables may sit in the warehouse instead of the worker's bag. Discovery
+-- asks the same planner the supply phase uses (same 500-read budget), cached
+-- per row so a scan round costs at most one lookup per role.
+local function remoteSupply(env,row,kind,filter,role)
+    local cache=row.supply if not cache then cache={} row.supply=cache end
+    local now=env.now or 0
+    local slot=cache[role]
+    if slot and now<slot.at then return slot.ok end
+    local ok=false
+    if env.entry and env.npc then
+        local supplies,why=ToolDiscovery.findSupplies(env.entry,env.npc,kind,nil,filter)
+        ok=supplies~=nil
+        if not ok and why=='FIELD_OBSERVING' and slot then ok=slot.ok end
+    end
+    cache[role]={at=now+5000,ok=ok}
+    return ok
+end
 -- Tilled-empty ground is not in CFarmingSystem's plant list, so this walks the
 -- assigned farm-zone rectangles with a fixed per-tick budget. Vanilla's own
 -- predicate decides dirt/ground-floor/free, we never re-implement it.
@@ -229,14 +280,28 @@ local function scanPlow(env,row)
     local zone=D.farmZone(env.entry)
     if not zone then return end
     local areas=zone.areas
-    -- One queued plot at a time: crop care must never be evicted by the 64-row cap.
-    for _,t in ipairs(row.targets) do if t.kind=='PLOW' then return end end
+    -- Plowing is demand-gated: only plow when seeds are available in worker inventory or warehouse.
+    -- Prevents digging endless empty furrows that decay back to dirt when no seeds exist to plant.
+    local hasSeeds=(ToolReq.seedItem(env.npc and env.npc:getInventory())~=nil)
+        or remoteSupply(env,row,'SOW',nil,'SEED')
+    if not hasSeeds then return end
+
+    -- Bounded batching: buffer up to 8 contiguous plow targets for FieldProviders.continue() chaining.
+    -- Stop discovery if there are already sufficient empty furrows (SOW targets) or queued plows.
+    local emptyFurrows=0
+    local plowCount=0
+    for _,t in ipairs(row.targets) do
+        if t.kind=='SOW' then emptyFurrows=emptyFurrows+1 end
+        if t.kind=='PLOW' then plowCount=plowCount+1 end
+    end
+    if emptyFurrows>=8 or plowCount>=8 or #row.targets>=56 then return end
+
     local policy=policyOf(env.entry.id,'farming')
     local walk=math.floor(tonumber(policy and policy.walkwayEvery) or 0)
     if walk<0 then walk=0 end
     local cursor=row.plow
     if not cursor or cursor.zone~=zone.id then cursor={area=1,index=0,zone=zone.id} row.plow=cursor end
-    local budget=32
+    local budget=64
     local cell=getCell()
     for _=1,budget do
         local area=areas[cursor.area]
@@ -258,38 +323,33 @@ local function scanPlow(env,row)
             if sq and ISFarmingMenu.canDigHereSquare(sq) then
                 local dup=false
                 for _,t in ipairs(row.targets) do if t.x==x and t.y==y and t.z==z then dup=true break end end
-                if not dup then add(row,{x=x,y=y,z=z,kind='PLOW'}) return end
+                if not dup then
+                    add(row,{x=x,y=y,z=z,kind='PLOW'})
+                    plowCount=plowCount+1
+                    if plowCount>=8 or #row.targets>=56 then return end
+                end
             end
         end
     end
 end
--- Consumables may sit in the warehouse instead of the worker's bag. Discovery
--- asks the same planner the supply phase uses (same 500-read budget), cached
--- per row so a scan round costs at most one lookup per role.
-local function remoteSupply(env,row,kind,filter,role)
-    local cache=row.supply if not cache then cache={} row.supply=cache end
-    local now=env.now or 0
-    local slot=cache[role]
-    if slot and now<slot.at then return slot.ok end
-    local ok=false
-    if env.entry and env.npc then
-        local supplies,why=ToolDiscovery.findSupplies(env.entry,env.npc,kind,nil,filter)
-        ok=supplies~=nil
-        if not ok and why=='FIELD_OBSERVING' and slot then ok=slot.ok end
-    end
-    cache[role]={at=now+5000,ok=ok}
-    return ok
-end
 local function scanPlants(env,row)
     local system=CFarmingSystem and CFarmingSystem.instance if not system then return end
     local count=system:getLuaObjectCount() if count<1 then return end
+    local now=env.now or 0
+    -- 5000ms TTL spatial snapshot cache aligned with ProjectRemnants FarmingAreaScanner.
+    -- Small setups/unit tests (<=4 plants) use 500ms for immediate reactivity.
+    local refreshMs=count<=4 and 500 or 5000
+    if row.plantsNextAt and now<row.plantsNextAt then return end
+    row.plantsNextAt=now+refreshMs
+
     -- Care targets follow the same zone guard as plowing; the per-target
     -- allowed() check stays the final authority.
     local zone=D.farmZone(env.entry) if not zone then return end
     local policy=policyOf(env.entry.id,'farming')
     local walk=math.floor(tonumber(policy and policy.walkwayEvery) or 0)
     if walk<0 then walk=0 end
-    for _=1,math.min(32,count) do
+    local limit=count<=4 and count or math.min(128,count)
+    for _=1,limit do
         row.index=row.index%count+1
         local p=system:getLuaObjectByIndex(row.index)
         if p and p.x and p.y then
@@ -345,6 +405,9 @@ end
 function D.rotten(env,row)
     local p=policyOf(env.entry.id,'cleaning')
     if p.haulRottenFood~=true or p.cleanBloodOnly then return end
+    local now=env.now or 0
+    if row.rottenNextAt and now<row.rottenNextAt and #row.targets>0 then return end
+    row.rottenNextAt=now+3000
     local ids=require('EmberRoutesProbe/Settlement/SettlementMembership').query(env.entry) or {}
     if #ids==0 then return end
     row.containerIndex=(row.containerIndex or 0)%#ids+1
@@ -383,10 +446,18 @@ local function forage(env,row)
             or focus=='materials' and (cat=='Stones' or cat=='ForestGoods') or focus=='insects' and cat=='Insects'
         local cap=cat=='Stones' and p.maxStones or cat=='MedicinalPlants' and p.maxHerbs
         if cap and cap>0 then local count=D.stock(env.entry.id,cat) if not count or count>=cap then matches=false end end
-        if matches and (icon.x-env.npc:getX())^2+(icon.y-env.npc:getY())^2<=radius*radius then
-            local t={kind='FORAGE',x=icon.x,y=icon.y,z=icon.z or 0,identity=tostring(id),iconId=id}
-            local sq=Spatial.square(t) local floor=sq and sq:getFloor()
-            if floor and env.npc:CanSee(floor) then add(row,t) end
+        if matches then
+            local dx=math.abs(icon.x-env.npc:getX())
+            local dy=math.abs(icon.y-env.npc:getY())
+            if dx<=radius and dy<=radius and dx*dx+dy*dy<=radius*radius then
+                local t={kind='FORAGE',x=icon.x,y=icon.y,z=icon.z or 0,identity=tostring(id),iconId=id}
+                local sq=Spatial.square(t) local floor=sq and sq:getFloor()
+                if floor and env.npc:CanSee(floor) then
+                    add(row,t)
+                    seenLimit=(seenLimit or 8)-1
+                    if seenLimit<=0 then break end
+                end
+            end
         end
     end
 end

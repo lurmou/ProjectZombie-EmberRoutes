@@ -2,7 +2,6 @@ local LayoutHost=require "EmberRoutesProbe/UI/LayoutHost"
 local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 require "ISUI/ISPanel"
 require "ISUI/ISTextEntryBox"
-require "ISUI/ISComboBox"
 require "ISUI/ISButton"
 require "ISUI/ISModalDialog"
 local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
@@ -36,8 +35,7 @@ local Metrics=require "EmberRoutesProbe/Warehouse/WarehouseMetrics"
 ---@field itemGrid table
 ---@field sourceList EmberRoutesCachedList
 ---@field search ISTextEntryBox
----@field categories ISComboBox
----@field categoryIds table
+---@field categories EmberRoutesDropdown
 ---@field actualPage integer
 ---@field pages integer
 ---@field pageCaption string
@@ -97,7 +95,7 @@ function EmberRoutesWarehousePage:createChildren()
     self.controlsHost:initialise()
     self:addChild(self.controlsHost)
     self.controls=Controls.new(self,self.controlsHost,{x=0,y=0,width=toolbar.width,height=toolbar.height})
-    self.search,self.categories,self.categoryIds=self.controls.search,self.controls.category,self.controls.categoryIds
+    self.search,self.categories=self.controls.search,self.controls.category
     local columns=assert(Layout.axis(regions[3],{{grow=3},{grow=2}},{gap=p}))
     local Grid=require "EmberRoutesProbe/UI/WarehouseGrid"
     self.itemGrid=Grid.new(self,columns[1],EmberRoutesWarehousePage.selectItem,self.presentation)
@@ -145,14 +143,17 @@ function EmberRoutesWarehousePage:deactivate()
     if self.details then self.details:setVisible(true) end
     if self.cartDrawer then self.cartDrawer:dispose() self.cartDrawer=nil self.cartDrawerOpen=false end
     if self.containerInspectorDialog then self.containerInspectorDialog:close() self.containerInspectorDialog=nil end
+    if self.helpModal then
+        if self.helpModal.destroy then self.helpModal:destroy() end
+        if self.helpModal and self.helpModal.removeFromUIManager then self.helpModal:removeFromUIManager() end
+        self.helpModal=nil
+    end
     if self.cartButton then self.cartButton:setVisible(true) end
     Tooltip.dismissOwner(self)
     self.locator:clear()
     for _,combo in ipairs({self.categories,self.controls.sort}) do
-        if combo.expanded then
-            if combo.popup and combo.popup.parentCombo==combo then combo:hidePopup() end
-            combo.expanded=false
-        end
+        if combo.closePopup then combo:closePopup()
+        elseif combo.hidePopup and combo.expanded then combo:hidePopup() combo.expanded=false end
     end
     if self.search and self.search.unfocus then self.search:unfocus() end
 end
@@ -300,8 +301,8 @@ end
 function EmberRoutesWarehousePage:queryChanged()
     if not self.active or not self.itemGrid then return end
     self.resume=nil
-    self.store:setState({search=self.search:getText(),category=self.categoryIds[self.categories.selected] or false,page=1,
-        sort=self.controls.sortIds[self.controls.sort.selected]})
+    self.store:setState({search=self.search:getText(),category=self.categories:getSelectedData() or false,page=1,
+        sort=self.controls.sort:getSelectedData() or "default"})
 end
 function EmberRoutesWarehousePage:clearSearch() self.search:setText("") self:queryChanged() end
 function EmberRoutesWarehousePage:focusList(list) Input.focus(self,list) end
@@ -617,14 +618,14 @@ end
 function EmberRoutesWarehousePage:onListJoypad(button)
         if button==Joypad.YButton then
 
-        self.categories.selected=self.categories.selected%#self.categoryIds+1 self:queryChanged()
+        self.categories:selectNext() self:queryChanged()
     elseif button==Joypad.LBumper then
         if self.itemGrid then self.itemGrid:onMouseWheel(-4) end
     elseif button==Joypad.RBumper then
         if self.itemGrid then self.itemGrid:onMouseWheel(4) end
     elseif button==Joypad.LStickButton then self:clearSearch()
     elseif button==Joypad.RStickButton then
-        self.controls.sort.selected=self.controls.sort.selected%#self.controls.sortIds+1 self:queryChanged()
+        self.controls.sort:selectNext() self:queryChanged()
     end
 end
 function EmberRoutesWarehousePage:update()
@@ -646,4 +647,18 @@ function EmberRoutesWarehousePage:prerender()
     if self.details then self.details:draw() end
     Metrics.finish("ui.panel",measured)
 end
+
+function EmberRoutesWarehousePage:help()
+    if self.helpModal then return end
+    local sw,sh=getCore():getScreenWidth(),getCore():getScreenHeight()
+    local modalW,modalH=400,240
+    local modal=ISModalDialog:new((sw-modalW)/2,(sh-modalH)/2,modalW,modalH,
+        getText('IGUI_EmberRoutesProbe_Settlement_coverageHint')..'\n\n'..getText('IGUI_EmberRoutesProbe_Settlement_shortHint'),false,self,function(_,btn)
+            self.helpModal=nil
+        end)
+    modal:initialise()
+    modal:addToUIManager()
+    self.helpModal=modal
+end
+
 return EmberRoutesWarehousePage

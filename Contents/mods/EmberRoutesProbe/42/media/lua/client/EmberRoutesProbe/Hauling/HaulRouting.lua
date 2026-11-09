@@ -28,30 +28,46 @@ function R.new(c,items)
     local ids,why
     if entry then ids,why=Membership.query(entry) end
     if not ids then return nil,why or 'SETTLEMENT_CHANGED' end
-    local search={items=items,ids=ids,i=1,j=1,best=nil,unknown=false}
+    local index=Sort.index()
+    local unknown=false
+    for _,id in ipairs(ids) do
+        local target,reason=Registry.resolve(id,'put',c.job.scopeId)
+        if reason=='CONTAINER_UNLOADED' then unknown=true end
+        if target and id~=c.job.source and Registry.logistics(target)=='STORAGE' then
+            target.filter=Filter.copy(Registry.filter(target.object,target.container))
+            if target.filter then index:add(target) end
+        end
+    end
+    local search={items=items,index=index,i=1,cursor=nil,best=nil,unknown=unknown}
     function search:step(budget)
         for _=1,budget do
             local item=self.items[self.i]
-            if not item then return nil,self.unknown and 'TARGET_UNOBSERVED' or self.capacity and 'NO_CAPACITY' or self.blocked and 'PATH_BACKOFF' or 'NO_ACCEPTING_TARGET' end
-            local id=self.ids[self.j]
-            if not id then
+            if not item then
+                return nil,self.unknown and 'TARGET_UNOBSERVED' or self.capacity and 'NO_CAPACITY'
+                    or self.blocked and 'PATH_BACKOFF' or 'NO_ACCEPTING_TARGET'
+            end
+            if not self.cursor then self.cursor=self.index:cursor(item) end
+            local target,done=self.cursor:step()
+            if done then
                 if self.best then return self.best,'READY' end
-                self.i,self.j=self.i+1,1
-            else
-                self.j=self.j+1
-                local target,reason=Registry.resolve(id,'put',c.job.scopeId)
-                if reason=='CONTAINER_UNLOADED' then self.unknown=true end
+                self.i=self.i+1 self.cursor=nil
+            elseif target then
+                local id=target.id
                 local deadline=c.backoff[id] or 0
-                if target and id~=c.job.source and Registry.logistics(target)=='STORAGE' and Registry.accepts(target,item) then
+                if Registry.accepts(target,item) then
                     if getTimestampMs()<deadline then self.blocked=true
                     elseif not target.container:hasRoomFor(c.npc,item)
-                        or Store.availableFor(c.token,id,item:getID(),target.container:getFreeCapacity(c.npc))<item:getUnequippedWeight() then self.capacity=true end
+                        or Store.availableFor(c.token,id,item:getID(),target.container:getFreeCapacity(c.npc))<item:getUnequippedWeight() then
+                        self.capacity=true
+                    end
                 end
                 if getTimestampMs()>=deadline and R.accept(c,target,item) then
                     local s=target.object:getSquare()
-                    local score=Sort.specificity(Registry.filter(target.object,target.container),Filter.describe(item),item)
+                    local pFilter=Registry.filter(target.object,target.container)
+                    local score=Sort.specificity(pFilter,self.cursor.description,item)
                     if score then
                         local candidate={id=id,endpoint=target,item=item,specificity=score,
+                            priority=pFilter and pFilter.priority or 3,
                             distance=(s:getX()-c.npc:getX())^2+(s:getY()-c.npc:getY())^2+(s:getZ()-c.npc:getZ())^2}
                         if Sort.better(candidate,self.best) then self.best=candidate end
                     end

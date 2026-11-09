@@ -1,5 +1,6 @@
 -- Exercise the native-return-table branch with the complete real Lua index.
 -- Physical objects are the existing host fixtures, not real Java inventories.
+package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local Read=require 'EmberRoutesProbe/Warehouse/InventoryRead'
 local calls=0 local maxSlice=0
 local bridge={}

@@ -359,12 +359,13 @@ function EmberRoutesSettlementDashboard:prerender()
     self:drawRectBorder(0,0,winW,winH,self.borderColor.a,self.borderColor.r,self.borderColor.g,self.borderColor.b)
 
     -- 2. CleanUI Style Pure Dark Title Bar & Subtle Divider
-    self:drawRect(1,1,winW-2,bar-1,0.96,0.08,0.09,0.11)
-    self:drawRect(0,bar,winW,1,0.25,0.45,0.52,0.60)
+    local cb = Theme.cardHeader or Theme.panel
+    self:drawRect(1,1,winW-2,bar-1,cb.a or 1.0,cb.r,cb.g,cb.b)
+    local bs = Theme.borderSubtle or Theme.border
+    self:drawRect(0,bar,winW,1,bs.a or 0.85,bs.r,bs.g,bs.b)
 
-    -- 3. Left Title with Solid Accent Indicator
-    self:drawRect(p,math.floor((bar-8)/2),3,8,1.0,Theme.accent.r,Theme.accent.g,Theme.accent.b)
-    Theme.text(self,self.title,p+8,math.floor((bar-h)/2),Theme.textColor)
+    -- 3. Clean Title (No side accent line)
+    Theme.text(self,self.title,p,math.floor((bar-h)/2),Theme.textColor)
 
 end
 

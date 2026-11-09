@@ -332,7 +332,7 @@ function S.discover(env)
     if not row.orderId and autoBlocked(env.entry,env.now or getTimestampMs()) then return end
     if not row.ready then
         if row.studyTarget and env.setStudyTarget then env.setStudyTarget(row.studyTarget) end
-        if not row.reason or row.reason=='SUPPLY_NOT_OBSERVED' or row.menu then env.pending=true end
+        if (row.orderId and not row.reason) or row.menu then env.pending=true end
         return
     end
     local o=row.orderId and Orders.get(row.orderId)

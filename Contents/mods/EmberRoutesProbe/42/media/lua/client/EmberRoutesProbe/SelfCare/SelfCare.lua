@@ -279,7 +279,9 @@ local function advance(actor,binding,row,now)
     local offers={MEDICAL=sample.externalSafe==true,EAT=sample.safe,DRINK=sample.safe,REST=sample.safe and repose,SLEEP=sample.safe and repose and (forcedSleep or (not ownOnly
         and sample.hunger<0.5 and sample.thirst<0.5))}
     for blocked,deadline in pairs(row.unavailable or {}) do if now<deadline then offers[blocked]=false end end
-    local kind=Policy.choose(sample,job and job.payload.lastKind,{safe=true},offers)
+    local current=runtime and runtime:status(id)
+    local isWorking=current and current.state=='ACTIVE' and current.started and current.kind~='SELF_CARE' and not (job and job.payload.step~='IDLE')
+    local kind=Policy.choose(sample,job and job.payload.lastKind,{safe=true,isWorking=isWorking},offers)
     -- A player sleep order overrides the fatigue threshold only; safety,
     -- backoff windows and the bed requirement below still gate it.
     if forcedSleep and offers.SLEEP and kind~='MEDICAL' then kind='SLEEP' end
@@ -589,7 +591,7 @@ function Service.install()
         end
     end
     Probe.careProbeWork=function(id) return use('Leisure/LeisureService').probeable(id) end
-    Probe.leisureWorkState=function(id,entry,state) use('Leisure/LeisureService').workState(id,entry,state) end
+
     Probe.leisureWorkReady=function(id) use('Leisure/LeisureService').workReady(id) end
     Probe.invalidateLeisure=function(id,reason) use('Leisure/LeisureService').invalidate(id,reason) end
     Probe.selfCareInstalled=true

@@ -2,6 +2,7 @@ require "ISUI/ISPanel"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 local Presentation=require "EmberRoutesProbe/UI/ItemPresentation"
 local UICache=require "EmberRoutesProbe/UI/UICache"
+local Visual=require "EmberRoutesProbe/UI/StatusVisual"
 
 ---@class EmberRoutesWarehouseGrid:ISPanel
 ---@field owner EmberRoutesWarehousePage
@@ -167,8 +168,22 @@ function Grid:prerender()
     local totalCells=#self.cells
     if totalCells==0 then
         self:clearTooltip()
-        local empty=self.emptyLabel or getText("IGUI_EmberRoutesProbe_Settlement_noItems")
-        Theme.text(self,empty,p+4,p+4,Theme.muted)
+        if not self.emptyBounds then
+            self.emptyBounds={x=0,y=0,width=self.width,height=self.height}
+        else
+            self.emptyBounds.width=self.width
+            self.emptyBounds.height=self.height
+        end
+        local EmptyState=require "EmberRoutesProbe/UI/EmptyState"
+        local emptyTitle=self.emptyLabel or getText("IGUI_EmberRoutesProbe_Settlement_noItems")
+        local isSearching=self.owner and self.owner.search and self.owner.search:getText()~=""
+        EmptyState.draw(self,self.emptyBounds,{
+            icon=isSearching and "search" or "box",
+            iconSize=36,
+            title=emptyTitle,
+            hint=isSearching and getText("IGUI_EmberRoutesProbe_Warehouse_emptySearchHint") or getText("IGUI_EmberRoutesProbe_Warehouse_emptyCategoryHint"),
+            action=isSearching and getText("IGUI_EmberRoutesProbe_Warehouse_clearSearch") or nil
+        })
         return
     end
 
@@ -190,17 +205,6 @@ function Grid:prerender()
         end
     end
     self:updateTooltip()
-
-    -- STENCIL CLIPPING:
-    -- Inset by 1px so cells can NEVER overwrite or bleed into the outer 1px frame border
-    local vb=self.viewportBounds
-    if vb and self.setStencilRect then
-        vb.x=1
-        vb.y=1
-        vb.width=math.max(0,self.width-2)
-        vb.height=math.max(0,self.height-2)
-        self:setStencilRect(vb.x,vb.y,vb.width,vb.height)
-    end
 
     -- Render ONLY cells in visible row range
     for r=startRow,endRow do
@@ -236,7 +240,7 @@ function Grid:prerender()
 
             -- Pinned star badge (top left)
             if cell.row.pinned then
-                Theme.text(self,"★",cell.x+2,drawY-1,Theme.gold)
+                Visual.icon(self,cell.x+2,drawY-1,10,"star",Theme.gold)
             end
 
             -- AE2 Delivery Cart Badge (top right)
@@ -251,8 +255,12 @@ function Grid:prerender()
                 Theme.rect(self,bx,by,bw,bh,Theme.accent,true)
                 Theme.text(self,badgeStr,bx+2,by-1,Theme.accent)
             elseif cell.craftable then
-                Theme.badge(self,cell.x+cell.width-14,drawY+2,12,12,Theme.accent,Theme.accentDark)
-                Theme.text(self,"+",cell.x+cell.width-11,drawY+1,Theme.text,UIFont.Small)
+                local bh=h-2
+                local bx=cell.x+cell.width-bh-1
+                local by=drawY+1
+                Theme.rect(self,bx,by,bh,bh,Theme.selected)
+                Theme.rect(self,bx,by,bh,bh,Theme.accent,true)
+                Visual.glyph(self,bx+2,by+2,bh-4,'plus',Theme.accent)
             end
 
             -- Quantity count badge (bottom right)
@@ -265,13 +273,6 @@ function Grid:prerender()
             Theme.rect(self,badgeX-2,badgeY-1,tw+4,th,UICache.Colors.BADGE_BG)
             local countColor=cell.row.pending and Theme.muted or (isSelected and Theme.gold or Theme.textColor)
             Theme.text(self,countStr,badgeX,badgeY-1,countColor)
-        end
-    end
-
-    if vb and self.clearStencilRect then
-        self:clearStencilRect()
-        if self.doRepaintStencil and self.repaintStencilRect then
-            self:repaintStencilRect(vb.x,vb.y,vb.width,vb.height)
         end
     end
 
@@ -479,6 +480,16 @@ end
 
 function Grid:onMouseDown(x,y)
     self.owner:focusList(self)
+    if #self.cells==0 then
+        local EmptyState=require "EmberRoutesProbe/UI/EmptyState"
+        if self.emptyBounds and EmptyState.hitTest(self.emptyBounds,x,y) then
+            if self.owner and self.owner.search then
+                self.owner.search:clear()
+            end
+            return true
+        end
+        return true
+    end
     local trackX,trackY,trackW,trackH,thumbY,thumbH,canScroll=self:getScrollbarGeometry()
     if canScroll and x>=trackX-3 and x<=trackX+trackW+3 and y>=trackY and y<=trackY+trackH then
         if y>=thumbY and y<=thumbY+thumbH then

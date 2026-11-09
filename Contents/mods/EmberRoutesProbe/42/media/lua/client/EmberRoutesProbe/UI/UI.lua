@@ -63,7 +63,7 @@ end
 
 ---Wraps a child (native widget or nested container) with parent layout properties.
 ---@param child any Native widget, rect leaf, or nested UI.Row/Column
----@param props table? Layout properties (key, grow, basis, margin, bind, when)
+---@param props table? Layout properties (key, grow, basis, margin, bind, when, pad, font, autoText)
 ---@return table Layout item descriptor
 function UI.Item(child, props)
     assert(child ~= nil, "UI_ITEM_CHILD_NIL")
@@ -97,7 +97,7 @@ end
 ---Creates a standard form configuration row descriptor (Label + Control + Action).
 ---Produces a pure UI.Item descriptor wrapping a UI.Row, ready for direct inclusion in UI.Column.
 ---@param label any Label widget, text element, or layout descriptor
----@param control any Input widget (e.g. StepperInput, ISTextEntryBox, ISComboBox)
+---@param control any Input widget (e.g. StepperInput, ISTextEntryBox, Dropdown)
 ---@param action any? Optional button or action widget (e.g. Save, Reset)
 ---@param opts table? Optional styling/proportions ({ gap, labelWidth, actionWidth, height, align, margin, key, bind, grow, padding, when })
 ---@return table Layout item descriptor
@@ -110,8 +110,13 @@ function UI.FormRow(label, control, action, opts)
     local actionW = opts.actionWidth or 64
     local align = opts.align or "center"
 
+    local labelWidget = label
+    if type(label) == "string" then
+        labelWidget = { text = label, x = 0, y = 0, width = labelW, height = opts.height or 24, visible = true }
+    end
+
     local children = {
-        UI.Item(label, { basis = labelW, grow = 0 }),
+        UI.Item(labelWidget, { basis = labelW, grow = 0 }),
         UI.Item(control, { grow = 1 })
     }
     if action ~= nil then
@@ -237,7 +242,188 @@ function UI.Show(predicate, item, fallback)
     return trueItem
 end
 
+---Creates a structured card container layout descriptor.
+---Encapsulates optional header row (title + action) and content body,
+---binding its outer geometry to props.bind for zero-GC card background rendering.
+---@param props table? Styling and binding properties (title, action, headerHeight, headerGap, bodyGap, padding, headerPadding, bodyPadding, margin, grow, basis, height, bind, key, when)
+---@param ... any Child specifications or array of specifications
+---@return table Layout item descriptor
+function UI.Card(props, ...)
+    props = props or {}
+    local children = flattenChildren(...)
+
+    local cardItems = {}
+
+    -- 1. Optional Header Row
+    if props.title ~= nil or props.action ~= nil then
+        local headerChildren = {}
+        if props.title ~= nil then
+            local titleWidget = props.title
+            if type(titleWidget) == "string" then
+                titleWidget = {
+                    text = titleWidget,
+                    title = titleWidget,
+                    x = 0, y = 0, width = 0, height = 0,
+                    visible = true
+                }
+            end
+            headerChildren[#headerChildren + 1] = UI.Item(titleWidget, {
+                basis = props.titleWidth or "auto",
+                grow = props.titleGrow or 0,
+                autoText = type(props.title) == "string" and props.title or nil
+            })
+        end
+
+        headerChildren[#headerChildren + 1] = UI.Spacer(1)
+
+        if props.action ~= nil then
+            headerChildren[#headerChildren + 1] = UI.Item(props.action, {
+                basis = props.actionWidth or "auto",
+                grow = 0
+            })
+        end
+
+        local headerRow = UI.Row({
+            gap = props.headerGap or 8,
+            align = "center",
+            padding = props.headerPadding
+        }, headerChildren)
+
+        cardItems[#cardItems + 1] = UI.Item(headerRow, {
+            basis = props.headerHeight or 28,
+            grow = 0,
+            margin = props.headerMargin
+        })
+    end
+
+    -- 2. Body Column
+    local bodyCol = UI.Column({
+        gap = props.bodyGap or 8,
+        padding = props.bodyPadding,
+        align = props.align or "stretch"
+    }, children)
+
+    cardItems[#cardItems + 1] = UI.Item(bodyCol, {
+        grow = props.bodyGrow == nil and 1 or props.bodyGrow
+    })
+
+    -- 3. Outer Card Container
+    local cardCol = UI.Column({
+        gap = 0,
+        padding = props.padding,
+        align = "stretch"
+    }, cardItems)
+
+    return UI.Item(cardCol, {
+        key = props.key,
+        grow = props.grow or 0,
+        basis = props.basis or props.height,
+        margin = props.margin,
+        bind = props.bind,
+        when = props.when
+    })
+end
+
+local debouncerMeta = {
+    trigger = function(self, ...)
+        if not self.scope or not self.scope:isCurrent() then
+            self:cancel()
+            return
+        end
+        local n = select("#", ...)
+        self.nArgs = n
+        for i = 1, n do self.args[i] = select(i, ...) end
+        for i = n + 1, #self.args do self.args[i] = nil end
+        local now = getTimestampMs and getTimestampMs() or (os.time() * 1000)
+        self.targetTime = now + self.delayMs
+        self.pending = true
+    end,
+    tick = function(self, now)
+        if not self.pending then return false end
+        if not self.scope or not self.scope:isCurrent() then
+            self:cancel()
+            return false
+        end
+        now = now or (getTimestampMs and getTimestampMs() or (os.time() * 1000))
+        if now >= self.targetTime then
+            self:flush()
+            return true
+        end
+        return false
+    end,
+    flush = function(self)
+        if not self.pending then return end
+        self.pending = false
+        if self.scope and self.scope:isCurrent() then
+            local fn = self.fn
+            local a = self.args
+            local n = self.nArgs
+            if n == 0 then fn()
+            elseif n == 1 then fn(a[1])
+            elseif n == 2 then fn(a[1], a[2])
+            elseif n == 3 then fn(a[1], a[2], a[3])
+            elseif n == 4 then fn(a[1], a[2], a[3], a[4])
+            else fn(unpack(a, 1, n)) end
+        end
+    end,
+    cancel = function(self)
+        self.pending = false
+        self.nArgs = 0
+        for i = 1, #self.args do self.args[i] = nil end
+    end
+}
+debouncerMeta.__index = debouncerMeta
+debouncerMeta.__call = function(t, ...)
+    t:trigger(...)
+end
+
+---Creates a zero-GC lifecycle-bound debounced function.
+---Execution is tied to scope:isCurrent() and automatically cancelled when the page unmounts.
+---If host is provided, the host's update loop will tick the debouncer automatically.
+---@param scope table Page or component lifecycle scope with :isCurrent()
+---@param fn function Callback to execute after debounce delay
+---@param delayMs number? Milliseconds delay (default 150)
+---@param host table? LayoutHost instance to register tick listener with
+---@return table Debouncer callable table
+function UI.debounce(scope, fn, delayMs, host)
+    assert(scope and type(scope.isCurrent) == "function", "INVALID_DEBOUNCE_SCOPE")
+    assert(type(fn) == "function", "INVALID_DEBOUNCE_FN")
+    delayMs = delayMs or 150
+    assert(type(delayMs) == "number" and delayMs >= 0, "INVALID_DEBOUNCE_DELAY")
+
+    local inst = setmetatable({
+        scope = scope,
+        fn = fn,
+        delayMs = delayMs,
+        host = host,
+        targetTime = -1,
+        pending = false,
+        args = {},
+        nArgs = 0
+    }, debouncerMeta)
+
+    if host and type(host.registerDebouncer) == "function" then
+        host:registerDebouncer(inst)
+    end
+    return inst
+end
+
 UI.validate = require("EmberRoutesProbe/UI/FormValidator").validate
 UI.createFilter = require("EmberRoutesProbe/UI/ListFilter").new
+UI.ScrollContainer = require("EmberRoutesProbe/UI/ScrollContainer")
+
+function UI.showModal(opts)
+    return require("EmberRoutesProbe/UI/ModalDialog").show(opts)
+end
+
+setmetatable(UI, {
+    __index = function(t, k)
+        if k == "Modal" then
+            local M = require("EmberRoutesProbe/UI/ModalDialog")
+            rawset(t, "Modal", M)
+            return M
+        end
+    end
+})
 
 return UI

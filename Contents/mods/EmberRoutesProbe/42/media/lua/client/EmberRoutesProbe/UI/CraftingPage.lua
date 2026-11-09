@@ -85,6 +85,29 @@ function EmberRoutesCraftingPage:dispose()
     self.disposed=true self:deactivate() for _,view in pairs(self.views) do view:dispose() end
 end
 function EmberRoutesCraftingPage:close() self.owner:close() end
+function EmberRoutesCraftingPage:onResize()
+    if ISPanel.onResize then ISPanel.onResize(self) end
+    local h, p = self.fontHeight, self.pad
+    local regions = Layout.axis({x = 0, y = 0, width = self.width, height = self.height}, {{basis = h + p}, {grow = 1}}, {direction = "column", gap = p / 2})
+    if regions then
+        self.viewBounds = regions[2]
+        local r = regions[1]
+        if self.backButton then
+            self.backButton:setX(r.x)
+            self.backButton:setY(r.y)
+            self.backButton:setWidth(math.min(r.width, h * 10))
+            self.backButton:setHeight(r.height)
+        end
+        for _, view in pairs(self.views) do
+            view:setX(self.viewBounds.x)
+            view:setY(self.viewBounds.y)
+            view:setWidth(self.viewBounds.width)
+            view:setHeight(self.viewBounds.height)
+            if view.onResize then view:onResize() end
+        end
+    end
+end
+
 function EmberRoutesCraftingPage:focusContent()
     local view=self.views[self.selectedView] if view then view:focusContent() end
 end

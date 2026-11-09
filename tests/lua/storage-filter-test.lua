@@ -58,7 +58,8 @@ Editor.toggle(model,typeRow) check(model.draft.types["Mod.Type"]==true,"type cyc
 Editor.toggle(model,typeRow) check(model.draft.types["Mod.Type"]==false,"type cycle denies")
 Editor.toggle(model,typeRow) check(model.draft.types["Mod.Type"]==nil,"type cycle returns to inherited")
 Editor.all(model,false)
-check(next(model.draft.types)==nil and not Editor.value(model.draft,"food"),"clear removes stale exceptions")
+local function isEmpty(t) for _ in pairs(t) do return false end return true end
+check(isEmpty(model.draft.types) and not Editor.value(model.draft,"food"),"clear removes stale exceptions")
 Editor.all(model,true)
 check(Editor.value(model.draft,"weapons.ammo"),"select all covers descendants")
 check(config.groups["food.perishable"]==false,"editor still holds only a draft")

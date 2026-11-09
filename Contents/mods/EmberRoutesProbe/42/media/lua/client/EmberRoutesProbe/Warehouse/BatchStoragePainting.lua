@@ -23,26 +23,44 @@ function BatchStoragePainting.scanArea(area, zLevel)
         maxZ = zLevel
     end
 
-    for z = minZ, maxZ do
-        for x = area.x, area.x + area.w - 1 do
-            for y = area.y, area.y + area.h - 1 do
-                local sq = cell:getGridSquare(x, y, z)
-                if sq then
-                    local objs = sq:getObjects()
-                    local objCount = objs and objs:size() or 0
-                    for i = 0, objCount - 1 do
-                        local obj = objs:get(i)
-                        if obj and obj.getContainer and obj:getContainer() then
-                            local numContainers = (obj.getContainerCount and obj:getContainerCount()) or 1
-                            for cIdx = 0, numContainers - 1 do
-                                local container = (obj.getContainerByIndex and obj:getContainerByIndex(cIdx)) or obj:getContainer()
-                                if container and not seen[container] then
-                                    seen[container] = true
-                                    results[#results + 1] = {
-                                        object = obj,
-                                        container = container,
-                                        square = sq
-                                    }
+    local lastChunkX, lastChunkY, chunkLoaded, chunkMinZ, chunkMaxZ
+    for x = area.x, area.x + area.w - 1 do
+        for y = area.y, area.y + area.h - 1 do
+            local cx = math.floor(x / 8)
+            local cy = math.floor(y / 8)
+            if cx ~= lastChunkX or cy ~= lastChunkY then
+                lastChunkX, lastChunkY = cx, cy
+                local chunk = cell.getChunkForGridSquare and cell:getChunkForGridSquare(x, y, 0)
+                if chunk then
+                    chunkLoaded = true
+                    chunkMinZ = math.max(minZ, chunk.getMinLevel and chunk:getMinLevel() or minZ)
+                    chunkMaxZ = math.min(maxZ, chunk.getMaxLevel and chunk:getMaxLevel() or maxZ)
+                else
+                    chunkLoaded = not cell.getChunkForGridSquare
+                    chunkMinZ = minZ
+                    chunkMaxZ = maxZ
+                end
+            end
+            if chunkLoaded then
+                for z = chunkMinZ, chunkMaxZ do
+                    local sq = cell:getGridSquare(x, y, z)
+                    if sq then
+                        local objs = sq:getObjects()
+                        local objCount = objs and objs:size() or 0
+                        for i = 0, objCount - 1 do
+                            local obj = objs:get(i)
+                            if obj and obj.getContainer and obj:getContainer() then
+                                local numContainers = (obj.getContainerCount and obj:getContainerCount()) or 1
+                                for cIdx = 0, numContainers - 1 do
+                                    local container = (obj.getContainerByIndex and obj:getContainerByIndex(cIdx)) or obj:getContainer()
+                                    if container and not seen[container] then
+                                        seen[container] = true
+                                        results[#results + 1] = {
+                                            object = obj,
+                                            container = container,
+                                            square = sq
+                                        }
+                                    end
                                 end
                             end
                         end
@@ -112,7 +130,7 @@ function BatchStoragePainting.apply(containerEntries, presetId, actor)
             else
                 local ok, Registry = pcall(require, "EmberRoutesProbe/Warehouse/ContainerRegistry")
                 if ok and Registry and Registry.configure then
-                    Registry.configure(actor, object, targetConfig, container, "STORAGE", true)
+                    Registry.configure(actor, object, targetConfig, container, "STORAGE", true, true)
                 end
             end
             updated = updated + 1
@@ -120,6 +138,13 @@ function BatchStoragePainting.apply(containerEntries, presetId, actor)
         else
             skipped = skipped + 1
             details[#details + 1] = { object = object, container = container, status = "SKIPPED", reason = reason }
+        end
+    end
+
+    if updated > 0 then
+        local ok, Registry = pcall(require, "EmberRoutesProbe/Warehouse/ContainerRegistry")
+        if ok and Registry and Registry.changed then
+            Registry.changed()
         end
     end
 

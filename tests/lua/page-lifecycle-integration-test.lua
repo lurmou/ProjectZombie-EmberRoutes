@@ -61,7 +61,8 @@ end
 Base.__index = Base
 function Base:initialise() self.initialised = true end
 function Base:createChildren() self.parentCreated = true end
-function Base:addChild(child) self.children[#self.children + 1] = child end
+function Base:addChild(child) self.children[#self.children + 1] = child; if type(child) == "table" then child.parent = self end end
+function Base:getParent() return self.parent end
 function Base:addToUIManager() self:createChildren(); self.added = true; self.visible = true end
 function Base:removeFromUIManager() self.added = false; self.visible = false end
 function Base:close() self.closed = true; self.visible = false end

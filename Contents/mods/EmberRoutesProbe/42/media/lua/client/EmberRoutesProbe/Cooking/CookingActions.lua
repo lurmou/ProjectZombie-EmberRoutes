@@ -330,7 +330,7 @@ function A.transfer(c,sequence,item,endpoint,direction,finalCustody)
                 and item:getFullType()==s.fullType and Inventory.contains(item,from,id) and not to:getItems():contains(item)
         end,
         valid=function() return eligible() end,
-        create=function() return ISInventoryTransferAction:new(c.npc,item,from,to,90) end,
+        create=function() return ISInventoryTransferAction:new(c.npc,item,from,to,20) end,
         observe=function(action,s)
             if not Registry.revalidate(endpoint,direction=='TAKE' and 'take' or 'put','local-world') then return end
             if action.item~=item or not Inventory.contains(item,to,id) or from:getItems():contains(item) then return end

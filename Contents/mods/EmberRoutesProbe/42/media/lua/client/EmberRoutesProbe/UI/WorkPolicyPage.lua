@@ -7,13 +7,14 @@
 
 require 'ISUI/ISPanel'
 require 'ISUI/ISButton'
-require 'ISUI/ISScrollingListBox'
 local Layout = require 'EmberRoutesProbe/UI/Layout'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
 local Text = require 'EmberRoutesProbe/UI/Text'
 local Registry = require 'EmberRoutesProbe/Kernel/JobPolicyRegistry'
 local PolicyService = require 'EmberRoutesProbe/Work/JobPolicyService'
 local Editors = require 'EmberRoutesProbe/UI/JobPolicyEditors'
+local CardPanel = require 'EmberRoutesProbe/UI/CardPanel'
+local Cached = require 'EmberRoutesProbe/UI/CachedList'
 
 ---@class EmberRoutesWorkPolicyPage:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
@@ -56,10 +57,8 @@ function EmberRoutesWorkPolicyPage:createChildren()
     self.leftBounds = cols[1]
     self.rightBounds = cols[2]
 
-    -- Left Column: Job Categories List
-    self.jobList = ISScrollingListBox:new(self.leftBounds.x, self.leftBounds.y, self.leftBounds.width, self.leftBounds.height)
-    self.jobList:initialise()
-    self.jobList:instantiate()
+    -- Left Column: Job Categories List (Modern Flat 2.0 CachedList)
+    self.jobList = Cached.create(self, self.leftBounds, nil, nil)
     self.jobList.itemheight = math.floor(h * 2.2)
     self.jobList.font = UIFont.Small
     self.jobList.drawBorder = true
@@ -161,12 +160,49 @@ function EmberRoutesWorkPolicyPage:buildForm(cat)
     local def = Registry.get(cat)
     if not def then
         if cat=='hauling' or cat=='crafting' then
-            local target=cat=='hauling' and 'logistics' or 'crafting'
-            local button=ISButton:new(self.pad,self.pad,self.formPanel.width-self.pad*2,self.fontHeight+self.pad,
-                getText('IGUI_EmberRoutesProbe_Settlement_tab_'..target),self,function()
+            local target = (cat == 'hauling') and 'warehouse' or 'crafting'
+            local tabName = getText('IGUI_EmberRoutesProbe_Settlement_tab_' .. target)
+            local descKey = 'IGUI_EmberRoutesProbe_Public_' .. cat .. 'Redirect'
+            local descText = getTextOrNull(descKey) or tabName
+
+            local cardW = self.formPanel.width - self.pad * 2
+            local cardH = self.fontHeight * 6 + self.pad * 3
+
+            local panel = ISPanel:new(self.pad, self.pad, cardW, cardH)
+            panel:initialise()
+            panel.background = false
+
+            local iconName = (cat == 'hauling') and 'transit' or 'hammer'
+            local cardOpts = {
+                title = tabName,
+                tone = "accent",
+                status = "active",
+                icon = iconName,
+                pad = self.pad,
+                fontHeight = self.fontHeight
+            }
+
+            local descLines = Text.wrapLimited(descText, cardW - self.pad * 2, UIFont.Small, 3)
+
+            panel.prerender = function(pnl)
+                ISPanel.prerender(pnl)
+                CardPanel.draw(pnl, 0, 0, pnl.width, pnl.height, cardOpts)
+                local curY = self.fontHeight + self.pad * 2
+                for i, line in ipairs(descLines) do
+                    Theme.text(pnl, line, self.pad, curY + (i - 1) * self.fontHeight, Theme.textColor, UIFont.Small)
+                end
+            end
+            self.formPanel:addChild(panel)
+
+            local btnH = math.floor(self.fontHeight * 1.8)
+            local btnY = cardH - btnH - self.pad
+            local button = ISButton:new(self.pad, btnY, cardW - self.pad * 2, btnH,
+                tabName, self, function()
                     if self.active and self.activationScope:isCurrent() then self.owner:selectTab(target) end
                 end)
-            button:initialise() Theme.button(button) self.formPanel:addChild(button)
+            button:initialise()
+            Theme.button(button, true)
+            panel:addChild(button)
         end
         return
     end
@@ -208,14 +244,6 @@ function EmberRoutesWorkPolicyPage:buildForm(cat)
     function fieldContainer:onMouseWheel(del)
         self:setYScroll(self:getYScroll() - del * math.floor(self.fontHeight * 1.5))
         return true
-    end
-    fieldContainer.prerender = function(panel)
-        ISPanel.prerender(panel)
-        panel:setStencilRect(0, 0, panel.width, panel.height)
-    end
-    fieldContainer.render = function(panel)
-        panel:clearStencilRect()
-        ISPanel.render(panel)
     end
     self.formPanel:addChild(fieldContainer)
 

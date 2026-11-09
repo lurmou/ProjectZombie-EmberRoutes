@@ -21,14 +21,17 @@ UICache.Colors = {
 local measureCache = {}
 local countWidthCache = {}
 
----@param font any
 ---@param countText string
 ---@return number
 function UICache.measureCount(countText)
     if not countText or countText == "" then return 0 end
     local val = countWidthCache[countText]
     if not val then
-        val = getTextManager():MeasureStringX(UIFont.Small, countText)
+        if getTextManager then
+            val = getTextManager():MeasureStringX(UIFont.Small, countText)
+        else
+            val = #countText * 8
+        end
         countWidthCache[countText] = val
     end
     return val
@@ -48,7 +51,11 @@ function UICache.measure(font, text)
     end
     local width = byFont[text]
     if width == nil then
-        width = getTextManager():MeasureStringX(font, text)
+        if getTextManager then
+            width = getTextManager():MeasureStringX(font, text)
+        else
+            width = #text * 8
+        end
         byFont[text] = width
     end
     return width

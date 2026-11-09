@@ -53,10 +53,17 @@ function Recipe.fromFacts(facts)
     spec.signature=table.concat(signature,"\n")
     return spec
 end
+local specCache={}
+function Recipe.clearCache() specCache={} end
 function Recipe.read(id)
+    local cached=specCache[id]
+    if cached then return cached end
     local facts,reason=Facts.read(id)
     if not facts then return nil,reason end
-    return Recipe.fromFacts(facts)
+    local spec,why=Recipe.fromFacts(facts)
+    if not spec then return nil,why end
+    specCache[id]=spec
+    return spec
 end
 -- Bounded, detached display metadata. No inventory scan and no native handles escape.
 function Recipe.describe(spec)

@@ -49,7 +49,7 @@ panel:initialise() panel:instantiate()
 panel.actor=actor panel.entry=entry
 function panel:selectTab() return false, 'Preview does not navigate to unloaded pages' end
 local Overview=require 'EmberRoutesProbe/UI/SettlementOverviewPage'
-local page=Overview:new(panel,{x=8,y=36,width=panel.width-16,height=panel.height-44})
+local page=Overview:new(panel,{x=8,y=36,width=panel.width-16,height=panel.height-44-36})
 page:initialise()
 panel:addChild(page)
 page:activate()
@@ -73,13 +73,13 @@ NativePreview.smoke=function(self)
         if (entry.height or 0)>54 then expanded=true end
     end
     assert(expanded, 'Expanded drawer row height was not projected')
-    assert(page.listContentH and page.listBounds.height<page.listMaxHeight,
-        'Order list did not shrink to its content')
+    assert(page.orderList and page.orderList.height == page.listBounds.height,
+        'Order list did not occupy full allocated listBounds height')
 
     -- All four purpose-drawn mechanisms must be projected, not just updated.
     assert(page.cachedDriveStrip, 'Drive gear strip was not projected')
     assert(page.cachedPopRoller, 'Population odometer was not projected')
-    assert(page.cachedBelt, 'Logistics conveyor was not projected')
+    assert(page.cachedWorkforceSplit, 'Workforce split bar was not projected')
     assert(page.cachedAlerts and page.cachedAlerts.dialRadius>=36,
         'Readiness radial dial was not projected at an ergonomic size')
 

@@ -55,6 +55,7 @@ end
 
 function Base:addToUIManager() self:instantiate() self.added = true end
 function Base:removeFromUIManager() self.added = false end
+function Base:getParent() return self.parent end
 function Base:setVisible(v) self.visible = v end
 function Base:isVisible() return self.visible end
 function Base:getIsVisible() return self.visible end
@@ -99,6 +100,7 @@ function Base:addItem(label, item, tooltip)
     return entry
 end
 
+ISUIElement = Base
 ISPanel = Base
 ISCollapsableWindow = Base
 ISButton = Base
@@ -127,6 +129,9 @@ function ISComboBox:new(...)
     return o
 end
 function ISComboBox:addOption(value) self.options[#self.options + 1] = value end
+function ISComboBox:addOptionWithData(text, data) self.options = self.options or {} table.insert(self.options, { text = text, data = data }) end
+function ISComboBox:getOptionData(index) return self.options and self.options[index] and self.options[index].data end
+function ISComboBox:getOptionText(index) return self.options and self.options[index] and (self.options[index].text or self.options[index]) or "" end
 function ISComboBox:clear() self.options = {} self.selected = 1 end
 function ISComboBox:setToolTipMap() end
 function ISComboBox:hidePopup() self.popupHidden = true end
@@ -140,7 +145,7 @@ function ISModalDialog:new(x, y, w, h, message, yesno, target, callback)
     return o
 end
 
-for _, name in ipairs({"ISPanel", "ISCollapsableWindow", "ISButton", "ISScrollingListBox", "ISTextEntryBox", "ISComboBox", "ISModalDialog"}) do
+for _, name in ipairs({"ISUIElement", "ISPanel", "ISCollapsableWindow", "ISButton", "ISScrollingListBox", "ISTextEntryBox", "ISComboBox", "ISModalDialog"}) do
     package.loaded['ISUI/' .. name] = true
 end
 
@@ -387,6 +392,9 @@ page:receive(journeySnapshot)
 check(#page.itemGrid.cells == 5, "网格视图同步装载 5 个方格")
 
 -- 3.1 模拟玩家在搜索框输入 "mfc" -> 匹配 Base.WoodenFork (木制餐叉)
+for _, r in ipairs(page.store.value.snapshot.rows) do
+    print("  fullType=" .. tostring(r.fullType) .. " label=" .. tostring(r.label) .. " searchKey=" .. tostring(r.searchKey))
+end
 page.search:setText("mfc")
 check(#page.itemGrid.cells == 1 and page.itemGrid.cells[1].fullType == "Base.WoodenFork", "网格视图同步仅显示木制餐叉")
 
@@ -410,16 +418,8 @@ print("  -> Step 3 PASS: 拼音首字母 'mfc'、'dz' 及英文 'hammer' 与一�
 -- =============================================================================
 print("\n[Step 4] 验证类别下拉框筛选 (工具、食物、全部类别)...")
 
-local toolsOptionIdx, foodOptionIdx = nil, nil
-for idx, catId in ipairs(page.categoryIds) do
-    if catId == "tools" then toolsOptionIdx = idx end
-    if catId == "food" then foodOptionIdx = idx end
-end
-check(toolsOptionIdx ~= nil, "筛选分类树中存在 'tools' 类别")
-check(foodOptionIdx ~= nil, "筛选分类树中存在 'food' 类别")
-
 -- 4.1 切换为“工具”
-page.categories.selected = toolsOptionIdx
+check(page.categories:setSelectedId("tools"), "Dropdown 成功选中 'tools' 类别")
 page:queryChanged()
 check(#page.itemGrid.cells == 4, "选择 'tools' 后只显示 4 种工具类物品")
 for _, cell in ipairs(page.itemGrid.cells) do
@@ -427,13 +427,13 @@ for _, cell in ipairs(page.itemGrid.cells) do
 end
 
 -- 4.2 切换为“食物”
-page.categories.selected = foodOptionIdx
+check(page.categories:setSelectedId("food"), "Dropdown 成功选中 'food' 类别")
 page:queryChanged()
 check(#page.itemGrid.cells == 1, "选择 'food' 后只显示 1 种食物物品")
 check(page.itemGrid.cells[1].fullType == "Base.Apple", "食物分类仅显示 Base.Apple")
 
 -- 4.3 切回“全部类别”
-page.categories.selected = 1
+check(page.categories:setSelectedId(false), "Dropdown 成功选中全部类别(false)")
 page:queryChanged()
 check(#page.itemGrid.cells == 5, "切回全部类别后全量恢复 5 种物品")
 

@@ -1,6 +1,6 @@
 require 'ISUI/ISPanel'
 require 'ISUI/ISButton'
-require 'ISUI/ISComboBox'
+local Dropdown = require 'EmberRoutesProbe/UI/Dropdown'
 require 'ISUI/ISTextEntryBox'
 require 'ISUI/ISScrollingListBox'
 local Service=require 'EmberRoutesProbe/Activity/ActivityService'
@@ -16,6 +16,9 @@ local Definitions=require 'EmberRoutesProbe/Activity/ActivityRegistry'
 local Catalog=require 'EmberRoutesProbe/Activity/ActivityScenarioCatalog'
 local Presentation=require 'EmberRoutesProbe/UI/ActivityPresentation'
 local AtmosphereBoard=require 'EmberRoutesProbe/UI/ActivityAtmosphereBoard'
+local Cached=require 'EmberRoutesProbe/UI/CachedList'
+local SemanticBadge=require 'EmberRoutesProbe/UI/SemanticBadge'
+local StatusVisual=require 'EmberRoutesProbe/UI/StatusVisual'
 
 ---@class EmberRoutesActivityPage:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
@@ -46,7 +49,7 @@ local function reason(key)
         or getTextOrNull('IGUI_EmberRoutesProbe_Monitor_'..key) or t('blocked')
 end
 local function minutes(n) return tostring(math.floor((n or 0)*60+.5)) end
-local function datum(combo) return combo:getOptionData(combo.selected) end
+local function datum(combo) if not combo then return nil end if combo.getSelectedData then return combo:getSelectedData() end if combo.getOptionData and combo.selected then return combo:getOptionData(combo.selected) end return nil end
 local function definitionName(id)
     local def=Definitions.get(id or 'FREE_GATHERING')
     return def and (getTextOrNull(def.nameKey) or t('unnamedActivity')) or t('definitionUnavailable')
@@ -76,12 +79,13 @@ function Page:button(r,label,callback,mode)
 end
 
 function Page:list(r,mode,rowHeight,callback)
-    local list=ISScrollingListBox:new(r.x,r.y,r.width,r.height)
-    list:initialise() list.itemheight=rowHeight list.font=UIFont.Small
+    local list=Cached.create(self,r,function(s,row) if callback then callback(s,row) end end,{
+        draw = function(lst, yPos, itm) return Page.drawRow(lst, yPos, itm) end
+    })
+    list.itemheight=rowHeight list.font=UIFont.Small
     list.backgroundColor=Theme.panel list.borderColor=Theme.border
     list.owner=self list.mode=mode list.doDrawItem=Page.drawRow
-    if callback then list:setOnMouseDownFunction(self,callback) end
-    Tooltip.register(list,{method='updateTooltip',owner=self})
+    Theme.list(list)
     self:addChild(list) self.widgets[#self.widgets+1]={control=list,mode=mode}
     return list
 end
@@ -92,7 +96,7 @@ function Page:field(r,key,value,mode,combo)
     self.labels[#self.labels+1]={mode=mode,bounds=bounds,
         lines=Text.wrapLimited(t(key),bounds.width,UIFont.Small,math.max(1,math.min(2,math.floor(bounds.height/self.fontHeight))))}
     local c=cols[2] local height=math.min(c.height,self.fontHeight+self.pad)
-    local control=combo and ISComboBox:new(c.x,c.y,c.width,height,self,Page.draftChanged)
+    local control=combo and Dropdown:new(c.x,c.y,c.width,height,self,Page.draftChanged)
         or ISTextEntryBox:new(value or '',c.x,c.y,c.width,height)
     control:initialise() self:addChild(control)
     if not combo then control.target=self control.onTextChangeFunction=Page.draftChanged end
@@ -583,16 +587,17 @@ function Page.drawRow(list,y,item,alt)
     end
     if list.mode=='ROSTER' then
         local size=math.max(8,h*.7) local yy=y+(item.height-size)/2
-        list:drawRectBorder(6,yy,size,size,1,color.r,color.g,color.b)
-        if o.selectedNpc[row.id] then list:drawRect(9,yy+3,size-6,size-6,1,Theme.accent.r,Theme.accent.g,Theme.accent.b) end
+        local isChecked = (o.selectedNpc[row.id] == true)
+        StatusVisual.glyph(list, 6, yy, size, isChecked and "check" or "square", isChecked and Theme.accent or Theme.muted)
         if row.badge then
             local badgeText=row.badge.text or ''
             local bw=badgeWidth(badgeText)
             local bx=list.width-bw-10
             local by=y+(item.height-h)/2
-            list:drawRect(bx,by,bw,h,0.9,0.12,0.16,0.20)
-            list:drawRectBorder(bx,by,bw,h,1,0.35,0.75,0.45)
-            Theme.text(list,badgeText,bx+4,by,Theme.accent)
+            SemanticBadge.draw(list, bx, by, bw, h, {
+                label = badgeText, displayText = badgeText, markState = "active",
+                color = Theme.accent, bg = Theme.control, border = Theme.accent
+            })
         end
     end
     Theme.text(list,item.drawLabel or '',list.mode=='ROSTER' and h*1.8 or 6,y+3,color)

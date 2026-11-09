@@ -10,8 +10,12 @@ local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Carry=require 'EmberRoutesProbe/Crafting/ProductionCarry'
 local Food=require 'EmberRoutesProbe/Cooking/CookingFood'
 local M={}
+local profileCache={}
+function M.clearCache() profileCache={} end
 local function integer(n) return type(n)=='number' and n>=1 and n<=32 and n==math.floor(n) end
 function M.profile(id,native)
+    if type(id)~='string' or id=='' then return nil,'RECIPE_UNAVAILABLE' end
+    if not native and profileCache[id] then return profileCache[id] end
     local facts,why=Facts.read(id,native) if not facts then return nil,why end
     if facts.buildable or facts.callbacks or facts.specialOutputs or facts.onTick
         or #facts.inputs==0 or #facts.inputs>16 or #facts.outputs==0 or #facts.outputs>8 then
@@ -50,6 +54,7 @@ function M.profile(id,native)
         result.weight=result.weight+item:getActualWeight()*row.count
     end
     if result.count+total+2>Record.limit then return nil,'RECIPE_MECHANISM_UNSUPPORTED' end
+    if not native then profileCache[id]=result end
     return result
 end
 local function knowledge(npc,recipe)

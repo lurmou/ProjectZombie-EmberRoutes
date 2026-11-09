@@ -30,13 +30,14 @@ for _, definition in ipairs({
 }) do Filter.registerCategory(definition[1],definition[2],definition[3]) end
 
 function Filter.new()
-    return {format=1,enabled=true,private=false,groups={},types={}}
+    return {format=1,enabled=true,private=false,priority=3,groups={},types={}}
 end
 function Filter.copy(config)
     if type(config)~="table" or config.format~=1 or type(config.enabled)~="boolean" or type(config.private)~="boolean"
             or type(config.groups)~="table" or type(config.types)~="table" then return nil,"FILTER_FORMAT_INVALID" end
     local result=Filter.new()
     result.enabled,result.private=config.enabled,config.private
+    result.priority=type(config.priority)=="number" and config.priority>=1 and config.priority<=5 and math.floor(config.priority) or 3
     for _, field in ipairs({"groups","types"}) do
         local count=0
         for id,value in pairs(config[field]) do
@@ -126,7 +127,7 @@ function Filter.classify(description, item)
         return "trade.valuables"
     end
 
-    -- 5. Weapons (Guns / Ammo / Melee / Parts)
+    -- 5. Weapons (Guns / Ammo / Parts)
     if d.display=="ammo" or d.display=="ammunition" or f:find("ammo") or f:find("bullets") then
         return "weapons.ammo"
     end
@@ -134,11 +135,19 @@ function Filter.classify(description, item)
     if d.display=="weaponpart" or f:find("gunpart") or f:find("scope") or f:find("silencer") then
         return "weapons.parts"
     end
+
+    -- 6. Tools (Screwdrivers, hammers, saws, wrenches, welding)
+    -- Must be evaluated before weapons.other because PZ engine marks all swung tools as Category="Weapon"
+    if d.display:find("tool",1,true) or f:find("hammer") or f:find("saw") or f:find("screwdriver") or f:find("wrench") or f:find("welding") then
+        return "tools"
+    end
+
+    -- 7. Melee Weapons & Combat Implements
     if d.category=="weapon" or d.display:find("weapon",1,true) then
         return "weapons.other"
     end
 
-    -- 6. Apparel (Armor / Bags / Clothing)
+    -- 8. Apparel (Armor / Bags / Clothing)
     if d.container or d.category=="container" or f:find("bag") or f:find("backpack") or f:find("duffel") then
         return "apparel.bags"
     end
@@ -149,7 +158,7 @@ function Filter.classify(description, item)
         return "apparel.clothing"
     end
 
-    -- 7. Literature & Media (Books / Comics / Magazines / Manuals / Maps / VHS)
+    -- 9. Literature & Media (Books / Comics / Magazines / Manuals / Maps / VHS)
     if d.category=="literature" or d.display=="literature" or d.display=="book" or d.display=="media"
         or f:find("book") or f:find("comic") or f:find("magazine") or f:find("manual") or f:find("newspaper")
         or f:find("map") or f:find("vhs") or f:find("tape") or f:find("cd") then
@@ -159,17 +168,14 @@ function Filter.classify(description, item)
         return "literature.entertainment"
     end
 
-    -- 8. Scrap & Waste (Explicit Junk/Trash/Scrap or Rotten/Dirty)
+    -- 10. Scrap & Waste (Explicit Junk/Trash/Scrap or Rotten/Dirty)
     if d.display=="junk" or d.display=="trash" or d.display=="scrap" or d.rotten or f:find("dirty") then
         return "scrap.waste"
     end
 
-    -- 8. Tools & Materials (Electronics / Tools / Materials)
+    -- 11. Materials & Electronics
     if d.display:find("electronic",1,true) or f:find("electronic") or f:find("battery") or f:find("radio") or f:find("wire") then
         return "materials.electronics"
-    end
-    if d.display:find("tool",1,true) or f:find("hammer") or f:find("saw") or f:find("screwdriver") or f:find("wrench") or f:find("welding") then
-        return "tools"
     end
     if d.display:find("material",1,true) or d.display=="crafting" or f:find("plank") or f:find("nail") or f:find("metal") or f:find("sheet") or f:find("glue") or f:find("tape") then
         return "materials"

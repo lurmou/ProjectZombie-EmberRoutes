@@ -1,12 +1,13 @@
 require "ISUI/ISPanel"
 require "ISUI/ISButton"
-require "ISUI/ISTextEntryBox"
-require "ISUI/ISComboBox"
+local SearchInput=require "EmberRoutesProbe/UI/SearchInput"
+local Dropdown=require "EmberRoutesProbe/UI/Dropdown"
 local Probe=require "EmberRoutesProbe/Kernel/Boot"
 local StockService=require "EmberRoutesProbe/Warehouse/StockService"
 local StockStore=require "EmberRoutesProbe/Warehouse/StockStore"
 local CraftingService=require "EmberRoutesProbe/Crafting/CraftingService"
-local Layout=require "EmberRoutesProbe/UI/Layout"
+local LayoutHost=require "EmberRoutesProbe/UI/LayoutHost"
+local UI=require "EmberRoutesProbe/UI/UI"
 local State=require "EmberRoutesProbe/UI/State"
 local Cached=require "EmberRoutesProbe/UI/CachedList"
 local Theme=require "EmberRoutesProbe/UI/Theme"
@@ -39,6 +40,17 @@ local function stateBadge(ruleState)
     return labels[ruleState] or {"neutral",ruleState or text("status_unknown")}
 end
 
+local CREATE_RULE_SCHEMA={
+    fullType={required=true,type="string",message="error_no_item"},
+    recipeId={required=true,message="error_no_recipe"},
+    npcId={required=true,message="error_no_worker"},
+    minimum={required=true,type="number",integer=true,min=1}
+}
+
+local function isDetailMode(ctx)
+    return ctx and ctx.mode=="detail"
+end
+
 ---@class EmberRoutesStockRules:ISPanel
 EmberRoutesStockRules=ISPanel:derive("EmberRoutesStockRules")
 
@@ -50,8 +62,23 @@ function EmberRoutesStockRules:new(shell,bounds)
     o.fontHeight=shell.fontHeight
     o.pad=shell.pad
     o.background=false
-    o.store=State.new({rules={},selection=false,mode="detail",targetDraft=20,newRule={minimum=20,fullType=""}})
+    o.store=State.new({rules={},selection=false,mode="new",targetDraft=20,newRule={minimum=20,fullType=""}})
     o.buttons={}
+
+    -- Preallocated bounds for Zero-GC presentation rendering
+    o.leftBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.rightBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.titleBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.rulesListBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.detailBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.detailHeaderBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.detailStepperBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.detailInfoBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.detailActionBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.newFormBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.itemHintBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.formNoticeBounds={x=0,y=0,width=0,height=0,visible=false}
+    o.formActionBounds={x=0,y=0,width=0,height=0,visible=false}
     return o
 end
 
@@ -60,18 +87,16 @@ function EmberRoutesStockRules:initialise() ISPanel.initialise(self) end
 function EmberRoutesStockRules:createChildren()
     ISPanel.createChildren(self)
     local h,p=self.fontHeight,self.pad
-    local regions=assert(Layout.axis({x=0,y=0,width=self.width,height=self.height},{{grow=2},{grow=3}},{gap=p}))
-    local leftBounds,rightBounds=regions[1],regions[2]
 
-    -- Left Column: Header (Title + New Rule button) + Rules List
-    local leftParts=assert(Layout.axis(leftBounds,{{basis=h+p/2},{grow=1}},{direction="column",gap=p/2}))
-    local topRow=assert(Layout.axis(leftParts[1],{{grow=1},{basis=h*5}},{gap=p/2}))
+    self.host=LayoutHost:new(0,0,self.width,self.height)
+    self.host:initialise()
+    self:addChild(self.host)
 
     self.titleLabel=text("title")
-    self.newBtn=ISButton:new(topRow[2].x,topRow[2].y,topRow[2].width,topRow[2].height,text("btn_new_rule"),self,function()
+    self.newBtn=ISButton:new(0,0,math.floor(h*5),h+math.floor(p/2),text("btn_new_rule"),self,function()
         self:selectNewRuleMode()
     end)
-    self.newBtn:initialise() Theme.button(self.newBtn) self:addChild(self.newBtn)
+    self.newBtn:initialise() Theme.button(self.newBtn)
 
     local listStyle={
         emptyColor=Theme.muted,
@@ -96,7 +121,7 @@ function EmberRoutesStockRules:createChildren()
             if visible+v.height<0 or visible>=list.height then return y+v.height end
             if list.selected==entry.index then
                 Theme.rect(list,0,y,list.width,v.height,Theme.selected)
-                Theme.rect(list,0,y,math.max(2,p/4),v.height,Theme.accent)
+                Theme.rect(list,0,y,list.width,v.height,Theme.selectedBorder or Theme.border,true)
             elseif list.mouseoverselected==entry.index then
                 Theme.rect(list,0,y,list.width,v.height,Theme.hover)
             end
@@ -107,152 +132,125 @@ function EmberRoutesStockRules:createChildren()
             return y+v.height
         end
     }
-    self.rulesList=Cached.create(self,leftParts[2],function(_,row)
+    self.rulesList=Cached.create(self,self.rulesListBounds,function(_,row)
         self:selectRule(row.id)
     end,listStyle)
     Theme.list(self.rulesList)
-    self:addChild(self.rulesList)
 
-    -- Right Column: Panel container for Detail or New Form
-    self.rightPanel=ISPanel:new(rightBounds.x,rightBounds.y,rightBounds.width,rightBounds.height)
-    self.rightPanel:initialise()
-    self.rightPanel.background=false
-    self:addChild(self.rightPanel)
+    local detailSpec=self:buildDetailView()
+    local newFormSpec=self:buildNewFormView()
 
-    self:buildDetailView(rightBounds)
-    self:buildNewFormView(rightBounds)
+    local views=UI.Show(isDetailMode,
+        UI.Item(detailSpec,{key="detailView",grow=1,bind=self.detailBounds}),
+        UI.Item(newFormSpec,{key="newFormView",grow=1,bind=self.newFormBounds})
+    )
+
+    local leftSpec=UI.Column({gap=math.floor(p/2),align="stretch"},{
+        UI.Item(UI.Row({gap=math.floor(p/2),align="center"},{
+            UI.Item(self.titleBounds,{key="titleLabel",grow=1,bind=self.titleBounds}),
+            UI.Item(self.newBtn,{key="newBtn",basis=math.floor(h*5),grow=0})
+        }),{key="leftHeader",basis=h+math.floor(p/2),grow=0}),
+        UI.Item(self.rulesList,{key="rulesList",grow=1,bind=self.rulesListBounds})
+    })
+
+    local rightSpec=UI.Column({gap=p,align="stretch"},{views[1],views[2]})
+
+    local rootSpec=UI.Row({padding=p,gap=p,align="stretch"},{
+        UI.Item(leftSpec,{key="leftPane",grow=2,bind=self.leftBounds}),
+        UI.Item(rightSpec,{key="rightPane",grow=3,bind=self.rightBounds})
+    })
+
+    local handles,err=self.host:build(rootSpec,self.store.value)
+    assert(handles,err)
+    self.layoutHandles=handles
 end
 
-function EmberRoutesStockRules:buildDetailView(bounds)
+function EmberRoutesStockRules:buildDetailView(_bounds)
     local h,p=self.fontHeight,self.pad
-    self.detailContainer=ISPanel:new(0,0,bounds.width,bounds.height)
-    self.detailContainer:initialise()
-    self.detailContainer.background=false
-    self.rightPanel:addChild(self.detailContainer)
-
-    -- Target stock uses the shared stepper widget: bounds, direct typing,
-    -- wheel adjustment and delta buttons all live in one registered control.
-    local rowY=h*3+p
-    local rowH=h+p/4
+    local rowH=h+math.floor(p/4)
     local saveW=math.floor(h*4.5)
-    local stepperW=math.max(180,bounds.width-p*4-saveW)
-    self.targetStepper=StepperInput:new(p,rowY,stepperW,rowH,
-        self.store.value.targetDraft or 20,1,9999,{-5,-1,1,5},function(value)
-            if value then self.store:setState({targetDraft=value}) end
-        end)
-    self.detailContainer:addChild(self.targetStepper)
+    local initialTarget=(self.store.value and self.store.value.targetDraft) or 20
 
-    self.saveTargetBtn=ISButton:new(p*2+stepperW,rowY,saveW,rowH,text("btn_save"),self,function()
-        self:commitTargetUpdate()
+    self.targetStepper=StepperInput:new(0,0,200,rowH,initialTarget,1,9999,{-5,-1,1,5},function(v)
+        if v then self.store:setState({targetDraft=v}) end
     end)
-    self.saveTargetBtn:initialise() Theme.button(self.saveTargetBtn)
-    self.detailContainer:addChild(self.saveTargetBtn)
 
-    -- Bottom action buttons: Toggle Enable, Delete, Retry
-    local botY=bounds.height-h-p*1.5
-    local botW=math.floor((bounds.width-p*4)/3)
+    self.saveTargetBtn=ISButton:new(0,0,saveW,rowH,text("btn_save"),self,function() self:commitTargetUpdate() end)
+    self.saveTargetBtn:initialise() Theme.button(self.saveTargetBtn, true)
 
-    self.toggleBtn=ISButton:new(p,botY,botW,h+p/2,text("btn_toggle"),self,function()
-        self:commitToggle()
-    end)
+    self.toggleBtn=ISButton:new(0,0,0,h+math.floor(p/2),text("btn_toggle"),self,function() self:commitToggle() end)
     self.toggleBtn:initialise() Theme.button(self.toggleBtn)
-    self.detailContainer:addChild(self.toggleBtn)
 
-    self.retryBtn=ISButton:new(p*2+botW,botY,botW,h+p/2,text("btn_retry"),self,function()
-        self:commitRetry()
-    end)
+    self.retryBtn=ISButton:new(0,0,0,h+math.floor(p/2),text("btn_retry"),self,function() self:commitRetry() end)
     self.retryBtn:initialise() Theme.button(self.retryBtn)
-    self.detailContainer:addChild(self.retryBtn)
 
-    self.deleteBtn=ISButton:new(p*3+botW*2,botY,botW,h+p/2,text("btn_delete"),self,function()
-        self:commitDelete()
-    end)
+    self.deleteBtn=ISButton:new(0,0,0,h+math.floor(p/2),text("btn_delete"),self,function() self:commitDelete() end)
     self.deleteBtn:initialise() Theme.button(self.deleteBtn)
-    self.detailContainer:addChild(self.deleteBtn)
+
+    return UI.Column({padding=p,gap=p,align="stretch"},{
+        UI.Item(self.detailHeaderBounds,{key="detailHeader",basis=h*3+math.floor(p/2),grow=0,bind=self.detailHeaderBounds}),
+        UI.Item(UI.Row({gap=p,align="center"},{
+            UI.Item(self.targetStepper,{key="targetStepper",grow=1}),
+            UI.Item(self.saveTargetBtn,{key="saveTargetBtn",basis=saveW,grow=0})
+        }),{key="detailStepperRow",basis=rowH,grow=0,bind=self.detailStepperBounds}),
+        UI.Item(self.detailInfoBounds,{key="detailInfo",basis=h*7+p,grow=0,bind=self.detailInfoBounds}),
+        UI.Spacer(1),
+        UI.Item(UI.Row({gap=p,align="stretch"},{
+            UI.Item(self.toggleBtn,{key="toggleBtn",grow=1}),
+            UI.Item(self.retryBtn,{key="retryBtn",grow=1}),
+            UI.Item(self.deleteBtn,{key="deleteBtn",grow=1})
+        }),{key="detailActions",basis=h+math.floor(p/2),grow=0,bind=self.detailActionBounds})
+    })
 end
 
-function EmberRoutesStockRules:buildNewFormView(bounds)
+function EmberRoutesStockRules:buildNewFormView(_bounds)
     local h,p=self.fontHeight,self.pad
-    self.newFormContainer=ISPanel:new(0,0,bounds.width,bounds.height)
-    self.newFormContainer:initialise()
-    self.newFormContainer.background=false
-    self.newFormContainer:setVisible(false)
-    self.rightPanel:addChild(self.newFormContainer)
-
     local inputH=h+math.floor(p/2)
-    local gapLabel=math.floor(p/4)
-    local gapField=math.floor(p/2)
-    local y=p
+    local labelW=math.max(120,math.floor(h*6))
+    local gap=math.floor(p/2)
 
-    self.formY={}
+    self.formLabels={
+        item={text=text("lbl_item_type"),x=0,y=0,width=labelW,height=inputH,visible=true},
+        recipe={text=text("lbl_recipe"),x=0,y=0,width=labelW,height=inputH,visible=true},
+        worker={text=text("lbl_worker"),x=0,y=0,width=labelW,height=inputH,visible=true},
+        surface={text=text("lbl_surface"),x=0,y=0,width=labelW,height=inputH,visible=true},
+        target={text=text("lbl_target_stock"),x=0,y=0,width=labelW,height=inputH,visible=true}
+    }
 
-    -- 1. Item input
-    self.formY.itemLabel=y
-    y=y+h+gapLabel
-    self.itemInput=ISTextEntryBox:new("",p,y,bounds.width-p*2,inputH)
-    self.itemInput:initialise()
-    self.itemInput:setPlaceholderText(text("placeholderItem"))
-    self.itemInput.backgroundColor=Theme.panel
-    self.itemInput.borderColor=Theme.border
-    self.itemInput.onTextChangeFunction=function() self:onItemInputChanged() end
-    self.newFormContainer:addChild(self.itemInput)
-    y=y+inputH+gapLabel
-
-    -- Item name display / hint
-    self.formY.itemHint=y
-    y=y+h+gapField
-
-    -- 2. Recipe select
-    self.formY.recipeLabel=y
-    y=y+h+gapLabel
-    self.recipeCombo=ISComboBox:new(p,y,bounds.width-p*2,inputH,self,EmberRoutesStockRules.onRecipeSelected)
-    self.recipeCombo:initialise()
-    self.recipeCombo.backgroundColor=Theme.panel
-    self.recipeCombo.borderColor=Theme.border
-    self.newFormContainer:addChild(self.recipeCombo)
-    y=y+inputH+gapField
-
-    -- 3. Worker select
-    self.formY.workerLabel=y
-    y=y+h+gapLabel
-    self.workerCombo=ISComboBox:new(p,y,bounds.width-p*2,inputH)
-    self.workerCombo:initialise()
-    self.workerCombo.backgroundColor=Theme.panel
-    self.workerCombo.borderColor=Theme.border
-    self.newFormContainer:addChild(self.workerCombo)
-    y=y+inputH+gapField
-
-    -- 4. Surface select
-    self.formY.surfaceLabel=y
-    y=y+h+gapLabel
-    self.surfaceCombo=ISComboBox:new(p,y,bounds.width-p*2,inputH)
-    self.surfaceCombo:initialise()
-    self.surfaceCombo.backgroundColor=Theme.panel
-    self.surfaceCombo.borderColor=Theme.border
-    self.newFormContainer:addChild(self.surfaceCombo)
-    y=y+inputH+gapField
-
-    -- 5. Target stock uses the same shared stepper as the detail view.
-    self.formY.targetLabel=y
-    y=y+h+gapLabel
-    self.newRuleStepper=StepperInput:new(p,y,bounds.width-p*2,inputH,
-        20,1,9999,{-5,-1,1,5},function(value)
-            if not value then return end
-            if not self.store.value.newRule then
-                self.store.value.newRule={minimum=value,fullType=""}
-            end
-            self.store.value.newRule.minimum=value
-            self:updateNewForm()
-        end)
-    self.newFormContainer:addChild(self.newRuleStepper)
-
-    -- Create submit button
-    local botY=bounds.height-inputH-p
-    self.createSubmitBtn=ISButton:new(p,botY,bounds.width-p*2,inputH,text("btn_create_confirm"),self,function()
-        self:commitCreateRule()
+    self.itemInput=SearchInput:new(0,0,0,inputH,text("placeholderItem"),self,function()
+        self:onItemInputChanged()
     end)
-    self.createSubmitBtn:initialise() Theme.button(self.createSubmitBtn)
-    self.newFormContainer:addChild(self.createSubmitBtn)
+
+    self.recipeCombo=Dropdown:new(0,0,0,inputH,self,EmberRoutesStockRules.onRecipeSelected)
+    self.recipeCombo:initialise()
+
+    self.workerCombo=Dropdown:new(0,0,0,inputH)
+    self.workerCombo:initialise()
+
+    self.surfaceCombo=Dropdown:new(0,0,0,inputH)
+    self.surfaceCombo:initialise()
+
+    self.newRuleStepper=StepperInput:new(0,0,200,inputH,20,1,9999,{-5,-1,1,5},function(v)
+        if not v then return end
+        if not self.store.value.newRule then self.store.value.newRule={minimum=v,fullType=""} end
+        self.store.value.newRule.minimum=v
+        self:updateNewForm()
+    end)
+
+    self.createSubmitBtn=ISButton:new(0,0,0,inputH,text("btn_create_confirm"),self,function() self:commitCreateRule() end)
+    self.createSubmitBtn:initialise() Theme.button(self.createSubmitBtn, true)
+
+    return UI.Column({padding=p,gap=gap,align="stretch"},{
+        UI.FormRow(self.formLabels.item,self.itemInput,nil,{key="itemRow",height=inputH,labelWidth=labelW,gap=gap}),
+        UI.Item(self.itemHintBounds,{key="itemHint",basis=h,grow=0,margin={left=labelW+gap},bind=self.itemHintBounds}),
+        UI.FormRow(self.formLabels.recipe,self.recipeCombo,nil,{key="recipeRow",height=inputH,labelWidth=labelW,gap=gap}),
+        UI.FormRow(self.formLabels.worker,self.workerCombo,nil,{key="workerRow",height=inputH,labelWidth=labelW,gap=gap}),
+        UI.FormRow(self.formLabels.surface,self.surfaceCombo,nil,{key="surfaceRow",height=inputH,labelWidth=labelW,gap=gap}),
+        UI.FormRow(self.formLabels.target,self.newRuleStepper,nil,{key="targetRow",height=inputH,labelWidth=labelW,gap=gap}),
+        UI.Spacer(1),
+        UI.Item(self.formNoticeBounds,{key="formNotice",basis=h,grow=0,bind=self.formNoticeBounds}),
+        UI.Item(self.createSubmitBtn,{key="submitBtn",basis=inputH,grow=0,bind=self.formActionBounds})
+    })
 end
 
 function EmberRoutesStockRules:onItemInputChanged()
@@ -265,7 +263,7 @@ function EmberRoutesStockRules:onItemInputChanged()
 end
 
 function EmberRoutesStockRules:onRecipeSelected()
-    local recipeId=self.recipeCombo and self.recipeCombo:getOptionData(self.recipeCombo.selected)
+    local recipeId=self.recipeCombo and self.recipeCombo:getSelectedData()
     if recipeId then
         local currentText=self.itemInput and self.itemInput:getText() or ""
         if not currentText or currentText=="" then
@@ -289,18 +287,35 @@ function EmberRoutesStockRules:activate()
         self.store:setState({rules=snapshot.rules})
     end)
     if mounted and self.active then
+        if self.host and self.activationScope and self.activationScope:isCurrent() then
+            self.host:setActivation(self.activationScope)
+        end
         self.store:setState({rules=StockService.status(self.actor,self.entry.id).rules})
-        self:project(self.store.value,{rules=true})
     end
 end
 
 function EmberRoutesStockRules:deactivate()
+    for _,c in ipairs({self.recipeCombo,self.workerCombo,self.surfaceCombo}) do
+        if c and c.closePopup then c:closePopup() end
+    end
+    if self.host then self.host:deactivate() end
     Lifecycle.unmount(self)
 end
 
 function EmberRoutesStockRules:dispose()
     self.disposed=true
     self:deactivate()
+    if self.host then self.host:dispose() end
+end
+
+function EmberRoutesStockRules:onResize()
+    ISPanel.onResize(self)
+    if self.host then
+        self.host:setWidth(self.width)
+        self.host:setHeight(self.height)
+        if self.host.onResize then self.host:onResize() end
+        if self.host.resolveLayout then self.host:resolveLayout() end
+    end
 end
 
 function EmberRoutesStockRules:focusContent() end
@@ -446,28 +461,29 @@ end
 function EmberRoutesStockRules:commitCreateRule()
     local fullType=self.itemInput and self.itemInput:getText() or ""
     if string.trim then fullType=string.trim(fullType) end
-    local recipeId=self.recipeCombo and self.recipeCombo:getOptionData(self.recipeCombo.selected)
-    local npcId=self.workerCombo and self.workerCombo:getOptionData(self.workerCombo.selected)
-    local surfaceId=self.surfaceCombo and self.surfaceCombo:getOptionData(self.surfaceCombo.selected)
-    local min=(self.store.value.newRule and self.store.value.newRule.minimum) or 20
+    local recipeId=self.recipeCombo and self.recipeCombo:getSelectedData()
+    local npcId=self.workerCombo and self.workerCombo:getSelectedData()
+    local surfaceId=self.surfaceCombo and self.surfaceCombo:getSelectedData()
+    local min=(self.newRuleStepper and self.newRuleStepper.value) or (self.store.value.newRule and self.store.value.newRule.minimum) or 20
 
-    if not fullType or fullType=="" then
-        self.formNotice=text("error_no_item")
-        return
-    end
-    if not recipeId then
-        self.formNotice=text("error_no_recipe")
-        return
-    end
-    if not npcId then
-        self.formNotice=text("error_no_worker")
+    local formData={
+        fullType=fullType,
+        recipeId=recipeId,
+        npcId=npcId,
+        surfaceId=surfaceId,
+        minimum=min
+    }
+
+    local ok,err=UI.validate(formData,CREATE_RULE_SCHEMA)
+    if not ok then
+        self.formNotice=text(err) or err
         return
     end
 
     local spec=Recipes.read(recipeId)
     local sig=spec and spec.signature or recipeId
 
-    local id,err=StockStore.command(self.actor,self.entry.id,"create",{
+    local id,createErr=StockStore.command(self.actor,self.entry.id,"create",{
         fullType=fullType,
         recipeId=recipeId,
         recipeSignature=sig,
@@ -481,7 +497,7 @@ function EmberRoutesStockRules:commitCreateRule()
         StockService.markDirty(id)
         self:selectRule(id)
     else
-        self.formNotice=tostring(err or text("error_create_failed"))
+        self.formNotice=tostring(createErr or text("error_create_failed"))
     end
 end
 
@@ -501,11 +517,13 @@ function EmberRoutesStockRules:project(value,_changes)
         return r.id..":"..tostring(r.revision)..":"..tostring(r.state)..":"..(r.knownCount or 0)..":"..(r.minimum or 0)..":"..tostring(r.enabled)
     end,function(r) return r.id end,true)
 
-    local isNew=value.mode=="new" or not value.selection
-    self.detailContainer:setVisible(not isNew)
-    self.newFormContainer:setVisible(isNew)
+    if self.host then
+        self.host:syncVisibility(value)
+        self.host:resolveLayout()
+    end
 
-    if not isNew then
+    local isDetail=(value.mode=="detail")
+    if isDetail then
         local sel=self:getSelectedRule()
         if sel then
             self.toggleBtn:setTitle(sel.enabled and (text("btn_disable")) or (text("btn_enable")))
@@ -528,13 +546,16 @@ end
 function EmberRoutesStockRules:prerender()
     ISPanel.prerender(self)
     local h,p=self.fontHeight,self.pad
-    Theme.text(self,self.titleLabel or text("title"),p,p/4,Theme.textColor)
+    if self.titleBounds and self.titleBounds.visible then
+        Theme.text(self,self.titleLabel or text("title"),self.titleBounds.x,self.titleBounds.y+math.floor((self.titleBounds.height-h)/2),Theme.textColor)
+    end
 
-    if self.detailContainer:isVisible() then
+    if self.detailBounds and self.detailBounds.visible then
+        Theme.drawCard(self, self.detailBounds)
         local sel=self:getSelectedRule()
         if sel then
-            local x=self.rightPanel.x+p
-            local y=self.rightPanel.y+p
+            local x=self.detailHeaderBounds.x
+            local y=self.detailHeaderBounds.y
             local nameKey=sel.id..':'..sel.revision
             if self._nameKey~=nameKey then
                 self._nameKey=nameKey
@@ -545,8 +566,7 @@ function EmberRoutesStockRules:prerender()
             local draft=self.store.value.targetDraft or sel.minimum
             local cycle=sel.activeCycle
             local phase=cycle and cycle.phase
-            -- Format strings and badge tables allocate; derive them only when an
-            -- input actually changed instead of on every draw pass.
+
             if self._detailSel~=sel or self._detailRevision~=sel.revision
                 or self._detailDraft~=draft or self._detailCount~=sel.knownCount
                 or self._detailDeficit~=sel.deficit or self._detailNpc~=sel.npcId
@@ -573,59 +593,58 @@ function EmberRoutesStockRules:prerender()
             end
             local d=self._detail
             Theme.text(self,d.nameText,x,y,Theme.textColor)
-            Theme.text(self,d.targetText,x,y+h+p/4,Theme.accent)
+            Theme.text(self,d.targetText,x,y+h+math.floor(p/4),Theme.accent)
 
-            Visual.drawBadge(self,x,y+h*2+p/2,d.badge)
+            Visual.drawBadge(self,x,y+h*2+math.floor(p/2),d.badge)
 
-            local infoY=y+h*4.5+p
-            Theme.text(self,d.physicalText,x,infoY,Theme.textColor)
-            Theme.text(self,d.deficitText,x,infoY+h,Theme.muted)
-            Theme.text(self,d.workerText,x,infoY+h*2,Theme.muted)
-            Theme.text(self,d.recipeText,x,infoY+h*3,Theme.muted)
+            local infoX=self.detailInfoBounds.x
+            local infoY=self.detailInfoBounds.y
+            Theme.text(self,d.physicalText,infoX,infoY,Theme.textColor)
+            Theme.text(self,d.deficitText,infoX,infoY+h,Theme.muted)
+            Theme.text(self,d.workerText,infoX,infoY+h*2,Theme.muted)
+            Theme.text(self,d.recipeText,infoX,infoY+h*3,Theme.muted)
 
             if d.cycleText then
-                Theme.text(self,d.cycleText,x,infoY+h*4.5,Theme.accent)
+                Theme.text(self,d.cycleText,infoX,infoY+math.floor(h*4.5),Theme.accent)
             end
 
             local noteY=infoY+h*6
-            Theme.text(self,text("notePhysical"),x,noteY,Theme.muted)
-            Theme.text(self,text("noteReserved"),x,noteY+h,Theme.muted)
+            Theme.text(self,text("notePhysical"),infoX,noteY,Theme.muted)
+            Theme.text(self,text("noteReserved"),infoX,noteY+h,Theme.muted)
         end
-    elseif self.newFormContainer:isVisible() then
-        local x=self.rightPanel.x+p
-        local baseY=self.rightPanel.y
-        local fy=self.formY
-        if fy then
-            Theme.text(self,text("lbl_item_type"),x,baseY+fy.itemLabel,Theme.textColor)
-
-            local fullType=self.itemInput and self.itemInput:getText() or ""
-            -- ScriptManager lookup plus display-name formatting is not a draw
-            -- operation; it repeats only when the typed full type changes.
-            if self._inputType~=fullType then
-                self._inputType=fullType
-                local itemObj=fullType~="" and ScriptManager.instance:getItem(fullType)
-                self._inputText=itemObj and getText("IGUI_EmberRoutesProbe_Stock_selectedItemDisplay",itemObj:getDisplayName()) or nil
+    elseif self.newFormBounds and self.newFormBounds.visible then
+        Theme.drawCard(self, self.newFormBounds)
+        for k,lbl in pairs(self.formLabels or {}) do
+            if k~="target" and lbl.visible then
+                Theme.text(self,lbl.text,lbl.x,lbl.y+math.floor((lbl.height-h)/2),Theme.textColor)
             end
+        end
+
+        local fullType=self.itemInput and self.itemInput:getText() or ""
+        if self._inputType~=fullType then
+            self._inputType=fullType
+            local itemObj=fullType~="" and ScriptManager.instance:getItem(fullType)
+            self._inputText=itemObj and getText("IGUI_EmberRoutesProbe_Stock_selectedItemDisplay",itemObj:getDisplayName()) or nil
+        end
+        if self.itemHintBounds and self.itemHintBounds.visible then
             if self._inputText then
-                Theme.text(self,self._inputText,x,baseY+fy.itemHint,Theme.accent)
+                Theme.text(self,self._inputText,self.itemHintBounds.x,self.itemHintBounds.y,Theme.accent)
             else
-                Theme.text(self,text("hint_select_from_storage"),x,baseY+fy.itemHint,Theme.muted)
+                Theme.text(self,text("hint_select_from_storage"),self.itemHintBounds.x,self.itemHintBounds.y,Theme.muted)
             end
+        end
 
-            Theme.text(self,text("lbl_recipe"),x,baseY+fy.recipeLabel,Theme.textColor)
-            Theme.text(self,text("lbl_worker"),x,baseY+fy.workerLabel,Theme.textColor)
-            Theme.text(self,text("lbl_surface"),x,baseY+fy.surfaceLabel,Theme.textColor)
-
+        if self.formLabels and self.formLabels.target and self.formLabels.target.visible then
             local minVal=self.store.value.newRule and self.store.value.newRule.minimum or 20
             if self._targetLabelFor~=minVal then
                 self._targetLabelFor=minVal
                 self._targetLabel=getText("IGUI_EmberRoutesProbe_Stock_targetStockFormatLabel",minVal)
             end
-            Theme.text(self,self._targetLabel,x,baseY+fy.targetLabel,Theme.textColor)
+            Theme.text(self,self._targetLabel,self.formLabels.target.x,self.formLabels.target.y+math.floor((self.formLabels.target.height-h)/2),Theme.textColor)
+        end
 
-            if self.formNotice then
-                Theme.text(self,self.formNotice,x,baseY+self.createSubmitBtn.y-h-math.floor(p/4),Theme.accent)
-            end
+        if self.formNotice and self.formNoticeBounds and self.formNoticeBounds.visible then
+            Theme.text(self,self.formNotice,self.formNoticeBounds.x,self.formNoticeBounds.y,Theme.accent)
         end
     end
 end

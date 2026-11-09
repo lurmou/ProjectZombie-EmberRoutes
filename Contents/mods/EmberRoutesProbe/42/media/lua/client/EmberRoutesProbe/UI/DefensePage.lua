@@ -5,6 +5,7 @@ local State=require 'EmberRoutesProbe/UI/State'
 local Theme=require 'EmberRoutesProbe/UI/Theme'
 local Text=require 'EmberRoutesProbe/UI/Text'
 local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
+local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Defense_'..key,...) end
 
@@ -39,6 +40,32 @@ end
 
 function EmberRoutesDefensePage:initialise() ISPanel.initialise(self) end
 
+function EmberRoutesDefensePage:onResize()
+    if ISPanel.onResize then ISPanel.onResize(self) end
+    local h,p=self.fontHeight,self.pad
+    local regions=Layout.axis({x=0,y=0,width=self.width,height=self.height},
+        {{basis=h*2+p},{basis=h*3+p},{basis=h*3+p},{grow=1}},
+        {direction='column',padding=p,gap=p/2})
+    if regions then
+        self.titleBounds=regions[1]
+        self.alertBounds=regions[2]
+        self.heatBounds=regions[3]
+        self.postsBounds=regions[4]
+        if self.alertBounds and self.alertButtons then
+            local alertTrack=Layout.axis(self.alertBounds,{{grow=1},{grow=1},{grow=1}},{gap=p/2})
+            if alertTrack then
+                for i=0,2 do
+                    local btn=self.alertButtons[i]
+                    local r=alertTrack[i+1]
+                    if btn and r then
+                        btn:setX(r.x) btn:setY(r.y) btn:setWidth(r.width) btn:setHeight(r.height)
+                    end
+                end
+            end
+        end
+    end
+end
+
 function EmberRoutesDefensePage:createChildren()
     ISPanel.createChildren(self)
     local h,p=self.fontHeight,self.pad
@@ -66,6 +93,8 @@ function EmberRoutesDefensePage:createChildren()
         text('req_guard')
     }
     self.noPostsLines=Text.wrap(text('noPosts'),self.postsBounds.width-p*3,UIFont.Small)
+    self._statMeterOpts={mode="danger",threshold=0.7}
+    self._postsOpts={title=self.postsTitle}
 
     -- Alert level buttons (Defcon 0, 1, 2)
     local alertTrack=assert(Layout.axis(self.alertBounds,{{grow=1},{grow=1},{grow=1}},{gap=p/2}))
@@ -158,20 +187,14 @@ function EmberRoutesDefensePage:prerender()
     Theme.text(self,self.heatUnavailable or text('unavailable'),hr.x+p,hr.y+p+h+p/4,Theme.muted)
 
     -- Heat progress bar preview (0/100, safe threshold at 70%)
-    local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
     local meterY=hr.y+hr.height-p*1.5
     local meterW=hr.width-p*2
-    local meterH=math.max(6,math.floor(p*0.8))
-    StatMeter.draw(self,hr.x+p,meterY,meterW,meterH,0.0,{
-        mode="danger",
-        threshold=0.7
-    })
+    local meterH=math.max(12,math.floor(h*0.7))
+    StatMeter.draw(self,hr.x+p,meterY,meterW,meterH,0.0,self._statMeterOpts)
 
     -- Posts Card
     local pr=self.postsBounds
-    CardPanel.draw(self,pr.x,pr.y,pr.width,pr.height,{
-        title=self.postsTitle or text('posts')
-    })
+    CardPanel.draw(self,pr.x,pr.y,pr.width,pr.height,self._postsOpts)
 
     local curY=pr.y+p+h+p
     if self.checklists then

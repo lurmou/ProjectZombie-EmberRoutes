@@ -1,4 +1,4 @@
-package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
+package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local Query=require "EmberRoutesProbe/Warehouse/WarehouseQuery"
 local PinyinHelper=require "EmberRoutesProbe/Warehouse/PinyinHelper"
 local n=0 local function check(v,why) n=n+1 assert(v,why) end

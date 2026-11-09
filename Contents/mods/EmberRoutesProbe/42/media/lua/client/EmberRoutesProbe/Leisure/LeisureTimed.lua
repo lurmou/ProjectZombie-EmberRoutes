@@ -9,7 +9,17 @@ function T.new(c,hooks)
     local continuity=require('EmberRoutesProbe/Leisure/LeisureContinuity').new(c)
     local leaf={kind='Action'} local l=c.payload.leisure
     local function retained() return c.sameAttempt() and c.body.retained() end
-    local function active() return not ended and c.valid() and retained() end
+    local lastActiveCheck, cachedActive = nil, true
+    local function active()
+        if ended then return false end
+        local now = (type(getTimestampMs) == 'function' and getTimestampMs() or 0)
+        if lastActiveCheck and (now - lastActiveCheck) < 200 and (now >= lastActiveCheck) then
+            return cachedActive
+        end
+        lastActiveCheck = now
+        cachedActive = c.valid() and retained()
+        return cachedActive
+    end
     function leaf.run()
         if not action then
             if not active() then return 'Failure' end
@@ -27,7 +37,11 @@ function T.new(c,hooks)
                 continuity.start()
                 if hooks.start then hooks.start(self) end
             end
+            local lastUpdate = nil
             action.update=function(self)
+                local now = (type(getTimestampMs) == 'function' and getTimestampMs() or 0)
+                if lastUpdate and (now - lastUpdate) < 50 and (now >= lastUpdate) then return end
+                lastUpdate = now
                 continuity.tick()
                 if not Perf.active() then
                     if not active() then return end

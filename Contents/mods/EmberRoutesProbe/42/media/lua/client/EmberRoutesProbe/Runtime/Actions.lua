@@ -372,7 +372,7 @@ function Actions.execute(actor, command)
         log("ERROR " .. tostring(result))
         result = "ERROR"
     end
-    if result == "INJURED" then actor:Say(getText("IGUI_EmberRoutesProbe_ActionInjured"))
+    if result == "INJURED" then actor:Say(getText("IGUI_EmberRoutesProbe_ActionInjured")) require("EmberRoutesProbe/Chatter/ChatterService").onActionResult(actor, "INJURED")
     else actor:Say(getText("IGUI_EmberRoutesProbe_ActionResult") .. " " .. tostring(result)) end
     return result
 end
@@ -407,7 +407,7 @@ function Actions.tick(context)
     if state ~= "RUNNING" and state ~= Actions.lastState then
         Actions.lastState = state
         if Actions.actor and not Actions.actor:isDead() then
-            if Actions.batch.reason == "INJURED" then Actions.actor:Say(getText("IGUI_EmberRoutesProbe_ActionInjured"))
+            if Actions.batch.reason == "INJURED" then Actions.actor:Say(getText("IGUI_EmberRoutesProbe_ActionInjured")) require("EmberRoutesProbe/Chatter/ChatterService").onActionResult(Actions.actor, "INJURED")
             else Actions.actor:Say(getText("IGUI_EmberRoutesProbe_ActionResult") .. " " .. state .. " " .. #Actions.batch.records) end
         end
     end

@@ -10,6 +10,7 @@ local Layout=require 'EmberRoutesProbe/UI/Layout'
 local StatMeter=require 'EmberRoutesProbe/UI/StatMeter'
 local Text=require 'EmberRoutesProbe/UI/Text'
 local Reasons=require 'EmberRoutesProbe/UI/OrderMonitorCards'
+local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local meterOptions={mode='load',threshold=0.8,showPercent=false}
 
 ---@class EmberRoutesContainerInspectorDialog:ISCollapsableWindow
@@ -20,8 +21,8 @@ local function text(key,...)
 end
 
 function Dialog:new(owner,settlementId,containers,counts)
-    local w=math.min(520,math.max(380,math.floor(getCore():getScreenWidth()*0.38)))
-    local h=math.min(420,math.max(300,math.floor(getCore():getScreenHeight()*0.45)))
+    local w=math.min(560,math.max(420,math.floor(getCore():getScreenWidth()*0.40)))
+    local h=math.min(440,math.max(300,math.floor(getCore():getScreenHeight()*0.45)))
     local x=math.floor((getCore():getScreenWidth()-w)/2)
     local y=math.floor((getCore():getScreenHeight()-h)/2)
 
@@ -62,8 +63,7 @@ function Dialog:createChildren()
     local listY=th+headerH+p/2
     local listH=self.height-listY-h*2-p
 
-    self.list=ISScrollingListBox:new(p,listY,self.width-p*2,listH)
-    self.list:initialise()
+    self.list=Cached.create(self,{x=p,y=listY,width=self.width-p*2,height=listH},nil,nil)
     self.list.font=UIFont.Small
     self.list.itemheight=math.ceil(h*2.6)
     self.list.backgroundColor=Theme.panel
@@ -78,7 +78,10 @@ function Dialog:createChildren()
         if not c then return true end
         list.selected=index
         local r=c.layout
-        if r and r.locate and x>=r.locate.x and x<=r.locate.x+r.locate.width
+        if r and r.config and x>=r.config.x and x<=r.config.x+r.config.width
+                and y>=r.config.y and y<=r.config.y+r.config.height then
+            self:configureContainer(c)
+        elseif r and r.locate and x>=r.locate.x and x<=r.locate.x+r.locate.width
                 and y>=r.locate.y and y<=r.locate.y+r.locate.height then
             self:locateContainer(c)
         end
@@ -102,8 +105,12 @@ function Dialog:refreshList()
     local h,p=self.fontHeight,self.pad
     local itemH=self.list.itemheight
     self.locateLabel=text('containerLocate')
-    local locateW=math.max(48,getTextManager():MeasureStringX(UIFont.Small,self.locateLabel)+p)
+    self.configLabel=text('containerConfigure')
+    local locateW=math.max(44,getTextManager():MeasureStringX(UIFont.Small,self.locateLabel)+p)
+    local configW=math.max(44,getTextManager():MeasureStringX(UIFont.Small,self.configLabel)+p)
     local locateH=math.floor(h*1.35)
+    local configX=self.list.width-configW-p-16
+    local locateX=configX-locateW-math.floor(p/2)
 
     for _,c in ipairs(self.containers) do
         local name=c.customName and c.customName~='' and c.customName
@@ -124,7 +131,7 @@ function Dialog:refreshList()
         end
         local blocked=c.status and c.status~='LOADED'
         if blocked then
-            local available=self.list.width-locateW-p*3-16
+            local available=locateX-p*2
             locStr=Text.wrapLimited(Reasons.reason(c.status),available,UIFont.Small,1)[1] or ''
         end
 
@@ -135,7 +142,8 @@ function Dialog:refreshList()
         local weightStr=blocked and '' or string.format('%.1f / %.1f kg (%d%%)',used,cap,pct)
 
         local layout={
-            locate={x=self.list.width-locateW-p-16,y=math.floor((itemH-locateH)/2),width=locateW,height=locateH}
+            locate={x=locateX,y=math.floor((itemH-locateH)/2),width=locateW,height=locateH},
+            config={x=configX,y=math.floor((itemH-locateH)/2),width=configW,height=locateH}
         }
 
         local itemData={
@@ -175,7 +183,7 @@ function Dialog:drawContainerRow(list,y,entry,alt)
     Theme.text(list,c.locStr,p,locY,c.blocked and Theme.status.ERROR or Theme.muted)
 
     -- Meter and weight
-    local meterW=math.min(120,math.max(60,math.floor(list.width*0.25)))
+    local meterW=math.min(100,math.max(50,math.floor(list.width*0.20)))
     local meterH=math.max(6,math.floor(h*0.55))
     local locateX=c.layout.locate.x
     local meterX=locateX-meterW-p
@@ -193,6 +201,15 @@ function Dialog:drawContainerRow(list,y,entry,alt)
     Theme.rect(list,b.x,y+b.y,b.width,b.height,Theme.border,true)
     list:drawTextCentre(self.locateLabel,b.x+b.width/2,y+b.y+(b.height-h)/2,Theme.textColor.r,Theme.textColor.g,Theme.textColor.b,1,UIFont.Small)
 
+    -- Config button
+    local cb=c.layout.config
+    if cb then
+        Theme.rect(list,cb.x,y+cb.y,cb.width,cb.height,c.blocked and Theme.panel or Theme.control)
+        Theme.rect(list,cb.x,y+cb.y,cb.width,cb.height,Theme.border,true)
+        local col=c.blocked and Theme.muted or Theme.textColor
+        list:drawTextCentre(self.configLabel,cb.x+cb.width/2,y+cb.y+(cb.height-h)/2,col.r,col.g,col.b,1,UIFont.Small)
+    end
+
     return y+itemH
 end
 
@@ -205,6 +222,26 @@ function Dialog:locateContainer(c)
                 HaloTextHelper.addGoodText(self.owner.actor,c.name..' | '..c.locStr)
             end
         end
+    end
+end
+
+function Dialog:configureContainer(c)
+    if not c or not c.id then return end
+    local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+    local endpoint,reason=Registry.resolve(c.id,"take","local-world")
+    local actor=self.owner and self.owner.actor or (type(getPlayer)=="function" and getPlayer())
+    if not endpoint or not endpoint.object or not endpoint.container then
+        if HaloTextHelper and HaloTextHelper.addBadText and actor then
+            local msg=text('containerUnloadedTooltip')
+            HaloTextHelper.addBadText(actor,msg)
+        end
+        return
+    end
+    local StorageFilterPanel=require "EmberRoutesProbe/UI/StorageFilterPanel"
+    local panel=StorageFilterPanel.open(actor,endpoint.object,endpoint.container)
+    if panel then
+        panel.remoteMode=true
+        panel:bringToTop()
     end
 end
 

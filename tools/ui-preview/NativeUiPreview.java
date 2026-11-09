@@ -130,8 +130,27 @@ public final class NativeUiPreview {
         nativeMouseCallback=GLFW.glfwSetMouseButtonCallback(Display.getWindow(),mouseCallback);
         System.out.println("GL "+GL11.glGetString(GL11.GL_VERSION));
         ZomboidFileSystem.instance.init();
+        Path modDir = repo.resolve("Contents/mods/EmberRoutesProbe");
+        ZomboidFileSystem.instance.setModIdToDir("EmberRoutesProbe", modDir.toString());
+        try {
+            var field = ZomboidFileSystem.class.getDeclaredField("modFolders");
+            field.setAccessible(true);
+            List<String> list = new ArrayList<>();
+            list.add(modDir.toString());
+            field.set(ZomboidFileSystem.instance, list);
+            var lazyField = ZomboidFileSystem.class.getDeclaredField("allowedPrefixes");
+            lazyField.setAccessible(true);
+            ((zombie.util.ResettableLazyValue<?>) lazyField.get(ZomboidFileSystem.instance)).reset();
+        } catch (Exception err) {
+            err.printStackTrace();
+        }
+        ZomboidFileSystem.instance.loadMod("EmberRoutesProbe");
         TextureIDAssetManager.instance.create(TextureID.ASSET_TYPE,GameWindow.assetManagers);
         TextureAssetManager.instance.create(Texture.ASSET_TYPE,GameWindow.assetManagers);
+        GameWindow.LoadTexturePack("UI", 2);
+        GameWindow.LoadTexturePack("UI2", 2);
+        GameWindow.LoadTexturePack("IconsMoveables", 2);
+        GameWindow.setTexturePackLookup();
         zombie.core.VBO.GLVertexBufferObject.init(); zombie.core.Core.getInstance().initGlobalShader();
         Display.makeCurrent(); SpriteRenderer.instance.create();
         zombie.core.Core.getInstance().setScreenSize(width,height);

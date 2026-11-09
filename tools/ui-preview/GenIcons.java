@@ -20,6 +20,8 @@ final class GenIcons {
     public static void main(String[] args) throws Exception {
         outDir = Paths.get(args[0]);
         Files.createDirectories(outDir);
+
+        // Core UI Status & Navigation Glyphs
         icon("check", GenIcons::check);
         icon("disc", (g, pen, brush) -> g.fill(ellipse(4, 4, 24, 24)));
         icon("ring", (g, pen, brush) -> { g.setStroke(pen(5)); g.draw(ellipse(6, 6, 20, 20)); });
@@ -34,11 +36,38 @@ final class GenIcons {
         icon("bullet", (g, pen, brush) -> g.fill(ellipse(9, 9, 14, 14)));
         icon("chevronUp", (g, pen, brush) -> { g.setStroke(pen(6)); g.draw(poly(new double[]{6,21, 16,10, 26,21}, false)); });
         icon("chevronDown", (g, pen, brush) -> { g.setStroke(pen(6)); g.draw(poly(new double[]{6,11, 16,22, 26,11}, false)); });
-        icon("box", GenIcons::box);
-        icon("hammer", GenIcons::hammer);
         icon("arrowDown", GenIcons::arrowDown);
         icon("arrowRight", GenIcons::arrowRight);
         icon("moon", GenIcons::moon);
+
+        // Industrial & Domain Entities
+        icon("box", GenIcons::box);
+        icon("hammer", GenIcons::hammer);
+        icon("gear", GenIcons::gear);
+        icon("shield", GenIcons::shield);
+        icon("heart", GenIcons::heart);
+        icon("person", GenIcons::person);
+        icon("cart", GenIcons::cart);
+        icon("wrench", GenIcons::wrench);
+        icon("book", GenIcons::book);
+
+        // Settlement Resources & Semantics (Flat 2.0 Vector Parity)
+        icon("droplet", GenIcons::droplet);
+        icon("apple", GenIcons::apple);
+        icon("cross", GenIcons::cross);
+        icon("tree", GenIcons::tree);
+
+        // Controls, Utilities & Actions
+        icon("search", GenIcons::search);
+        icon("eye", GenIcons::eye);
+        icon("filter", GenIcons::filter);
+        icon("clock", GenIcons::clock);
+        icon("lock", GenIcons::lock);
+        icon("trash", GenIcons::trash);
+        icon("bell", GenIcons::bell);
+        icon("star", GenIcons::star);
+        icon("info", GenIcons::info);
+
         System.out.println("icons generated: " + Files.list(outDir).count());
         System.out.println("audit: all " + AUDIT.size() + " icons passed ink/antialias checks");
     }
@@ -92,8 +121,6 @@ final class GenIcons {
     }
 
     static void warn(Graphics2D g, BasicStroke pen, Color w) {
-        // Solid triangle with an exclamation mark punched out (EvenOdd): at
-        // 12px the tinted silhouette stays readable, holes never smear.
         Path2D p = new Path2D.Double(Path2D.WIND_EVEN_ODD);
         p.append(poly(new double[]{16,2, 30.5,28.5, 1.5,28.5, 16,2}, true), false);
         p.append(round(13.8, 10, 4.4, 10, 2), false);
@@ -151,5 +178,209 @@ final class GenIcons {
     static void moon(Graphics2D g, BasicStroke pen, Color w) {
         g.setStroke(pen(5));
         g.draw(poly(new double[]{7,7.5, 25,7.5, 7,24.5, 25,24.5}, false));
+    }
+
+    static void gear(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double(Path2D.WIND_EVEN_ODD);
+        p.append(ellipse(5, 5, 22, 22), false);
+        p.append(ellipse(13, 13, 6, 6), false);
+        g.fill(p);
+        for (int i = 0; i < 8; i++) {
+            AffineTransform at = AffineTransform.getRotateInstance(Math.toRadians(i * 45), 16, 16);
+            g.fill(at.createTransformedShape(round(13.5, 1.5, 5, 6, 1.5)));
+        }
+    }
+
+    static void shield(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(16, 3);
+        p.lineTo(27, 7);
+        p.curveTo(27, 18, 21, 25, 16, 29);
+        p.curveTo(11, 25, 5, 18, 5, 7);
+        p.closePath();
+        g.fill(p);
+    }
+
+    static void heart(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(16, 8);
+        p.curveTo(16, 3, 5, 3, 5, 12);
+        p.curveTo(5, 19, 13, 25, 16, 28.5);
+        p.curveTo(19, 25, 27, 19, 27, 12);
+        p.curveTo(27, 3, 16, 3, 16, 8);
+        p.closePath();
+        g.fill(p);
+    }
+
+    static void person(Graphics2D g, BasicStroke pen, Color w) {
+        g.fill(ellipse(10.5, 3.5, 11, 11));
+        Path2D p = new Path2D.Double();
+        p.moveTo(5, 28);
+        p.curveTo(5, 19, 10, 16.5, 16, 16.5);
+        p.curveTo(22, 16.5, 27, 19, 27, 28);
+        p.closePath();
+        g.fill(p);
+    }
+
+    static void cart(Graphics2D g, BasicStroke pen, Color w) {
+        g.setStroke(pen(3.5f));
+        g.draw(poly(new double[]{4,7, 9,7, 13,19, 25,19, 27,10, 10,10}, false));
+        g.fill(ellipse(12, 22.5, 5, 5));
+        g.fill(ellipse(22, 22.5, 5, 5));
+    }
+
+    static void wrench(Graphics2D g, BasicStroke pen, Color w) {
+        Shape handle = round(13.5, 11, 5, 16, 2);
+        Shape jaw = round(9.5, 3.5, 13, 10, 2.5);
+        AffineTransform at = AffineTransform.getRotateInstance(Math.toRadians(-45), 16, 16);
+        Path2D p = new Path2D.Double();
+        p.append(at.createTransformedShape(handle), false);
+        p.append(at.createTransformedShape(jaw), false);
+        g.fill(p);
+    }
+
+    static void book(Graphics2D g, BasicStroke pen, Color w) {
+        g.setStroke(pen(3.5f));
+        g.draw(round(6, 4, 20, 24, 3));
+        g.setStroke(pen(3f));
+        g.draw(poly(new double[]{11,10, 21,10}, false));
+        g.draw(poly(new double[]{11,16, 21,16}, false));
+        g.draw(poly(new double[]{11,22, 18,22}, false));
+    }
+
+    static void droplet(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(16, 3);
+        p.curveTo(16, 3, 6.5, 14, 6.5, 20.5);
+        p.curveTo(6.5, 25.8, 10.8, 29, 16, 29);
+        p.curveTo(21.2, 29, 25.5, 25.8, 25.5, 20.5);
+        p.curveTo(25.5, 14, 16, 3, 16, 3);
+        p.closePath();
+        g.fill(p);
+    }
+
+    static void apple(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(16, 9);
+        p.curveTo(12, 5.5, 5, 7.5, 5, 16.5);
+        p.curveTo(5, 24, 10, 28.5, 16, 27.5);
+        p.curveTo(22, 28.5, 27, 24, 27, 16.5);
+        p.curveTo(27, 7.5, 20, 5.5, 16, 9);
+        p.closePath();
+        g.fill(p);
+        g.setStroke(pen(3f));
+        g.draw(poly(new double[]{16,9, 19,3.5}, false));
+    }
+
+    static void cross(Graphics2D g, BasicStroke pen, Color w) {
+        g.fill(round(12, 4, 8, 24, 3));
+        g.fill(round(4, 12, 24, 8, 3));
+    }
+
+    static void tree(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(16, 3);
+        p.lineTo(25, 12); p.lineTo(21, 12);
+        p.lineTo(26, 19); p.lineTo(21, 19);
+        p.lineTo(27, 25); p.lineTo(5, 25);
+        p.lineTo(11, 19); p.lineTo(6, 19);
+        p.lineTo(11, 12); p.lineTo(7, 12);
+        p.closePath();
+        g.fill(p);
+        g.fill(round(13.5, 25, 5, 4.5, 1));
+    }
+
+    static void search(Graphics2D g, BasicStroke pen, Color w) {
+        g.setStroke(pen(4));
+        g.draw(ellipse(5, 5, 15, 15));
+        g.fill(poly(new double[]{16.5,16.5, 26,26, 23.5,28.5, 14,19}, true));
+    }
+
+    static void eye(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(3, 16);
+        p.curveTo(8, 7, 24, 7, 29, 16);
+        p.curveTo(24, 25, 8, 25, 3, 16);
+        p.closePath();
+        g.setStroke(pen(3.5f));
+        g.draw(p);
+        g.fill(ellipse(12, 12, 8, 8));
+    }
+
+    static void filter(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(4, 5);
+        p.lineTo(28, 5);
+        p.lineTo(18.5, 16);
+        p.lineTo(18.5, 25);
+        p.lineTo(13.5, 27.5);
+        p.lineTo(13.5, 16);
+        p.closePath();
+        g.fill(p);
+    }
+
+    static void clock(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double(Path2D.WIND_EVEN_ODD);
+        p.append(ellipse(4, 4, 24, 24), false);
+        p.append(ellipse(7.5, 7.5, 17, 17), false);
+        g.fill(p);
+        g.fill(round(14, 8, 4, 9, 2));
+        g.fill(round(14, 14, 8, 4, 2));
+    }
+
+    static void lock(Graphics2D g, BasicStroke pen, Color w) {
+        g.setStroke(pen(4));
+        g.draw(poly(new double[]{9,15, 9,9, 23,9, 23,15}, false));
+        Path2D p = new Path2D.Double(Path2D.WIND_EVEN_ODD);
+        p.append(round(6, 13, 20, 15, 3), false);
+        p.append(ellipse(14, 18, 4, 4), false);
+        p.append(round(14.5, 20, 3, 5, 1), false);
+        g.fill(p);
+    }
+
+    static void trash(Graphics2D g, BasicStroke pen, Color w) {
+        g.fill(round(5, 6, 22, 4, 2));
+        g.fill(round(11, 2.5, 10, 3.5, 1.5));
+        g.setStroke(pen(3f));
+        g.draw(poly(new double[]{8,10, 9.5,27.5, 22.5,27.5, 24,10}, false));
+        g.draw(poly(new double[]{13,13, 13.5,24}, false));
+        g.draw(poly(new double[]{19,13, 18.5,24}, false));
+    }
+
+    static void bell(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(16, 4);
+        p.curveTo(11, 4, 8, 12, 8, 20);
+        p.lineTo(4.5, 23.5);
+        p.lineTo(27.5, 23.5);
+        p.lineTo(24, 20);
+        p.curveTo(24, 12, 21, 4, 16, 4);
+        p.closePath();
+        g.fill(p);
+        g.fill(ellipse(13, 24.5, 6, 4.5));
+    }
+
+    static void star(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double();
+        double rOuter = 13.5, rInner = 6.0;
+        double cx = 16, cy = 16.5;
+        for (int i = 0; i < 10; i++) {
+            double angle = -Math.PI / 2 + i * Math.PI / 5;
+            double r = (i % 2 == 0) ? rOuter : rInner;
+            double x = cx + r * Math.cos(angle);
+            double y = cy + r * Math.sin(angle);
+            if (i == 0) p.moveTo(x, y); else p.lineTo(x, y);
+        }
+        p.closePath();
+        g.fill(p);
+    }
+
+    static void info(Graphics2D g, BasicStroke pen, Color w) {
+        Path2D p = new Path2D.Double(Path2D.WIND_EVEN_ODD);
+        p.append(ellipse(4, 4, 24, 24), false);
+        p.append(ellipse(7.5, 7.5, 17, 17), false);
+        g.fill(p);
+        g.fill(ellipse(13.8, 8.5, 4.4, 4.4));
+        g.fill(round(13.8, 14.5, 4.4, 9, 2));
     }
 }

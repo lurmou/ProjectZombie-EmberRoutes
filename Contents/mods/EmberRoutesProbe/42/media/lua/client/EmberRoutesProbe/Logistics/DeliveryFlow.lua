@@ -125,9 +125,13 @@ function F.next(c,snapshotStep,withdraw)
         end
         item,target=candidate.item,candidate.endpoint c.search=nil
     end
-    c.destination=target
     local ok=Store.capacity(c.token,item:getID(),target.id,item:getUnequippedWeight(),target.container:getFreeCapacity(c.npc))
-    if not ok then return nil,'ROUTING_WAIT' end
+    if not ok then
+        c.destination=nil
+        if c.backoff then c.backoff[target.id]=getTimestampMs()+18000 end
+        return nil,'ROUTING_WAIT'
+    end
+    c.destination=target
     if not Transfer.reachable(c.npc,target) then c.moveEndpoint=target return Transfer.move(c,target) end
     return snapshotStep(c,Manifest.line(r,item:getID()),item,target,'PUT',index)
 end

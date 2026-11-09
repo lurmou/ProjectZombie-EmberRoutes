@@ -100,7 +100,7 @@ local function transfer(c,item,from,to,endpoint,pickup,destination)
                 action.ignoreAction=false action.checkQueueList=function() end
                 return action
             end
-            return ISInventoryTransferAction:new(c.npc,item,from,to,90)
+            return ISInventoryTransferAction:new(c.npc,item,from,to,20)
         end}
     if pickup then
         -- Installed ISGrabItemAction mutates originals in perform, not complete.

@@ -103,6 +103,9 @@ function Base:setY(y) self.y = y end
 function Base:setWidth(w) self.width = w end
 function Base:setHeight(h) self.height = h end
 function Base:getIsVisible() return self:isVisible() end
+function Base:getParent() return self.parent end
+function Base:setVisible(v) self.visible = v end
+function Base:isVisible() return self.visible ~= false end
 
 function getCore()
     return {
@@ -124,6 +127,9 @@ ISComboBox = Base:derive("ISComboBox")
 function ISComboBox:new(...) local o = Base.new(self, ...) o.options = {} o.selected = 1 return o end
 function ISComboBox:clear() self.options={} end
 function ISComboBox:addOption(v) self.options[#self.options+1] = v end
+function ISComboBox:addOptionWithData(text, data) self.options = self.options or {} table.insert(self.options, { text = text, data = data }) end
+function ISComboBox:getOptionData(index) return self.options and self.options[index] and self.options[index].data end
+function ISComboBox:getOptionText(index) return self.options and self.options[index] and (self.options[index].text or self.options[index]) or "" end
 function ISComboBox:setToolTipMap() end
 
 ISModalDialog = Base:derive("ISModalDialog")
@@ -233,14 +239,14 @@ check(page.cartButton ~= nil, "Cart button instantiated")
 
 -- Test 2: Add Heavy Item (Step = 1)
 local logRow = {fullType = "Base.Log", label = "Log", count = 10}
-page:onMiddleClickItem(logRow, false) -- +1 Log
+page:addToDeliveryCart(logRow, 1) -- +1 Log
 check(page.deliveryCartCount == 1, "Cart has 1 item type")
 check(page.deliveryCart["Base.Log"].count == 1, "Log count is 1")
 check(page.deliveryCartWeight == 9.0, "Cart weight is 9.0kg")
 
 -- Test 3: Add Light Item (Step = 1 default for precision)
 local nailsRow = {fullType = "Base.Nails", label = "Nails", count = 100}
-page:onMiddleClickItem(nailsRow, false) -- +1 Nails (0.01 * 1 = 0.01kg)
+page:addToDeliveryCart(nailsRow, 1) -- +1 Nails (0.01 * 1 = 0.01kg)
 check(page.deliveryCartCount == 2, "Cart has 2 item types")
 check(page.deliveryCart["Base.Nails"].count == 1, "Nails count is 1")
 check(page.deliveryCartTotalUnits == 2, "Total units is 2 (1 log + 1 nail)")
@@ -248,14 +254,14 @@ local expectedWeight = 9.0 + (1 * 0.01)
 check(math.abs(page.deliveryCartWeight - expectedWeight) < 0.001, "Cart weight accurate")
 
 -- Test 4: Shift-decrement
-page:onMiddleClickItem(nailsRow, true) -- -1 Nails -> 0 Nails -> removed
+page:addToDeliveryCart(nailsRow, -1) -- -1 Nails -> 0 Nails -> removed
 check(page.deliveryCartCount == 1, "Nails removed after reaching 0")
 check(page.deliveryCart["Base.Nails"] == nil, "Base.Nails key cleared")
 check(page.deliveryCartWeight == 9.0, "Weight reverted to 9.0kg")
 
 -- Test 5: Overweight Detection
 -- Free capacity is 15 - 5 = 10.0kg. Adding another log (9.0kg) makes it 18.0kg > 10.0kg.
-page:onMiddleClickItem(logRow, false)
+page:addToDeliveryCart(logRow, 1)
 check(page.deliveryCart["Base.Log"].count == 2, "Log count is 2")
 check(page.deliveryCartWeight == 18.0, "Total weight is 18.0kg")
 
@@ -290,7 +296,7 @@ page:toggleCartDrawer(page.cartButton) -- Toggle again
 check(type(page.cartDrawer.visible) == "boolean", "Drawer visibility remains boolean after second click")
 check(page.cartDrawer:isVisible() == false, "Drawer closed by second button click")
 
-page:onMiddleClickItem(logRow,false) -- Seed the detail button; native input is checked below.
+page:addToDeliveryCart(logRow, 1) -- Seed the detail button; native input is checked below.
 
 -- Test 10: Double-click adds to delivery cart (AE2 quick add)
 page:clearDeliveryCart()
@@ -310,7 +316,7 @@ check(page.deliveryCart[cartKey].source.id == "cont_101", "Source container ID p
 page:clearDeliveryCart()
 
 -- A rejected submission keeps both cart and request identity; an edit starts a new request.
-page:onMiddleClickItem(logRow,false)
+page:addToDeliveryCart(logRow, 1)
 local captured={}
 package.loaded['EmberRoutesProbe/Work/PublicWork'].createDeliveryOrder=function(_,_,_,requestId)
     captured[#captured+1]=requestId return 'ORDER_LIMIT'
@@ -318,7 +324,7 @@ end
 page:dispatchDeliveryCart() page:dispatchDeliveryCart()
 check(page.deliveryCartCount==1 and captured[1]==captured[2],'rejected delivery retains cart and idempotency identity')
 check(page.deliveryFeedbackError and page.cartDrawer.messageColor==require('EmberRoutesProbe/UI/Theme').status.ERROR,'submission rejection stays visible even when cart exceeds current capacity')
-page:onMiddleClickItem(logRow,false) page:dispatchDeliveryCart()
+page:addToDeliveryCart(logRow, 1) page:dispatchDeliveryCart()
 check(captured[3]~=captured[2],'editing rejected cart creates a new request identity')
 -- Actual page update observes a middle-button edge, not a direct add call.
 page:clearDeliveryCart() page.active=true page.helpModal=nil

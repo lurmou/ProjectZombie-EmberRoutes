@@ -5,17 +5,20 @@ local rows={
  {id='ORDER:a',kind='ORDER',title='Planks',state='WAITING'},
  {id='ORDER:a',kind='CRAFT',title='Planks',state='WAITING'},
  {id='FIELD_WORK:b',kind='FIELD_WORK',npcId='n1',workCategory='lumberjack',title='Logging',state='SUSPENDED',reason='FIELD_TOOL_MISSING',bucket='waiting'},
+ {id='FIELD_WORK:macro',kind='FIELD_WORK',isMacro=true,npcId='n1',workCategory='farming',title='Farm Directive',state='SUSPENDED',reason='FIELD_TOOL_MISSING',bucket='waiting'},
  {id='CRAFT:c',kind='CRAFT',npcId='n2',title='Fork',state='RUNNING',bucket='active'},
  {id='ORDER:d',kind='ORDER',title='Paused',state='PAUSED'},
  {id='ORDER:e',kind='ORDER',state='DONE',closed=true},
  {id='HAUL:f',kind='HAUL',npcId='n3',state='PAUSED',bucket='paused'},
+ {id='DELIVERY:h',kind='DELIVERY',orderId='d1',title='Delivery',state='PAUSED',bucket='paused'},
  {id='ORDER:g',kind='ORDER',state='CANCELLED'}}
 local problems={{id='water:home',affected={'n1','n2','n3'}},{id='water:home'}}
 local s=P.project(rows,{{id='n1',name='One',isBleeding=true}},problems)
-check(#s.works==5,'one domain key per work; closed and cancelled excluded')
+check(#s.works==5,'macro orders in queue (5 macro orders; closed, cancelled and micro tasks excluded)')
 check(s.counts.waiting==1 and s.counts.blocked==1 and s.counts.paused==2,'counts distinguish assigned/unassigned and pause')
 check(#s.problems==1,'three affected people remain one problem')
-check(s.byNpc.n1.title=='Logging' and s.byNpc.n1.state=='blocked','shared personnel title/state')
+check(s.byNpc.n1.state=='blocked','shared personnel receives blocked work')
+check(s.byNpc.n3.state=='paused','shared personnel receives micro haul')
 check(s.alerts[1].kind=='health' and s.alerts[2].kind=='blocked' and s.alerts[3].kind=='waiting','alert priority')
 check(P.visible(nil,'idle') and not P.visible(s.byNpc.n1,'idle'),'idle is absence of work')
 check(not P.visible({state='waiting'},'idle') and not P.visible({state='paused'},'working'),'waiting and paused only in all filter')
