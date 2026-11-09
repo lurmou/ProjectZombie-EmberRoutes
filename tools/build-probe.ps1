@@ -154,6 +154,11 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix Leader trail geometry tests failed" }
 & $javaCommand '-ea' '-cp' "$classes;$tests" 'emberroutes.probe.LocomotionSteeringTest'
 if ($LASTEXITCODE -ne 0) { throw "$prefix Locomotion steering geometry tests failed" }
 
+& $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/EnvironmentInteractionTest.java')
+if ($LASTEXITCODE -ne 0) { throw "$prefix Environment interaction test compilation failed" }
+& $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.EnvironmentInteractionTest'
+if ($LASTEXITCODE -ne 0) { throw "$prefix Environment interaction tests failed" }
+
 & $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/FollowMetricsTest.java')
 if ($LASTEXITCODE -ne 0) { throw "$prefix Follow metrics test compilation failed" }
 & $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.FollowMetricsTest'

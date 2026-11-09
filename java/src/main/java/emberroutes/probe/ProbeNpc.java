@@ -988,8 +988,20 @@ public final class ProbeNpc extends IsoPlayer {
             getECSComponent(AIComponent.class).getHumanControlVars().justMoved = walking;
             setMoving(walking);
             isPlayerMoving = walking;
-            if (walking) updateLocomotionSteering(path);
-            else {
+            if (walking) {
+                if (path.pathNextIsSet && !nativeTraversal()) {
+                    EnvironmentInteraction.Result env = EnvironmentInteraction.interactAhead(
+                            this, path.pathNextX, path.pathNextY, nativeTraversal()
+                    );
+                    if (env == EnvironmentInteraction.Result.BLOCKED) {
+                        path.cancel();
+                        currentSpeedScale = 1.0f;
+                        playerMoveDir.set(0, 0);
+                        return ProbeMovement.PathResult.FAILED;
+                    }
+                }
+                updateLocomotionSteering(path);
+            } else {
                 currentSpeedScale = 1.0f;
                 playerMoveDir.set(0, 0);
             }
