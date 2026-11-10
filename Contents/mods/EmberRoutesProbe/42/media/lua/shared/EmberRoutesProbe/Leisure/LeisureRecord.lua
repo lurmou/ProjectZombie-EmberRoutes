@@ -1,3 +1,4 @@
+local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
 local R={}
 local activities={OBSERVE=true,STROLL=true,FITNESS=true,SOCIAL=true,SMOKE=true,SIT=true}
 local function finite(n) return type(n)=='number' and n==n and math.abs(n)<math.huge end
@@ -63,6 +64,11 @@ function R.memory(value)
         elseif h.activity=='READING' then
             if not require('EmberRoutesProbe/Kernel/Validate').itemId(h.itemId) then return false end
         else return false end
+    end
+    local recent=value.recent
+    if recent~=nil then
+        if type(recent)~='table' or #recent>Config.repeatHistory then return false end
+        for _,kind in ipairs(recent) do if not (activities[kind] or kind=='READING') then return false end end
     end
     return value.last==nil or activities[value.last] or value.last=='READING'
 end

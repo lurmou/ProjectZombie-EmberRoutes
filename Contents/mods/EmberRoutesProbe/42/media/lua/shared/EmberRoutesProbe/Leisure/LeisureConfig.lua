@@ -8,6 +8,7 @@ local C={
     stroll={fatigue=0.5,endurance=0.55,pain=0.18},
     cooldownHours={FITNESS=12,SOCIAL=2.5,SMOKE=0.5,READING=0.1,STROLL=0.5,default=0,failed=0.03},
     repeatWeightFactor=0.15,
+    repeatHistory=3,
     socialChance={from=18,to=21,evening=0.7,other=0.25},
     weights={OBSERVE=1,FITNESS=0.8,STROLL=0.25,SITE_OBSERVE=0.4,READING=1.3,SMOKE=1,SIT=1.2,PUBLIC_LIFE=0.9},
     fitnessMinutes=60,sitMinutes=60,readingMinutes=60,observeMinutes=1,briefMinutes=0.5,strollMinutes=2,

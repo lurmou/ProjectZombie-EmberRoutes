@@ -23,13 +23,29 @@ function P.weight(kind,s,base)
     if kind=='FITNESS' then return base*math.max(0.2,s.endurance-s.fatigue) end
     return base
 end
+-- Consecutive run of the same activity at the head of the recent history
+-- (most recent first, capped at Config.repeatHistory). A memory recorded
+-- before `recent` existed only has `last`, which counts as a run of one.
+local function repeatStreak(memory,activity)
+    if not memory then return 0 end
+    local recent=memory.recent
+    if type(recent)=='table' and #recent>0 then
+        local streak=0
+        for i=1,math.min(#recent,Config.repeatHistory) do
+            if recent[i]==activity then streak=streak+1 else break end
+        end
+        return streak
+    end
+    return memory.last==activity and 1 or 0
+end
 function P.choose(candidates,memory,hours,roll)
     local weights,total={},0
     for i,c in ipairs(candidates) do
         local cooldown=memory and memory.cooldowns and memory.cooldowns[c.activity] or 0
         local w=hours>=cooldown and math.max(0,c.weight or 1) or 0
         if c.moving and memory and hours<(memory.moveAfter or 0) then w=0 end
-        if memory and memory.last==c.activity then w=w*Config.repeatWeightFactor end
+        local streak=repeatStreak(memory,c.activity)
+        if streak>0 then w=w*Config.repeatWeightFactor^streak end
         weights[i]=w total=total+w
     end
     if total<=0 then return end
@@ -45,6 +61,12 @@ end
 function P.remember(memory,kind,hours,success)
     memory=memory or {cooldowns={}} memory.cooldowns=memory.cooldowns or {}
     memory.last=kind
+    local recent={kind}
+    local prior=memory.recent
+    if type(prior)=='table' then
+        for i=1,math.min(#prior,Config.repeatHistory-1) do recent[#recent+1]=prior[i] end
+    end
+    memory.recent=recent
     local delay=success and (Config.cooldownHours[kind] or Config.cooldownHours.default) or Config.cooldownHours.failed
     memory.cooldowns[kind]=hours+delay
     return memory
