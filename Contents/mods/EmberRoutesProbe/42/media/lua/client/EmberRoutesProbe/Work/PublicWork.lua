@@ -16,6 +16,8 @@ local Recipe=require 'EmberRoutesProbe/Crafting/ProductionRecipe'
 local Surfaces=require 'EmberRoutesProbe/Crafting/CraftSurfaces'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Selector=require 'EmberRoutesProbe/Work/WorkSelector'
+local NeedsObserver=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
+local NeedsPolicy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
 local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory'
 local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 -- Persisted order document and its schema checks, kept apart from the scheduler
@@ -651,6 +653,27 @@ local function decide(actor,npcId,now,binding,entry)
         return
     end
     if retryWake[npcId] and retryWake[npcId]<=now then retryWake[npcId]=nil end
+
+    -- P0 pilot (cross-game Sims: low needs degrade first, forced self-care
+    -- second). A warn-band NPC keeps working, but HAUL drops one dispatch
+    -- tier for this decision only: the stored priorities are untouched
+    -- (demoted is a copy), other providers keep their tiers, and HAUL
+    -- still runs when nothing else competes (no starvation, no block).
+    -- Choice: dispatch deprioritization, NOT output discount -- HAUL
+    -- output is physical item movement settled by LaborCommitKernel, so
+    -- discounting it would change settlement accounting per trip; tier
+    -- demotion is a pure ordering change at the dispatch gate. A missing
+    -- or unreadable sample fails open: no demotion, no block. Forced
+    -- self-care still runs on its own NeedsPolicy thresholds.
+    local sample=NeedsObserver.sample(npc,npcId,now)
+    if sample and NeedsPolicy.warned(sample) then
+        local haul=priorities.hauling
+        if haul and haul>=1 and haul<4 then
+            local demoted={} for k,v in pairs(priorities) do demoted[k]=v end
+            demoted.hauling=haul+1
+            priorities=demoted
+        end
+    end
 
     local envDiscover=newDiscoverEnv(actor,npc,npcId,entry,priorities,now,candidates,function(t) studyTarget=t end)
     local providersByTier={{},{},{},{}}
