@@ -1,4 +1,6 @@
+ERSettlementFixtureOnly=true
 dofile('tests/lua/settlement-tabs-test.lua')
+ERSettlementFixtureOnly=nil
 local n=0
 for _,size in ipairs({{1280,720,28},{1280,720,32},{1920,1080,20},{3840,2160,32}}) do
  local dialog=ERSettlementPreview('publicOrder',size[3],size[1],size[2])
