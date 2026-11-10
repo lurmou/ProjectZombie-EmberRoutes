@@ -12,11 +12,14 @@ local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
 local Delivery=require 'EmberRoutesProbe/Logistics/DeliveryTarget'
+local DeliveryFlow=require 'EmberRoutesProbe/Logistics/DeliveryFlow'
 local A={}
 local JobExecution=require 'EmberRoutesProbe/Hauling/HaulJobs'
 function A.new(npcId)
     local api={} local current,pending
     local function record() return Store.record(npcId) end
+    -- Sole DELIVERY producer check; every dispatch branch below routes through here.
+    local function isDelivery(jobOrRecord) return jobOrRecord and jobOrRecord.producer=='DELIVERY' end
     local function changed(r)
 	if r.format==3 then
 	    local ok=JobExecution.commit(r)
@@ -38,7 +41,7 @@ function A.new(npcId)
     local function valid(c)
         local authorized=current==c and not c.stopping and not isClient() and not isServer() and Probe.ready
             and Store.valid(c.job,c.generation,c.token) and (not c.body or c.body.current())
-            and (c.job.producer=='DELIVERY' or not c.actor:isDead())
+            and (isDelivery(c.job) or not c.actor:isDead())
             and (EmberRoutesProbeJava.carrierPresent(c.npc)
                 or require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc))
         if not authorized then return false,'DRIVER_UNAVAILABLE' end
@@ -90,7 +93,7 @@ function A.new(npcId)
         c.stopping=true -- Fence perform before clearing potentially reentrant native queues.
         if c.body then
             if not c.body.clear() or not c.body.stop() then return false end
-            if c.job.producer=='DELIVERY' and not c.body.sneak(false) then return false end
+            if isDelivery(c.job) and not c.body.sneak(false) then return false end
         else ISTimedActionQueue.clear(c.npc) EmberRoutesProbeJava.stopCarrier(c.npc) end
         if not c.stopped then
             local known=effects(c)=='KNOWN'
@@ -127,7 +130,7 @@ function A.new(npcId)
                 return not paused and current==c and r.generation==generation
             end,
             pause=function(reason)
-                if c.completed then return r.producer~='DELIVERY' or c.body.sneak(false) end
+                if c.completed then return not isDelivery(r) or c.body.sneak(false) end
                 return api.pause(reason,c)
             end,
             effects=function() return effects(c) end,
@@ -142,7 +145,7 @@ function A.new(npcId)
     end
     local launch
     launch=function(actor,r,body,nonPreemptive)
-        if r.producer=='DELIVERY' and not Probe.controlledExecution then return 'CONTROL_REQUIRED' end
+        if isDelivery(r) and not Probe.controlledExecution then return 'CONTROL_REQUIRED' end
         if r.controlUncertain or r.activeAttempt then
             r.controlUncertain=true r.reason='RECONCILE_REQUIRED' changed(r) return 'RECONCILE_REQUIRED'
         end
@@ -164,7 +167,7 @@ function A.new(npcId)
                 validate=function()
                     return Probe.ready and Registry.data()==world and record()==previous and r.generation==generation
                         and not r.controlUncertain and not current
-                        and (r.producer=='DELIVERY' and Delivery.allowed(r) or r.producer~='DELIVERY' and not actor:isDead()
+                        and (isDelivery(r) and Delivery.allowed(r) or not isDelivery(r) and not actor:isDead()
                             and require('EmberRoutesProbe/Settlement/MembershipService').check(npcId,'WORK',
                                 {x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=r.settlementId}).allowed)
                 end,
@@ -201,13 +204,13 @@ function A.new(npcId)
             producer=intent.producer,settlementId=intent.settlementId,source=intent.source,destination=intent.destination,
             sourceMode=intent.sourceMode,items={},state='PAUSED',reason='CREATED',phase='COLLECT',generation=0,
             routeRevision=0,attemptSequence=0,delivered=0}
-        if intent.producer=='DELIVERY' then
+        if isDelivery(intent) then
             r.orderId,r.orderRevision,r.requesterId,r.itemTypes=intent.orderId,intent.orderRevision,intent.requesterId,intent.itemTypes
             r.returnForNextBatch=true
         end
         for _,id in ipairs(intent.items) do r.items[#r.items+1]=id end
 	r.plannedCount=#r.items r.manifest=Manifest.create(r,nil,intent.itemSources,intent.itemDestinations)
-        if r.producer=='DELIVERY' then
+        if isDelivery(r) then
             -- Queued admission must already own a durable Job and its originals.
             -- Saving before the body grant can then safely recover the same segment.
             if not Probe.controlledExecution or not Manifest.valid(r) then return 'CONTROL_REQUIRED' end
@@ -224,7 +227,7 @@ function A.new(npcId)
         if api.busy() or awaitingGrant() then return 'BUSY' end
         local r=record() if not r then return 'NO_TASK' end if r.state=='DONE' then return 'DONE' end
         if nonPreemptive==false then r.manualPaused=nil end
-        if r.producer~='DELIVERY' and r.routingWait and r.routingWait.reason=='PATH_BACKOFF' and r.pathBackoff
+        if not isDelivery(r) and r.routingWait and r.routingWait.reason=='PATH_BACKOFF' and r.pathBackoff
             and getTimestampMs()<(r.pathBackoff[r.source] or 0) then return 'ROUTING_WAIT' end
         return launch(actor,r,nil,nonPreemptive)
     end
@@ -256,12 +259,12 @@ function A.new(npcId)
         local s={attempt=a,item=item,from=from,to=to,fromEndpoint=kind=='TAKE' and endpoint or nil,toEndpoint=kind=='PUT' and endpoint or nil}
         line.plannedDestinationId=kind=='PUT' and endpoint.id or line.destinationId or c.destination and c.destination.id
         local frozen={actor=c.actor,npc=c.npc,job=r,body=c.body,source=kind=='TAKE' and endpoint or nil,destination=kind=='PUT' and endpoint or nil,
-            deliveryContext=r.producer=='DELIVERY' and c or nil}
+            deliveryContext=isDelivery(r) and c or nil}
         frozen.valid=function() return valid(c) and r.activeAttempt==a and r.routeRevision==a.routeRevision
             and (endpoint.playerId and Delivery.endpointValid(c,endpoint)
                 or not endpoint.playerId and Registry.revalidate(endpoint,kind=='TAKE' and 'take' or 'put',r.scopeId)~=nil) end
         frozen.eligible=function(value)
-            return Producers.eligible(value) and (r.producer=='DELIVERY' or kind=='PUT' and Routing.accept(c,endpoint,value)
+            return Producers.eligible(value) and (isDelivery(r) or kind=='PUT' and Routing.accept(c,endpoint,value)
                 or kind=='TAKE')
         end
 	frozen.transferred=function() return knownTransfer(c,s) end
@@ -301,7 +304,7 @@ function A.new(npcId)
 		    or not Delivery.endpointValid(c,endpoint) or not Delivery.still(c) or not Delivery.room(c,value) then return end
 	    elseif not Registry.revalidate(endpoint,kind=='TAKE' and 'take' or 'put',r.scopeId) then return end
 	    if kind=='TAKE' then
-                local order=r.producer=='DELIVERY' and Delivery.order(r)
+                local order=isDelivery(r) and Delivery.order(r)
                 if order and order.destinationId and Delivery.takeReason(c,value,nextItem.line.sourceId) then return end
 		if r.deliveryOnly or r.returning or Producers.freeCarry(c.npc)<value:getUnequippedWeight()
 		    or not first.to:hasRoomFor(c.npc,value) or not Producers.transfer(c,value,first.from,first.to) then return end
@@ -336,7 +339,7 @@ function A.new(npcId)
         for _,line in ipairs(r.manifest) do if line.custodyState=='UNCOLLECTED' then return line.sourceId end end
     end
     local function nextStep(c)
-        if c.job.producer=='DELIVERY' then return require('EmberRoutesProbe/Logistics/DeliveryFlow').next(c,snapshotStep,withdraw) end
+        if isDelivery(c.job) then return DeliveryFlow.next(c,snapshotStep,withdraw) end
         local r=c.job
         local sourceId=not r.deliveryOnly and (nextSource(r) or r.source) or nil
         local source=sourceId and Registry.resolve(sourceId,'take',r.scopeId) or nil
@@ -446,7 +449,7 @@ function A.new(npcId)
 	return snapshotStep(c,Manifest.line(r,selected:getID()),selected,target,'PUT',index)
     end
     local function pauseReason(c)
-        local order=c.job.producer=='DELIVERY' and Delivery.order(c.job)
+        local order=isDelivery(c.job) and Delivery.order(c.job)
         if order and order.destinationId then
             if order.cancelled then return 'CANCEL_REQUESTED' end
             local item=c.attempt and c.attempt.item
@@ -479,7 +482,7 @@ function A.new(npcId)
         local now=getTimestampMs() if now<c.nextTick then return end c.nextTick=now+100
         local usable,unavailable=valid(c)
         if not usable then api.pause(unavailable) return end
-        if c.job.producer=='DELIVERY' then
+        if isDelivery(c.job) then
             local ok,why=Delivery.observe(c)
             if not ok then api.pause(why) return end
         end
