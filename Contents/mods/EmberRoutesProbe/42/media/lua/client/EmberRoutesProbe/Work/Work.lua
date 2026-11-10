@@ -6,6 +6,8 @@ local Schedule=require "EmberRoutesProbe/Work/LaborSchedule"
 local Store=require "EmberRoutesProbe/Work/LaborStore"
 local Signals=require "EmberRoutesProbe/Work/LaborSignals"
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Reasons=TaskResume.Reasons
 local Work={}
 local agents,handles,schedule,suspended={},{},Schedule.new(),{}
 local executors={}
@@ -48,16 +50,16 @@ function Work.execute(actor,command,object,container)
     local worker,id=agent(actor)
     local runtime=Runtime.current()
     if command=='clear' and runtime and runtime:owns(id) then
-        if Probe.invalidateCare then Probe.invalidateCare(id,'CLEAR') end
+        if Probe.invalidateCare then Probe.invalidateCare(id,Reasons.CLEAR) end
         worker.pause('CLEAR') return 'PAUSE_BEFORE_CLEAR'
     end
     if (command=="run" or command=="resume" or command=="clear") and (nativeExecutor(id) or retained(id)) then return "OTHER_TASK_RETAINED" end
-    if command=="pause" then Work.pause("USER",id) end
+    if command=="pause" then Work.pause(Reasons.USER,id) end
     if command=="run" or command=="resume" or command=="pause" or command=="clear" then suspended[id]=true end
     local result=worker.execute(actor,command,object,container)
     if (command=='run' or command=='resume' or command=='clear')
         and (result=='QUEUED' or result=='STARTED' or result=='TASK_CLEARED') and Probe.invalidateCare then
-        Probe.invalidateCare(id,'WORK_COMMAND')
+        Probe.invalidateCare(id,Reasons.WORK_COMMAND)
     end
     Signals.changed(id)
     if worker.busy() then schedule:add(id) else schedule:remove(id) end
@@ -74,8 +76,8 @@ function Work.busy(id)
 end
 function Work.pause(reason,id)
     local key=selected(nil,id) local worker=agents[key]
-    if reason=="USER" or reason=="STOP" or reason=="MOVE" or reason=="REMOVE" or reason=="COMPANION_ORDER"
-        or reason=="ACTION_ORDER" or reason=="HAUL_ORDER" or reason=="PERSISTENCE_SAMPLE" then
+    if reason==Reasons.USER or reason==Reasons.STOP or reason==Reasons.MOVE or reason==Reasons.REMOVE or reason==Reasons.COMPANION_ORDER
+        or reason==Reasons.ACTION_ORDER or reason==Reasons.HAUL_ORDER or reason==Reasons.PERSISTENCE_SAMPLE then
         suspended[key]=true
         if Probe.invalidateCare then Probe.invalidateCare(key,reason) end
         if Probe.cancelReservation then Probe.cancelReservation(key,reason) end
@@ -128,7 +130,7 @@ function Work.taskCommand(actor,id,jobId,generation,command)
     local worker=agent(actor,id)
     local ok,result=pcall(worker.resume,actor,false)
     if not ok then worker.pause('ERROR') return 'ERROR' end
-    if (result=='QUEUED' or result=='STARTED') and Probe.invalidateCare then Probe.invalidateCare(id,'WORK_COMMAND') end
+    if (result=='QUEUED' or result=='STARTED') and Probe.invalidateCare then Probe.invalidateCare(id,Reasons.WORK_COMMAND) end
     if worker.busy() then schedule:add(id) end
     Signals.changed(id)
     return result

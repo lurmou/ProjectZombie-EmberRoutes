@@ -48,7 +48,7 @@ function M.changed(id)
     local Probe=use('Kernel/Boot')
     local runtime=use('Runtime/TaskRuntime').current()
     if runtime then runtime:stop(id,'MEMBERSHIP_COMMAND') end
-    if Probe.invalidateCare then Probe.invalidateCare(id,'MEMBERSHIP_COMMAND') end
+    if Probe.invalidateCare then Probe.invalidateCare(id,use('Runtime/TaskResume').Reasons.MEMBERSHIP_COMMAND) end
     if Probe.invalidateStudy then Probe.invalidateStudy(nil,id) end
     if Probe.invalidateLeisure then Probe.invalidateLeisure(id,'MEMBERSHIP_COMMAND') end
     local r=rows[id] or {} rows[id]=r r.retryAt=0 r.idleAt=0 nextAt=0

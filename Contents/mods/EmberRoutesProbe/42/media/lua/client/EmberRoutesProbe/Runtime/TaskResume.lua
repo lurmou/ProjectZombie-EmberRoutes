@@ -4,6 +4,25 @@ local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Resume={}
+-- invalidateCare reason vocabulary (E-05): diagnostic labels only. No
+-- execution branch reads them -- invalidate() only writes the value onto
+-- the superseded ref, and resume() never returns it for an INVALIDATED
+-- ref. Add a value here; never restate the literal at a call site.
+Resume.Reasons={
+    CLEAR='CLEAR',
+    WORK_COMMAND='WORK_COMMAND',
+    PRODUCTION_COMMAND='PRODUCTION_COMMAND',
+    MEMBERSHIP_COMMAND='MEMBERSHIP_COMMAND',
+    COMPANION_COMMAND='COMPANION_COMMAND',
+    USER='USER',
+    STOP='STOP',
+    MOVE='MOVE',
+    REMOVE='REMOVE',
+    COMPANION_ORDER='COMPANION_ORDER',
+    ACTION_ORDER='ACTION_ORDER',
+    HAUL_ORDER='HAUL_ORDER',
+    PERSISTENCE_SAMPLE='PERSISTENCE_SAMPLE',
+}
 local kinds={PRODUCTION='CRAFT',TRANSFER='HAUL',COMPANION='COMPANION',COOKING='COOKING',FIELD_WORK='FIELD_WORK'}
 local function epochs()
     local root=Registry.data()

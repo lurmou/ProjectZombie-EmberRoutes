@@ -2,6 +2,8 @@ local Probe=require "EmberRoutesProbe/Kernel/Boot"
 local Driver=require "EmberRoutesProbe/Runtime/Driver"
 local Factory=require "EmberRoutesProbe/Settlement/CompanionAgent"
 local Runtime=require "EmberRoutesProbe/Runtime/TaskRuntime"
+local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Reasons=TaskResume.Reasons
 local Companion={}
 local agents={}
 local function selected(id)
@@ -100,7 +102,7 @@ function Companion.debugExecute(actor,command)
             worker.membershipRevision=member.revision
         end
         local handle,why=request(actor,worker,binding,command)
-        if handle and Probe.invalidateCare then Probe.invalidateCare(id,'COMPANION_COMMAND') end
+        if handle and Probe.invalidateCare then Probe.invalidateCare(id,Reasons.COMPANION_COMMAND) end
         if not handle then actor:Say(getText('IGUI_EmberRoutesProbe_CompanionResult')..' '..tostring(why)) end
         return handle~=nil,why
     end

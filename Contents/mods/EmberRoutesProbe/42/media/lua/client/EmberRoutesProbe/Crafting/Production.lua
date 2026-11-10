@@ -14,6 +14,8 @@ local Surfaces=require "EmberRoutesProbe/Crafting/CraftSurfaces"
 local Signals=require "EmberRoutesProbe/Work/LaborSignals"
 local Log=require "EmberRoutesProbe/Kernel/Log"
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Reasons=TaskResume.Reasons
 local Production={}
 local JobExecution=require "EmberRoutesProbe/Crafting/ProductionJobs"
 local Yield=require 'EmberRoutesProbe/Crafting/ProductionYield'
@@ -709,7 +711,7 @@ function Production.execute(actor,command,object,id,options)
             return true
         end})
     if handle then
-        if not copy.nonPreemptive and Probe.invalidateCare then Probe.invalidateCare(id,'PRODUCTION_COMMAND') end
+        if not copy.nonPreemptive and Probe.invalidateCare then Probe.invalidateCare(id,Reasons.PRODUCTION_COMMAND) end
         requests[id]={handle=handle,runtime=runtime,root=root,jobId=jobId}
     end
     return handle and 'QUEUED' or why,handle
