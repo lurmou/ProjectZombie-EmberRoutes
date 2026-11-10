@@ -7,7 +7,9 @@ local Performance = require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 -- until PublicWork.lua finishes loading and sets it to true (see its :907),
 -- and production code never sets it back to false/nil. In production it is
 -- therefore always true; the `false`/nil branches guarded by it only exist
--- for tests (stub Boot tables) and for a PublicWork load failure.
+-- for tests (stub Boot tables). There is no private fallback: the private
+-- dispatch paths were deleted (F-05), so if PublicWork never loads, public
+-- dispatch simply never engages.
 local Probe = { build = build, ready = false, runtimeReady=false, failureCode = "NOT_STARTED", controlledExecution=true }
 
 -- Read the switch through this function so the spelling stays in one place;

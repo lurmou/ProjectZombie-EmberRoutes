@@ -909,9 +909,11 @@ end
 -- installing the real dispatch entry `Probe.tickPublicWork`) is the only place
 -- in production code that writes it, and nothing ever writes it back to
 -- false/nil -- so in production it is always true once this file loads. The
--- `false`/nil branches guarded by it only exist for tests (stub Boot tables)
--- and for a PublicWork load failure (this line never runs, the flag stays nil
--- and the system silently falls back to the private dispatch paths).
+-- `false`/nil branches guarded by it only exist for tests (stub Boot tables).
+-- There is no private fallback: the private dispatch paths were deleted
+-- (F-05), so if this line never runs the flag stays nil and public dispatch
+-- simply never engages -- preparePublic/publicOffer fail closed and
+-- LogisticsService.start reports DRIVER_UNAVAILABLE.
 Probe.publicDispatch=true Probe.tickPublicWork=Service.tick
 Probe.hasPendingWork=Service.hasReservation
 Probe.cancelReservation=Service.cancelReservation
