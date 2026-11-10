@@ -28,7 +28,13 @@ local target=tile(10,0) local west,east=tile(9,0),tile(11,0)
 function target:getAdjacentSquare(dir) return dir=='W' and west or dir=='E' and east or nil end
 getCell=function() return {getGridSquare=function(_,x,y) return tiles[x..':'..y] end} end
 luautils={getCorrectSquareForWall=function(_,s) return s end}
-dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/Util/AdjacentFreeTileFinder.lua')
+-- Installed native finder needs the vanilla game tree: ER_PZ_ROOT must point
+-- at the installed ProjectZomboid root. Without it, skip instead of dying
+-- on a hardcoded Windows install path. No behaviour change when it is set.
+local Vanilla=dofile('tests/lua/fixtures/vanilla-game.lua')
+local gameRoot,why=Vanilla.root()
+if not gameRoot then print('SKIP work-transfer-approach-test: '..why..'; set ER_PZ_ROOT to run'); return end
+dofile(gameRoot..'/media/lua/shared/Util/AdjacentFreeTileFinder.lua')
 local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 Transfer.reachable=function() return arrived end
 local c={npc={},actor={},job={npcId='npc'},body='owned-session'}

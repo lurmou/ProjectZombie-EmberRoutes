@@ -50,7 +50,13 @@ local npc={getInventory=function() return root end,getBodyDamage=function() retu
     playerVoiceSound=function() return 0 end,reportEvent=function(_,event) events[#events+1]=event end,
     getEmitter=function() return {isPlaying=function() return false end} end}
 ISTimedActionQueue={hasAction=function(a) return queued==a end}
-dofile('D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/TimedActions/ISApplyBandage.lua')
+-- Installed native action needs the vanilla game tree: ER_PZ_ROOT must point
+-- at the installed ProjectZomboid root. Without it, skip instead of dying
+-- on a hardcoded Windows install path. No behaviour change when it is set.
+local Vanilla=dofile('tests/lua/fixtures/vanilla-game.lua')
+local gameRoot,why=Vanilla.root()
+if not gameRoot then print('SKIP medical-native-test: '..why..'; set ER_PZ_ROOT to run'); return end
+dofile(gameRoot..'/media/lua/shared/TimedActions/ISApplyBandage.lua')
 package.loaded['TimedActions/ISApplyBandage']=true
 package.loaded['EmberRoutesProbe/SelfCare/SelfCareCustody']={located=function(c,id)
     return c.items[id] and c.items[id]:getContainer()==root

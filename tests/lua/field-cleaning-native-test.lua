@@ -1,6 +1,12 @@
 -- Real installed equipment completion + production cleaning preparation.
 local n=0 local function check(v,m) n=n+1 assert(v,m) end
-local vanilla='D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/'
+-- Installed native actions need the vanilla game tree: ER_PZ_ROOT must point
+-- at the installed ProjectZomboid root. Without it, skip instead of dying
+-- on a hardcoded Windows install path. No behaviour change when it is set.
+local Vanilla=dofile('tests/lua/fixtures/vanilla-game.lua')
+local gameRoot,why=Vanilla.root()
+if not gameRoot then print('SKIP field-cleaning-native-test: '..why..'; set ER_PZ_ROOT to run'); return end
+local vanilla=gameRoot..'/media/lua/shared/'
 dofile(vanilla..'ISBaseObject.lua') package.loaded.ISBaseObject=true
 dofile(vanilla..'TimedActions/ISBaseTimedAction.lua') package.loaded['TimedActions/ISBaseTimedAction']=true
 dofile(vanilla..'TimedActions/ISEquipWeaponAction.lua')

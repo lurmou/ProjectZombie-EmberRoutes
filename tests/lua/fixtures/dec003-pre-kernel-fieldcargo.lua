@@ -1,7 +1,23 @@
 -- TEST-ONLY frozen HEAD 7a36667 oracle. Never loaded by production.
 -- Only proven output IDs travel. Shared warehouse ranking/access and native transfer.
-require 'TimedActions/ISInventoryTransferAction'
-require 'TimedActions/ISGrabItemAction'
+-- The two vanilla actions are host-provided: prefer the installed game tree
+-- (require resolves them when the runner puts media/lua on the loader path),
+-- otherwise stub the loader entries instead of dying on a missing install.
+-- Their globals are only constructed inside transfer(), which the migration
+-- test never reaches (FieldActions is stubbed); a stub constructor fails
+-- loudly if ever used without the game.
+for _,name in ipairs({'TimedActions/ISInventoryTransferAction','TimedActions/ISGrabItemAction'}) do
+    if package.loaded[name]==nil then
+        local ok=pcall(require,name)
+        if not ok then package.loaded[name]=true end
+    end
+end
+if ISInventoryTransferAction==nil then
+    ISInventoryTransferAction={new=function() error('ISInventoryTransferAction requires the vanilla game tree (ER_PZ_ROOT)') end}
+end
+if ISGrabItemAction==nil then
+    ISGrabItemAction={new=function() error('ISGrabItemAction requires the vanilla game tree (ER_PZ_ROOT)') end}
+end
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Record=require 'EmberRoutesProbe/Field/FieldRecord'
