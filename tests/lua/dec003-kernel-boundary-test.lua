@@ -1,6 +1,6 @@
 -- Host tests only admission/dispatch + real Lua record validity, NOT Java parity.
 local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
-assert(Contracts.register('DEC003_TEST',{validate=function() return true end}))
+assert(Contracts.register('DEC003_TEST',{validate=function() return true end,errorCodes={}}))
 local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
 local Commit=require 'EmberRoutesProbe/Work/LaborJobCommit'
 local Kernel=require 'EmberRoutesProbe/Kernel/LaborKernelAvailability'

@@ -59,6 +59,7 @@ check(Contracts.register('TEST_DOMAIN',{
     validate=function(j) return type(j.payload.work)=='number' end,
     transition=function(a,b) return b.payload.work>=a.payload.work,'TEST_WORK_REVERSED' end,
     blocksScope=function(j) return j.payload.pending==true end,
+    errorCodes={TEST_WORK_REVERSED='work decreased across transition'},
 }), 'new domain registers without editing core')
 check(not Contracts.register('TEST_DOMAIN',{}),'duplicate domain registration rejected')
 local custom=job('registered') custom.providerType='TEST_DOMAIN' custom.payload={work=1}
