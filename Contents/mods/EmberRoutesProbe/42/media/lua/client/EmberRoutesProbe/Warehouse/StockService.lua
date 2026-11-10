@@ -342,7 +342,7 @@ end
 
 -- Tick hook: executes bounded evaluations per tick
 function StockService.tick()
-    if Probe.publicDispatch then return end -- Legacy fixed-NPC rules never dispatch.
+    if Probe.publicDispatch then return end -- Public dispatch owns stock rules; this tick never dispatches.
     if isPaused() or pausedForSave then return end
     syncWatchers()
 

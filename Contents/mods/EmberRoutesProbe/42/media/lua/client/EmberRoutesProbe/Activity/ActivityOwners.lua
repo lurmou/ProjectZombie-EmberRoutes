@@ -49,7 +49,7 @@ end
 function O.canStart(id,jobId,attemptId)
     local job=owner(id,jobId,attemptId) if not job then return false end
     local ref=job.payload.activityRef
-    if not ref or not ref.dutyId then return true end -- legacy/arrival uses its original guards
+    if not ref or not ref.dutyId then return true end -- jobs without a duty ref use their original guards
     local event=Store.get(ref.eventId) local d=bound(event,id,ref)
     return d and require('EmberRoutesProbe/Activity/ActivityService').validRef(id,ref) and applicable(job,event) and job.effects=='KNOWN'
         and Duties.canIssue(d,ref.dutyEpoch,jobId,attemptId) or false

@@ -11,7 +11,7 @@
 -- 5. Stale token rejection: wrapCallback discards late notifications from expired activation sessions.
 -- 6. Synchronous watch disposal defense: Late-returned release handles on synchronous close are called immediately.
 -- 7. Tooltip separation: dismissOwner on session deactivate, unregisterOwner on page instance destruction.
--- 8. Backward compatibility: mount() and unmount() preserved with 100% semantic parity for existing pages.
+-- 8. Stable page API: mount() and unmount() keep the same semantics for existing pages.
 
 local Lifecycle = {}
 local TooltipManager = require 'EmberRoutesProbe/UI/TooltipManager'
@@ -391,7 +391,7 @@ function Lifecycle.dispose(page)
 end
 
 ----------------------------------------------------------------
--- Backward-compatible mount / unmount API
+-- Mount / unmount API
 ----------------------------------------------------------------
 
 function Lifecycle.mount(page, watch, receive)

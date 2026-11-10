@@ -236,7 +236,7 @@ end
 
 function Probe.beforeSave()
     if Probe.savePersistentCarrier then Probe.savePersistentCarrier() return end
-    -- No client persistence module in MP; this branch only retains legacy cleanup.
+    -- No client persistence module in MP; this branch only runs save cleanup.
     Probe.cancelEvery("SAVE")
     if Probe.cleanupHaul and not Probe.cleanupHaul() then
         Log.write("SAVE_CLEANUP_BLOCKED", "haul fixtures retained; manual cleanup required")

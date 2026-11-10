@@ -327,7 +327,7 @@ function Runtime.new(options)
 end
 
 -- P1 enables all business/save entrances together. No live player toggle:
--- switching only Companion would strand managed NPCs in legacy work.
+-- switching only Companion would strand managed NPCs mid-work.
 local world,service,blocked
 local Boot,Registry
 local nextIdleTick=0

@@ -83,7 +83,7 @@ function S.load()
     local data=store() if not data then return false,'MEMBERSHIP_NEW_WORLD_REQUIRED' end
     local n=0 for id,r in pairs(data.byNpc) do n=n+1 if n>512 or not validRow(id,r) then return false,'MEMBERSHIP_FORMAT_INVALID' end end
     -- A load is read-only. Reject duplicate live/pending slots without repairing
-    -- or rewriting the original records; no legacy default or migration.
+    -- or rewriting the original data; no default or migration.
     local occupied={}
     local function reserve(id,leader,slot)
         local slots=occupied[leader]
@@ -101,7 +101,7 @@ end
 function S.newWorld(freshRoot)
     local root=freshRoot or Registry.data()
     if root.npcMembership~=nil then return S.load() end
-    -- A character creation event in an old world is NOT a migration grant.
+    -- A character creation event in an existing world is NOT a migration grant.
     for _,key in ipairs({'containers','jobs','companionIntents','executionSave','production','publicWork'}) do
         local value=root[key]
         if type(value)=='table' then for _ in pairs(value) do return false,'MEMBERSHIP_NEW_WORLD_REQUIRED' end end

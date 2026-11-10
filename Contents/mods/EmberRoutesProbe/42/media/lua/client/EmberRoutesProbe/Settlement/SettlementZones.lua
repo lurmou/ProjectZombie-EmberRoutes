@@ -27,7 +27,7 @@ local function copy(row)
         revision=row.revision,
         enabled=row.enabled,
         areas=areas,
-        area=firstArea, -- backward compatibility for single area reads
+        area=firstArea, -- single-area view of the first area for single-area reads
         isWorkZone=row.isWorkZone==true,
         rules={}
     }

@@ -23,7 +23,7 @@ function A.conversation(c,l,current)
             if gestureAt and now-gestureAt>=3000 then clear() gestureAt=nil end
             if now>=nextGesture then
                 clear()
-                -- Seated emote/turn compatibility is unverified; never disturb the seat pose.
+                -- Seated emote/turn behavior is unverified; never disturb the seat pose.
                 if not seated then c.npc:playEmote('yes') gestureAt=now end
                 nextGesture=now+6000
                 if c.npc.addLineChatElement then

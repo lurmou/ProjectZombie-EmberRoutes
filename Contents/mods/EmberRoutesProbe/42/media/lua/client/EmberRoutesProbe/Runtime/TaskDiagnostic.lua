@@ -1,4 +1,4 @@
--- Compatibility adapter for optional Debug probes. TaskRuntime owns all scheduling.
+-- Debug probes for optional diagnostics. TaskRuntime owns all scheduling.
 local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'

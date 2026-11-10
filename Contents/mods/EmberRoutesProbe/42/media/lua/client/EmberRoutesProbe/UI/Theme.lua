@@ -1,5 +1,5 @@
 local Theme={
-    -- Legacy avatar palette is registered once; moving it out of drawing preserves its appearance.
+    -- Avatar palette is registered once; moving it out of drawing preserves its appearance.
     avatarSurface={r=.04,g=.06,b=.08,a=.95},avatarHead={r=.28,g=.35,b=.42,a=.85},
     avatarBody={r=.18,g=.25,b=.32,a=.85},avatarEdge={r=1,g=1,b=1,a=.9},avatarInk={r=1,g=1,b=1,a=1}
 }

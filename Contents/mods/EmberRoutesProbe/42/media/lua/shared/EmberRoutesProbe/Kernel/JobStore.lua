@@ -293,7 +293,7 @@ function Store.open(root)
         notify(value)
         return true
     end
-    api.transferCooking=api.transferOwner -- Compatibility for the existing domain call.
+    api.transferCooking=api.transferOwner -- Call-sign alias for the existing domain call.
     function api:removeSettled(key,revision)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
