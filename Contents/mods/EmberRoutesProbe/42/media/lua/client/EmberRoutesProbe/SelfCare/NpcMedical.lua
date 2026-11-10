@@ -82,6 +82,7 @@ function NpcMedical.open(doctor, npc)
         -- 2.5 格外或跨层：自动寻路走近，到达身边后自动秒开
         local square = npc:getCurrentSquare()
         if square and luautils.walkAdj(doctor, square) then
+            -- callback-first: character is the player doctor, not a managed NPC; no TaskController ticket/body exists for a player-initiated walk.
             ISTimedActionQueue.add(ISOpenNpcMedicalAction:new(doctor, npc))
         end
     end

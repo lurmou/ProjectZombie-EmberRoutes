@@ -190,7 +190,8 @@ local function waitingEvidence(event,id)
     return evidence,job
 end
 -- Scalar barrier recheck; no actor/grid scan. A STOPPING Session cannot retain a
--- ready receipt until its eventual native stop callback.
+-- ready receipt: the receipt is only valid while ACTIVE, and stop completion is
+-- polled via observeStop -- there is no native stop callback to wait for.
 function P.receipt(event,id)
     local evidence=waitingEvidence(event,id)
     return evidence~=false and evidence~=nil,evidence and evidence.at or nil
