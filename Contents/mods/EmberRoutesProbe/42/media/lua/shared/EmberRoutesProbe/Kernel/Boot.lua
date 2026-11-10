@@ -254,4 +254,9 @@ if Events and Events.OnGameStart then
     Events.OnPreMapLoad.Add(Probe.reset)
     Events.OnSave.Add(Probe.beforeSave)
 end
+-- Retirement rides the mod's single even-paused dispatcher.
+require('EmberRoutesProbe/Kernel/EvenPaused').add(function()
+    if Probe.ready then EmberRoutesProbeJava.retirementTick() end
+end)
+
 return Probe
