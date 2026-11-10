@@ -1,7 +1,9 @@
 -- Built-in labor wiring snapshot: what each registry holds after the real
--- registration code runs, in registration order. Order is load-bearing:
--- provider order decides every PublicWorkProviders fan-out and the
--- pendingScore tie; recovery order is the cold-load restore sequence.
+-- registration code runs, in registration order. Registration order is the
+-- stable categories() enumeration only: fan-out follows each provider's
+-- explicit defaultPriority field (cleaning 2, the 3s, toolReturn 4), and
+-- pendingScore takes the highest score, so neither depends on the order
+-- below. Recovery order is the cold-load restore sequence.
 -- Domain dependencies are load-only stubs; nothing here dispatches work.
 -- Usage: lua tests/lua/labor-wiring-order-test.lua [snapshot-out.txt]
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;"..package.path
@@ -89,14 +91,14 @@ end
 -- cooking gained 'command' and 'retireUnclaimed', crafting 'orderCommanded' and
 -- 'orderRetired' (were Service.command and Service.retireSettled).
 local expected={
-    'category 1 crafting defaultPriority=3 hooks=bumpGeneration,calculateSkillScore,cancel,capacityBlocked,claim,cleanupOrder,discover,evaluations,hasPrechecks,hasWork,holdSelection,idle,orderCommanded,orderRetired,pending,pendingScore,precheck,reconcile,reset,scanStatus,step,waiting',
-    'category 2 hauling defaultPriority=3 hooks=advance,blocksDecision,claim,discover,hasWork,reconcile,reset',
+    'category 1 crafting defaultPriority=3 hooks=bumpGeneration,calculateSkillScore,cancel,capacityBlocked,claim,cleanupOrder,discover,evaluations,hasPrechecks,hasWork,holdSelection,idle,orderCommanded,orderRetired,pending,pendingScore,precheck,reconcile,reset,retained,scanStatus,step,waiting',
+    'category 2 hauling defaultPriority=3 hooks=advance,blocksDecision,claim,discover,hasWork,reconcile,reset,retained',
     'category 3 cooking defaultPriority=3 hooks=advance,claim,command,discover,hasWork,idle,reconcile,retained,retire,retireUnclaimed',
     'category 4 cleaning defaultPriority=2 hooks=advance,claim,discover,hasWork,observeDemand,reconcile,retained',
     'category 5 farming defaultPriority=3 hooks=advance,claim,discover,hasWork,reconcile,retained',
     'category 6 lumberjack defaultPriority=3 hooks=advance,claim,discover,hasWork,reconcile,retained',
     'category 7 forager defaultPriority=3 hooks=advance,claim,discover,hasWork,reconcile,retained',
-    'category 8 toolReturn defaultPriority=4 hooks=advance,beforeClaim,claim,discover,hasWork,reconcile',
+    'category 8 toolReturn defaultPriority=4 hooks=advance,beforeClaim,claim,discover,hasWork,reconcile,retained',
     'contract 1 COOKING fields=capacityMutable,restoreClaims,tokenBucket,transferReason,transferValid,transition,validate',
     'contract 2 FIELD_WORK fields=capacityMutable,restoreClaims,tokenBucket,validate',
     'contract 3 ACTIVITY fields=restoreClaims,tokenBucket,validate',
@@ -120,5 +122,15 @@ local expected={
 }
 for i=1,math.max(#out,#expected) do
     assert(out[i]==expected[i],'wiring drift at line '..i..': got '..tostring(out[i])..' expected '..tostring(expected[i]))
+end
+-- P1 registry: every built-in provider carries retained, and fan-out follows
+-- the explicit defaultPriority field, not registration order.
+local fanout={}
+for _,p in ipairs(Providers.all()) do fanout[#fanout+1]=p.category..':'..tostring(p.defaultPriority) end
+assert(table.concat(fanout,',')=='cleaning:2,cooking:3,crafting:3,farming:3,forager:3,hauling:3,lumberjack:3,toolReturn:4',
+    'fan-out order must follow explicit defaultPriority, got '..table.concat(fanout,','))
+for _,c in ipairs(Providers.categories()) do
+    assert(type(Providers.get(c).retained)=='function','registered provider lacks retained: '..c)
+    assert(type(Providers.get(c).defaultPriority)=='number','registered provider lacks defaultPriority: '..c)
 end
 print('PASS '..#out..' built-in wiring entries in recorded order')

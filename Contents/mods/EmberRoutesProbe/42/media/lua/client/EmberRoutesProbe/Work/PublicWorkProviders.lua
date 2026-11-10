@@ -1,14 +1,45 @@
 -- Internal registry for public ordinary-work providers.
 -- Each provider contributes discovery, claim execution, reconcile, and optional
 -- idle/clean routines for a distinct workCategory (e.g. 'crafting', 'hauling', 'cooking').
+-- Two fields are mandatory and loud: `defaultPriority` (the explicit fan-out
+-- rank, 0-4) and `retained` (P4: true while this provider still holds one of
+-- the worker's unfinished Jobs). A provider without either is rejected at
+-- registration instead of being silently skipped by the retained gate.
+-- Fan-out order is derived from the explicit fields, never from the order
+-- register happened to be called in: `order` below is kept sorted by
+-- (defaultPriority, category). `registrationOrder` keeps the stable
+-- registration sequence behind categories(), which UI lists and saved
+-- priority sets enumerate.
 local Registry={}
 local defs={}
 local order={}
+local registrationOrder={}
 local allCache
 
+-- Sorted insert position for a def in `order`.
+local function insertSorted(category)
+    local def=defs[category]
+    local i=1
+    while i<=#order do
+        local other=defs[order[i]]
+        if def.defaultPriority<other.defaultPriority
+            or def.defaultPriority==other.defaultPriority and category<order[i] then break end
+        i=i+1
+    end
+    table.insert(order,i,category)
+end
+
 function Registry.register(def)
-    if type(def)~='table' or type(def.category)~='string' or #def.category<1 or #def.category>32
-        or (def.defaultPriority~=nil and (type(def.defaultPriority)~='number' or def.defaultPriority<0 or def.defaultPriority>4)) then
+    if type(def)~='table' or type(def.category)~='string' or #def.category<1 or #def.category>32 then
+        return false,'PROVIDER_INVALID'
+    end
+    -- defaultPriority is required: no silent `or 3` fallback anywhere.
+    if def.defaultPriority==nil then
+        return false,'PROVIDER_MISSING_PRIORITY'
+    end
+    if type(def.defaultPriority)~='number' or def.defaultPriority~=def.defaultPriority
+        or def.defaultPriority~=math.floor(def.defaultPriority)
+        or def.defaultPriority<0 or def.defaultPriority>4 then
         return false,'PROVIDER_INVALID'
     end
     if type(def.discover)~='function' then
@@ -17,6 +48,15 @@ function Registry.register(def)
     if type(def.claim)~='function' then
         return false,'PROVIDER_MISSING_CLAIM'
     end
+    -- retained is required: a provider that cannot answer "do I still hold
+    -- this worker's unfinished Job" must not register at all. A present but
+    -- non-function value keeps the hook-type error so the failure names it.
+    if def.retained==nil then
+        return false,'PROVIDER_MISSING_RETAINED'
+    end
+    if type(def.retained)~='function' then
+        return false,'PROVIDER_HOOK_NOT_FUNCTION:retained'
+    end
     -- priorityRequired: every saved priority set must carry this category.
     if def.priorityRequired~=nil and type(def.priorityRequired)~='boolean' then
         return false,'PROVIDER_INVALID'
@@ -24,7 +64,7 @@ function Registry.register(def)
     -- Optional hooks: if present, must be functions.
     local optHooks={'advance','reconcile','idle','step','hasWork','reset','cancel',
         'scanStatus','precheck','hasPrechecks','capacityBlocked','blocksDecision',
-        'holdSelection','pendingScore','pending','beforeClaim','observeDemand','retained',
+        'holdSelection','pendingScore','pending','beforeClaim','observeDemand',
         'command','orderCommanded','retireUnclaimed','orderRetired'}
     for _,hook in ipairs(optHooks) do
         if def[hook]~=nil and type(def[hook])~='function' then
@@ -32,9 +72,12 @@ function Registry.register(def)
         end
     end
     if not defs[def.category] then
-        order[#order+1]=def.category
+        registrationOrder[#registrationOrder+1]=def.category
+    else
+        for i,cat in ipairs(order) do if cat==def.category then table.remove(order,i) break end end
     end
     defs[def.category]=def
+    insertSorted(def.category)
     allCache=nil
     return true
 end
@@ -48,14 +91,17 @@ function Registry.has(category)
 end
 
 function Registry.categories()
+    -- Stable registration sequence: UI lists and saved priority sets
+    -- enumerate this, so a provider's explicit priority never reorders them.
     local copy={}
-    for i,cat in ipairs(order) do copy[i]=cat end
+    for i,cat in ipairs(registrationOrder) do copy[i]=cat end
     return copy
 end
 
--- Read-only provider list, reused until the registry changes. Every caller
--- only iterates it, and it is rebuilt on register/reset, so no caller can
--- observe a stale or shared mutation.
+-- Read-only provider list in explicit priority order (defaultPriority, then
+-- category), reused until the registry changes. Every caller only iterates
+-- it, and it is rebuilt on register/reset, so no caller can observe a stale
+-- or shared mutation.
 function Registry.all()
     if allCache then return allCache end
     local list={}
@@ -74,13 +120,16 @@ function Registry.cancelPending(npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.cancel then p.cancel(npcId) end end
 end
 function Registry.pendingScore(npcId)
+    -- Highest score wins. Registration order used to decide the tie (first
+    -- positive), which made an implicit listing order act as a priority.
+    local best=0
     for _,kind in ipairs(order) do local p=defs[kind]
         if p.pendingScore then
             local s=p.pendingScore(npcId)
-            if s and s>0 then return s end
+            if s and s>best then best=s end
         end
     end
-    return 0
+    return best
 end
 function Registry.hasPending(npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.pending and p.pending(npcId) then return true end end
@@ -102,7 +151,8 @@ function Registry.resetWorld()
     for _,kind in ipairs(order) do local p=defs[kind] if p.reset then p.reset() end end
 end
 -- A provider still holding this worker's unfinished job keeps it out of new
--- ordinary work. Registration order; the first holder stops the check.
+-- ordinary work. Every registered provider answers retained (registration
+-- rejects one that cannot), so no holder can be silently skipped.
 function Registry.retained(npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.retained and p.retained(npcId) then return true end end
     return false
@@ -177,6 +227,7 @@ end
 function Registry.reset()
     defs={}
     order={}
+    registrationOrder={}
     allCache=nil
 end
 

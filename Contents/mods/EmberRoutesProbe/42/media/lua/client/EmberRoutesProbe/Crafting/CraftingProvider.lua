@@ -10,6 +10,8 @@ local Signals = require 'EmberRoutesProbe/Work/LaborSignals'
 local Wake = require 'EmberRoutesProbe/Runtime/PlanningWake'
 local CookingOrders = require 'EmberRoutesProbe/Cooking/CookingOrders'
 local Probe = require 'EmberRoutesProbe/Kernel/Boot'
+local Jobs = require 'EmberRoutesProbe/Runtime/TaskJobs'
+local JobState = require 'EmberRoutesProbe/Kernel/JobState'
 
 local evaluations = Queue.new(4)
 local decisionScans = {}
@@ -83,6 +85,18 @@ end
 
 function CraftingProvider.pending(npcId)
     return evaluations:get(npcId)
+end
+
+-- P4 (provider-lifecycle): an NPC still holding an unfinished CRAFT Job must
+-- keep it out of new ordinary work. Same live JobStore read as FieldWork and
+-- CookingService: any non-terminal CRAFT job retains, judged only by the
+-- JobState registry, never by comparing job state strings here.
+function CraftingProvider.retained(npcId)
+    local found=false
+    Jobs.current():visitNpc(npcId,function(j)
+        if j.providerType=='CRAFT' and not JobState.isTerminal(j.state) then found=true end
+    end)
+    return found
 end
 
 function CraftingProvider.cancel(npcId)

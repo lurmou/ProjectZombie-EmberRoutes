@@ -42,7 +42,7 @@ stub('Kernel/Log',{write=function() end})
 local studies=0
 local Probe=stub('Kernel/Boot',{ready=true,runtimeReady=true,hasJava=function() return true end,
     invalidateStudy=function() studies=studies+1 end})
-stub('Runtime/TaskJobs',{current=function() return {ordinaryCount=function() return 0 end,forNpc=function() return {} end} end})
+stub('Runtime/TaskJobs',{current=function() return {ordinaryCount=function() return 0 end,forNpc=function() return {} end,visitNpc=function() end} end})
 stub('Kernel/JobStore',{LIMIT=100})
 stub('Kernel/DispatchMetrics',{new=function() return {claims=0,record=function() end,snapshot=function() end} end})
 stub('Runtime/PlanningWake',{revision=function() return 0 end,changed=function() return false end,capture=function() return {} end})
@@ -58,7 +58,7 @@ stub('Cooking/CookingOrders',{describe=function() return nil end,parentAllows=fu
 stub('Logistics/DeliveryService',{discover=function() end,advance=function() end,hasWork=function() return false end})
 stub('Logistics/LogisticsService',{publicOffer=function() return nil end})
 stub('Field/ToolReturnService',{canInterrupt=function() return false end})
-stub('Field/ToolReturnProvider',{category='toolReturn',defaultPriority=4,discover=function() end,claim=function() return 'X','ROLLED_BACK' end})
+stub('Field/ToolReturnProvider',{category='toolReturn',defaultPriority=4,retained=function() return false end,discover=function() end,claim=function() return 'X','ROLLED_BACK' end})
 stub('Field/FieldDemand',{advance=function() end})
 local retainedNow={cooking=false,field=false}
 stub('Cooking/CookingService',{retained=function() rec('cooking.retained') return retainedNow.cooking end,
@@ -164,8 +164,11 @@ for _,id in ipairs(retired) do
 end
 for id in pairs(orders) do orders[id]=nil end
 
--- 4. Eligibility: cooking retained, then field retained, before the craft
--- record, whether or not field operations are open.
+-- 4. Eligibility: retained gates run in explicit priority order (the field
+-- shells are defaultPriority 2, cooking 3), before the craft record, whether
+-- or not field operations are open. The order is the registry's declared
+-- (defaultPriority, category) fan-out, not registration order: cleaning is
+-- consulted first, so a field hold stops the check before cooking is asked.
 local function decision()
     trace={} clock=clock+1000 Public.tick()
     local list={} -- the field check may be evaluated once per field provider
@@ -174,14 +177,14 @@ local function decision()
 end
 local head='bind,busy,'
 retainedNow.cooking,retainedNow.field=true,false
-check(decision()==head..'cooking.retained','cooking retained stops eligibility first')
+check(decision()==head..'field.retained,cooking.retained','cooking retained stops eligibility after the field check')
 retainedNow.cooking,retainedNow.field=false,true
-check(decision()==head..'cooking.retained,field.retained','field retained stops eligibility after cooking')
+check(decision()==head..'field.retained','field retained stops eligibility first')
 gate.field=false
-check(decision()==head..'cooking.retained,field.retained','field retained applies with field operations closed')
+check(decision()==head..'field.retained','field retained applies with field operations closed')
 gate.field=true retainedNow.field=false
 local got=decision()
-check(got:sub(1,#head+#'cooking.retained,field.retained,crafts')==head..'cooking.retained,field.retained,crafts',
+check(got:sub(1,#head+#'field.retained,cooking.retained,field.retained,crafts')==head..'field.retained,cooking.retained,field.retained,crafts',
     'unretained worker reaches the craft record: '..got)
 -- 5. Priority validation: crafting and hauling are required, other keys are
 -- checked only when present, unknown keys are kept, unknown categories refused.
@@ -219,6 +222,8 @@ local probing=false
 Probe.careProbeWork=function() return probing end
 local key,category,declare,claims='probe:0','claimprobe',nil,{}
 check(Public.registerProvider({category='claimprobe',
+    defaultPriority=3,
+    retained=function() return false end,
     discover=function(env)
         local offer=env.upsertOffer(key,1,category)
         if offer and not offer.jobId then

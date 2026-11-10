@@ -258,6 +258,7 @@ local discoveredCooking=0 local claimedCooking=0 local reconciledCooking=0
 local cookingProvider={
     category='cooking',
     defaultPriority=2,
+    retained=function() return false end,
     discover=function(env)
         discoveredCooking=discoveredCooking+1
         if env.npcId=='alice' and env.priority>0 then

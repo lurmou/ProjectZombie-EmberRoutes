@@ -115,6 +115,14 @@ function Provider.hasWork()
     return false
 end
 
+-- P4 (provider-lifecycle): an NPC mid-return still holds an unfinished
+-- tool-return job. The live task is the truth: startFor records it until the
+-- task stops or finishes, including recovery restarts driven by advance().
+-- A HELD tool with no live task holds no job, so it does not retain.
+function Provider.retained(npcId)
+    return ToolReturnService.liveTask(npcId) ~= nil
+end
+
 function Provider.beforeClaim(selected,npcId)
     if selected.category~=Provider.category and ToolReturnService.canInterrupt(npcId) then
 	ToolReturnService.interrupt(npcId,'PREEMPTED_BY_'..string.upper(selected.category))

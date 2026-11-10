@@ -107,7 +107,7 @@ function F.advance(env)
 end
 function F.provider(def)
     definitions[def.category]=def
-    local p={category=def.category,defaultPriority=def.defaultPriority or 3}
+    local p={category=def.category,defaultPriority=def.defaultPriority or 3,retained=F.retained}
     function p.discover(env)
         if F.retained(env.npcId) then return end
         return def.discover(env)
