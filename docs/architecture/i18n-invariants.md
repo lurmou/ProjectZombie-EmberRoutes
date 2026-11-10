@@ -24,7 +24,12 @@
 - **严禁单语言提交**：任何翻译键的增加、删除或重命名，必须在 `Translate/CN/IG_UI.json` 与 `Translate/EN/IG_UI.json`（或 `Sandbox.json`）中**同步成对变更**；
 - **键名集合完全一致**：禁止 CN 存在但 EN 缺失，或 EN 存在但 CN 缺失。
 
-## 4. 构建与验证硬性门禁 (Automated CI & Build Gate)
+## 5. 百分号转义（PZ 42.20.2 %% 规则）
+- **字面 `%` 必须写 `%%`**：翻译值里要显示 `%`（如 `-2%`、`负荷 42%`）必须写成 `%%`；裸 `%` 目前只靠引擎临时兼容才显示，未来版本会被移除。已实测：`benefitAppliedValues` 的尾部裸 `%` 在当前安装版引擎里已导致显示损坏（`%3$s` 泄漏为 `-6$s`），改成 `%%` 后恢复正常。
+- **占位符 `%1`~`%9` 不变**，`%2x%3`（尺寸 `宽x高`）读作占位符 `%2` + 字面 `x` + 占位符 `%3`，不是格式动词。
+- **Lua `string.format` 动词（`%d`/`%s`/`%.1f`）只允许白名单键**：见 `tools/check-i18n.py` 的 `FORMAT_VERB_ALLOWLIST`（10 个键，均经 `getTextOrNull` 无参取回原文后在 Lua 里 `string.format`）。新文案优先用 `getText` 的 `%1`~`%9` 参数；新增格式动词必须进白名单并注明调用点，否则 `tools/check-i18n.py`（第 8 节）直接报错。
+
+## 6. 构建与验证硬性门禁 (Automated CI & Build Gate)
 - **校验工具**：项目根目录已配备自动化静态审计工具 `python tools/check-i18n.py`；
 - **构建拦截**：`tools/build-probe.ps1` 已将 `tools/check-i18n.py` 接入核心流水线。只要存在以下任何情况，构建将立即中断（Exit Code 1）：
   1. CN 与 EN 键集不对称；

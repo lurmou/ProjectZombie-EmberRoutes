@@ -11,6 +11,11 @@ Enforces:
    - Settlement dashboard tabs: IGUI_EmberRoutesProbe_Settlement_tab_<tab>
    - WorkPolicy titleKeys
    - Membership reason/action codes: IGUI_EmberRoutesProbe_Membership_<code>
+5. No bare % in any translation value (PZ 42.20.2: a literal % must be written
+   %%; a bare % is only kept by a temporary engine workaround that will be
+   removed). %% and %1..%9 placeholders are fine. Lua string.format verbs
+   (%d/%s/%.1f) are only allowed for the keys in FORMAT_VERB_ALLOWLIST below:
+   those values are fetched with getTextOrNull (no args) and formatted in Lua.
 """
 
 import sys
@@ -22,6 +27,36 @@ from pathlib import Path
 def load_json(path):
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+# Keys whose translation values intentionally contain Lua string.format verbs
+# (%d/%s/%.1f). Each is fetched with getText/getTextOrNull (no args) and
+# formatted in Lua -- the engine returns the raw string untouched on that path
+# (verified against the installed Translator: getText with no args returns the
+# format string verbatim for Lua string.format). Do NOT add a key here to
+# silence the gate: prefer getText %1..%9 args for new strings, and migrate
+# these keys to %1..%9 args instead (see TranslatorFormatTest, which already
+# forbids %d/%s for the Public/Monitor/Stock/Crafting scopes).
+# Value: the Lua call site doing the string.format.
+FORMAT_VERB_ALLOWLIST = {
+    'IGUI_EmberRoutesProbe_NpcDebug_allPerksFive': 'Integration/NpcDebugMenu.lua:299',
+    'IGUI_EmberRoutesProbe_NpcDebug_allPerksMax': 'Integration/NpcDebugMenu.lua:298',
+    'IGUI_EmberRoutesProbe_NpcDebug_allPerksZero': 'Integration/NpcDebugMenu.lua:300',
+    'IGUI_EmberRoutesProbe_Order_cancelConfirm': 'no Lua call site (dead key, kept for parity)',
+    'IGUI_EmberRoutesProbe_Public_conversionFull': 'UI/PublicOrderDialog.lua:405',
+    'IGUI_EmberRoutesProbe_Public_conversionLine1': 'UI/PublicOrderDialog.lua:407',
+    'IGUI_EmberRoutesProbe_Public_conversionLine2': 'UI/PublicOrderDialog.lua:409',
+    'IGUI_EmberRoutesProbe_Settlement_containerInspectorTotal': 'UI/ContainerInspectorDialog.lua:60',
+    'IGUI_EmberRoutesProbe_Settlement_summaryDetailFormat': 'no Lua call site (dead key, kept for parity)',
+    'IGUI_EmberRoutesProbe_Stock_btn_create_confirm_with_target': 'UI/StockRules.lua:539',
+}
+
+# A Lua string.format verb: % + optional flags/width/precision + conversion.
+# Evaluated only when the char after % is not '%' and not a PZ placeholder
+# digit, so "%2x%3" (zoneOption/dragAdd dimensions) tokenizes as placeholder
+# %2 + literal "x" + placeholder %3, not as a verb. Width-qualified verbs
+# starting with a placeholder digit (%5d) are likewise read as placeholder +
+# literal -- rewrite those as %d / %.nf or a %N argument instead.
+FORMAT_VERB_RE = re.compile(r'%[#0\- +]*\d*(?:\.\d+)?[diouxXeEfgGcsq]')
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -175,6 +210,51 @@ def main():
     binding_key = 'UI_optionscreen_binding_EmberRoutesSquadWheel'
     if binding_key not in load_json(os.path.join(trans_root, 'CN', 'UI.json')):
         errors.append(f"Missing native key binding label: {binding_key}")
+
+    # 8. Percent-escape check (PZ 42.20.2: literal % must be %%)
+    # Tokenize every value left to right: %% (escaped), %1..%9 (PZ
+    # placeholder), Lua format verb (allowlisted keys only), anything else
+    # is a bare % and fails the gate. Covers all 6 translation files.
+    seen_format_verbs = set()
+    for filename in ['IG_UI.json', 'Sandbox.json', 'UI.json']:
+        for lang in ['CN', 'EN']:
+            data = load_json(os.path.join(trans_root, lang, filename))
+            for key, value in data.items():
+                i = 0
+                while i < len(value):
+                    if value[i] != '%':
+                        i += 1
+                        continue
+                    nxt = value[i + 1] if i + 1 < len(value) else ''
+                    if nxt == '%':
+                        i += 2
+                        continue
+                    if nxt and nxt in '123456789':  # '' (trailing %) is NOT a placeholder: '' in '123456789' is True in Python, so guard it
+                        i += 2
+                        continue
+                    m = FORMAT_VERB_RE.match(value, i)
+                    if m:
+                        seen_format_verbs.add(key)
+                        if key not in FORMAT_VERB_ALLOWLIST:
+                            errors.append(
+                                f"[{filename}:{lang}] Lua format verb '{m.group(0)}' in '{key}' "
+                                f"is not in FORMAT_VERB_ALLOWLIST: use getText %1..%9 args for "
+                                f"new strings, or add the key to the allowlist with its "
+                                f"string.format call site"
+                            )
+                        i += len(m.group(0))
+                        continue
+                    errors.append(
+                        f"[{filename}:{lang}] Bare % in '{key}': {value!r} -- "
+                        f"write %% for a literal percent (PZ 42.20.2)"
+                    )
+                    i += 1
+    for key in sorted(FORMAT_VERB_ALLOWLIST):
+        if key not in seen_format_verbs:
+            errors.append(
+                f"Stale FORMAT_VERB_ALLOWLIST entry '{key}': no translation value "
+                f"still uses a Lua format verb -- remove it from the allowlist"
+            )
 
     # Summary report
     if errors:
