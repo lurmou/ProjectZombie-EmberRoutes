@@ -211,7 +211,7 @@ function Filter.setGroup(config,id,value)
     end
     -- Exact-type exceptions deliberately survive broad category edits.
 end
-function Filter.legacy(tag)
+function Filter.fromTag(tag)
     local config=Filter.new()
     if tag=="private" or not tag then config.private=true return config end
     if tag=="inbox" or tag=="outbox" then

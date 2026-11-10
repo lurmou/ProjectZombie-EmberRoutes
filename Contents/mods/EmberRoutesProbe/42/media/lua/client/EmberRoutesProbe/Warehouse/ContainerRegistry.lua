@@ -42,7 +42,7 @@ end
 function Registry.filter(object,container)
     local tag=Registry.metadata(object,container)
     if not tag then return nil end
-    return tag.filter or Filter.legacy(tag.tag)
+    return tag.filter or Filter.fromTag(tag.tag)
 end
 function Registry.changed(id)
     notify(Registry.listeners,id)
@@ -86,7 +86,7 @@ end
 local function integer(value)
     return type(value)=="number" and value==value and math.abs(value)<=10000000 and value==math.floor(value)
 end
--- Detached locator. Missing index/type in old saves remains compatible with primary slot 0.
+-- Detached locator. A missing index defaults to primary slot 0.
 function Registry.describe(id)
     local r=Registry.data().containers[id]
     if not r then return nil,"CONTAINER_NOT_REGISTERED" end
@@ -190,7 +190,7 @@ function Registry.tag(actor, object, name, deferNotification, container, bypassD
         end
     end
     tag.tag = name == "untag" and "private" or name
-    tag.filter = nil -- Legacy debug commands explicitly replace a prior configuration.
+    tag.filter = nil -- Retagging explicitly replaces a prior configuration.
     data.containers[tag.id] = { x=square:getX(), y=square:getY(), z=square:getZ(), containerIndex=index, containerType=container:getType() }
     if not deferNotification then Registry.changed(tag.id) end
     return "TAGGED " .. name .. " id=" .. tag.id

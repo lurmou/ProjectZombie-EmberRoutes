@@ -522,13 +522,11 @@ COMPAT_BASELINE = {
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Field/ToolReturnProvider.lua': 1,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Runtime/Persistence.lua': 8,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/UI/InlineCardDrawer.lua': 2,
-    'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Warehouse/ContainerRegistry.lua': 3,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Warehouse/OrderMonitorService.lua': 1,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/LaborStore.lua': 7,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/PublicWork.lua': 1,
     'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua': 2,
     'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/JobStore.lua': 2,
-    'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Warehouse/StorageFilter.lua': 1,
     'java/src/main/java/emberroutes/probe/ProbePersistence.java': 5,
 }
 def _line_words(line):
