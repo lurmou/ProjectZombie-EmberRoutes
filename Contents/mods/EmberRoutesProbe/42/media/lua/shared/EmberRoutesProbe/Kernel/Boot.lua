@@ -53,7 +53,7 @@ function Probe.unavailableMessage()
     local code = Probe.unavailableCode()
     if code == "MISSING_JAVA" then return getText("IGUI_EmberRoutesProbe_MissingJava") end
     if code == "VERSION_MISMATCH" then return getText("IGUI_EmberRoutesProbe_VersionMismatch") end
-    if code=='LEGACY_TASK_RESET_REQUIRED' or code=='LEGACY_STOCK_RESET_REQUIRED' then return getText('IGUI_EmberRoutesProbe_Public_'..code) end
+    if code=='LEGACY_TASK_RESET_REQUIRED' then return getText('IGUI_EmberRoutesProbe_Public_'..code) end
     if code=='MEMBERSHIP_NEW_WORLD_REQUIRED' or code=='MEMBERSHIP_FORMAT_INVALID' then return getText('IGUI_EmberRoutesProbe_Membership_'..code) end
     return getText("IGUI_EmberRoutesProbe_DriverNotReady") .. " " .. code
 end
@@ -99,7 +99,7 @@ function Probe.begin()
         local ok,reason=pcall(Probe.prepareTaskRecovery)
         if not ok then
             Probe.ready=false Probe.restorePending=false Probe.failureCode='RECOVERY_RECORDS_INVALID'
-            for _,code in ipairs({'LEGACY_TASK_RESET_REQUIRED','LEGACY_STOCK_RESET_REQUIRED','MEMBERSHIP_NEW_WORLD_REQUIRED','MEMBERSHIP_FORMAT_INVALID'}) do
+            for _,code in ipairs({'LEGACY_TASK_RESET_REQUIRED','MEMBERSHIP_NEW_WORLD_REQUIRED','MEMBERSHIP_FORMAT_INVALID'}) do
                 if string.find(tostring(reason),code,1,true) then Probe.failureCode=code end
             end
             if Probe.beforeStockSave then Probe.beforeStockSave() end

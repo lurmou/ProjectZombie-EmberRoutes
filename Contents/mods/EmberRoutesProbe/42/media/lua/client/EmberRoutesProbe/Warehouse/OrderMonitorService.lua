@@ -55,7 +55,7 @@ function Service.status(actor,id)
     local entry,reason=Ledger.view(actor,id)
     local result={rows={},reason=reason}
     if not entry then return result end
-    if Probe.failureCode=='LEGACY_TASK_RESET_REQUIRED' or Probe.failureCode=='LEGACY_STOCK_RESET_REQUIRED'
+    if Probe.failureCode=='LEGACY_TASK_RESET_REQUIRED'
         or Probe.failureCode=='RECOVERY_RECORDS_INVALID' then result.reason=Probe.failureCode return result end
     local root=Registry.data()
     local runtime=Runtime.current()
