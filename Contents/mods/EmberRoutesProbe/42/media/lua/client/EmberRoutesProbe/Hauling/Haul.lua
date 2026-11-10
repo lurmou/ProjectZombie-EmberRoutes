@@ -322,7 +322,7 @@ local function execute(actor, command, object,c)
     if not Rules.near(actor:getX(), actor:getY(), actor:getZ(), object:getSquare():getX() + 0.5,
             object:getSquare():getY() + 0.5, object:getSquare():getZ()) then return "TOO_FAR_TO_TAG" end
     local data = object:getModData()
-    data.EmberRoutesProbeContainer = data.EmberRoutesProbeContainer or { id = newID() }
+    data.EmberRoutesProbeContainer = data.EmberRoutesProbeContainer or { format = 1, id = newID() }
     data.EmberRoutesProbeContainer.role = command
     Haul.endpoints[command] = { object = object, container = object:getContainer(), id = data.EmberRoutesProbeContainer.id }
     log("TAGGED role=" .. command .. " id=" .. Haul.endpoints[command].id)

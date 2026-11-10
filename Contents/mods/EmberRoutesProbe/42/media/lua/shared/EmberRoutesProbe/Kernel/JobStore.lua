@@ -2,6 +2,7 @@
 local Store={LIMIT=512,PERSONAL_LIMIT=256}
 local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 require('EmberRoutesProbe/Kernel/BuiltinJobContracts').install()
 local emptyContract={}
 local function contract(kind) return Contracts.get(kind) or emptyContract end
@@ -63,8 +64,17 @@ end
 local function prepare(root)
     if type(root)~='table' then return nil,'JOB_ROOT_INVALID' end
     if legacy(root) then return nil,'LEGACY_TASK_RESET_REQUIRED' end
+    -- The saved carrier is never written by the gate: check() is read-only,
+    -- and open() publishes its own carrier. The gate runs on a shallow copy,
+    -- so a missing field is filled at read without touching the stored table.
     local saved=root.taskJobs
-    if saved~=nil and (type(saved)~='table' or saved.format~=1 or type(saved.byId)~='table') then return nil,'JOB_FORMAT_UNSUPPORTED' end
+    if saved==nil then saved={format=1,byId={}} end
+    if type(saved)~='table' then return nil,'JOB_FORMAT_UNSUPPORTED' end
+    local probe={} for key,value in pairs(saved) do probe[key]=value end
+    local ok,reason=Templates.open(probe,Templates.templates.taskJobs,'JOB_FORMAT_UNSUPPORTED')
+    if not ok then return nil,reason end
+    if type(probe.byId)~='table' then return nil,'JOB_FORMAT_UNSUPPORTED' end
+    saved=probe
     -- The live authority is always an independent copy. `saved` stays the save
     -- carrier only: mutating it (by any other module) can no longer reach the
     -- records the store validates, indexes and publishes.

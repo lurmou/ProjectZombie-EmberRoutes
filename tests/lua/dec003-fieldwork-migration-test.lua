@@ -14,7 +14,7 @@ local function setup(old)
     local root={} local jobs=assert(Jobs.open(root))
     local st={root=root,claims=Claims.new(),tokens={},fieldTokens={},published=true}
     local S={} local specs={} local context local location='npc' local custody={id='tool',state='HELD'}
-    root.toolCustody={byId={tool=custody}}
+    root.toolCustody={format=1,byId={tool=custody}}
     local function alloc(r,id) r.nextClaimSeq=(r.nextClaimSeq or 0)+1 return id..':c'..r.nextClaimSeq end
     local function clean(id) st.tokens[id]=nil st.fieldTokens[id]=nil end
     function S.data() st.published=true return root end

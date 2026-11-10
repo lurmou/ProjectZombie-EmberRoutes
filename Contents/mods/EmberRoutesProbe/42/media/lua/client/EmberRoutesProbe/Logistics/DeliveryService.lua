@@ -3,6 +3,7 @@ local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Service={}
 local nextRecovery=0
@@ -37,7 +38,11 @@ local function validate(value)
 end
 local function data()
     local root=Registry.data()
-    root.deliveryOrders=root.deliveryOrders or {format=1,orders={}}
+    if root.deliveryOrders==nil then root.deliveryOrders=Templates.fresh('deliveryOrders') end
+    -- Missing fields take the template values; a wrong version, or a
+    -- non-empty table without one, is refused with an explicit code.
+    local ok,why=Templates.open(root.deliveryOrders,Templates.templates.deliveryOrders,'DELIVERY_FORMAT_UNSUPPORTED')
+    if not ok then error(why) end
     if root~=scanWorld then
         validate(root.deliveryOrders)
         scanWorld,scans,discoveryCursor,recoveryCursor=root,{},{},0

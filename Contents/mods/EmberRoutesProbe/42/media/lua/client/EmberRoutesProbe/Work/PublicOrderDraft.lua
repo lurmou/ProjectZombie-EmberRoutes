@@ -11,7 +11,9 @@ function Draft.read(actor,scope)
     if not actor or not actor.getModData then return nil end
     local drafts=actor:getModData().EmberRoutesPublicOrderDrafts
     local d=drafts and drafts[scope]
-    if type(d)~='table' or d.scope~=scope then return nil end
+    -- A draft without the current version is not read: a UI draft is safe to
+    -- drop, and a fresh one is written with the version below.
+    if type(d)~='table' or d.format~=1 or d.scope~=scope then return nil end
     return {scope=d.scope,recipe=d.recipe,quantity=d.quantity,surface=d.surface,
         preferences=copy(d.preferences),requestId=d.requestId,result=d.result,product=d.product}
 end
@@ -20,7 +22,7 @@ function Draft.update(actor,scope,recipe,quantity,surface,preferences,product)
     local d=Draft.read(actor,scope)
     if not d or d.recipe~=recipe or d.quantity~=quantity or d.surface~=surface
         or not same(d.preferences,preferences) then
-        d={scope=scope,recipe=recipe,quantity=quantity,surface=surface,
+        d={format=1,scope=scope,recipe=recipe,quantity=quantity,surface=surface,
             preferences=copy(preferences),requestId=Public.requestId(),product=product}
     end
     local meta=actor:getModData()

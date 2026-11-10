@@ -4,6 +4,7 @@
 -- and signals dirty state to dispatch layers upon commit.
 local Ledger = require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Registry = require 'EmberRoutesProbe/Kernel/JobPolicyRegistry'
+local Templates = require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Signals = require 'EmberRoutesProbe/Work/LaborSignals'
 
 local Service = {}
@@ -32,8 +33,11 @@ local function data()
     local root = ledger.data()
     if root ~= world or root.jobPolicies ~= opened then
         local saved = root.jobPolicies
-        if saved == nil then saved = { format = 1, revision = 0, byScope = {} } end
-        if type(saved) ~= 'table' or saved.format ~= 1 then return nil, 'POLICY_FORMAT_UNSUPPORTED' end
+        if saved == nil then saved = Templates.fresh('jobPolicies') end
+        -- Missing fields take the template values; a wrong version, or a
+        -- non-empty table without one, is refused with an explicit code.
+        local ok,why = Templates.open(saved,Templates.templates.jobPolicies,'POLICY_FORMAT_UNSUPPORTED')
+        if not ok then return nil,why end
         if type(saved.byScope) ~= 'table' or type(saved.revision) ~= 'number'
             or saved.revision < 0 or saved.revision ~= math.floor(saved.revision) or saved.revision == math.huge then
             return nil, 'POLICY_DATA_INVALID'

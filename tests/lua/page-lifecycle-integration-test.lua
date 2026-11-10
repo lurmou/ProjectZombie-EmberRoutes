@@ -160,8 +160,8 @@ getRandomUUID = function() prodUuid = prodUuid + 1 return "test-uuid-prod-" .. p
 _G.getRandomUUID = getRandomUUID
 
 ModData = {
-    getOrCreate = function(k) return { entries = {} } end,
-    get = function(k) return { entries = {} } end
+    getOrCreate = function(k) return { format = 1, entries = {} } end,
+    get = function(k) return { format = 1, entries = {} } end
 }
 
 local Registry = package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']

@@ -1,14 +1,22 @@
 local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
+local Templates=require "EmberRoutesProbe/Kernel/ModDataTemplates"
 local Store={}
 function Store.data()
     local root=ModData.getOrCreate("EmberRoutes/Logistics/v1")
-    if root.format and root.format~=1 then error("LOGISTICS_FORMAT_UNSUPPORTED") end
-    root.format=1 root.entries=root.entries or {} root.workers=root.workers or {}
+    -- A non-empty table without a version, or a wrong version, is refused
+    -- with an explicit code; the stored table is left untouched. The old
+    -- unconditional stamp is gone: it labelled any table as current.
+    local ok,why=Templates.open(root,Templates.templates.logistics,'LOGISTICS_FORMAT_UNSUPPORTED')
+    if not ok then error(why) end
+    if type(root.entries)~='table' or type(root.workers)~='table' then error('LOGISTICS_FORMAT_UNSUPPORTED') end
     return root
 end
 function Store.get(id)
     local root=Store.data() local entry=root.entries[id]
-    if not entry then entry={intake=true,tidy=true,revision=0,workers={}} root.entries[id]=entry end
+    if not entry then entry=Templates.fresh('logisticsEntry') root.entries[id]=entry end
+    -- Missing entry fields take the template values; wrong-typed fields are
+    -- still refused below.
+    Templates.fill(entry,Templates.templates.logisticsEntry)
     if type(entry.intake)~="boolean" or type(entry.tidy)~="boolean" or type(entry.workers)~="table"
         or type(entry.revision)~="number" then error("LOGISTICS_RECORD_INVALID") end
     return entry

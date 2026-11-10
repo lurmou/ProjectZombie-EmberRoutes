@@ -1,6 +1,7 @@
 local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 local Gate=require "EmberRoutesProbe/Kernel/RuntimeGate"
+local Templates=require "EmberRoutesProbe/Kernel/ModDataTemplates"
 local Ledger={listeners={},validators={}}
 ---@class EmberRoutesSettlement
 ---@field format integer
@@ -20,8 +21,13 @@ function Ledger.data()
         if ok then data=cached end
     end
     if not data then data=ModData.getOrCreate("EmberRoutes/Settlements/v1") end
-    if data.format and data.format~=1 then error("SETTLEMENT_FORMAT_UNSUPPORTED") end
-    data.format,data.entries,data.revision=1,data.entries or {},data.revision or 0
+    -- A non-empty table without a version, or a wrong version, is refused
+    -- with an explicit code; the stored table is left untouched. The old
+    -- unconditional stamp is gone: it labelled any table as current.
+    local ok,why=Templates.open(data,Templates.templates.settlements,'SETTLEMENT_FORMAT_UNSUPPORTED')
+    if not ok then error(why) end
+    if type(data.entries)~='table' or type(data.revision)~='number' then error('SETTLEMENT_FORMAT_UNSUPPORTED') end
+    if data.factionId~=nil and type(data.factionId)~='string' then error('SETTLEMENT_FORMAT_UNSUPPORTED') end
     data.factionId=data.factionId or Registry.id()
     return data
 end

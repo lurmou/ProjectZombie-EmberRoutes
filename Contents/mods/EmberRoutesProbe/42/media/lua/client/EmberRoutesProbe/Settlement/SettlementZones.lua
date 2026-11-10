@@ -2,6 +2,7 @@
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Zones={LIMIT=32,listeners={}}
 local activities=require('EmberRoutesProbe/Activity/ActivityRegistry').behaviors()
 local known={} for _,id in ipairs(activities) do known[id]=true end
@@ -54,8 +55,12 @@ end
 local function data()
     local root=Ledger.data()
     if root~=world or root.publicLifeZones~=opened then
-        local saved=root.publicLifeZones or {format=1,revision=0,byId={}}
-        if type(saved)~='table' or saved.format~=1 or not integer(saved.revision) or saved.revision<0
+        local saved=root.publicLifeZones or Templates.fresh('publicLifeZones')
+        -- Missing fields take the template values; a wrong version, or a
+        -- non-empty table without one, is refused with an explicit code.
+        local ok,why=Templates.open(saved,Templates.templates.publicLifeZones,'ZONE_FORMAT_UNSUPPORTED')
+        if not ok then return nil,why end
+        if not integer(saved.revision) or saved.revision<0
             or type(saved.byId)~='table' then return nil,'ZONE_FORMAT_UNSUPPORTED' end
         local index,count={},0
         for key,row in pairs(saved.byId) do

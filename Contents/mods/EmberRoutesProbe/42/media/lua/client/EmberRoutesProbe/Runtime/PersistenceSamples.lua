@@ -22,7 +22,7 @@ end
 function Samples.prepare(npc, id)
     local data = npc:getModData()
     if data[KEY] then return "SAMPLE_EXISTS" end
-    local sample = { npcId = id, token = id .. "/persistence-sample", pieces = {}, names = {}, ready = false }
+    local sample = { format = 1, npcId = id, token = id .. "/persistence-sample", pieces = {}, names = {}, ready = false }
     data[KEY] = sample -- Retain even partially created samples for explicit cleanup.
     local function add(container, kind, role, name)
         local item = container:AddItem(kind)
@@ -64,7 +64,8 @@ end
 local function owned(npc, id)
     local sample = npc:getModData()[KEY]
     if not sample or sample.npcId ~= id then return nil, nil, "SAMPLE_ABSENT_OR_STALE" end
-    if type(sample.pieces) ~= "table" or type(sample.token) ~= "string" or type(sample.names) ~= "table" then
+    if type(sample.pieces) ~= "table" or type(sample.token) ~= "string" or type(sample.names) ~= "table"
+        or sample.format ~= 1 then
         return nil, nil, "SAMPLE_MARKER_INVALID"
     end
     local items = index(npc)

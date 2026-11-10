@@ -1,5 +1,6 @@
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Claims=require "EmberRoutesProbe/Kernel/LaborClaims"
 local CraftRetirement=require "EmberRoutesProbe/Crafting/CraftLegacyRecovery"
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
@@ -50,7 +51,9 @@ function Store.data()
         -- collected here and applied through JobStore:adopt after root and token
         -- caches are published, so no recovery path writes a live Job record.
         local pendingAdopt={}
-        current.quarantineResources = current.quarantineResources or {}
+        -- Missing root fields take the template values; the version itself was
+        -- already gated by the Registry load entry.
+        Templates.fill(current,Templates.templates.workLabor)
 
         -- Pass 1: Pre-scan claims across ALL providers to detect overlapping collisions
         -- and register existing Quarantine locks with independent capacity reservations.
@@ -77,7 +80,6 @@ function Store.data()
         end
 
         -- Ensure monotonic claim sequence is initialized and preserved across cold boots
-        current.nextClaimSeq = current.nextClaimSeq or 1
         rebuilt.nextClaimSeq = current.nextClaimSeq
 
 	local function restoreClaimIdentities()
@@ -305,9 +307,21 @@ function Store.data()
 
         local rebuiltCustody = {}
         local custodyByNpc,custodyByItem={},{}
-        if current.toolCustody and current.toolCustody.byId then
+        -- The custody document carries its own version key. A missing table is
+        -- created from the template; a wrong version, or a non-empty table
+        -- without one, is refused with an explicit code instead of being
+        -- silently replaced by an empty document.
+        local custody=current.toolCustody
+        if custody==nil then
+            custody=Templates.fresh('toolCustody') current.toolCustody=custody
+        else
+            local okCustody,whyCustody=Templates.open(custody,Templates.templates.toolCustody,'TOOL_CUSTODY_FORMAT_UNSUPPORTED')
+            if not okCustody then error(whyCustody) end
+            if type(custody.byId)~='table' then error('TOOL_CUSTODY_FORMAT_UNSUPPORTED') end
+        end
+        do
             local CustodyRecord = require('EmberRoutesProbe/Field/ToolCustodyRecord')
-            for id, entry in pairs(current.toolCustody.byId) do
+            for id, entry in pairs(custody.byId) do
                 -- A physical PUT may already have happened. Keep the exact return
                 -- identity/intent until a controlled stop and original observation.
                 if not CustodyRecord.valid(entry) or entry.id~=id or custodyByItem[entry.itemId] then
@@ -330,8 +344,6 @@ function Store.data()
                     end
                 end
             end
-        else
-            current.toolCustody = { byId = {}, byNpc = {}, byItem = {} }
         end
         current.toolCustody.byNpc,current.toolCustody.byItem=custodyByNpc,custodyByItem
         -- Publish the cache only after the entire ledger passed validation.
@@ -709,7 +721,7 @@ function Store.claimCustody(npcId,itemId,role,sourceContainerId,activeJobId)
     npcId=tostring(npcId)
     local custodyStore=root.toolCustody
     if not custodyStore then
-        custodyStore={byId={},byNpc={},byItem={}}
+        custodyStore=Templates.fresh('toolCustody')
         root.toolCustody=custodyStore
     end
     local custodyId='custody:'..npcId..':'..itemId

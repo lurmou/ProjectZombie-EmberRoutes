@@ -4,6 +4,7 @@ local Filter = require "EmberRoutesProbe/Warehouse/StorageFilter"
 local Log = require "EmberRoutesProbe/Kernel/Log"
 local Gate = require "EmberRoutesProbe/Kernel/RuntimeGate"
 local Jobs = require "EmberRoutesProbe/Kernel/JobStore"
+local Templates = require "EmberRoutesProbe/Kernel/ModDataTemplates"
 local Registry = {}
 local admittedRoot, admittedJobs
 Registry.tags = Policy.order
@@ -20,13 +21,22 @@ function Registry.containerIndex(object,container)
         end
     end
 end
+-- A container tag is a persisted record: it carries the table version key.
+-- A tag without one gets the template value on read; a tag with a wrong
+-- version is not recognized (the record stays in ModData, untouched).
+local function tagValue(tag)
+    if type(tag)~='table' then return nil end
+    if tag.format==nil then tag.format=Templates.SCHEMA_VERSION
+    elseif tag.format~=Templates.SCHEMA_VERSION then return nil end
+    return tag
+end
 function Registry.metadata(object,container)
     if not object or not object.getContainer then return nil end
     local index=Registry.containerIndex(object,container or object:getContainer())
     if index==nil then return nil end
     local data=object:getModData()
-    if index==0 then return data.EmberRoutesContainer end
-    return data.EmberRoutesContainers and data.EmberRoutesContainers[tostring(index)]
+    if index==0 then return tagValue(data.EmberRoutesContainer) end
+    return tagValue(data.EmberRoutesContainers and data.EmberRoutesContainers[tostring(index)])
 end
 -- Observers cannot veto already accepted configuration or verified physical effects.
 local function notify(listeners,id)
@@ -60,18 +70,18 @@ function Registry.data(freshRoot)
         if ok then data=cached end
     end
     if not data then data=ModData.getOrCreate("EmberRoutes/Work/v1") end
-    if type(data)~='table' then error('WORK_FORMAT_UNSUPPORTED') end
-    if data.format==nil then
-	-- Only an empty root is a new world. Missing version on existing facts
-	-- is unsupported, never permission to label them as the current schema.
-	for _ in pairs(data) do error('WORK_FORMAT_UNSUPPORTED') end
-    elseif data.format~=1 then error('WORK_FORMAT_UNSUPPORTED') end
+    -- Version gate only: a refused root is returned untouched, so a failed
+    -- admission never stamps or fills a table it will not use. The template
+    -- is applied below, only after the job ledger check passes.
+    local ok,why=Templates.checkVersion(data,'WORK_FORMAT_UNSUPPORTED')
+    if not ok then error(why) end
     if data.containers~=nil and type(data.containers)~='table' then error('CONTAINER_FORMAT_UNSUPPORTED') end
     if data~=admittedRoot or data.taskJobs~=admittedJobs then
-	local ok,reason=Jobs.check(data)
-	if not ok then error(reason) end
+	local okJobs,reason=Jobs.check(data)
+	if not okJobs then error(reason) end
 	-- No defaults, normalization or record publication before acceptance.
-	data.format, data.containers = 1, data.containers or {}
+	local opened,openWhy=Templates.open(data,Templates.templates.work,'WORK_FORMAT_UNSUPPORTED')
+	if not opened then error(openWhy) end
 	admittedRoot,admittedJobs=data,data.taskJobs
     end
     return data
@@ -117,8 +127,8 @@ function Registry.affected(object)
     if exact then add(exact)
     else
         local data=parent:getModData()
-        add(data.EmberRoutesContainer)
-        for _,tag in pairs(data.EmberRoutesContainers or {}) do add(tag) end
+        add(tagValue(data.EmberRoutesContainer))
+        for _,tag in pairs(data.EmberRoutesContainers or {}) do add(tagValue(tag)) end
     end
     table.sort(result)
     return result
@@ -181,7 +191,7 @@ function Registry.tag(actor, object, name, deferNotification, container, bypassD
         local count = 0
         for _ in pairs(data.containers) do count = count + 1 end
         if count >= 256 then return "CONTAINER_LIMIT" end
-        tag = { id = Registry.id(), scopeId="local-world" }
+        tag = { format = Templates.SCHEMA_VERSION, id = Registry.id(), scopeId="local-world" }
         local metadata=object:getModData()
         if index==0 then metadata.EmberRoutesContainer=tag
         else

@@ -135,7 +135,7 @@ for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='DELIVERY' then
     settledRows=settledRows+1 check(r.delivered==1 and r.remaining==1,'settled segment receipt is not counted again after Order baseline advances')
 end end
 check(settledRows==1,'settled historical segment does not duplicate the Order card')
-root.toolCustody={byId={c={id='tool-duty',npcId='a',itemId=99,role='CLEAN_TOOL',sequence=1,state='RECONCILE_REQUIRED',
+root.toolCustody={format=1,byId={c={id='tool-duty',npcId='a',itemId=99,role='CLEAN_TOOL',sequence=1,state='RECONCILE_REQUIRED',
     returnIntent={scopeId='s'}}}}
 local duty
 for _,r in ipairs(Service.status({},'s').rows) do if r.kind=='TOOL_CUSTODY' then duty=r end end

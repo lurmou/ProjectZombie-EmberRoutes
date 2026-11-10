@@ -4,6 +4,7 @@
 -- Splitting the two is what lets domain code read orders without depending on
 -- the dispatcher.
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local S={}
 local world,data=nil,nil
 local function integer(n,min,max)
@@ -13,12 +14,16 @@ end
 -- on so a corrupt save is diagnosable from the console line alone.
 local function validate(root)
     local value=root.publicWork
-    if value and (type(value)~='table' or value.format~=1 or type(value.orders)~='table' or type(value.priorities)~='table') then
+    if value and (type(value)~='table' or value.format~=1) then
         return nil,'PUBLIC_WORK_FORMAT_INVALID'
     end
-    value=value or {format=1,sequence=0,orders={},priorities={},rules={}}
-    value.rules=value.rules or {}
-    value.requests=value.requests or {}
+    value=value or Templates.fresh('publicWork')
+    -- Missing fields take the template values; wrong-typed fields are still
+    -- refused by the checks below.
+    Templates.fill(value,Templates.templates.publicWork)
+    if type(value.orders)~='table' or type(value.priorities)~='table' then
+        return nil,'PUBLIC_WORK_FORMAT_INVALID'
+    end
     if type(value.requests)~='table' or #value.requests>128 then return nil,'PUBLIC_REQUEST_INVALID' end
     local requestIds={}
     for _,r in ipairs(value.requests) do
