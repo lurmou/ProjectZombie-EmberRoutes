@@ -141,3 +141,6 @@ $$\text{UI (表现)} \longrightarrow \text{Domain Services (业务)} \longrighta
 - [能力缺口补全计划 (2026-11-05)](superpowers/plans/2026-11-05-capability-gap-closure.md)
 - [小队跟随实施计划 (2026-11-05)](superpowers/plans/2026-11-05-companion-squad-follow.md)
 - [小队 HUD 基础计划 (2026-11-06)](superpowers/plans/2026-11-06-squad-hud-foundation.md)
+
+### 5.6 开发检查表
+- [PZ 补丁后流程：先跑桥面测试](CHANGE_CHECKLIST.md)：补丁后任何其他测试、构建或实机之前，先跑 `ProbeBridgeSurfaceTest`。
