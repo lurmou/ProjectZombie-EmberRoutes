@@ -183,22 +183,11 @@ end
 -- STUDY/LEISURE discovery and raise the working threshold. The old
 -- Probe.hasPendingWork only covers pendingReservations (a directory offer
 -- claimed but not yet promoted); it misses jobs already claimed.
--- Primary check is Providers.retained (the generic provider contract).
--- Hauling has no retained yet (parallel P0 item adds it), so until then a
--- HAUL-only fallback reads the haul record through LaborStore and compares
--- the JobStore job state: the haul payload has no CANCELLED value, so
--- payload.state ~= 'DONE' would wrongly count a cancelled haul as on-duty.
--- Remove the fallback once HaulingProvider.retained exists.
-local function haulOnDuty(id)
-    local record=Store.record(id)
-    if not record or type(record.id)~='string' then return false end
-    local job=Jobs.current():peek(record.id)
-    return job~=nil and job.state~='DONE' and job.state~='CANCELLED'
-end
+-- The generic check is Providers.retained (the provider contract); each
+-- provider answers for its own unfinished jobs, e.g. HaulingProvider.
 local function hasUnfinishedDuty(id)
     if Probe.hasPendingWork and Probe.hasPendingWork(id) then return true end
-    if Providers.retained(id) then return true end
-    return haulOnDuty(id)
+    return Providers.retained(id)
 end
 local function advance(actor,binding,row,now)
     local id=binding.id local runtime=Runtime.current()
