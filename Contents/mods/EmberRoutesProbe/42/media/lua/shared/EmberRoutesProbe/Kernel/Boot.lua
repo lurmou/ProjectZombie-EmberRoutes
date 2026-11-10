@@ -4,6 +4,18 @@ local Performance = require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 -- P1 complete execution path enabled for single-player acceptance. No live toggle.
 local Probe = { build = build, ready = false, runtimeReady=false, failureCode = "NOT_STARTED", controlledExecution=true }
 
+-- World-reset registry: each domain registers its reset once. Boot.reset()
+-- calls them in a fixed order, skipping keys that never registered, which
+-- matches the old `if Probe.resetX then ... end` guard semantics.
+local resets = {}
+function Probe.registerReset(name, fn)
+    if type(name) == "string" and type(fn) == "function" then resets[name] = fn end
+end
+local function callReset(name)
+    local fn = resets[name]
+    if fn then fn() end
+end
+
 local validatedBridge,validatedMode
 local function validateJava()
     return EmberRoutesProbeJava and EmberRoutesProbeJava.begin
@@ -213,7 +225,7 @@ function Probe.reset()
     validatedBridge,validatedMode=nil,nil
     Performance.reset()
     if Probe.resetMembership then Probe.resetMembership() end
-    if Probe.resetDelivery then Probe.resetDelivery() end
+    callReset("Delivery")
     Probe.runtimeReady = false
     Probe.restorePending = false
     if Probe.resetTasks then Probe.resetTasks() end

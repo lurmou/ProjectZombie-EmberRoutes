@@ -19,9 +19,13 @@ for _,name in ipairs({'command','tick','reset','clearForSave','actionCarrier','c
     'commandFor','carrierFor','selectedId','spawnAdditional','selectCarrier','workerCount','workerIdAt','saveCheckpointFor',
     'blockAllCheckpoints','captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
     'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','ownedCarrierId','freezeBodyControl',
-    'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl'}) do bridge[name]=stub end
+    'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl',
+    'followWithControl','followMetrics','moveSeatWithControl','reachedSeat','moveBedWithControl','bedPoseReady',
+    'furniturePoseWithControl','moveSleepSeatWithControl','floorSleepSafe'}) do bridge[name]=stub end
 EmberRoutesProbeJava=bridge
-local Probe=dofile('Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua')
+local Probe=dofile('Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua')
+require 'EmberRoutesProbe/Kernel/EvenPaused' -- game loads this entry alongside Boot; provides the OnTickEvenPaused callback below
+require('EmberRoutesProbe/Kernel/EvenPaused').add(function() end) -- mirrors StockService/WarehouseIndex: first handler installs the engine callback
 package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
 check(Probe.controlledExecution==true,'production defaults to complete controlled path')
 local required={'captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
