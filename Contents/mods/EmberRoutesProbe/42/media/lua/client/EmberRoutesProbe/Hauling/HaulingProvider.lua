@@ -99,6 +99,24 @@ function HaulingProvider.hasWork()
     return false
 end
 
+-- P4 (provider-lifecycle): an NPC still holding an unfinished HAUL Job must
+-- keep it out of new ordinary work. The authoritative current record is
+-- Work.record(npcId): HaulJobs.record scans JobStore for this NPC's HAUL
+-- jobs and returns the current one, so jobId matching is implicit -- a
+-- swapped-in job is the record, a swapped-out job is not. The module-level
+-- `hauling` table is deliberately NOT consulted here: it only tracks
+-- LOGISTICS claims (DELIVERY never writes it), and entries survive
+-- CANCELLED / job-swap (only reconcile on DONE deletes), so matching on
+-- npcId alone against that table would pin the NPC ON_DUTY forever. A
+-- record that is DONE or CANCELLED does not retain, whatever the table
+-- still holds; a missing record means no unfinished HAUL Job is provable.
+function HaulingProvider.retained(npcId)
+    local current = Work.record(npcId)
+    if not current then return false end
+    if current.state == 'DONE' or current.state == 'CANCELLED' then return false end
+    return true
+end
+
 function HaulingProvider.blocksDecision(actor,npcId,entry)
     local current=Work.record(npcId)
     if not current or current.state=='DONE' then return false end
