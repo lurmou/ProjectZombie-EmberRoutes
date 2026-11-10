@@ -108,12 +108,22 @@ end
 -- LOGISTICS claims (DELIVERY never writes it), and entries survive
 -- CANCELLED / job-swap (only reconcile on DONE deletes), so matching on
 -- npcId alone against that table would pin the NPC ON_DUTY forever. A
--- record that is DONE or CANCELLED does not retain, whatever the table
--- still holds; a missing record means no unfinished HAUL Job is provable.
+-- record that is DONE does not retain, whatever the table still holds; a
+-- missing record means no unfinished HAUL Job is provable. The payload state
+-- alone is NOT authoritative for cancellation: HaulJobs.cancel passes the
+-- original payload unchanged to the kernel, and LaborCommitKernel.cancel
+-- only writes the JOB state to CANCELLED, so a cancelled haul still carries
+-- a PAUSED/RUNNING payload. Judge the JobStore job state (peek) instead;
+-- only an explicit terminal job state releases immediately, otherwise the
+-- NPC would stay retained until the retirement sweep retires the job.
 function HaulingProvider.retained(npcId)
     local current = Work.record(npcId)
     if not current then return false end
     if current.state == 'DONE' or current.state == 'CANCELLED' then return false end
+    if current.id then
+        local job = require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(current.id)
+        if job and (job.state == 'DONE' or job.state == 'CANCELLED') then return false end
+    end
     return true
 end
 

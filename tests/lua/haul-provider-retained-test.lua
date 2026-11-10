@@ -9,6 +9,14 @@
 package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;" .. package.path
 
 local mockWorkRecord = nil
+-- JobStore job state, keyed by job id. Production peek is
+-- Jobs.current():peek(id); the mock mirrors that call shape (colon call).
+local mockJobs = {}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs'] = {
+    current = function()
+        return { peek = function(_, id) return mockJobs[id] end }
+    end
+}
 
 package.loaded['EmberRoutesProbe/Logistics/DeliveryService'] = {
     discover = function(env) end,
@@ -88,7 +96,28 @@ mockWorkRecord = nil
 assert(HaulingProvider.retained('npc_2') == false,
     "stale entry + missing record must not retain")
 
--- 8. Registry wiring: retained is an accepted optional hook and
+-- 8. Faithful cancel: the production cancel path (HaulJobs.cancel ->
+-- Store.cancelJob -> LaborCommitKernel.cancel) writes the JOB state to
+-- CANCELLED and leaves the payload state untouched (PAUSED here, exactly
+-- as the kernel leaves it). retained must judge the JobStore job state,
+-- not the payload state, or the NPC stays retained until the retirement
+-- sweep retires the job. The old payload-only check returns true here.
+mockWorkRecord = { id = 'job_1', state = 'PAUSED' }
+mockJobs['job_1'] = { id = 'job_1', state = 'CANCELLED' }
+assert(HaulingProvider.retained('npc_1') == false,
+    "CANCELLED job with PAUSED payload must not retain (job state decides)")
+mockJobs['job_1'] = { id = 'job_1', state = 'SUSPENDED' }
+assert(HaulingProvider.retained('npc_1') == true,
+    "SUSPENDED job with PAUSED payload must retain")
+mockJobs['job_1'] = { id = 'job_1', state = 'DONE' }
+assert(HaulingProvider.retained('npc_1') == false,
+    "DONE job with PAUSED payload must not retain")
+mockJobs['job_1'] = { id = 'job_1', state = 'RUNNING' }
+assert(HaulingProvider.retained('npc_1') == true,
+    "RUNNING job with PAUSED payload must retain")
+mockJobs['job_1'] = nil
+
+-- 9. Registry wiring: retained is an accepted optional hook and
 -- Registry.retained follows it.
 local Registry = require 'EmberRoutesProbe/Work/PublicWorkProviders'
 Registry.reset()
