@@ -1,5 +1,6 @@
 -- Cold rebuild only: defer fact changes until LaborStore publishes its caches.
 -- Records are read as detached copies; nothing here writes the Kernel ledger.
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local M={}
 function M.restore(context)
     local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
@@ -18,7 +19,7 @@ function M.restore(context)
                 -- is a copy, so the result is carried back through the queue.
                 local retained=Record.death(job)
                 queue(job,{payload=job.payload,state=job.state,effects=job.effects},not retained)
-            elseif #job.payload.claims>0 and job.state~='DONE' and job.state~='CANCELLED' then
+            elseif #job.payload.claims>0 and not JobState.isTerminal(job.state) then
                 if context.hasConflict(job.payload.claims) then
                     queue(job,{state='RECONCILE_REQUIRED',effects='UNKNOWN'})
                 else

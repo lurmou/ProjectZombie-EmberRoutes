@@ -1,5 +1,6 @@
 -- Domain-specific execution adapters over the existing owner's tables.
 -- No world loop, authority, token cache or persistent root is created here.
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local A={}
 function A.install(Store,state,ensureEntityClaimId,cleanToken,scopeAllowed)
 -- Ordinary cooking Jobs share the same resource graph as hauling/crafting/care.
@@ -63,7 +64,7 @@ function Store.replaceCooking(job,token,proposed)
             addKeys=add,removeKeys=remove,workCapacity=workCapacity})
     if not ok then return false,why,evidence end
     local saved=require('EmberRoutesProbe/Runtime/TaskJobs').current():get(job.id)
-    if saved.state=='DONE' or saved.state=='CANCELLED' then return true,saved,nil end
+    if JobState.isTerminal(saved.state) then return true,saved,nil end
     local nextToken=assert(state.claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims,
         {claimId=saved.claimId}))
     state.cookingTokens[saved.id]=nextToken
@@ -78,7 +79,7 @@ function Store.finishCooking(job,token)
     Store.data()
     local saved=state.root.taskJobs.byId[job.id]
     if not saved or saved.npcId~=job.npcId or saved.revision~=job.revision
-        or (saved.state~='DONE' and saved.state~='CANCELLED') then return false,'COOKING_JOB_CHANGED' end
+        or not JobState.isTerminal(saved.state) then return false,'COOKING_JOB_CHANGED' end
     if not require('EmberRoutesProbe/Cooking/CookingRecord').valid(saved) or saved.payload.phase~='SETTLED'
 	or saved.effects~='KNOWN' or #saved.payload.claims>0 then return false,'COOKING_OBLIGATION_RETAINED' end
     if token then state.claims:release(token) end
@@ -146,7 +147,7 @@ end
 function Store.finishField(job)
     Store.data() local saved=state.root.taskJobs.byId[job.id]
     if not saved or saved.providerType~='FIELD_WORK' or saved.effects~='KNOWN'
-	or (saved.state~='DONE' and saved.state~='CANCELLED') or #saved.payload.claims>0 then return false end
+	or not JobState.isTerminal(saved.state) or #saved.payload.claims>0 then return false end
     for _ in pairs(saved.obligations) do return false end
     local token=state.fieldTokens[job.id]
     if token then state.claims:release(token) cleanToken(job.id) end
@@ -275,7 +276,7 @@ function Store.claimHaulJob(job)
     local saved=state.root.taskJobs.byId[job.id]
     if not saved or saved.providerType~='HAUL' or saved.payload.format~=3 or saved.payload.executor~='ENTITY'
 	or saved.revision~=job.revision or saved.npcId~=job.npcId or saved.effects=='UNKNOWN'
-	or saved.state=='DONE' or saved.state=='CANCELLED' then return nil,'HAUL_JOB_CHANGED' end
+	or JobState.isTerminal(saved.state) then return nil,'HAUL_JOB_CHANGED' end
     local token,why=state.claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims,{claimId=saved.claimId})
     if token then state.tokens[saved.id]=token end
     return token,why
@@ -292,7 +293,7 @@ function Store.claimCraft(job,returnOnly)
     local saved=state.root.taskJobs.byId[job.id]
     if not saved or saved.providerType~='CRAFT' or saved.payload.executor~='PRODUCTION'
 	or saved.revision~=job.revision or saved.npcId~=job.npcId or saved.effects=='UNKNOWN' and not returnOnly
-	or saved.state=='DONE' or saved.state=='CANCELLED' then return nil,'CRAFT_JOB_CHANGED' end
+	or JobState.isTerminal(saved.state) then return nil,'CRAFT_JOB_CHANGED' end
     local token,why=state.claims:acquire(saved.id,saved.payload.sequence,saved.payload.claims,{claimId=saved.claimId})
     if token then state.tokens[saved.id]=token end
     return token,why

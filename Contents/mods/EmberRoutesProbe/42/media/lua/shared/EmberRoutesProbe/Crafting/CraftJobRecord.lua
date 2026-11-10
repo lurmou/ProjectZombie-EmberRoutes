@@ -2,6 +2,7 @@
 -- Validates format=4 CRAFT jobs within the standard Job Envelope.
 -- Fully defensive: any corrupted structure returns false without throwing exceptions.
 local Validate = require 'EmberRoutesProbe/Kernel/Validate'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local R = {}
 
 local function isDenseArray(t, maxLen)
@@ -75,7 +76,7 @@ function R.valid(job)
 	if a~=nil then
 	    if type(a)~='table' or a.format~=1 or not Validate.stringId(a.id)
 		or not Validate.integer(a.sequence,0) or (a.state~='COMMITTING' and a.state~='APPLIED' and a.state~='UNKNOWN') then return false end
-	    if (a.state=='COMMITTING' or a.state=='UNKNOWN') and (p.released or job.state=='DONE' or job.state=='CANCELLED' or job.effects~='UNKNOWN' or job.obligations.business~=true) then return false end
+	    if (a.state=='COMMITTING' or a.state=='UNKNOWN') and (p.released or JobState.isTerminal(job.state) or job.effects~='UNKNOWN' or job.obligations.business~=true) then return false end
 	    if a.state=='APPLIED' and (type(a.observation)~='table' or a.observation.complete~=true or a.observation.attemptId~=a.id) then return false end
 	end
     end
@@ -126,7 +127,7 @@ function R.valid(job)
     end
 
     -- 4. Terminal state invariants
-    if job.state == 'DONE' or job.state == 'CANCELLED' then
+    if JobState.isTerminal(job.state) then
         if #p.claims > 0 or p.released ~= true then return false end
     end
 

@@ -1,5 +1,6 @@
 -- Rebuildable cleaning facts. No Job, Claim, body grant or UI-owned observation.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Spatial=require 'EmberRoutesProbe/Field/FieldSpatial'
@@ -113,7 +114,7 @@ function D.advance(actor,now,eligible,priorities)
     end
     r.claimed={}
     for _,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do
-        if j.providerType=='FIELD_WORK' and j.scopeId==entry.id and j.state~='DONE' and j.state~='CANCELLED'
+        if j.providerType=='FIELD_WORK' and j.scopeId==entry.id and not JobState.isTerminal(j.state)
             and j.payload.target.kind=='STAIN' then r.claimed[key(j.payload.target)]=true end
     end
     r.count,r.stale=0,0

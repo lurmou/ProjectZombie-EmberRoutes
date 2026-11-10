@@ -1,4 +1,5 @@
 -- Detached facts only. Known failures are retried by FieldWork, never by a UI command.
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local M={providerType='FIELD_WORK'}
 local reasons={FIELD_STORAGE_UNAVAILABLE='fieldStorage',FIELD_CAPACITY_UNAVAILABLE='fieldStorage',
     FIELD_CARRY_FULL='fieldCarry',FIELD_ITEM_TOO_HEAVY='fieldCarry',
@@ -20,7 +21,7 @@ function M.project(context,job)
     local p=job.payload
     local control=context.runtime and context.runtime:status(job.npcId,job.id)
     local binding=context.bind(job.npcId)
-    local closed=(job.state=='DONE' or job.state=='CANCELLED') and job.effects=='KNOWN'
+    local closed=JobState.isTerminal(job.state) and job.effects=='KNOWN'
     local uncertain=job.effects~='KNOWN'
     local stopping=control and control.state=='STOPPING'
     local active=control and not control.pending and control.state=='ACTIVE'

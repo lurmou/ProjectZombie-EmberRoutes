@@ -1,6 +1,7 @@
 -- Production execution drafts. JobStore alone owns persistent records;
 -- drafts authorize nothing without their captured revision and Claims token.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Record=require 'EmberRoutesProbe/Crafting/CraftJobRecord'
@@ -53,7 +54,7 @@ end
 function M.commit(r)
     local e=entry(r)
     if not e or e.failed then return false,'PRODUCTION_DRAFT_STALE' end
-    if e.job.state=='DONE' or e.job.state=='CANCELLED' then return r.state==e.job.payload.state and r.generation==e.job.payload.generation,'JOB_TERMINAL' end
+    if JobState.isTerminal(e.job.state) then return r.state==e.job.payload.state and r.generation==e.job.payload.generation,'JOB_TERMINAL' end
     local live=Jobs.current():peek(r.id)
     if not live or live.revision~=e.job.revision then e.failed=true return false,'PRODUCTION_JOB_CHANGED' end
     r.sequence=r.generation r.claims=Record.activeClaims(r)
@@ -83,7 +84,7 @@ end
 function M.create(r)
     currentWorld()
     for _,old in ipairs(Jobs.current():forNpc(r.npcId,'CRAFT')) do
-	if old.state~='DONE' and old.state~='CANCELLED' then return nil,'OTHER_TASK_RETAINED' end
+	if not JobState.isTerminal(old.state) then return nil,'OTHER_TASK_RETAINED' end
     end
     r.format,r.executor,r.sequence=4,'PRODUCTION',r.generation
     r.claims=Record.activeClaims(r)
@@ -177,7 +178,7 @@ function M.prepareRecovery()
     local jobs=Jobs.current()
     for id,live in pairs(root.taskJobs.byId) do
 	if live.providerType=='CRAFT' and live.payload.executor=='PRODUCTION'
-	    and live.state~='DONE' and live.state~='CANCELLED' then
+	    and not JobState.isTerminal(live.state) then
 	    local job=jobs:get(id) local p=job.payload
 	    local unknown=job.effects=='UNKNOWN' or p.phase=='COMMITTING' or p.uncertain
 	    p.state='PAUSED' p.reason='LOAD_RECOVERY' p.generation=p.generation+1 p.sequence=p.generation

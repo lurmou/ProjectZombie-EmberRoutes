@@ -2,6 +2,7 @@
 -- Validates format=3 HAUL jobs within the standard Job Envelope.
 -- Fully defensive: any corrupted structure returns false without throwing exceptions.
 local Validate = require 'EmberRoutesProbe/Kernel/Validate'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local R = {}
 
 local validCustodyStates = {
@@ -92,14 +93,14 @@ function R.valid(job)
     end
 
     -- 6. Terminal state invariants
-    if job.state == 'DONE' or job.state == 'CANCELLED' then
+    if JobState.isTerminal(job.state) then
         if #p.claims > 0 or p.reservation ~= nil then
             return false
         end
     end
 
     -- 7. activeClaims consistency check (non-terminal)
-    if job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+    if not JobState.isTerminal(job.state) then
         local expected = R.activeClaims(p)
         if #p.claims ~= #expected then return false end
         local seen = {}

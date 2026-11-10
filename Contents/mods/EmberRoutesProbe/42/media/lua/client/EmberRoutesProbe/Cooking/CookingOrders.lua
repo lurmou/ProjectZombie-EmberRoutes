@@ -1,5 +1,6 @@
 -- Cooking demand is an existing PublicWork Order, never another Job/stock ledger.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Profiles=require 'EmberRoutesProbe/Cooking/CookingProfiles'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
@@ -105,7 +106,7 @@ function M.settle(job)
     local o=M.get(job.payload.sourceId)
     if not o or o.jobId~=job.id then return end
     o.npcId=job.npcId
-    if job.state~='DONE' and job.state~='CANCELLED' then
+    if not JobState.isTerminal(job.state) then
         local a=job.payload.attempt
         local runtime=require('EmberRoutesProbe/Runtime/TaskRuntime').current()
         local live=runtime and runtime:status(job.npcId,job.id)

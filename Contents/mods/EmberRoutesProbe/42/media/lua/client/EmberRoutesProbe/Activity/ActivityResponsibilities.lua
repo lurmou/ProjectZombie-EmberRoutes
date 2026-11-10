@@ -1,6 +1,7 @@
 -- Fixed read-only adapters for known business payloads. Never stops, releases,
 -- resumes or settles another owner's work; unknown business remains blocked.
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local R={}
 local responsibilityReasons={CRAFT='ACTIVITY_CRAFT_SETTLING',HAUL='ACTIVITY_HAUL_SETTLING',COOKING='ACTIVITY_COOKING_SETTLING'}
 local function occupied(value) for _ in pairs(value or {}) do return true end return false end
@@ -32,7 +33,7 @@ function R.inspect(id,ref,careId)
                 block('WAIT','ACTIVITY_PREDECESSOR_PENDING',3)
             end
         elseif job.providerType=='ACTIVITY' and p.eventId==ref.eventId then
-            if job.state~='DONE' and job.state~='CANCELLED' and p.step~='INVITED' and p.step~='FREE' and p.step~='PERSONAL' then
+            if not JobState.isTerminal(job.state) and p.step~='INVITED' and p.step~='FREE' and p.step~='PERSONAL' then
                 block('WAIT','ACTIVITY_BODY_BUSY',2)
             end
         elseif job.providerType=='CRAFT' then
@@ -42,10 +43,10 @@ function R.inspect(id,ref,careId)
         elseif job.providerType=='HAUL' then
             if p.state~='DONE' then block('WAIT','ACTIVITY_HAUL_SETTLING',2) end
         elseif job.providerType=='COOKING' then
-            if job.state~='DONE' and job.state~='CANCELLED' or p.duty~=nil or occupied(p.claims) then
+            if not JobState.isTerminal(job.state) or p.duty~=nil or occupied(p.claims) then
                 block('WAIT','ACTIVITY_COOKING_SETTLING',3)
             end
-        elseif job.state~='DONE' and job.state~='CANCELLED' then block('WAIT','ACTIVITY_OTHER_JOB_RETAINED',2) end
+        elseif not JobState.isTerminal(job.state) then block('WAIT','ACTIVITY_OTHER_JOB_RETAINED',2) end
     end)
     return {state=state,reason=reason,rank=rank,ownCare=ownCare,freeCraft=freeCraft}
 end

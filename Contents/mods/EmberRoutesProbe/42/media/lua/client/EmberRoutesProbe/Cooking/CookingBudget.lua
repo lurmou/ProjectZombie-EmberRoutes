@@ -1,6 +1,7 @@
 -- Admission quotas are derived from the SAME Jobs that own originals.
 -- There is no second persistent quota ledger to drift during save/load.
 local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Policy=require 'EmberRoutesProbe/Cooking/CookingPolicy'
 local B={}
 function B.open(root,jobs)
@@ -42,7 +43,7 @@ function B.open(root,jobs)
             return false,'JOB_ID_CONFLICT'
         end
         for _,other in pairs(root.taskJobs.byId) do
-            if other.npcId==job.npcId and other.state~='DONE' and other.state~='CANCELLED' then
+            if other.npcId==job.npcId and not JobState.isTerminal(other.state) then
                 if other.providerType~='SELF_CARE' then return false,'OTHER_TASK_RETAINED' end
                 if other.effects=='UNKNOWN' then return false,'PERSONAL_EFFECT_UNKNOWN' end
                 for _ in pairs(other.obligations) do return false,'PERSONAL_OBLIGATION_RETAINED' end

@@ -1,6 +1,7 @@
 -- Trusted executor adapter. Persist one Job envelope; business records are its
 -- payload, never a second by-NPC persistent ledger. UI reads detached projections.
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local SelfCareCommit=require 'EmberRoutesProbe/SelfCare/SelfCareCommit'
 local M={}
@@ -47,7 +48,7 @@ function M.canRetire(id,orderId)
     load()
     local j=world.taskJobs.byId[id]
     if not j or (j.providerType~='CRAFT' and j.providerType~='HAUL')
-        or (j.state~='DONE' and j.state~='CANCELLED') or j.effects~='KNOWN' then return false end
+        or not JobState.isTerminal(j.state) or j.effects~='KNOWN' then return false end
     for _ in pairs(j.obligations) do return false end
     local r=j.payload
     if r.uncertain or r.controlUncertain or r.phase=='COMMITTING' or r.reservation then return false end
@@ -101,7 +102,7 @@ function M.retireSettled(limit)
     if store:ordinaryCount()==0 then return 0 end
     local n=0
     for id,j in pairs(world.taskJobs.byId) do
-        if j.providerType~='SELF_CARE' and (j.state=='DONE' or j.state=='CANCELLED') then
+        if j.providerType~='SELF_CARE' and JobState.isTerminal(j.state) then
             if M.retire(id) then
                 n=n+1
                 if n>=limit then break end

@@ -1,6 +1,7 @@
 -- Shared durable publication. A body capability authorizes actions; it never
 -- owns the asset ledger. Effect observations may finish after body invalidation.
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
 local C={}
 function C.current(c,attemptId)
@@ -42,7 +43,7 @@ function C.stopAdapter(c,controller,ticket)
             if require('EmberRoutesProbe/Warehouse/ContainerRegistry').data()~=world or c.body~=body or c.job.id~=jobId then return false end
             if C.current(c) then return true end
             local saved=c.closed and require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(jobId)
-            return saved and saved.revision==c.job.revision and (saved.state=='DONE' or saved.state=='CANCELLED') or false
+            return saved and saved.revision==c.job.revision and JobState.isTerminal(saved.state) or false
         end,
         pause=function(reason)
             c.stopping=true
@@ -74,7 +75,7 @@ function C.stopAdapter(c,controller,ticket)
             local station=c.job.payload.station
             if station and not require('EmberRoutesProbe/Crafting/CraftStations').release(c,true,station.leaseId) then return false end
             local j=Record.copy(c.job)
-            if j.state=='DONE' or j.state=='CANCELLED' then
+            if JobState.isTerminal(j.state) then
                 if c.completed and not c.closed then c.closed=Store.finishCooking(c.job,c.token)==true return c.closed end
                 return true
             end

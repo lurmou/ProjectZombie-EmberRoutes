@@ -1,4 +1,5 @@
 local Commit=require 'EmberRoutesProbe/SelfCare/SelfCareCommit'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 -- Durable cross-session relation. Never owns a body or reclaims public work.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
@@ -103,7 +104,7 @@ function Resume.stopped(fact)
         local r=business(ref,job.npcId)
         local saved=Jobs.current():peek(ref.jobId)
         local settled=saved and saved.npcId==job.npcId and saved.effects=='KNOWN'
-            and (saved.state=='DONE' or saved.state=='CANCELLED')
+            and JobState.isTerminal(saved.state)
         if settled then for _ in pairs(saved.obligations) do settled=false break end end
         if settled then ref.state='INVALIDATED' ref.reason='PREDECESSOR_SETTLED'
         elseif ref.kind~='COMPANION' and (not r or r.id~=ref.jobId or r.state~='PAUSED' or r.reason~='SELF_CARE') then
@@ -145,7 +146,7 @@ function Resume.resume(actor,id,careId)
     local r=business(ref,id)
     if ref.kind=='COOKING' or ref.kind=='FIELD_WORK' then
         local saved=jobs:peek(ref.jobId)
-        if not saved or saved.npcId~=id or saved.state=='DONE' or saved.state=='CANCELLED' then
+        if not saved or saved.npcId~=id or JobState.isTerminal(saved.state) then
             ref.state='INVALIDATED' ref.reason='COOKING_SETTLED_OR_TRANSFERRED'
             local ok,why=Commit.update(job.id,job.revision,{payload=job.payload}) return ok,why or 'INTENT_SUPERSEDED'
         end

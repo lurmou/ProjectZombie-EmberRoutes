@@ -1,4 +1,5 @@
 -- Cooking's canonical Job projection and command routing. No independent ledger.
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local M={providerType='COOKING'}
 local custodyStates={SOURCE='UNCOLLECTED',HELD='WITHDRAWN',STATION='STATION',WORLD='UNCOLLECTED',
     UNKNOWN='RECONCILE',DELIVERED='STORED',RETURNED='RETURNED',CONSUMED='CONSUMED'}
@@ -14,7 +15,7 @@ function M.project(context,j)
     local pouring=control and control.state=='ACTIVE' and attempt and attempt.state=='COMMITTING'
         and (attempt.kind=='WATER' or attempt.kind=='FLUID')
     local binding=context.bind(j.npcId)
-    local closed=(j.state=='DONE' or j.state=='CANCELLED') and j.effects=='KNOWN'
+    local closed=JobState.isTerminal(j.state) and j.effects=='KNOWN'
     local state=control and control.state=='STOPPING' and 'STOPPING' or j.state
     local row={id=request and 'ORDER:'..request.id or 'COOKING:'..j.id,jobId=j.id,
         orderId=request and request.id,kind=request and 'ORDER' or 'COOKING',npcId=j.npcId,
