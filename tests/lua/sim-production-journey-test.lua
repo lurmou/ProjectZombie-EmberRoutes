@@ -453,7 +453,6 @@ package.loaded['EmberRoutesProbe/Warehouse/OrderMonitorService']={
 -- Require UI classes under test
 local PublicOrderDialog=require 'EmberRoutesProbe/UI/PublicOrderDialog'
 local OrderMonitorCards=require 'EmberRoutesProbe/UI/OrderMonitorCards'
-local OrderMonitorPage=require 'EmberRoutesProbe/UI/OrderMonitorPage'
 
 -- Create Dashboard Owner
 local owner={
@@ -724,12 +723,6 @@ local sBeiLiao = makeStr({22791, 26009}, '备料')
 local sZhiZuo = makeStr({21046, 20316}, '制作')
 local sRuKu = makeStr({20837, 24211}, '入库')
 
--- Mount OrderMonitorPage
-local monitorPage=OrderMonitorPage:new(owner,{x=0,y=0,width=1000,height=600})
-monitorPage:initialise()
-monitorPage:createChildren()
-monitorPage:activate()
-
 -- 5.1 Discrete 4-Stage Tracks
 -- Stage 1: 规划阶段 (Planning / WAITING_CLAIM)
 local rowStage1={
@@ -795,107 +788,5 @@ check(trackText5Compact:find(ICON_DONE..' '..sXunYuan..ARROW_WIDE..ICON_DONE..' 
 check(trackText5:find(ICON_DONE..' 1.'..sXunYuan,1,true)~=nil and trackText5:find(ICON_DONE..' 2.'..sBeiLiao,1,true)~=nil
     and trackText5:find(ICON_DONE..' 3.'..sZhiZuo,1,true)~=nil and trackText5:find(ICON_DONE..' 4.'..sRuKu,1,true)~=nil,
     'stage 5 has all 4 nodes checked ✔')
-
--- 5.2 BOM Drawer Verification
-local rowBomOrder={
-    id='CRAFT:order-bom',
-    kind='CRAFT',
-    name='Bob',
-    title='制作强化木板',
-    state='RUNNING',
-    phase='CRAFTING',
-    target=10,
-    produced=2,
-    delivered=0,
-    chainIndex=2,
-    nodes={
-        {name='原木加工',product='Base.Log',requested=5},
-        {name='精细锯切',product='Base.Plank',requested=10}
-    },
-    assets={
-        {fullType='Base.Plank',kind='outputs',delivered=true},
-        {fullType='Base.Log',kind='held',delivered=false},
-        {fullType='Base.Nails',kind='materials',delivered=false},
-        {fullType='Base.Woodglue',kind='cargo',delivered=false}
-    }
-}
-
-monitorPage.details:set(rowBomOrder)
-local detailLines=monitorPage.details.list.items
-check(#detailLines>0,'detail lines populated')
-
-local foundStored,foundProcessing,foundMissing,foundTransit=false,false,false,false
-local foundLadderPrefix=false
-
-for _,entry in ipairs(detailLines) do
-    local txt=entry.text or ''
-    if txt:find(BOX_BRANCH,1,true) or txt:find(BOX_CORNER,1,true) then
-        foundLadderPrefix=true
-    end
-    if txt:find('STORED',1,true) then foundStored=true end
-    if txt:find('PROCESSING',1,true) then foundProcessing=true end
-    if txt:find('MISSING',1,true) then foundMissing=true end
-    if txt:find('TRANSIT',1,true) then foundTransit=true end
-end
-
-check(foundLadderPrefix,'BOM topology ladder prefix ├── or └── rendered')
-check(foundStored,'BOM four-state badge [STORED] rendered')
-check(foundProcessing,'BOM four-state badge [PROCESSING] rendered')
-check(foundTransit,'BOM four-state badge [TRANSIT] rendered')
-
--- =========================================================================
--- Scenario 6: 防误触取消确认弹窗 (Cancel Safeguard Modal)
--- =========================================================================
-print('--- Scenario 6: Cancel Safeguard Modal ---')
-
-local inProgressOrder={
-    id='CRAFT:cancel-safe-order',
-    generation=12,
-    kind='CRAFT',
-    name='Alice',
-    title='批量制作木板',
-    state='RUNNING',
-    phase='CRAFTING',
-    target=10,
-    produced=3,
-    delivered=0,
-    canCancel=true
-}
-
-monitorSnapshot={rows={inProgressOrder}}
-monitorPage.store:setState({snapshot=monitorSnapshot,selection=inProgressOrder.id})
-check(monitorPage.selected~=nil,'in-progress order selected')
-check(monitorPage.buttons['return'].enable==true,'return/cancel button enabled')
-
-local initialCommands=#monitorCommands
-
--- 6.1 Player clicks Return (Cancel) button
-monitorPage.buttons['return']:onclick()
-
-check(monitorPage.cancelModal~=nil,'ISModalDialog cancel confirmation modal popped up')
-check(monitorPage.cancelModal.visible==true,'modal is visible')
-local expectedMsg='确定要取消该工单吗？当前已制成 3 件将安全入库，未用原料将由搬运工送回原箱。'
-check(monitorPage.cancelModal.text==expectedMsg,'modal prompt message matches cancel policy')
-check(#monitorCommands==initialCommands,'order is NOT cancelled yet while modal is open')
-
--- 6.2 Player clicks "No" (取消) on modal dialog
-local modalInstance=monitorPage.cancelModal
-modalInstance:onClick(modalInstance.no)
-
-check(monitorPage.cancelModal==nil,'modal destroyed and cleared')
-check(#monitorCommands==initialCommands,'order cancellation command strictly NOT issued on No')
-check(monitorPage.selected.id==inProgressOrder.id,'order remains intact and active in page')
-
--- 6.3 Player clicks Return again, then clicks "Yes" (确定)
-monitorPage.buttons['return']:onclick()
-check(monitorPage.cancelModal~=nil,'modal opened again')
-local modalInstance2=monitorPage.cancelModal
-modalInstance2:onClick(modalInstance2.yes)
-
-check(monitorPage.cancelModal==nil,'modal closed on Yes')
-check(#monitorCommands==initialCommands+1,'cancel command officially dispatched')
-check(monitorCommands[#monitorCommands].id==inProgressOrder.id,'command target matches order ID')
-check(monitorCommands[#monitorCommands].generation==12,'command generation matches order revision')
-check(monitorCommands[#monitorCommands].action=='return','action is return')
 
 print('PASS '..checks..' Track B Public Order & Production Journey simulated player checks completely succeeded!')

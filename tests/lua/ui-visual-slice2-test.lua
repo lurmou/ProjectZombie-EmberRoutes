@@ -168,6 +168,5 @@ check(avatar.portraitTexture==nil and avatar.fallbackTexture==nil and avatar.fal
 getTextManager=function() error('avatar draw measures text') end
 EmberRoutesProbeJava.getPortraitTexture=function() error('avatar draw calls Java') end
 avatar:prerender()
-check(true,'Avatar3DView prerender uses prepared cache only')
 getTextManager=getter
 print('ui-visual-slice2: '..checks..' PASS; native UI/Java/textures mocked')

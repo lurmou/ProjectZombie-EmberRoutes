@@ -91,7 +91,7 @@ local function tick(count)
             frames = frames - 1
             if frames == 0 then
                 if failMove then moving, motion = false, "FAILED" failMove = false
-                else npc.x, npc.y, npc.z = unpack(target) moving, motion = false, "REACHED" end
+                else npc.x, npc.y, npc.z = (table.unpack or unpack)(target) moving, motion = false, "REACHED" end
             end
         end
         Haul.tick()

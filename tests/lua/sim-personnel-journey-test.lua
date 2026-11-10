@@ -340,7 +340,6 @@ check(#personnel.matrixList.items == 2, 'Loaded 2 settlement workers in matrix')
 
 -- Test prerender passes without error
 personnel:prerender()
-check(true, 'PersonnelPage prerender completed smoothly')
 
 
 print('>>> STEP 2: Skill Level Badges Presentation (^L7 Crafting, ^L4 Hauling)')
@@ -363,7 +362,6 @@ check(aliceItem.visual.haulBadge == 'L9', 'Alice hauling cell badge displays L9'
 -- Verify cell draw executes cleanly
 personnel.matrixList:doDrawItem(0, personnel.matrixList.items[1])
 personnel.matrixList:doDrawItem(44, personnel.matrixList.items[2])
-check(true, 'Matrix list items rendered cleanly with badges')
 
 
 print('>>> STEP 3: Priority Cell Smooth Rotation & Atomic Revision Increment')
@@ -508,7 +506,6 @@ check(#setPrioritiesCalls == backendCallsBefore, 'No backend calls were fabricat
 
 -- Verify Heat Meter card and disclaimers in prerender
 defense:prerender()
-check(true, 'DefensePage prerender completed without exceptions')
 
 
 print('>>> STEP 7: Global Dashboard Lifecycle & Key Navigation (PageUp/PageDown & ESC)')

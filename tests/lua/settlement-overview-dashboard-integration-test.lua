@@ -226,7 +226,6 @@ check(overviewPage.orderList ~= nil, "orderList with InlineCardDrawer present")
 
 -- Execute prerender to verify zero-error rendering
 overviewPage:prerender()
-check(true, "overviewPage:prerender() executed cleanly")
 
 print("--- Step 3: Verify Context Application & Drawer Expansion ---")
 local contextTarget = overviewPage.resolveContext(overviewPage, {orderId = "order_2"})

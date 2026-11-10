@@ -28,7 +28,7 @@ check(#q:page(big,"missing",false,1,"nameAsc")==0,"empty searches produce a stab
 
 -- 2. Pinyin initial search checks
 local function makeStr(codepoints, utf8bytes)
-    local ok, str = pcall(string.char, unpack(codepoints))
+    local ok, str = pcall(string.char, (table.unpack or unpack)(codepoints))
     if ok and str and #str == #codepoints then return str end
     return utf8bytes
 end

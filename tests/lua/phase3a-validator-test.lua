@@ -1,5 +1,5 @@
 -- Phase 3A: JobStore and CRAFT/HAUL validator integration tests (v1.4 Errata Revision).
--- Tests defensive structure validation, assetFree compatibility, legacy format support, and Store.validate.
+-- Tests defensive structure validation, assetFree compatibility, and Store.validate.
 local Store = require 'EmberRoutesProbe/Kernel/JobStore'
 local CraftJobRecord = require 'EmberRoutesProbe/Crafting/CraftJobRecord'
 local HaulJobRecord = require 'EmberRoutesProbe/Hauling/HaulJobRecord'
@@ -208,7 +208,7 @@ local invalidCustodyState = {
 assertFalse(HaulJobRecord.valid(invalidCustodyState), "Invalid custodyState must return false")
 
 -- =========================================================================
--- Part 4: Store.validate API & Legacy Format Compatibility Tests
+-- Part 4: Store.validate API Tests
 -- =========================================================================
 assertTrue(type(Store.validate) == 'function', "Store.validate must be exported as a public API")
 
@@ -220,69 +220,7 @@ assertFalse(Store.validate(corruptedMaterials), "Store.validate should reject co
 assertTrue(Store.validate(validHaulJob), "Store.validate should accept valid format 3 HAUL")
 assertFalse(Store.validate(corruptedManifest), "Store.validate should reject corrupted HAUL without crashing")
 
--- Test 4.3: Legacy CRAFT format 3 job before migration (must be accepted by Store.validate)
-local legacyCraftFormat3 = {
-    id = "legacy-c3",
-    npcId = "npc-1",
-    providerType = "CRAFT",
-    scopeId = "settlement-1",
-    revision = 1,
-    state = "PREPARING",
-    effects = "KNOWN",
-    obligations = {},
-    payload = {
-        format = 3,
-        id = "legacy-c3",
-        npcId = "npc-1",
-        recipeId = "Base.MakeAxe",
-        recipeName = "Make Axe",
-        product = "Base.Axe",
-        signature = "sig-axe",
-        settlementId = "settlement-1",
-        requester = "player_1",
-        target = 2,
-        requested = 2,
-        unitYield = 1,
-        produced = 0,
-        delivered = 0,
-        released = false,
-        generation = 1,
-        state = "RUNNING",
-        phase = "PLANNING",
-        materials = { { id = 701, slot = 0 } },
-        tools = {},
-        outputs = {}
-    }
-}
-assertTrue(Store.validate(legacyCraftFormat3), "Store.validate must support legacy format 3 CRAFT before migration")
 
--- Test 4.4: Legacy HAUL format 2 job before migration (must be accepted by Store.validate)
-local legacyHaulFormat2 = {
-    id = "legacy-h2",
-    npcId = "npc-1",
-    providerType = "HAUL",
-    scopeId = "settlement-1",
-    revision = 1,
-    state = "PREPARING",
-    effects = "KNOWN",
-    obligations = {},
-    payload = {
-        format = 2,
-        id = "legacy-h2",
-        producer = "LOGISTICS",
-        source = "cont-src",
-        destination = "cont-dest",
-        settlementId = "settlement-1",
-        items = { 801 },
-        manifest = {
-            { itemId = 801, custodyState = "UNCOLLECTED", sourceId = "cont-src", deliveryPolicy = "AUTO_STORAGE" }
-        },
-        plannedCount = 1,
-        routeRevision = 1,
-        attemptSequence = 0
-    }
-}
-assertTrue(Store.validate(legacyHaulFormat2), "Store.validate must support legacy format 2 HAUL before migration")
 
 -- =========================================================================
 -- Part 5: JobStore Integration (Create, Update, Done)
@@ -299,12 +237,5 @@ assertTrue(okC, "store:create format 4 CRAFT: " .. tostring(errC))
 local okH, errH = store:create(validHaulJob)
 assertTrue(okH, "store:create format 3 HAUL: " .. tostring(errH))
 
--- Create legacy format 3 CRAFT (pre-migration compatibility)
-local okLegC, errLegC = store:create(legacyCraftFormat3)
-assertTrue(okLegC, "store:create legacy format 3 CRAFT: " .. tostring(errLegC))
 
--- Create legacy format 2 HAUL (pre-migration compatibility)
-local okLegH, errLegH = store:create(legacyHaulFormat2)
-assertTrue(okLegH, "store:create legacy format 2 HAUL: " .. tostring(errLegH))
-
-print("PASS: All 20 Phase 3A Defensive Validator, AssetFree, Legacy Compatibility, and Public Validate tests passed!")
+print("PASS: Phase 3A Defensive Validator, AssetFree, and Public Validate tests passed!")

@@ -1,4 +1,4 @@
-local Batch = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Batch.lua")
+local Batch = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Runtime/Batch.lua")
 local assertions = 0
 local function check(value, message)
     assertions = assertions + 1
