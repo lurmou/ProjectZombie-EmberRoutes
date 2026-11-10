@@ -6,6 +6,23 @@ local S={}
 local indexWorld,index,squadIndex,dirty=nil,{},{},true
 local contexts={WAIT=true,FOLLOW=true,RETURN=true,SETTLEMENT=true}
 local kinds={SETTLE=true,FOLLOW=true,WAIT=true,RETURN=true,TRANSFER=true,UNASSIGN=true,DISMISS=true}
+-- P0 pilot (cross-game RimWorld matrix): per-NPC x provider priority table,
+-- pilot categories only (HAUL 'hauling', COOKING 'cooking'); UI lands later,
+-- so values are data-only for now. A stored value is 0-4, where 0 is blank
+-- (never do this trade); a missing key means "no override", and the effective
+-- level is WORK_PRIORITY_DEFAULT (3) -- the same default the OrderStore
+-- priority projection already yields for an unset category.
+local WORK_PRIORITY_CATEGORIES={hauling=true,cooking=true}
+local WORK_PRIORITY_DEFAULT=3
+S.WORK_PRIORITY_DEFAULT=WORK_PRIORITY_DEFAULT
+local function validWorkPriorities(v)
+    if v==nil then return true end
+    if type(v)~='table' then return false end
+    for k,x in pairs(v) do
+        if not WORK_PRIORITY_CATEGORIES[k] or type(x)~='number' or x~=math.floor(x) or x<0 or x>4 then return false end
+    end
+    return true
+end
 local function validSlot(slot)
     return type(slot)=='number' and slot>=0 and slot<=2 and slot==math.floor(slot)
 end
@@ -59,6 +76,7 @@ local function validRow(id,r)
         and (r.posting==nil or type(r.settlementId)=='string' and type(r.posting)=='table' and r.posting.format==1
             and scalarId(r.posting.zoneId) and scalarId(r.posting.category))
         and (r.obligations==nil or type(r.obligations)=='table')
+        and validWorkPriorities(r.workPriorities)
         and (r.lastCommand==nil or type(r.lastCommand)=='table' and kinds[r.lastCommand.kind]
             and scalarId(r.lastCommand.requestId))
         and (r.bedReason==nil or type(r.bedReason)=='string')
@@ -173,6 +191,47 @@ function S.view(id)
         value.postingName=zone and zone.name
     end
     return value
+end
+-- Effective per-trade levels for the pilot categories: the stored value, or
+-- the default 3 when unset. Returns nil,'NO_MEMBERSHIP' for an unknown id.
+-- The map is a detached copy; editing it never touches the stored row.
+function S.workPriorities(id)
+    local data=store() local r=data and data.byNpc[id]
+    if not r then return nil,'NO_MEMBERSHIP' end
+    local result={}
+    for cat in pairs(WORK_PRIORITY_CATEGORIES) do
+        result[cat]=r.workPriorities and r.workPriorities[cat] or WORK_PRIORITY_DEFAULT
+    end
+    return result
+end
+-- Explicitly stored pilot levels only (unset keys absent). decide overlays
+-- exactly these on the OrderStore priorities; an unset key leaves the
+-- OrderStore value standing, so this pilot never silently overrides a
+-- player-set settlement priority with the default.
+function S.workPriorityOverrides(id)
+    local data=store() local r=data and data.byNpc[id]
+    if not r or not r.workPriorities then return nil end
+    local result={} for k,v in pairs(r.workPriorities) do result[k]=v end
+    return result
+end
+-- Pilot write path for one per-NPC trade level (UI lands later; tests and
+-- future UI use this). value nil clears the stored key back to "no override";
+-- 0 is blank (never do this trade), 1-4 is the level. Bumps the member
+-- revision so decide stamps change and the next discovery pass re-decides.
+function S.setWorkPriority(actor,id,category,value,expected)
+    local data=store() local row=data and data.byNpc[id]
+    if not data then return 'MEMBERSHIP_NEW_WORLD_REQUIRED' end
+    if not Ledger.authorized(actor) then return 'ACCESS_DENIED' end
+    if not row or row.retired then return 'NO_MEMBERSHIP' end
+    if not validRow(id,row) then return 'MEMBERSHIP_FORMAT_INVALID' end
+    if not WORK_PRIORITY_CATEGORIES[category] then return 'WORK_PRIORITY_CATEGORY_INVALID' end
+    if value~=nil and (type(value)~='number' or value~=math.floor(value) or value<0 or value>4) then return 'WORK_PRIORITY_INVALID' end
+    if row.revision~=expected then return 'STALE_MEMBERSHIP' end
+    row.workPriorities=row.workPriorities or {}
+    if value==nil then row.workPriorities[category]=nil
+    else row.workPriorities[category]=value end
+    row.revision=row.revision+1
+    notify(id) return 'WORK_PRIORITY_SAVED'
 end
 -- Rebuild only on membership changes/world replacement; UI receives detached stable IDs.
 function S.members(scope)

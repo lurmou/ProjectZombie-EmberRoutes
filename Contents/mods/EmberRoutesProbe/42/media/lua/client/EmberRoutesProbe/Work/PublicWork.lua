@@ -643,6 +643,22 @@ local function decide(actor,npcId,now,binding,entry)
     local member=Members and Members.view and Members.view(npcId)
     local stamp=entry.id..':'..tostring(entry.revision)..':'..tostring(member and member.revision)
         ..':'..tostring(member and member.postingRevision)..':'..tostring(priorities.revision)..':'..tostring(catalogEpoch[entry.id] or 0)
+    -- P0 pilot (cross-game RimWorld matrix): per-NPC HAUL/COOKING levels
+    -- stored on the member record override the OrderStore priorities for
+    -- this decision only. Only explicitly stored keys override; an unset
+    -- key leaves the OrderStore value standing, and the stored table is
+    -- never written here. Blank (0) means "never do this trade".
+    local overrides=Members and Members.workPriorityOverrides and Members.workPriorityOverrides(npcId)
+    if overrides and next(overrides) then
+        local overlaid=nil
+        for cat,v in pairs(overrides) do
+            if v~=nil then
+                if not overlaid then overlaid={} for k,x in pairs(priorities) do overlaid[k]=x end end
+                overlaid[cat]=v
+            end
+        end
+        if overlaid then priorities=overlaid end
+    end
     if not Providers.hasPending(npcId) and not idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Providers.discoveryChanged) then
 
         for _,provider in ipairs(Providers.all()) do
@@ -676,14 +692,29 @@ local function decide(actor,npcId,now,binding,entry)
     end
 
     local envDiscover=newDiscoverEnv(actor,npc,npcId,entry,priorities,now,candidates,function(t) studyTarget=t end)
-    local providersByTier={{},{},{},{}}
+    -- P0 pilot (cross-game RimWorld matrix): one discovery pass over all
+    -- eligible providers, ordered by effective priority ascending, then
+    -- provider registration order; selection is a single global utility
+    -- choose over that pool. This replaces the tier-by-tier loop (discover
+    -- tier 1, stop at the first tier holding a candidate), the RimWorld
+    -- "finish this priority before the next" shape: a tier-1 HAUL candidate
+    -- no longer keeps lower-tier providers from being discovered at all,
+    -- and same-tier candidates compete on score in one pool. One decide
+    -- still dispatches at most one job; the queue is never drained here.
+    -- env.priority is now each provider's own effective priority (the tier
+    -- loop set it to the tier index, which was the same value per provider).
+    local regIndex={}
+    for i,cat in ipairs(Providers.categories()) do regIndex[cat]=i end
+    local orderedProviders={}
     for _,provider in ipairs(Providers.all()) do
         local p=priorities[provider.category] or 0
-        if p>=1 and p<=4 and provider.discover then
-            local tier=providersByTier[p]
-            tier[#tier+1]=provider
-        end
+        if p>=1 and p<=4 and provider.discover then orderedProviders[#orderedProviders+1]=provider end
     end
+    table.sort(orderedProviders,function(a,b)
+        local pa,pb=priorities[a.category] or 0,priorities[b.category] or 0
+        if pa~=pb then return pa<pb end
+        return (regIndex[a.category] or 0)<(regIndex[b.category] or 0)
+    end)
 
     local posting=member and member.posting
     local zone,why=posting and PostingFilter.zone(posting,entry)
@@ -691,48 +722,41 @@ local function decide(actor,npcId,now,binding,entry)
     local postingAccepted=false
 
     local selected,jobId
-    for tierIdx=1,4 do
-        local tierProviders=providersByTier[tierIdx]
-        if #tierProviders>0 then
-            candidates={}
-            envDiscover.candidates=candidates
-            envDiscover.priority=tierIdx
-            for _,provider in ipairs(tierProviders) do
-                if Perf.active() then
-                    local name=discoverName[provider.category]
-                    if not name then name='PublicWork.discover:'..provider.category discoverName[provider.category]=name end
-                    measured(name,provider.discover,envDiscover)
-                else
-                    provider.discover(envDiscover)
+    if #orderedProviders>0 then
+        for _,provider in ipairs(orderedProviders) do
+            envDiscover.priority=priorities[provider.category] or 0
+            if Perf.active() then
+                local name=discoverName[provider.category]
+                if not name then name='PublicWork.discover:'..provider.category discoverName[provider.category]=name end
+                measured(name,provider.discover,envDiscover)
+            else
+                provider.discover(envDiscover)
+            end
+        end
+
+        postingReason,postingAccepted=applyPostingFilter(posting,zone,candidates,postingReason,postingAccepted)
+
+        if #candidates>0 then
+            local firstMap=OrderQuery.firstLiveByProduct()
+            for _,candidate in ipairs(candidates) do
+                if candidate.allowed~=false then
+                    local order=candidate.order or candidate.orderId and data.orders[candidate.orderId]
+                    local reason=order and OrderQuery.reasonFor(order,firstMap)
+                    if reason then candidate.allowed=false signal(order,reason) end
+                    if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
                 end
             end
+        end
 
-            postingReason,postingAccepted=applyPostingFilter(posting,zone,candidates,postingReason,postingAccepted)
+        if Providers.holdSelection(envDiscover) then return end
 
-            if #candidates>0 then
-                local firstMap=OrderQuery.firstLiveByProduct()
-                for _,candidate in ipairs(candidates) do
-                    if candidate.allowed~=false then
-                        local order=candidate.order or candidate.orderId and data.orders[candidate.orderId]
-                        local reason=order and OrderQuery.reasonFor(order,firstMap)
-                        if reason then candidate.allowed=false signal(order,reason) end
-                        if not retryReady({id=candidate.key},npcId,now) then candidate.allowed=false end
-                    end
-                end
-            end
-
-            if Providers.holdSelection(envDiscover) then return end
-
-            for _=1,3 do
-                selected=Selector.choose(candidates,priorities)
-                if not selected then break end
-                jobId=Registry.id()
-                if directory:claim(selected.key,selected.revision,npcId,jobId) then break end
-                cool({id=selected.key},npcId,{watch=Wake.capture(entry)},'CLAIM_BUSY',now)
-                selected.allowed=false selected=nil
-            end
-
-            if selected then break end
+        for _=1,3 do
+            selected=Selector.choose(candidates,priorities)
+            if not selected then break end
+            jobId=Registry.id()
+            if directory:claim(selected.key,selected.revision,npcId,jobId) then break end
+            cool({id=selected.key},npcId,{watch=Wake.capture(entry)},'CLAIM_BUSY',now)
+            selected.allowed=false selected=nil
         end
     end
 
