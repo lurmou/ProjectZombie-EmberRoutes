@@ -16,10 +16,9 @@ import zombie.world.moddata.GlobalModData;
 
 /** Only publishes into the current world's normal save. Never calls player file/DB save APIs. */
 final class ProbePersistence {
-    private static final String KEY = "EmberRoutes/NpcCheckpoint/v1";
     private static KahluaTable verifiedRecords;
-    private static long revision,verifiedRevision=-1;
     private static Map<String,String> verifiedIds=Map.of();
+    private static long revision,verifiedRevision=-1;
     private final String slot;
     ProbePersistence(String slot) { this.slot = slot; }
 
@@ -33,18 +32,18 @@ final class ProbePersistence {
 
     private static KahluaTable records() {
         KahluaTable root = GlobalModData.instance.getOrCreate("EmberRoutes/NpcCheckpoints/v2");
-        Object legacy=root.rawget("snapshot")==null ? GlobalModData.instance.getOrCreate(KEY).rawget("record") : null;
-        return migrateRecords(root,legacy,LuaManager.platform);
+        return ensureRecords(root, LuaManager.platform);
     }
     // Table/version contract is testable in the installed VM without initializing the world.
-    static KahluaTable migrateRecords(KahluaTable root,Object legacy,se.krka.kahlua.vm.Platform platform) {
+    // No v1 import: a fresh root gets an empty format-2 snapshot; any other
+    // shape is rejected, and a v1-only store is simply never consulted again.
+    static KahluaTable ensureRecords(KahluaTable root, se.krka.kahlua.vm.Platform platform) {
         Object value = root.rawget("snapshot");
         if (value == null) {
             KahluaTable snapshot = platform.newTable();
             KahluaTable records = platform.newTable();
-            if (legacy != null) records.rawset("legacy", legacy);
             snapshot.rawset("format", 2.0); snapshot.rawset("records", records);
-            root.rawset("snapshot", snapshot); // Publish migration once, never consult v1 again.
+            root.rawset("snapshot", snapshot);
             return records;
         }
         if (!(value instanceof KahluaTable snapshot) || !Double.valueOf(2).equals(snapshot.rawget("format"))

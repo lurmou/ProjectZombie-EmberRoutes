@@ -523,7 +523,6 @@ COMPAT_BASELINE = {
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/LaborStore.lua': 7,
     'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua': 2,
     'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/JobStore.lua': 2,
-    'java/src/main/java/emberroutes/probe/ProbePersistence.java': 5,
 }
 def _line_words(line):
     """Lowercase words on a line, splitting camelCase/underscores/digits.
