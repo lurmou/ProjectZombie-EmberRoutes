@@ -143,11 +143,10 @@ local function tickServices()
         if Probe.tickActions then Probe.tickActions() end
     end
 
-    -- 15Hz: Work, delivery, hauling, crafting
+    -- 15Hz: Work, hauling, crafting
     if is15 then
         if Probe.tickWork then Probe.tickWork() end
         if Probe.tickHaul then Probe.tickHaul() end
-        if Probe.tickDelivery then Probe.tickDelivery() end
         if Probe.tickCrafting then Probe.tickCrafting() end
     end
 
@@ -186,7 +185,6 @@ function Probe.tick()
     if is15 then
         if Probe.tickWork then Performance.measure("Work", Probe.tickWork) end
         if Probe.tickHaul then Performance.measure("Haul", Probe.tickHaul) end
-        if Probe.tickDelivery then Performance.measure("Delivery", Probe.tickDelivery) end
         if Probe.tickCrafting then Performance.measure("Crafting", Probe.tickCrafting) end
     end
 

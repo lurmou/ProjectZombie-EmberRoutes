@@ -377,5 +377,4 @@ end
 function Service.reset() nextRecovery=0 scanWorld,scans,discoveryCursor,recoveryCursor=nil,{},{},0 end
 local Boot=require('EmberRoutesProbe/Kernel/Boot')
 if Boot.registerReset then Boot.registerReset("Delivery", Service.reset) end
-Boot.tickDelivery=nil
 return Service
