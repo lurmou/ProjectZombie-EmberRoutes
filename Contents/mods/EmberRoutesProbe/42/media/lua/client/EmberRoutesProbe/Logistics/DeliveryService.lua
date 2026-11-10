@@ -375,6 +375,7 @@ function Service.hasWork()
     for _,o in pairs(data().orders) do if o.jobId then return true end end return false
 end
 function Service.reset() nextRecovery=0 scanWorld,scans,discoveryCursor,recoveryCursor=nil,{},{},0 end
-require('EmberRoutesProbe/Kernel/Boot').resetDelivery=Service.reset
-require('EmberRoutesProbe/Kernel/Boot').tickDelivery=nil
+local Boot=require('EmberRoutesProbe/Kernel/Boot')
+if Boot.registerReset then Boot.registerReset("Delivery", Service.reset) end
+Boot.tickDelivery=nil
 return Service

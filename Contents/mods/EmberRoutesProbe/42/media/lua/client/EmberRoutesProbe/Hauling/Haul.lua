@@ -412,9 +412,10 @@ function Haul.tick(context)
 end
 
 Probe.tickHaul, Probe.cancelHaul, Probe.cleanupHaul, Probe.haulBusy = Haul.tick, Haul.cancel, Haul.cleanup, Haul.busy
-Probe.resetHaul = function()
+local function resetHaul()
     if not Haul.cleanup() then return false end
     Haul.endpoints = {}
     return true
 end
+if Probe.registerReset then Probe.registerReset("Haul", resetHaul) end
 return Haul

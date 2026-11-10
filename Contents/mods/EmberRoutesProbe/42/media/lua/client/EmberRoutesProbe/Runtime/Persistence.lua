@@ -320,10 +320,11 @@ Probe.prepareTaskRecovery=function()
     if Probe.controlledExecution==true then managed().load()
     elseif Probe.resetStock then Probe.resetStock() end
 end
-Probe.resetPersistence=function()
+local function resetPersistence()
     restoreQueue=nil legacyStockResume=nil worldSaveRequest=nil
     if Probe.controlledExecution==true then managed().reset() end
     if Probe.resetStock then Probe.resetStock() end
 end
+if Probe.registerReset then Probe.registerReset("Persistence", resetPersistence) end
 require('EmberRoutesProbe/Runtime/ExitSave').install(Persistence)
 return Persistence

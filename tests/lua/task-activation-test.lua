@@ -19,9 +19,13 @@ for _,name in ipairs({'command','tick','reset','clearForSave','actionCarrier','c
     'commandFor','carrierFor','selectedId','spawnAdditional','selectCarrier','workerCount','workerIdAt','saveCheckpointFor',
     'blockAllCheckpoints','captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
     'acquireBodyControl','releaseBodyControl','moveWithControl','stopWithControl','bodyStopMask','ownedCarrierId','freezeBodyControl',
-    'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl'}) do bridge[name]=stub end
+    'thawBodyControl','retireBodyControl','removeIdleCarrier','reposeWithControl','reposeAtWithControl',
+    'followWithControl','followMetrics','moveSeatWithControl','reachedSeat','moveBedWithControl','bedPoseReady',
+    'furniturePoseWithControl','moveSleepSeatWithControl','floorSleepSafe'}) do bridge[name]=stub end
 EmberRoutesProbeJava=bridge
-local Probe=dofile('Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua')
+local Probe=dofile('Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua')
+require 'EmberRoutesProbe/Kernel/EvenPaused' -- game loads this entry alongside Boot; provides the OnTickEvenPaused callback below
+require('EmberRoutesProbe/Kernel/EvenPaused').add(function() end) -- mirrors StockService/WarehouseIndex: first handler installs the engine callback
 package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
 check(Probe.controlledExecution==true,'production defaults to complete controlled path')
 local required={'captureCheckpointFor','saveBodyReady','armSaveReceipt','verifySaveReceipt','restoreCheckpointFor',
@@ -43,6 +47,7 @@ local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 Probe.prepareTaskRecovery=function() loaded=true order[#order+1]='claims' end
 Probe.beginTasks=function() check(loaded,'claims prepared before runtime begin') order[#order+1]='begin' Runtime.begin() end
 Probe.tickTasks=Runtime.tick Probe.resetTasks=Runtime.reset
+if Probe.registerReset then Probe.registerReset("Tasks", Runtime.reset) end -- mirrors Companion: Tasks reset is registered, direct key stays for begin() admission
 Probe.beforeStockSave=stub Probe.afterStockSave=stub Probe.resetStock=stub
 local saved,legacy=0,0
 Probe.savePersistentCarrier=function() saved=saved+1 end

@@ -18,6 +18,8 @@ function getText(key) return key end
 function getTimestampMs() return time end
 DebugLog={log=function() end}
 local Probe={ready=true,controlledExecution=true,build={prefix='TEST'},hasJava=function() return true end}
+local resets={}
+function Probe.registerReset(name, fn) resets[name]=fn end
 function Probe.cancelAll() error('controlled companion must not cancel other businesses directly') end
 package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
 local function newRoot()
@@ -83,7 +85,7 @@ tick(3)
 check(Companion.exportState('a').mode=='FOLLOW' and Companion.exportState('a').jobId=='saved-follow-job',
     'restore captures original scalars NPC ID and stable job')
 local oldRuntime=Runtime.current()
-Probe.resetTasks()
+resets.Tasks()
 check(Runtime.current()==nil,'reset cannot recreate an execution service during legacy cleanup')
 local before=moves.a
 Probe.tickTasks()
