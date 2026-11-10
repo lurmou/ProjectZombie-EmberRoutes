@@ -5,6 +5,7 @@ local order={}
 function M.register(kind,restore)
     assert(type(restore)=='function' and not (C.get(kind) or {}).restoreClaims,'RECOVERY_CONTRACT_DUPLICATED')
     local contract=assert(C.get(kind),'JOB_CONTRACT_REQUIRED')
+    assert(type(contract.errorCodes)=='table','RECOVERY_CONTRACT_ERROR_CODES_REQUIRED')
     contract.restoreClaims=restore order[#order+1]=kind
 end
 function M.restore(context)
