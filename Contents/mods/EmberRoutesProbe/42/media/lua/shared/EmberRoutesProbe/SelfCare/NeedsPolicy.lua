@@ -54,6 +54,15 @@ end
 -- glass, deep wound) is the native severe-injury flag and needs no number.
 local EMERGENCY={HUNGER=0.90,THIRST=0.90,HEALTH=50}
 Policy.EMERGENCY=EMERGENCY
+-- Utility steepening (P1 pilot, Sims-inspired): EAT/DRINK scores are
+-- multiplied once the raw need passes a tier, so a very hungry/thirsty
+-- NPC outranks a merely tired one. Tiers are strict: at exactly TIER1
+-- the score is unchanged (x1), at exactly TIER2 it is x2, not x3.
+-- SLEEP/REST are deliberately not steepened (sleep interruption is
+-- expensive); thresholds and the candidate set are untouched, only the
+-- ranking score changes. All numbers live in this table only.
+local STEEPENING={TIER1=0.50,TIER2=0.70,TIER1_MULT=2,TIER2_MULT=3}
+Policy.STEEPENING=STEEPENING
 -- SelfCare's MEDICAL semantics, as a decide-side predicate: the NPC needs
 -- care now (bleeding, unbandaged injury, or a bandage due for replacement).
 -- Deliberately stricter than Policy.choose's MEDICAL offer: choose only
@@ -93,6 +102,13 @@ function Policy.choose(sample,previous,context,offers)
             and (r.inverse and v<threshold or not r.inverse and v>threshold)
             and offers[r.kind]==true then
             local value=r.inverse and 1-v or v
+            -- Steepening applies to EAT/DRINK only, on the raw need value
+            -- v (not the hysteresis-boosted value, so a need just below
+            -- a tier stays x1 even while active), before hysteresis.
+            if r.kind=='EAT' or r.kind=='DRINK' then
+                if v>STEEPENING.TIER2 then value=value*STEEPENING.TIER2_MULT
+                elseif v>STEEPENING.TIER1 then value=value*STEEPENING.TIER1_MULT end
+            end
             if active then value=value+HYSTERESIS end
             if not best or value>score then best,score=r.kind,value end
         end
