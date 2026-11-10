@@ -3,7 +3,7 @@
 local f=dofile('tests/lua/craft-probe-test.lua')
 local checks=0
 local function check(value,message) checks=checks+1 assert(value,message) end
-f.Probe.controlledExecution=false
+f.Probe.controlledExecution=true -- direct (non-TaskRuntime) execution retired by e8b30c0; Production runs controlled
 local _,saw=f.fresh(3)
 f.npc.maxWeight=8 saw.weight=1
 local logs={}
@@ -18,7 +18,7 @@ for _=1,2000 do plan,reason=request:step() if plan or reason then break end end
 check(plan and not reason and #plan.assets==4,'public preclaim admits three logs and one reusable saw by single-batch capacity')
 check(not f.Craft.record(f.npc.id) and not f.Store.owner(logs[1].id),'preclaim moves and claims no originals')
 check(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,
-    orderId='three-batch-demand',chain=true,nonPreemptive=true})=='STARTED','public-style three-batch demand starts')
+    orderId='three-batch-demand',chain=true,nonPreemptive=true})=='QUEUED','public-style three-batch demand starts')
 local peak,mostLogs=0,0
 for _=1,3000 do
     f.tick(true)

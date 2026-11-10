@@ -4,7 +4,7 @@ local Yield=require 'EmberRoutesProbe/Crafting/ProductionYield'
 local Production=require 'EmberRoutesProbe/Crafting/Production'
 local checks=0
 local function check(v,label) assert(v,label) checks=checks+1 end
-f.Probe.controlledExecution=false
+f.Probe.controlledExecution=true -- direct (non-TaskRuntime) execution retired by e8b30c0; Production runs controlled
 f.Probe.activityContext=nil
 local _,saw=f.fresh(3)
 local logs={}
@@ -14,7 +14,7 @@ for i=0,f.materials.container:getItems():size()-1 do
 end
 local function invite(id) return {eventId='gathering',settlementId=f.entry.id} end
 check(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,
-    orderId='demand',chain=true,nonPreemptive=true})=='STARTED','public batch starts')
+    orderId='demand',chain=true,nonPreemptive=true})=='QUEUED','public batch starts')
 for _=1,1500 do f.tick(true) if f.nativeCalls()>=1 then break end end
 check(f.nativeCalls()==1,'one actual native craft before yield intent')
 f.Probe.activityContext=invite
@@ -34,7 +34,7 @@ check(demand.quantity==9 and Yield.remaining(demand)==6,'request identity and or
 check(not Yield.settle(demand,r),'detached old job cannot settle twice')
 f.Probe.activityContext=nil
 check(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=Yield.remaining(demand),
-    orderId='demand',chain=true,nonPreemptive=true})=='STARTED','same demand starts only remaining quantity')
+    orderId='demand',chain=true,nonPreemptive=true})=='QUEUED','same demand starts only remaining quantity')
 local nextRecord=f.Craft.record(f.npc.id) demand.jobId=nextRecord.id
 for _=1,2500 do f.tick(true) if not f.Work.busy(f.npc.id) then break end end
 patch=assert(Yield.settle(demand,nextRecord))
@@ -56,7 +56,7 @@ check(Yield.settle(intermediate,fake).state=='CANCELLED','cancelled public deman
 -- A saved mid-return intent must not resume native production, even after the party ends.
 f.Probe.activityContext=nil
 f.fresh(3)
-assert(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,orderId='saved',chain=true,nonPreemptive=true})=='STARTED')
+assert(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,orderId='saved',chain=true,nonPreemptive=true})=='QUEUED')
 for _=1,1500 do f.tick(true) if f.nativeCalls()>=1 then break end end
 f.Probe.activityContext=invite f.tick(false)
 r=f.Craft.record(f.npc.id)
@@ -64,7 +64,7 @@ check(r.activityYield~=nil and not r.released,'yield intent persists before all 
 Production.pause('SAVE',f.npc.id)
 f.Probe.activityContext=nil
 local resumed=Production.execute(f.actor,'resume',nil,f.npc.id,{nonPreemptive=true})
-check(resumed=='RETURN_STARTED','resume of a committed yield is return-only')
+check(resumed=='QUEUED','resume of a committed yield is admitted; return-only is verified by the release below')
 for _=1,1800 do f.tick(true) if not f.Work.busy(f.npc.id) then break end end
 check(r.released and f.nativeCalls()==1,'saved cleanup cannot craft extra units after context disappears')
 local root=f.registry.data()
@@ -84,7 +84,7 @@ check(Public.order('saved').craftProgress.delivered==3,'UI projection cannot mut
 check(Public.order('saved').quantity==9 and Yield.remaining(Public.order('saved'))==6,'real provider preserves original request quantity')
 -- Manual work keeps its original Job and resumes only the remaining goal.
 f.Probe.activityContext=nil f.fresh(3)
-assert(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,chain=true,nonPreemptive=true})=='STARTED')
+assert(f.Craft.execute(f.actor,'run',nil,f.npc.id,true,{recipeId=f.recipe.key,quantity=9,chain=true,nonPreemptive=true})=='QUEUED')
 for _=1,1500 do f.tick(true) if f.nativeCalls()==1 then break end end
 local manualId=f.Craft.record(f.npc.id).id
 local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
