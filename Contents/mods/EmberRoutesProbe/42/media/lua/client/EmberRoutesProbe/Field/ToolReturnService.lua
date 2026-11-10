@@ -214,9 +214,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         if not fact or fact.bodyStopped~=true then return false end
         if task.world~=Registry.data() then return false end
         local custodyNow=Store.custodyByItem(task.itemId)
-        if custodyNow and custodyNow.state=='DEAD_CARRIER' then
-            task.record.state='FAILED'
-        elseif arrived() then
+        if arrived() then
             if not Store.completeCustodyReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item) then return false end
             task.finished=true task.record.state='DONE' task.record.phase='SETTLED'
             task.knownStopped=true

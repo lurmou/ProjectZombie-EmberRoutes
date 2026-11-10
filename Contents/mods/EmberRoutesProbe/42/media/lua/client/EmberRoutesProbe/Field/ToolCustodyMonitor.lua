@@ -3,7 +3,7 @@ local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local M={}
-local function exceptional(c) return c.state=='RECONCILE_REQUIRED' or c.state=='DEAD_CARRIER' end
+local function exceptional(c) return c.state=='RECONCILE_REQUIRED' end
 function M.assets(npcId,handle,budget)
     local records,items,assets={},{},{}
     for _,c in pairs(Registry.data().toolCustody and Registry.data().toolCustody.byId or {}) do
@@ -41,7 +41,6 @@ function M.rows(scopeId,context)
             local control=c.returnJobId and runtime and runtime:status(npcId,c.returnJobId)
             if exceptional(c) then row.bucket='attention' row.uncertain=true
             elseif row.bucket~='attention' and control and not control.pending and control.state=='ACTIVE' then row.bucket='active' end
-            if c.state=='DEAD_CARRIER' then row.carrierAvailable=false end
         end
     end
     for _,row in ipairs(rows) do

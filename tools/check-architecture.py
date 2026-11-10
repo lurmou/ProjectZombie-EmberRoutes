@@ -518,7 +518,6 @@ def check_provider_retained(lua_root, errors):
 COMPAT_BASELINE = {
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Crafting/CraftLegacyRecovery.lua': 3,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Crafting/CraftProbe.lua': 1,
-    'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Field/ToolReturnProvider.lua': 1,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Runtime/Persistence.lua': 8,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Warehouse/OrderMonitorService.lua': 1,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/LaborStore.lua': 7,
