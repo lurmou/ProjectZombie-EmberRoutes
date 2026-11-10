@@ -3,7 +3,7 @@
     方案 B：即时诊疗面板 (Instant Medical Panel)
     - 点击即时走近并打开 NPC 的原生健康面板 (ISHealthPanel)
     - 废除原版 MP Consent Handshake 握手弹窗
-    - 守卫 NPC 相对距离 (<= 2.5 格)，放宽原版绝对坐标微步强退判定
+    - 守卫 NPC 相对距离 (<= 2 格，对齐原版交易 UI ISTradingUI.lua:417-419 的 2 格判定)，放宽原版绝对坐标微步强退判定
     - 修正 DidPatientMove 浮点严格相等崩溃，保障包扎/缝合/消毒 TimedAction 顺利执行
 ]]
 
@@ -69,17 +69,17 @@ function NpcMedical.open(doctor, npc)
     local existing = NpcMedical.activePanels[npc]
     if existing and existing:getIsVisible() then
         existing:bringToTop()
-        if distSq > 6.25 or not sameFloor then
+        if distSq > 4.0 or not sameFloor then
             local square = npc:getCurrentSquare()
             if square then luautils.walkAdj(doctor, square) end
         end
         return
     end
 
-    if distSq <= 6.25 and sameFloor then -- 2.5 格且同层：立即开窗
+    if distSq <= 4.0 and sameFloor then -- 2 格且同层：立即开窗（对齐原版交易 UI 的 2 格判定）
         NpcMedical.displayHealthPanel(doctor, npc)
     else
-        -- 2.5 格外或跨层：自动寻路走近，到达身边后自动秒开
+        -- 2 格外或跨层：自动寻路走近，到达身边后自动秒开
         local square = npc:getCurrentSquare()
         if square and luautils.walkAdj(doctor, square) then
             ISTimedActionQueue.add(ISOpenNpcMedicalAction:new(doctor, npc))
@@ -215,7 +215,7 @@ function NpcMedical.installHooks()
     if NpcMedical.installed then return end
     NpcMedical.installed = true
 
-    -- 1. 守卫 ISHealthPanel.update：始终同步瞬时坐标防止强退，超出 2.5 格仅遮罩，返回后自动解锁
+    -- 1. 守卫 ISHealthPanel.update：始终同步瞬时坐标防止强退，超出 2 格仅遮罩，返回后自动解锁
     if ISHealthPanel and ISHealthPanel.update then
         local orig_update = ISHealthPanel.update
         ISHealthPanel.update = function(self)
@@ -235,12 +235,12 @@ function NpcMedical.installHooks()
 
                     local distSq = IsoUtils.DistanceToSquared(doctor:getX(), doctor:getY(), patient:getX(), patient:getY())
                     local sameFloor = doctor:getZ() == patient:getZ()
-                    if distSq <= 6.25 and sameFloor then
-                        -- 在 2.5 格范围内：解除遮罩，允许操作
+                    if distSq <= 4.0 and sameFloor then
+                        -- 在 2 格范围内：解除遮罩，允许操作
                         self.blockingMessage = nil
                         self.blockingAlpha = math.max(0.0, (self.blockingAlpha or 0.0) - 0.05)
                     else
-                        -- 脱离 2.5 格范围：保持窗口开启，展示“太远了”半透明遮罩阻塞交互；重新走近后自动解锁
+                        -- 脱离 2 格范围：保持窗口开启，展示“太远了”半透明遮罩阻塞交互；重新走近后自动解锁
                         local isNpc, npcId = NpcMedical.isTargetNpc(patient)
                         local name = (isNpc and Names.name(npcId, patient)) or (patient.getFullName and patient:getFullName()) or "NPC"
                         self.blockingMessage = getText("IGUI_TradingUI_TooFarAway", name)
@@ -260,7 +260,7 @@ function NpcMedical.installHooks()
                 if not doctor or not patient or patient:isDead() then return true end
                 if ISHealthPanel.IsCharactersInSameCar(doctor, patient) then return false end
                 local distSq = IsoUtils.DistanceToSquared(doctor:getX(), doctor:getY(), patient:getX(), patient:getY())
-                return distSq > 6.25 -- 相对距离超出 2.5 格才判定为脱离移动
+                return distSq > 4.0 -- 相对距离超出 2 格才判定为脱离移动（对齐原版交易 UI ISTradingUI.lua:417-419 的 2 格判定）
             end
             return orig_DidPatientMove(doctor, patient, patientX, patientY)
         end
