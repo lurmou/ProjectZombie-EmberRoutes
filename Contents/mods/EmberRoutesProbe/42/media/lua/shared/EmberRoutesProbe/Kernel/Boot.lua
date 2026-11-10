@@ -1,6 +1,7 @@
 local build = require "EmberRoutesProbe/Kernel/Build"
 local Log = require "EmberRoutesProbe/Kernel/Log"
 local Performance = require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
+local EventBus = require "EmberRoutesProbe/Kernel/EventBus"
 -- P1 complete execution path enabled for single-player acceptance. No live toggle.
 -- NOTE (F-01): `Probe.publicDispatch` is NOT in this table on purpose. It is a
 -- "PublicWork has loaded" flag, not a runtime feature toggle: it stays nil
@@ -305,15 +306,21 @@ function Probe.beforeSave()
 end
 
 if Events and Events.OnGameStart then
-    Events.OnGameStart.Add(Probe.begin)
-    Events.OnServerStarted.Add(Probe.begin)
-    Events.OnTick.Add(Probe.tick)
-    Events.OnPreMapLoad.Add(Probe.reset)
-    Events.OnSave.Add(Probe.beforeSave)
+    -- One registry for every subscription (Kernel/EventBus): the engine
+    -- never dedupes Add calls, so a second file execution in the same Lua
+    -- state would otherwise register each callback twice. Keys are stable
+    -- strings because a re-executed file builds fresh closures.
+    EventBus.subscribeOnce(Events.OnGameStart, "Boot.begin", Probe.begin)
+    EventBus.subscribeOnce(Events.OnServerStarted, "Boot.begin", Probe.begin)
+    EventBus.subscribeOnce(Events.OnTick, "Boot.tick", Probe.tick)
+    EventBus.subscribeOnce(Events.OnPreMapLoad, "Boot.reset", Probe.reset)
+    EventBus.subscribeOnce(Events.OnSave, "Boot.beforeSave", Probe.beforeSave)
 end
 -- Retirement rides the mod's single even-paused dispatcher.
-require('EmberRoutesProbe/Kernel/EvenPaused').add(function()
-    if Probe.ready then EmberRoutesProbeJava.retirementTick() end
+EventBus.runOnce("Boot.retirement", function()
+    require('EmberRoutesProbe/Kernel/EvenPaused').add(function()
+        if Probe.ready then EmberRoutesProbeJava.retirementTick() end
+    end)
 end)
 
 return Probe
