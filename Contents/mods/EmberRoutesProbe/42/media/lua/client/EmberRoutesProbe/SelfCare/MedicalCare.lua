@@ -16,6 +16,17 @@ function M.observe(npc,id,sample,now)
         state=state,signature=signature,blocker=facts and facts.needsCare and previous and previous.blocker or nil}
     if signature~=(previous and previous.signature) then require('EmberRoutesProbe/Work/LaborSignals').changed(id) if facts then require('EmberRoutesProbe/Chatter/ChatterService').observeHealth(npc,facts) end end
 end
+-- Read-only view of the last observed medical facts for one NPC, or nil
+-- when SelfCare has not observed them yet (or the observation failed).
+-- Decide's emergency short-circuit reads this cache instead of running a
+-- second body-part scan: SelfCare refreshes it at its 1Hz observe cadence,
+-- and a missing entry fails open to normal dispatch. Never calls observe:
+-- that would duplicate SelfCare's signal/chatter side effects here.
+function M.lastFacts(id)
+    local root=Registry.data() if world~=root then world,observed=root,{} end
+    local o=observed[id]
+    return o and o.facts or nil
+end
 function M.eligible(item)
     return item and item.getBandagePower and item:getBandagePower()>0
         and item.getType and not string.find(item:getType(),'Dirty')

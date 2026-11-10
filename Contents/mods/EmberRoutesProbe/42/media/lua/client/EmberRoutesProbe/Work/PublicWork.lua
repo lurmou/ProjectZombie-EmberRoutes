@@ -18,6 +18,7 @@ local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Selector=require 'EmberRoutesProbe/Work/WorkSelector'
 local NeedsObserver=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
 local NeedsPolicy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
+local MedicalCare=require 'EmberRoutesProbe/SelfCare/MedicalCare'
 local Directory=require 'EmberRoutesProbe/Kernel/TaskDirectory'
 local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 -- Persisted order document and its schema checks, kept apart from the scheduler
@@ -714,6 +715,26 @@ local function decide(actor,npcId,now,binding,entry)
         end
         sleeping[npcId]=nil
     end
+    -- P0 pilot (cross-game RimWorld): emergency short-circuit. An NPC who
+    -- needs medical care, is extremely hungry/thirsty, or is severely
+    -- injured returns here, before the warn demotion and the provider
+    -- scan: dispatch is certainly wasted, SelfCare owns the recovery on
+    -- its own path. Thresholds live in NeedsPolicy.EMERGENCY only; the
+    -- medical facts are SelfCare's last 1Hz observation (MedicalCare
+    -- cache), so this adds no second body-part scan, and a missing
+    -- observation fails open to normal dispatch. This is a second gate
+    -- behind eligible()'s canWork check (same facts, 1s cache): it closes
+    -- the window where the NPC was hurt after eligibility passed. A plain
+    -- return: no reservation exists here (decide returns early when one
+    -- does), and advanceReservations cancels a pending one once SelfCare
+    -- starts the job. A sleeper that does not wake returns from the sleep
+    -- block above before reaching this point, so it is never dispatched
+    -- anyway; a sleeper that wakes on an extreme need is cleared there
+    -- and then short-circuits here.
+    local medical=MedicalCare.lastFacts(npcId)
+    if NeedsPolicy.medicalEmergency(medical) then return end
+    if NeedsPolicy.extremeNeed(sample) then return end
+    if NeedsPolicy.severeInjury(medical) then return end
     if sample and NeedsPolicy.warned(sample) then
         local haul=priorities.hauling
         if haul and haul>=1 and haul<4 then
