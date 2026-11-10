@@ -2,6 +2,7 @@
 local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Driver = require "EmberRoutesProbe/Runtime/Driver"
 local Producers = require "EmberRoutesProbe/Work/LaborProducers"
+local TransferDuration = require "EmberRoutesProbe/Work/TransferDuration"
 local Transfer = {}
 
 function Transfer.reachable(npc, endpoint)
@@ -131,8 +132,10 @@ function Transfer.item(context, item, from, to, endpoint)
         if endpoint and endpoint.object and context.npc.faceThisObject then
             context.npc:faceThisObject(endpoint.object)
         end
-        local weight = item.getActualWeight and item:getActualWeight() or 1.0
-        local duration = math.max(15, math.min(60, math.floor(weight * 15 + 20)))
+        -- Presentation only: the physical transfer is done by Lua in poll().
+        -- Duration is the vanilla transfer formula (TransferDuration),
+        -- replacing the old weight-banded 15..60 estimate.
+        local duration = TransferDuration.forTransfer(context.npc, item, from, to)
         if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
             EmberRoutesProbeJava.nativeActionStart(context.npc, "Loot", duration, true)
         end

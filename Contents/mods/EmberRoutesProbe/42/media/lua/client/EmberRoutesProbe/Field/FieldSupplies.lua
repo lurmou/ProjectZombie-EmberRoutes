@@ -34,7 +34,7 @@ local function transferNode(c,item,from,to,endpoint,req)
         observe=observe,
         create=function()
             if not valid() then return nil end
-            return ISInventoryTransferAction:new(c.npc,item,from,to,60)
+            return ISInventoryTransferAction:new(c.npc,item,from,to)
         end
     }
     return Native.new(c,hooks)
