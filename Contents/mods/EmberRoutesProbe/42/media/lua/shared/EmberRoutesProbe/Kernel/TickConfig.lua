@@ -10,6 +10,11 @@ return {
     -- pacing signal only: they keep working, unlike a phase-out design.
     workerRemoteRadius=48, workerRemoteMs=2000,
     memberIdleMs=1000, retirementMs=250, retirementFallbackMs=2000,
+    -- NPC sleep (P0 pilot, cross-game Factorio §1.3): a quiet NPC (no
+    -- pending work, no over-threshold need) skips discovery and only
+    -- rechecks wake conditions this often; a full discovery pass runs at
+    -- most this often while asleep even if no wake condition fires.
+    npcSleepRecheckMs=1000, npcSleepMaxMs=15000,
     -- Wake cadence: the wake-revision poll and the fast re-decide after a
     -- care wake share one 50ms pass with precheckMs above.
     wakeMs=50,

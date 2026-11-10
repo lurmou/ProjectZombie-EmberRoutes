@@ -11,12 +11,16 @@ local Resources=require 'EmberRoutesProbe/SelfCare/SelfCareResources'
 local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
 local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
 local Performance=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
 local cached={}
+-- NPC sleep wake offers (P0 pilot): every need kind counts, at its
+-- unchanged NeedsPolicy enter threshold (choose() never reads warn).
+local WAKE_OFFERS={MEDICAL=true,EAT=true,DRINK=true,REST=true,SLEEP=true}
 local function use(name)
     if not cached[name] then cached[name]=require('EmberRoutesProbe/'..name) end
     return cached[name]
@@ -63,6 +67,10 @@ function Service.activity(id)
 end
 function Service.studyStatus(id)
     load() local row=rows[id] return row and row.studyReason
+end
+-- Diagnostic/test seam: recheck time of a sleeping NPC, nil when awake.
+function Service.sleeping(id)
+    load() local row=rows[id] return row and row.sleeping and row.sleepUntil or nil
 end
 -- Player-issued sleep order: one forced-selection window. It bypasses the
 -- fatigue threshold and follow-context shared-resource gating (explicit player
@@ -290,6 +298,21 @@ local function advance(actor,binding,row,now)
         if not row.handle and job.payload.step=='SETTLING' and job.payload.kind~='STUDY' then Resume.resume(actor,id,job.id) end
         return
     end
+    -- NPC sleep (P0 pilot, cross-game Factorio §1.3): a quiet NPC skips
+    -- the idle section below (eligibility, choose, STUDY/LEISURE discovery)
+    -- and only rechecks wake conditions. Active jobs, the safety gate, the
+    -- retry gate and reconciliation above never sleep. The recheck runs on
+    -- every roster visit against the 1Hz observe sample, so a need crossing
+    -- its unchanged enter threshold, a forced sleep order, a gathering, or
+    -- unfinished duty wakes within one sample period. Past sleepUntil the
+    -- NPC runs one full advance instead: STUDY/LEISURE discovery keeps its
+    -- existing 1.5s discoverAt throttle, so leisure cadence is unchanged.
+    if row.sleeping then
+        local wake=forcedSleep or gathering~=nil or hasUnfinishedDuty(id)
+            or Policy.choose(sample,job and job.payload.lastKind,{safe=true},WAKE_OFFERS)~=nil
+        if not wake and now<row.sleepUntil then return end
+        row.sleeping=nil row.sleepUntil=nil
+    end
     local repose=EmberRoutesProbeJava.reposeWithControl~=nil
     local ref=job and job.payload.resume
     local eligibility=use('Settlement/MembershipService').check(id,'SELF_CARE',
@@ -382,6 +405,14 @@ local function advance(actor,binding,row,now)
         row.scan=nil row.reposeScan=nil
         if studyAttempted and leisureAttempted and leisureSettled then row.discoverAt=now+1500 end
         if job then Resume.resume(actor,id,job.id) end
+        -- NPC sleep entry (P0 pilot): only when truly quiet -- no
+        -- unfinished duty, no gathering, no forced sleep, no leisure resume
+        -- pending. The next full advance is the 1Hz pulse; wake conditions
+        -- are rechecked on every roster visit until then.
+        if not onDuty and not gathering and not forcedSleep
+            and not (job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint) then
+            row.sleeping=true row.sleepUntil=now+Config.npcSleepRecheckMs
+        end
         return
     end
     local current=runtime:status(id)

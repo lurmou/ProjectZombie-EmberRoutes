@@ -100,6 +100,18 @@ local faultWorld,faultUntil
 local faultCount=0
 local leisureStops,careWaking={},{}
 local pendingReservations={}
+-- NPC sleep (P0 pilot, cross-game Factorio §1.3): sleeping[npcId] records
+-- a quiet NPC's recheck time, entry stamp and discovery watch. A sleeping
+-- NPC skips only the provider discovery pass; the gates above decide and
+-- advanceReservations still run every pass. wakeSignal captures the
+-- dispatch-dirty flag at advance() entry (advance clears it before the
+-- decision loop), so a labor signal since the last pass wakes sleepers.
+local sleeping={}
+local wakeSignal=false
+-- Wake predicate offers: every need kind counts, at its unchanged
+-- NeedsPolicy enter threshold (choose() never reads warn). A missing or
+-- unreadable sample fails open and wakes, never sleeps.
+local WAKE_OFFERS={MEDICAL=true,EAT=true,DRINK=true,REST=true,SLEEP=true}
 -- Enabled-rule projection with a stable id order; rebuilt only when the rule
 -- set changes (saveRule bumps the revision) or the world root is replaced.
 local rulesCache={world=nil,revision=-1,list={}}
@@ -112,7 +124,7 @@ local function load()
         data=OrderStore.load(root)
         world=root directory=Directory.new()
         Providers.resetWorld()
-        retryAt={} leisureStops={} careWaking={} pendingReservations={} faultWorld=nil faultUntil=nil faultCount=0
+        retryAt={} leisureStops={} careWaking={} pendingReservations={} sleeping={} faultWorld=nil faultUntil=nil faultCount=0
         metrics=Metrics.new() readyWorkers={}
         cursor,nextTick,orderCursor=0,0,0
         nextPrecheck,nextWake,observedWake,dispatchDirty=0,0,nil,true
@@ -682,6 +694,26 @@ local function decide(actor,npcId,now,binding,entry)
     -- or unreadable sample fails open: no demotion, no block. Forced
     -- self-care still runs on its own NeedsPolicy thresholds.
     local sample=NeedsObserver.sample(npc,npcId,now)
+    -- NPC sleep (P0 pilot, cross-game Factorio §1.3): the 1Hz light
+    -- recheck. A sleeper wakes when the world changed since it fell asleep
+    -- (entry stamp: orders/priorities/member/catalog), a labor signal
+    -- arrived, a provider precheck holds work for it, its discovery
+    -- dependencies changed, its sample is unreadable (fail open), or a need
+    -- crossed its unchanged enter threshold. Quiet sleepers recheck again
+    -- in npcSleepRecheckMs; past npcSleepMaxMs a full discovery pass runs
+    -- anyway, so no wake-condition gap can stall dispatch past the old
+    -- idle-sleep bound. The gates above and advanceReservations still ran.
+    if sleeping[npcId] then
+        local s=sleeping[npcId]
+        local wake=s.stamp~=stamp or wakeSignal or Providers.hasPending(npcId) or not sample
+            or (s.watch and Providers.discoveryChanged(s.watch))
+            or NeedsPolicy.choose(sample,nil,{safe=true},WAKE_OFFERS)~=nil
+        if not wake and now-s.enteredAt<Config.npcSleepMaxMs then
+            s.untilTime=now+Config.npcSleepRecheckMs
+            return
+        end
+        sleeping[npcId]=nil
+    end
     if sample and NeedsPolicy.warned(sample) then
         local haul=priorities.hauling
         if haul and haul>=1 and haul<4 then
@@ -780,6 +812,23 @@ local function decide(actor,npcId,now,binding,entry)
                     provider.idle(npcId,entry,studyTarget)
                 end
             end
+            -- NPC sleep entry (P0 pilot): one complete empty discovery with
+            -- no pending work and no over-threshold need puts this NPC to
+            -- sleep at once (no 10s wait like the IdleDiscovery sleep).
+            -- Probing NPCs (leisure probe) and unreadable samples never
+            -- sleep; a need already past enter keeps the NPC on the normal
+            -- backoff cadence instead. Leisure was already offered above,
+            -- so sleeping only paces the next offer, it never starves it.
+            if not probing and complete and not Providers.hasPending(npcId) and sample
+                and not NeedsPolicy.choose(sample,nil,{safe=true},WAKE_OFFERS) then
+                sleeping[npcId]={untilTime=now+Config.npcSleepRecheckMs,stamp=stamp,watch=scanWatch,enteredAt=now}
+                -- The pilot sleep subsumes the IdleDiscovery sleep for this
+                -- NPC: clear its row so the 10s-empty clock cannot arm the
+                -- old 15s sleep and interpose between 1Hz rechecks. The
+                -- pilot's own npcSleepMaxMs cap is the bound instead. NPCs
+                -- that never enter pilot sleep keep the old mechanism.
+                idle:clear(npcId)
+            end
             return
     end
 
@@ -831,6 +880,9 @@ local function advance(now,discover,providerDue,precheckDue)
     load()
     if world.executionSave and world.executionSave.state=='BLOCKED' then return end
     local actor=getSpecificPlayer(0) if not actor or actor:isDead() then return end
+    -- Captured before anything below clears dispatchDirty: a labor signal
+    -- since the last discovery pass wakes sleeping NPCs at their recheck.
+    wakeSignal=dispatchDirty
     measured('PublicWork.reservations',advanceReservations,now,actor)
     measured('PublicWork.observe',Providers.observeDemand,actor,now,eligible,Service.priorities)
     if providerDue then
@@ -882,6 +934,12 @@ local function advance(now,discover,providerDue,precheckDue)
                 period=Config.wakeMs
                 dispatchDirty=true
                 nextWake=now+Config.wakeMs
+            elseif sleeping[id] then
+                -- A sleeping NPC rechecks at 1Hz, never on the backoff or
+                -- remote ladder: stretching the recheck would break the
+                -- wake bound, and the recheck itself is only gates plus a
+                -- needs sample, no provider scan.
+                period=Config.npcSleepRecheckMs
             else
                 local backoff=workerBackoff[id] or 0
                 if backoff>0 then
@@ -901,6 +959,8 @@ local function advance(now,discover,providerDue,precheckDue)
     discoveryActive=decisions>0 or tickOps>0
 end
 function Service.metrics() return metrics:snapshot() end
+-- Diagnostic/test seam: recheck time of a sleeping NPC, nil when awake.
+function Service.sleeping(npcId) local s=sleeping[npcId] return s and s.untilTime or nil end
 function Service.tick()
     local now=getTimestampMs()
     if now>=nextWakePoll then
