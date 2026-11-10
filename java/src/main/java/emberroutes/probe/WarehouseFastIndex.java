@@ -211,10 +211,6 @@ public final class WarehouseFastIndex {
         /** Immutable published snapshot; Lua only ever sees this reference. */
         volatile KahluaTable front = null;
         long revision = 0;
-        // URGENT / SLOWER: a container event resets the deadline, otherwise the
-        // verification period backs off until the settlement is truly asleep.
-        long nextDueAt = 0;
-        long quietMs = 200;
 
         SettlementState(String settlementId) {
             this.settlementId = settlementId;
@@ -246,26 +242,18 @@ public final class WarehouseFastIndex {
     }
 
     /**
-     * URGENT exits immediately; a quiet settlement backs off 200ms -> 5s so
-     * the Lua dispatcher stops paying O(containers) verify calls.
+     * Master-cadence gate: no per-settlement wall-clock state. The answer
+     * comes from the unified scheduler's 15Hz tier, so every settlement
+     * shares one beat instead of each keeping its own backoff deadline.
+     * Lua no longer polls this to decide whether to verify: real changes
+     * arrive as dirty applies, and the idle re-verify runs on Lua's own
+     * step clock. Unknown settlements (no scan yet) and urgent changes
+     * are always due.
      */
     public static boolean tickDue(String settlementId, boolean urgent) {
-        SettlementState s = SETTLEMENTS.get(settlementId);
-        if (s == null) return true;
-        long now = System.currentTimeMillis();
-        if (urgent) {
-            s.quietMs = 200;
-            s.nextDueAt = 0;
-        }
-        if (now < s.nextDueAt) return false;
-        s.quietMs = Math.min(5000, s.quietMs * 2);
-        s.nextDueAt = now + s.quietMs;
-        return true;
-    }
-
-    private static void markUrgent(SettlementState s) {
-        s.quietMs = 200;
-        s.nextDueAt = 0;
+        if (settlementId == null || !SETTLEMENTS.containsKey(settlementId)) return true;
+        if (urgent) return true;
+        return ProbeMasterScheduler.is15Hz();
     }
 
     // ------------------------------------------------------------- descriptor
@@ -337,7 +325,6 @@ public final class WarehouseFastIndex {
 
     private static void commit(SettlementState s, ContainerContribution c) {
         s.aggregate.add(c);
-        markUrgent(s);
     }
 
     private static ContainerContribution unloaded(SettlementState s, Desc d) {
@@ -391,7 +378,6 @@ public final class WarehouseFastIndex {
     private static void removeContainer(SettlementState s, String id) {
         ContainerContribution old = s.containers.remove(id);
         if (old != null) s.aggregate.subtract(old);
-        markUrgent(s);
     }
 
     // --------------------------------------------------------------- L2 publish
