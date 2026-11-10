@@ -24,13 +24,19 @@ package.loaded['EmberRoutesProbe/Logistics/DeliveryService'] = {
     claim = function(sel, npcId, jobId, env) return "QUEUED" end,
     advance = function(env) end
 }
+-- Whether Logistics.preparePublic succeeds; blocksDecision only resumes a
+-- LOGISTICS haul when this is true.
+local preparePublicResult = true
 package.loaded['EmberRoutesProbe/Logistics/LogisticsService'] = {
-    publicOffer = function(actor, entry, npc) return nil end
+    publicOffer = function(actor, entry, npc) return nil end,
+    preparePublic = function(actor, entry) return preparePublicResult end
 }
+local resumeForCalls = 0
 package.loaded['EmberRoutesProbe/Work/Work'] = {
     allowAutomation = function(npcId) end,
     assign = function(actor, npcId, intent) return "QUEUED" end,
-    record = function(npcId) return mockWorkRecord end
+    record = function(npcId) return mockWorkRecord end,
+    resumeFor = function(actor, npcId) resumeForCalls = resumeForCalls + 1 end
 }
 package.loaded['EmberRoutesProbe/Runtime/TaskRuntime'] = {
     current = function()
@@ -127,6 +133,79 @@ mockWorkRecord = { id = 'job_1', state = 'RUNNING' }
 assert(Registry.retained('npc_1') == true, "Registry.retained must see the unfinished haul job")
 mockWorkRecord = { id = 'job_1', state = 'CANCELLED' }
 assert(Registry.retained('npc_1') == false, "Registry.retained must release after CANCELLED")
+Registry.reset()
+
+-- 10. blocksDecision: same payload/job-state split as retained. A
+-- cancelled LOGISTICS haul (payload PAUSED, job CANCELLED) must NOT block
+-- a new decision and must NOT be resumed -- resuming would re-launch a
+-- cancelled job, because HaulAgent.resume launches on any non-DONE
+-- payload. The LOGISTICS recovery path itself is preserved for live jobs.
+local decisionEntry = { id = 'settlement_1' }
+local function logisticsRecord(state, jobState)
+    mockWorkRecord = { id = 'job_1', state = state, producer = 'LOGISTICS',
+        settlementId = 'settlement_1' }
+    mockJobs['job_1'] = jobState and { id = 'job_1', state = jobState } or nil
+    resumeForCalls = 0
+end
+
+-- 10a. No record: nothing to block.
+mockWorkRecord = nil
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == false,
+    "no record must not block a decision")
+
+-- 10b. Payload DONE: does not block (pre-existing behaviour).
+mockWorkRecord = { id = 'job_1', state = 'DONE' }
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == false,
+    "DONE payload must not block a decision")
+
+-- 10c. Faithful cancel: payload PAUSED, job CANCELLED. Must not block and
+-- must not resume -- the old payload-only check returned true here and
+-- called resumeFor on the cancelled haul.
+logisticsRecord('PAUSED', 'CANCELLED')
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == false,
+    "CANCELLED job with PAUSED payload must not block a decision (job state decides)")
+assert(resumeForCalls == 0,
+    "CANCELLED job must not be resumed")
+
+-- 10d. Same payload, job DONE: also releases immediately.
+logisticsRecord('PAUSED', 'DONE')
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == false,
+    "DONE job with PAUSED payload must not block a decision")
+assert(resumeForCalls == 0, "DONE job must not be resumed")
+
+-- 10e. Live LOGISTICS haul: still blocks AND resumes (recovery path
+-- preserved exactly as before).
+logisticsRecord('PAUSED', 'RUNNING')
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == true,
+    "live LOGISTICS haul must still block a new decision")
+assert(resumeForCalls == 1, "live LOGISTICS haul must still be resumed")
+
+-- 10f. Live non-LOGISTICS haul: blocks but does not resume.
+mockWorkRecord = { id = 'job_1', state = 'RUNNING', producer = 'FIELD',
+    settlementId = 'settlement_1' }
+mockJobs['job_1'] = { id = 'job_1', state = 'RUNNING' }
+resumeForCalls = 0
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == true,
+    "live non-LOGISTICS haul must still block a new decision")
+assert(resumeForCalls == 0, "non-LOGISTICS haul must not be resumed")
+
+-- 10g. Job missing from JobStore: fail-closed, still blocks (same
+-- philosophy as retained/reconcile -- a missing job cannot prove the
+-- haul is finished).
+logisticsRecord('PAUSED', nil)
+assert(HaulingProvider.blocksDecision({}, 'npc_1', decisionEntry) == true,
+    "PAUSED payload with missing job must still block (fail-closed)")
+
+-- 10h. Registry wiring: Registry.blocksDecision follows the provider.
+Registry.reset()
+local ok2, err2 = Registry.register(HaulingProvider)
+assert(ok2 == true, "hauling provider must register with blocksDecision hook: " .. tostring(err2))
+logisticsRecord('PAUSED', 'CANCELLED')
+assert(Registry.blocksDecision({}, 'npc_1', decisionEntry) == false,
+    "Registry.blocksDecision must release after CANCELLED")
+logisticsRecord('PAUSED', 'RUNNING')
+assert(Registry.blocksDecision({}, 'npc_1', decisionEntry) == true,
+    "Registry.blocksDecision must block a live LOGISTICS haul")
 Registry.reset()
 
 print("PASS: haul-provider-retained-test")
