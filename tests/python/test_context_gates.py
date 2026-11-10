@@ -330,6 +330,99 @@ class CompatRatchetTests(unittest.TestCase):
         self.assertEqual([], self.errors())
 
 
+class DirectCallRatchetTests(unittest.TestCase):
+    """Callback-first ratchet (P0 pilot 4): Probe mounts + raw queue adds.
+
+    A new `Probe.<name> =` mount or `ISTimedActionQueue.add(` call fails
+    unless annotated with `-- callback-first: <reason>` on the same line or
+    a comment-only line directly above. Stock is baselined per file and
+    only shrinks, same as the compat ratchet.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)  # fake LUA_ROOT
+        saved = dict(arch.DIRECT_CALL_BASELINE)
+        self.addCleanup(lambda: (arch.DIRECT_CALL_BASELINE.clear(), arch.DIRECT_CALL_BASELINE.update(saved)))
+        arch.DIRECT_CALL_BASELINE.clear()
+
+    def put(self, area, module, source='return {}'):
+        p = self.root/area/('EmberRoutesProbe/'+module+'.lua')
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding='utf-8')
+        return p
+
+    def errors(self):
+        errors = []
+        arch.check_direct_calls(self.root, errors)
+        return errors
+
+    def test_unannotated_probe_mount_and_queue_add_fail(self):
+        self.put('client', 'Work/NewSvc', 'Probe.tickNew=S.tick\nISTimedActionQueue.add(a)\n')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('unannotated Probe mount', errors[0])
+        self.assertIn('callback-first', errors[0])
+
+    def test_annotated_same_line_and_line_above_pass(self):
+        self.put('client', 'Work/NewSvc',
+                 'Probe.tickNew=S.tick -- callback-first: no registry exists for tick hooks yet\n'
+                 '-- callback-first: player has no TaskController body\n'
+                 'ISTimedActionQueue.add(a)\n')
+        self.assertEqual([], self.errors())
+
+    def test_bare_marker_without_reason_fails(self):
+        self.put('client', 'Work/NewSvc', 'Probe.tickNew=S.tick -- callback-first:\n')
+        self.assertEqual(1, len(self.errors()))
+
+    def test_trailing_comment_does_not_annotate_next_line(self):
+        # A trailing comment belongs to its own line: the mount below it is
+        # still unannotated even though the marker sits one line above.
+        self.put('client', 'Work/NewSvc',
+                 'Probe.a=S.a -- callback-first: no registry for this hook yet\nProbe.b=S.b\n')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('1 unannotated Probe mount', errors[0])
+
+    def test_comparisons_strings_and_comments_are_not_mounts(self):
+        self.put('client', 'Work/NewSvc',
+                 "-- Probe.tickNew=S.tick\n"
+                 "local s='Probe.tickNew=S.tick'\n"
+                 'if Probe.tickNew==true then return end\n'
+                 'if Probe.x then Probe.y() end\n')
+        self.assertEqual([], self.errors())
+
+    def test_baselined_stock_passes_and_second_queue_add_fails(self):
+        key = 'client/EmberRoutesProbe/Runtime/TaskController.lua'
+        arch.DIRECT_CALL_BASELINE[key] = (0, 1)
+        self.put('client', 'Runtime/TaskController', 'ISTimedActionQueue.add(a)\n')
+        self.assertEqual([], self.errors())
+        self.put('client', 'Runtime/TaskController',
+                 'ISTimedActionQueue.add(a)\nISTimedActionQueue.add(b)\n')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('baseline 0 / 1', errors[0])
+
+    def test_annotating_baselined_call_requires_baseline_update(self):
+        key = 'client/EmberRoutesProbe/Work/Svc.lua'
+        arch.DIRECT_CALL_BASELINE[key] = (2, 0)
+        self.put('client', 'Work/Svc',
+                 'Probe.a=S.a -- callback-first: no registry for this hook yet\nProbe.b=S.b\n')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('lower the DIRECT_CALL_BASELINE', errors[0])
+
+    def test_fully_annotated_baselined_file_requires_baseline_removal(self):
+        key = 'client/EmberRoutesProbe/Runtime/TaskController.lua'
+        arch.DIRECT_CALL_BASELINE[key] = (0, 1)
+        self.put('client', 'Runtime/TaskController',
+                 'ISTimedActionQueue.add(a) -- callback-first: the controlled single point\n')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('remove it from DIRECT_CALL_BASELINE', errors[0])
+
+
 class LongFileTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
