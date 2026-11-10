@@ -756,8 +756,17 @@ function Production.tickPending()
     if root~=yieldWorld then yieldWorld,yieldIds,yieldCursor,yieldScan,yieldRetry=root,{},0,0,{} end
     if now>=yieldScan then
         yieldScan=now+1000 yieldIds={}
-        for id,r in pairs(require('EmberRoutesProbe/Work/BusinessJobs').crafts()) do if Yield.assetFree(r) then yieldIds[#yieldIds+1]=id end end
-        table.sort(yieldIds)
+        -- Yield scan is a pure filter+sort sunk to the Java kernel
+        -- (ProductionYieldScan.yieldIds, bridge productionYieldIds): Lua keeps
+        -- only the 1s cadence and the resume wiring below. Without the bridge
+        -- there is nothing to resume -- Production.execute refuses without Java
+        -- -- so an empty scan is behaviour-identical there; a bridge error
+        -- likewise only skips one 1s round.
+        local scan=EmberRoutesProbeJava and EmberRoutesProbeJava.productionYieldIds
+        if scan then
+            local ok,ids=pcall(scan,require('EmberRoutesProbe/Work/BusinessJobs').crafts())
+            if ok and type(ids)=='table' then for i=1,#ids do yieldIds[i]=ids[i] end end
+        end
     end
     if #yieldIds>0 then
         yieldCursor=yieldCursor%#yieldIds+1 local id=yieldIds[yieldCursor] local r=record(id)

@@ -214,6 +214,9 @@ public final class ProbeRuntime {
     public static se.krka.kahlua.vm.KahluaTable dispatchChoose(se.krka.kahlua.vm.KahluaTable candidates,se.krka.kahlua.vm.KahluaTable priorities) {
 	return DispatchSelection.choose(candidates,priorities);
     }
+    public static se.krka.kahlua.vm.KahluaTable productionYieldIds(se.krka.kahlua.vm.KahluaTable crafts) {
+	return ProductionYieldScan.yieldIds(crafts);
+    }
     public static se.krka.kahlua.vm.KahluaTable planningWakeNew() {return PlanningInvalidation.create();}
     public static void planningWakeLoad(se.krka.kahlua.vm.KahluaTable state,Object root) {PlanningInvalidation.load(state,root);}
     public static double planningWakeRevision(se.krka.kahlua.vm.KahluaTable state) {return PlanningInvalidation.revision(state);}
