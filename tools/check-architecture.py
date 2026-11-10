@@ -22,6 +22,14 @@ Also enforced here (P1-8 architecture-gate extension):
   rules and the known over-matches.
 - Long-file tripwire: a production Lua file over LUA_LONG_FILE_LIMIT lines or
   a Java file over JAVA_LONG_FILE_LIMIT lines fails; split the file first.
+- Callback-first ratchet (P0 pilot 4, Fabric-inspired): a new cross-domain
+  call must go through a registry/event first. A new `Probe.<name> =` mount
+  or a new raw `ISTimedActionQueue.add(` call fails unless the line (or the
+  comment block directly above it) carries `-- callback-first: <reason>`
+  explaining why no registry/event can serve it. Unannotated stock is
+  counted per file against DIRECT_CALL_BASELINE; only-shrink, same as the
+  compat ratchet. The one exempt queue call is the controlled single point
+  in TaskController.lua, grandfathered in its baseline entry.
 """
 import re
 from pathlib import Path
@@ -641,6 +649,196 @@ def check_compat(lua_root, java_root, errors, repo_root=None):
             f'{rel}: compat-marker lines are gone; remove it from COMPAT_BASELINE')
 
 
+# Callback-first ratchet (P0 pilot 4): per-file counts of UNANNOTATED direct
+# calls, measured on main 6ed6b25. Only-shrink: a higher count fails (a new
+# direct call without a `-- callback-first: <reason>` annotation), a lower
+# count fails until the baseline is lowered (a call was annotated, routed
+# through a registry/event, or deleted). Keys are Lua-root relative paths;
+# values are (unannotated Probe mounts, unannotated ISTimedActionQueue.add
+# calls). Stock on 6ed6b25: 66 Probe mounts in 20 files, 5 queue adds in
+# 4 files -- all unannotated, all grandfathered here, none of them permission
+# to add more. TaskController.lua's single queue add is the controlled single
+# point (its `body.add` funnel); the other 4 stock adds (Actions.lua fallback
+# when no body exists, NpcMedical.lua, PlayerStashRoutine.lua x2) are player/
+# fallback paths with no TaskController body, still unannotated stock.
+# `function Probe.<name>(...)` definitions are NOT mounts here: they define
+# the Probe API itself (12, all in Boot.lua), they do not wire a cross-domain
+# call into it.
+DIRECT_CALL_BASELINE = {
+    'client/EmberRoutesProbe/Activity/ActivityService.lua': (2, 0),
+    'client/EmberRoutesProbe/Crafting/CraftProbe.lua': (2, 0),
+    'client/EmberRoutesProbe/Crafting/CraftingService.lua': (2, 0),
+    'client/EmberRoutesProbe/Hauling/Haul.lua': (1, 0),
+    'client/EmberRoutesProbe/Logistics/LogisticsService.lua': (1, 0),
+    'client/EmberRoutesProbe/Runtime/Actions.lua': (1, 1),
+    'client/EmberRoutesProbe/Runtime/Persistence.lua': (4, 0),
+    'client/EmberRoutesProbe/Runtime/TaskController.lua': (0, 1),
+    'client/EmberRoutesProbe/Runtime/TaskResume.lua': (4, 0),
+    'client/EmberRoutesProbe/Runtime/TaskRetirement.lua': (1, 0),
+    'client/EmberRoutesProbe/SelfCare/NpcMedical.lua': (0, 1),
+    'client/EmberRoutesProbe/SelfCare/SelfCare.lua': (14, 0),
+    'client/EmberRoutesProbe/Settlement/Companion.lua': (2, 0),
+    'client/EmberRoutesProbe/Settlement/MembershipLifecycle.lua': (2, 0),
+    'client/EmberRoutesProbe/Settlement/MembershipRuntime.lua': (1, 0),
+    'client/EmberRoutesProbe/Warehouse/StockService.lua': (1, 0),
+    'client/EmberRoutesProbe/Work/PublicWork.lua': (4, 0),
+    'client/EmberRoutesProbe/Work/Work.lua': (2, 0),
+    'shared/EmberRoutesProbe/Kernel/Boot.lua': (22, 0),
+    'shared/EmberRoutesProbe/Warehouse/PlayerStashRoutine.lua': (0, 2),
+}
+CALLBACK_FIRST_MARKER = re.compile(r'callback-first:\s*\S', re.I)
+
+
+def line_comments(source):
+    """Yield (line, text) for every Lua comment in source.
+
+    Mirrors tokens(): short comments run to end of line, long comments
+    --[[ ... ]] / --[=[ ... ]=] run to the matching closer; comment-like
+    text inside strings is not a comment.
+    """
+    i, line = 0, 1
+    while i < len(source):
+        c = source[i]
+        if c.isspace():
+            line += c == '\n'
+            i += 1
+            continue
+        if source.startswith('--', i):
+            start = i + 2
+            long = LONG.match(source, start)
+            if long:
+                end = source.find(']' + long[1] + ']', long.end())
+                end = len(source) if end < 0 else end + len(long[1]) + 2
+                yield line, source[long.end():end - len(long[1]) - 2]
+                line += source[i:end].count('\n')
+                i = end
+                continue
+            end = source.find('\n', i)
+            end = len(source) if end < 0 else end
+            yield line, source[start:end]
+            i = end
+            continue
+        if c in ("'", '"'):
+            end = i + 1
+            while end < len(source):
+                if source[end] == '\\':
+                    end += 2
+                elif source[end] == c:
+                    end += 1
+                    break
+                else:
+                    end += 1
+            line += source[i:end].count('\n')
+            i = end
+            continue
+        if c == '[':
+            long = LONG.match(source, i)
+            if long:
+                end = source.find(']' + long[1] + ']', long.end())
+                end = len(source) if end < 0 else end + len(long[1]) + 2
+                line += source[i:end].count('\n')
+                i = end
+                continue
+        i += 1
+
+
+def direct_calls(ts):
+    """Yield (kind, line) for Probe mounts and raw queue adds in a token stream.
+
+    kind is 'probe' for `Probe.<name> =` (a single `=` token; `==` and `~=`
+    lex as one token and are comparisons, not mounts) and 'queue' for
+    `ISTimedActionQueue.add(`. A `Probe`/`ISTimedActionQueue` preceded by
+    `.`/`:` is a field of something else, not the global table. Multi-target
+    assignment (`Probe.a, Probe.b = ...`) only sees the last target; split
+    it if that ever matters.
+    """
+    for i, (kind, value, line) in enumerate(ts):
+        if kind != 'id':
+            continue
+        if i and ts[i - 1][1] in ('.', ':'):
+            continue
+        if (value == 'Probe' and i + 3 < len(ts)
+                and ts[i + 1][1] == '.' and ts[i + 2][0] == 'id'
+                and ts[i + 3][1] == '='):
+            yield 'probe', line
+        elif (value == 'ISTimedActionQueue' and i + 3 < len(ts)
+                and ts[i + 1][1] == '.' and ts[i + 2][1] == 'add'
+                and ts[i + 3][1] == '('):
+            yield 'queue', line
+
+
+def _annotated(comments, lines, line, window=2):
+    """True if a callback-first reason annotates the occurrence at `line`.
+
+    The marker `-- callback-first: <reason>` must appear in a comment on the
+    occurrence line itself, or on one of the `window` comment-only lines
+    directly above it, with non-empty reason text after the colon. A bare
+    marker with no reason does not count. A trailing comment belongs to its
+    own line only: it must not annotate the mount on the next line.
+    """
+    for ln, text in comments:
+        if not (line - window <= ln <= line):
+            continue
+        if ln < line and not lines[ln - 1].lstrip().startswith('--'):
+            continue
+        if CALLBACK_FIRST_MARKER.search(text):
+            return True
+    return False
+
+
+def count_direct_calls(lua_root):
+    """Per-file (probe, queue) counts of unannotated direct calls."""
+    counts = {}
+    for area in ('client', 'shared', 'server'):
+        for path in sorted((Path(lua_root) / area).rglob('*.lua')):
+            rel = path.relative_to(lua_root).as_posix()
+            source = path.read_text(encoding='utf-8-sig')
+            comments = list(line_comments(source))
+            lines = source.splitlines()
+            probe = queue = 0
+            for kind, line in direct_calls(tokens(source)):
+                if _annotated(comments, lines, line):
+                    continue
+                if kind == 'probe':
+                    probe += 1
+                else:
+                    queue += 1
+            if probe or queue:
+                counts[rel] = (probe, queue)
+    return counts
+
+
+def check_direct_calls(lua_root, errors):
+    """Only-shrink ratchet over unannotated direct calls (see DIRECT_CALL_BASELINE)."""
+    counts = count_direct_calls(lua_root)
+    for rel, (probe, queue) in sorted(counts.items()):
+        baseline = DIRECT_CALL_BASELINE.get(rel)
+        if baseline is None:
+            errors.append(
+                f'{rel}: {probe} unannotated Probe mount(s), {queue} unannotated '
+                'ISTimedActionQueue.add(s); new cross-domain calls must go through '
+                'a registry/event first -- add `-- callback-first: <why no '
+                "registry/event>` on the line or just above it, or use the "
+                'registry/event instead (see DIRECT_CALL_BASELINE / '
+                'check_direct_calls)')
+        elif (probe, queue) != baseline:
+            if probe > baseline[0] or queue > baseline[1]:
+                errors.append(
+                    f'{rel}: {probe} unannotated Probe mount(s) / {queue} unannotated '
+                    f'queue add(s), baseline {baseline[0]} / {baseline[1]}; new direct '
+                    'calls need a `-- callback-first: <why no registry/event>` '
+                    'annotation or must go through a registry/event')
+            else:
+                errors.append(
+                    f'{rel}: {probe} unannotated Probe mount(s) / {queue} unannotated '
+                    f'queue add(s), baseline {baseline[0]} / {baseline[1]}; lower '
+                    'the DIRECT_CALL_BASELINE entry (a direct call was annotated, '
+                    'routed through a registry/event, or deleted)')
+    for rel in sorted(set(DIRECT_CALL_BASELINE) - set(counts)):
+        errors.append(
+            f'{rel}: unannotated direct calls are gone; remove it from DIRECT_CALL_BASELINE')
+
+
 # Long-file tripwire. Current maxima on main 673da20 are 1699 Lua lines
 # (UI/SettlementOverviewPage.lua before the P1-9 split; now split into
 # SettlementOverview*.lua modules, each under ~400 lines) and 1146
@@ -674,6 +872,7 @@ def main():
     # long-file tripwire.
     check_provider_retained(LUA_ROOT, errors)
     check_compat(LUA_ROOT, JAVA_ROOT, errors)
+    check_direct_calls(LUA_ROOT, errors)
     check_long_files(LUA_ROOT, JAVA_ROOT, errors)
     for error in errors:
         print('ERROR:', error)
