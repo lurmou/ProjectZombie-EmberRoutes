@@ -37,6 +37,12 @@ local function agent(actor,id)
     if not agents[id] then agents[id]=Factory.new(id) end
     return agents[id],id
 end
+-- One guard shape for the three care invalidations below (C2/C3/C4). It only
+-- converges how the Probe presence check is written; Work.execute and
+-- Work.taskCommand keep their own preconditions and call order.
+local function invalidateCare(id,reason)
+    if Probe.invalidateCare then Probe.invalidateCare(id,reason) end
+end
 function Work.record(id) return Store.record(selected(nil,id)) end
 function Work.lastCompleted(id) return Store.recent(selected(nil,id)) end
 function Work.stopAdapter(id,controller,ticket)
@@ -48,7 +54,6 @@ function Work.execute(actor,command,object,container)
     local worker,id=agent(actor)
     local runtime=Runtime.current()
     if command=='clear' and runtime and runtime:owns(id) then
-        if Probe.invalidateCare then Probe.invalidateCare(id,'CLEAR') end
         worker.pause('CLEAR') return 'PAUSE_BEFORE_CLEAR'
     end
     if (command=="run" or command=="resume" or command=="clear") and (nativeExecutor(id) or retained(id)) then return "OTHER_TASK_RETAINED" end
@@ -56,8 +61,8 @@ function Work.execute(actor,command,object,container)
     if command=="run" or command=="resume" or command=="pause" or command=="clear" then suspended[id]=true end
     local result=worker.execute(actor,command,object,container)
     if (command=='run' or command=='resume' or command=='clear')
-        and (result=='QUEUED' or result=='STARTED' or result=='TASK_CLEARED') and Probe.invalidateCare then
-        Probe.invalidateCare(id,'WORK_COMMAND')
+        and (result=='QUEUED' or result=='STARTED' or result=='TASK_CLEARED') then
+        invalidateCare(id,'WORK_COMMAND')
     end
     Signals.changed(id)
     if worker.busy() then schedule:add(id) else schedule:remove(id) end
@@ -77,7 +82,7 @@ function Work.pause(reason,id)
     if reason=="USER" or reason=="STOP" or reason=="MOVE" or reason=="REMOVE" or reason=="COMPANION_ORDER"
         or reason=="ACTION_ORDER" or reason=="HAUL_ORDER" or reason=="PERSISTENCE_SAMPLE" then
         suspended[key]=true
-        if Probe.invalidateCare then Probe.invalidateCare(key,reason) end
+        invalidateCare(key,reason)
         if Probe.cancelReservation then Probe.cancelReservation(key,reason) end
     end
     if worker then worker.pause(reason) schedule:remove(key) end
@@ -128,7 +133,7 @@ function Work.taskCommand(actor,id,jobId,generation,command)
     local worker=agent(actor,id)
     local ok,result=pcall(worker.resume,actor,false)
     if not ok then worker.pause('ERROR') return 'ERROR' end
-    if (result=='QUEUED' or result=='STARTED') and Probe.invalidateCare then Probe.invalidateCare(id,'WORK_COMMAND') end
+    if (result=='QUEUED' or result=='STARTED') then invalidateCare(id,'WORK_COMMAND') end
     if worker.busy() then schedule:add(id) end
     Signals.changed(id)
     return result
@@ -138,6 +143,9 @@ function Work.discardAutomatic(actor,id)
     if not record or record.producer~="LOGISTICS" or Work.busy(id) or Work.hasCargo(actor,id) then return false end
     return Store.clear(id)
 end
+-- No invalidateCare here: a world reset drops careCommandEpochs with the
+-- Registry.data() root-table switch, and Service.reset clears the rows.
+-- Per-NPC invalidation is not the reset mechanism.
 function Work.pauseAll(reason)
     for id,worker in pairs(agents) do worker.pause(reason) schedule:remove(id) end
     for _,executor in pairs(executors) do executor.pauseAll(reason) end
