@@ -30,6 +30,9 @@ end
 local function personal(id)
     for _,job in ipairs(Jobs.current():forNpc(id,'SELF_CARE')) do if job.providerType=='SELF_CARE' then return job end end
 end
+-- reason is a diagnostic label only: no execution branch reads it. resume()
+-- returns INTENT_SUPERSEDED for an INVALIDATED ref without reading reason,
+-- and a later stopped() overwrites reason.
 function Resume.invalidate(id,reason)
     if type(id)~='string' or id=='' then return false end
     epochs()[id]=Resume.epoch(id)+1

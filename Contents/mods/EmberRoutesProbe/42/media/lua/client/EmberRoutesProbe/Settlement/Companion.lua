@@ -90,6 +90,8 @@ function Companion.execute(actor,command,followSlot)
     return Companion.debugExecute(actor,command)
 end
 -- Explicit low-level diagnostic adapter; normal product commands always enter MembershipService.
+-- COMPANION_COMMAND is diagnostic-only: only this adapter emits it. Normal companion
+-- commands invalidate care through MembershipRuntime.changed with MEMBERSHIP_COMMAND.
 function Companion.debugExecute(actor,command)
     local binding=Driver.bind(actor)
     local worker,id=agent(binding and binding.id)
@@ -127,6 +129,9 @@ function Companion.cancel(reason,id)
     if runtime and runtime:owns(id) then runtime:stop(id,reason or 'USER') return end
     if worker then worker.cancel(reason) end
 end
+-- No invalidateCare here: a world reset drops careCommandEpochs with the
+-- Registry.data() root-table switch, and Service.reset clears the rows.
+-- Per-NPC invalidation is not the reset mechanism.
 function Companion.cancelAll(reason)
     for id in pairs(agents) do Companion.cancel(reason,id) end
 end

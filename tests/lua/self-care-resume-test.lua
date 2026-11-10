@@ -105,4 +105,9 @@ check(jobs:get('care').obligations.RETURN_ORIGINALS.itemId==77,'companion stop a
 owns=false status=nil
 Resume.resume({},'a','care')
 check(restored==1 and jobs:get('care').payload.resume.state=='RESTORE_QUEUED','survival relief restores the current follow intent without claiming another order')
+-- E-07: a world reset swaps the Registry.data() root table, so the care epoch
+-- table is rebuilt empty; no per-NPC invalidateCare call is needed on reset.
+check(Resume.epoch('a')>0,'care epoch advanced before reset')
+root={}
+check(Resume.epoch('a')==0,'world reset drops the old care epoch table')
 print('PASS '..checks..' personal recovery/command/save-window checks; native bodies mocked')

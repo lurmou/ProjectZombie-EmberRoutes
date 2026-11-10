@@ -155,6 +155,9 @@ function Production.pause(reason,id,owned)
     changed(c,"PAUSED "..tostring(reason))
     return true
 end
+-- No invalidateCare here: a world reset drops careCommandEpochs with the
+-- Registry.data() root-table switch, and Service.reset clears the rows.
+-- Per-NPC invalidation is not the reset mechanism.
 function Production.pauseAll(reason)
     if reason~="SAVE" then candidates,pending={},{} end
     local ids={} for id in pairs(contexts) do ids[id]=true end

@@ -62,9 +62,14 @@ function Service.status(id)
     load() local s=statuses[id]
     return s and {reason=s.reason,activity=s.activity,at=s.at} or nil
 end
+local function clearOffer(id)
+    offers[id]=nil preferred[id]=nil Social.withdraw(id)
+end
 function Service.note(id,reason) load() noteIdle(id,reason) end
+-- reason is a diagnostic label only: it only feeds noteIdle's idle status,
+-- no execution branch reads it.
 function Service.invalidate(id,reason)
-    load() offers[id]=nil preferred[id]=nil Social.withdraw(id) noteIdle(id,reason or 'STALE_MEMBERSHIP')
+    load() clearOffer(id) noteIdle(id,reason or 'STALE_MEMBERSHIP')
 end
 function Service.probeable(id)
     local job=Jobs.current():forNpc(id,'SELF_CARE')[1]
@@ -73,7 +78,7 @@ function Service.probeable(id)
         and (p.kind=='LEISURE' or p.kind=='STUDY') or false
 end
 function Service.workReady(id,targetJobId)
-    load() offers[id]=nil preferred[id]=nil Social.withdraw(id)
+    load() clearOffer(id)
     require('EmberRoutesProbe/Leisure/StudyService').changed(nil,id)
     local job=Jobs.current():forNpc(id,'SELF_CARE')[1]
     if job and Service.probeable(id) then
