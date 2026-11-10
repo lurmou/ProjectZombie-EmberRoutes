@@ -184,7 +184,7 @@ local function transferStep(name, fixture, source, destination, endpoint)
             end
         end
 
-        if not endpointsOK() then
+        if not performed and not endpointsOK() then
             stopped = true
             if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
                 EmberRoutesProbeJava.nativeActionStop(Haul.npc)
@@ -193,10 +193,13 @@ local function transferStep(name, fixture, source, destination, endpoint)
             return "FAILED", "TRANSFER_REFUSED"
         end
 
-        -- Atomic physical transfer
-        source:DoRemoveItem(fixture.item)
-        destination:AddItem(fixture.item)
-        performed = true
+        -- Atomic physical transfer; runs once — settle polls re-enter poll()
+        -- and AddItem would append a duplicate entry for the same instance.
+        if not performed then
+            source:DoRemoveItem(fixture.item)
+            destination:AddItem(fixture.item)
+            performed = true
+        end
 
         if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStop then
             EmberRoutesProbeJava.nativeActionStop(Haul.npc)

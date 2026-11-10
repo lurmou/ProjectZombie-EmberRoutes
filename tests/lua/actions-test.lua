@@ -48,6 +48,13 @@ newContainer = function()
     function c:hasRoomFor() return not self.full end
     function c:getFreeCapacity() return self.full and 0 or 1000-#self.items end
     function c:AddItem(kind)
+        -- Real ItemContainer has an AddItem(InventoryItem) overload that keeps
+        -- the same instance; Haul.transferStep relies on it (Haul.lua:197-198).
+        if type(kind) == "table" then
+            self.items[#self.items + 1] = kind
+            kind.container = self
+            return kind
+        end
         local value = item(kind)
         self.items[#self.items + 1] = value
         value.container = self
@@ -57,6 +64,11 @@ newContainer = function()
         for i, x in ipairs(self.items) do
             if x == value then table.remove(self.items, i) value.container = nil return end
         end
+    end
+    function c:DoRemoveItem(value)
+        -- Real ItemContainer:DoRemoveItem removes the instance and clears its
+        -- container; same observable effect as Remove for this fake.
+        self:Remove(value)
     end
     return c
 end

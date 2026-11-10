@@ -69,6 +69,16 @@ EmberRoutesProbeJava.stopCarrier = function()
     ISTimedActionQueue.clear(npc)
     return true
 end
+-- Fake the native "Loot" action gate transferStep.poll waits on: start records
+-- a finish time, polls WAIT until then, stop clears it. Without this the fake
+-- transfers on the first poll, before any native completion boundary exists.
+local nativeUntil = 0
+EmberRoutesProbeJava.nativeActionStart = function(_, _, duration)
+    nativeUntil = getTimestampMs() + duration * 10
+    return true
+end
+EmberRoutesProbeJava.nativeActionFinished = function() return getTimestampMs() >= nativeUntil end
+EmberRoutesProbeJava.nativeActionStop = function() nativeUntil = 0 end
 luautils = { getCorrectSquareForWall = function(_, s) return s end }
 AdjacentFreeTileFinder = { Find = function(s) return square(s.x - 1, s.y, s.z) end }
 local Haul = require "EmberRoutesProbe/Hauling/Haul"
