@@ -140,7 +140,17 @@ package.loaded['EmberRoutesProbe/Work/PublicWork']={requestId=function() return 
 package.loaded['EmberRoutesProbe/Crafting/CraftingService']={
     status=function() return {workers={{id='worker',name='Worker',busy=false,order=nil}},surfaces={{id='surface',x=1,y=2,z=0}}} end
 }
-dofile(((os.getenv and os.getenv('ER_PZ_ROOT')) or 'D:/Software/GameApp/steam/steamapps/common/ProjectZomboid')..'/media/lua/client/ISUI/ISTickBox.lua')
+-- Native ISTickBox is host-provided: load it from ER_PZ_ROOT when the game
+-- tree is present, else use a minimal in-repo stub. No hardcoded install path.
+local pzRoot=(type(ER_PZ_ROOT)=='string' and ER_PZ_ROOT~='' and ER_PZ_ROOT)
+    or (os and os.getenv and os.getenv('ER_PZ_ROOT'))
+if pzRoot and pzRoot~='' then
+    dofile(pzRoot..'/media/lua/client/ISUI/ISTickBox.lua')
+else
+    -- Stub: the suite only needs the ISTickBox class identity derived from
+    -- the mocked ISPanel; no production code under test references it.
+    ISTickBox=ISPanel:derive('ISTickBox')
+end
 package.loaded['ISUI/ISTickBox']=true
 local rows={}
 for i=1,135 do rows[i]={fullType=string.format('Base.Item%03d',i),node='other',count=i,sources={{id='source',x=1,y=2,z=0,count=i}}} end

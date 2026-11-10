@@ -1,5 +1,10 @@
 -- Installed native start and production adapter; domain admission is a stub.
-local game='D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/media/lua/shared/'
+-- Installed native actions need the vanilla game tree: ER_PZ_ROOT must point
+-- at the installed ProjectZomboid root. Without it, skip instead of dying
+-- on a hardcoded Windows install path. No behaviour change when it is set.
+local Vanilla=dofile('tests/lua/fixtures/vanilla-game.lua')
+local game,why=Vanilla.sharedRoot()
+if not game then print('SKIP cooking-native-start-test: '..why..'; set ER_PZ_ROOT to run'); return end
 dofile(game..'ISBaseObject.lua') package.loaded.ISBaseObject=true
 dofile(game..'TimedActions/ISBaseTimedAction.lua') package.loaded['TimedActions/ISBaseTimedAction']=true
 dofile(game..'TimedActions/ISAddItemInRecipe.lua') package.loaded['TimedActions/ISAddItemInRecipe']=true
