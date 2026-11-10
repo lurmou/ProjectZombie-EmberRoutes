@@ -49,7 +49,8 @@ package.loaded['EmberRoutesProbe/Runtime/Driver']={
     bindId=function(_,id) return {handle=npcObj,id=id} end,
     suspended=function() return false end
 }
-package.loaded['EmberRoutesProbe/Cooking/CookingProvider']={retained=function() return false end}
+package.loaded['EmberRoutesProbe/Cooking/CookingProvider']={category='cooking',defaultPriority=3,
+    discover=function() end,claim=function() return 'QUEUED' end,retained=function() return false end}
 package.loaded['EmberRoutesProbe/Field/FieldWork']={retained=function() return false end}
 package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return true end,status=function() return nil end} end}
 package.loaded['EmberRoutesProbe/Work/Work']={
@@ -101,6 +102,7 @@ Public.prepareRecovery()
 local testProvider={
     category='hauling',
     defaultPriority=3,
+    retained=function() return false end,
     discover=function(env)
         local o=env.upsertOffer('delivery:order-1',1,'hauling',env.entry.id)
         offer=o

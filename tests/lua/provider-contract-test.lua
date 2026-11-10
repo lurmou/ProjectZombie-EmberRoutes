@@ -10,71 +10,149 @@ local function ok(v, msg) assert(v, msg) end
 local function noop() end
 
 -- ---- valid base def ----
-local valid = { category = 'test_valid', discover = noop, claim = noop }
+-- Registration is loud: defaultPriority and retained are both required.
+local valid = { category = 'test_valid', defaultPriority = 3, discover = noop, claim = noop, retained = noop }
 
 local pass, err = Registry.register(valid)
 ok(pass == true, 'valid provider must register: ' .. tostring(err))
 
+-- ---- missing defaultPriority ----
+Registry.reset()
+local no_priority = { category = 'test_noprio', discover = noop, claim = noop, retained = noop }
+pass, err = Registry.register(no_priority)
+ok(pass == false, 'missing defaultPriority must fail')
+ok(err == 'PROVIDER_MISSING_PRIORITY', 'error code PROVIDER_MISSING_PRIORITY, got: ' .. tostring(err))
+
+-- ---- defaultPriority out of range ----
+Registry.reset()
+local bad_priority = { category = 'test_badprio', defaultPriority = 5, discover = noop, claim = noop, retained = noop }
+pass, err = Registry.register(bad_priority)
+ok(pass == false, 'out-of-range defaultPriority must fail')
+ok(err == 'PROVIDER_INVALID', 'error code PROVIDER_INVALID, got: ' .. tostring(err))
+
+-- ---- defaultPriority must be an integer tier (decide() buckets tiers 1-4) ----
+Registry.reset()
+local frac_priority = { category = 'test_fracprio', defaultPriority = 2.5, discover = noop, claim = noop, retained = noop }
+pass, err = Registry.register(frac_priority)
+ok(pass == false, 'fractional defaultPriority must fail')
+ok(err == 'PROVIDER_INVALID', 'error code PROVIDER_INVALID, got: ' .. tostring(err))
+
+-- ---- missing retained: loud at registration, never silently skipped ----
+Registry.reset()
+local no_retained = { category = 'test_noretained', defaultPriority = 3, discover = noop, claim = noop }
+pass, err = Registry.register(no_retained)
+ok(pass == false, 'missing retained must fail')
+ok(err == 'PROVIDER_MISSING_RETAINED', 'error code PROVIDER_MISSING_RETAINED, got: ' .. tostring(err))
+
+-- ---- retained is not a function ----
+Registry.reset()
+local bad_retained = { category = 'test_badretained', defaultPriority = 3, discover = noop, claim = noop, retained = true }
+pass, err = Registry.register(bad_retained)
+ok(pass == false, 'non-function retained must fail')
+ok(err == 'PROVIDER_HOOK_NOT_FUNCTION:retained', 'error code must name retained, got: ' .. tostring(err))
+
 -- ---- missing discover ----
 Registry.reset()
-local no_discover = { category = 'test_nodiscover', claim = noop }
+local no_discover = { category = 'test_nodiscover', defaultPriority = 3, claim = noop, retained = noop }
 pass, err = Registry.register(no_discover)
 ok(pass == false, 'missing discover must fail')
 ok(err == 'PROVIDER_MISSING_DISCOVER', 'error code PROVIDER_MISSING_DISCOVER, got: ' .. tostring(err))
 
 -- ---- missing claim ----
 Registry.reset()
-local no_claim = { category = 'test_noclaim', discover = noop }
+local no_claim = { category = 'test_noclaim', defaultPriority = 3, discover = noop, retained = noop }
 pass, err = Registry.register(no_claim)
 ok(pass == false, 'missing claim must fail')
 ok(err == 'PROVIDER_MISSING_CLAIM', 'error code PROVIDER_MISSING_CLAIM, got: ' .. tostring(err))
 
 -- ---- discover is not a function ----
 Registry.reset()
-local bad_discover = { category = 'test_baddis', discover = 'string', claim = noop }
+local bad_discover = { category = 'test_baddis', defaultPriority = 3, discover = 'string', claim = noop, retained = noop }
 pass, err = Registry.register(bad_discover)
 ok(pass == false, 'non-function discover must fail')
 
 -- ---- claim is not a function ----
 Registry.reset()
-local bad_claim = { category = 'test_badclaim', discover = noop, claim = 42 }
+local bad_claim = { category = 'test_badclaim', defaultPriority = 3, discover = noop, claim = 42, retained = noop }
 pass, err = Registry.register(bad_claim)
 ok(pass == false, 'non-function claim must fail')
 
 -- ---- optional hook present and correct ----
 Registry.reset()
-local with_hooks = { category = 'test_hooks', discover = noop, claim = noop, reconcile = noop, advance = noop }
+local with_hooks = { category = 'test_hooks', defaultPriority = 3, discover = noop, claim = noop, retained = noop, reconcile = noop, advance = noop }
 pass, err = Registry.register(with_hooks)
 ok(pass == true, 'valid optional hooks must register: ' .. tostring(err))
 
 -- ---- optional hook present but wrong type ----
 Registry.reset()
-local bad_hook = { category = 'test_badhook', discover = noop, claim = noop, reconcile = 'not_a_function' }
+local bad_hook = { category = 'test_badhook', defaultPriority = 3, discover = noop, claim = noop, retained = noop, reconcile = 'not_a_function' }
 pass, err = Registry.register(bad_hook)
 ok(pass == false, 'non-function optional hook must fail')
 ok(err and err:find('PROVIDER_HOOK_NOT_FUNCTION'), 'error code must name hook, got: ' .. tostring(err))
 
 -- ---- acceptance: temporarily remove claim, re-register must fail ----
 Registry.reset()
-local removable = { category = 'test_removable', discover = noop, claim = noop }
+local removable = { category = 'test_removable', defaultPriority = 3, discover = noop, claim = noop, retained = noop }
 pass = Registry.register(removable)
 ok(pass == true, 'setup: initial register ok')
 -- Simulate contract violation: register same category without claim
-local broken = { category = 'test_removable', discover = noop }
+local broken = { category = 'test_removable', defaultPriority = 3, discover = noop, retained = noop }
 pass, err = Registry.register(broken)
 ok(pass == false, 're-register without claim must fail')
 ok(err == 'PROVIDER_MISSING_CLAIM', 'must reject missing claim on re-register')
+
+-- ---- acceptance: temporarily remove retained, re-register must fail ----
+Registry.reset()
+pass = Registry.register(removable)
+ok(pass == true, 'setup: initial register ok')
+local brokenRetained = { category = 'test_removable', defaultPriority = 3, discover = noop, claim = noop }
+pass, err = Registry.register(brokenRetained)
+ok(pass == false, 're-register without retained must fail')
+ok(err == 'PROVIDER_MISSING_RETAINED', 'must reject missing retained on re-register, got: ' .. tostring(err))
+
+Registry.reset()
+
+-- ---- explicit priority order: fan-out follows defaultPriority, then category ----
+local orderA = { category = 'order_tool', defaultPriority = 4, discover = noop, claim = noop, retained = noop }
+local orderB = { category = 'order_clean', defaultPriority = 2, discover = noop, claim = noop, retained = noop }
+local orderC = { category = 'order_craft', defaultPriority = 3, discover = noop, claim = noop, retained = noop }
+local orderD = { category = 'order_cook', defaultPriority = 3, discover = noop, claim = noop, retained = noop }
+ok(Registry.register(orderA) and Registry.register(orderB) and Registry.register(orderC)
+    and Registry.register(orderD), 'setup: out-of-order registration ok')
+local fanout = {}
+for _, p in ipairs(Registry.all()) do fanout[#fanout + 1] = p.category end
+ok(table.concat(fanout, ',') == 'order_clean,order_cook,order_craft,order_tool',
+    'fan-out order follows explicit defaultPriority then category, got: ' .. table.concat(fanout, ','))
+local cats = Registry.categories()
+ok(table.concat(cats, ',') == 'order_tool,order_clean,order_craft,order_cook',
+    'categories() stays registration order for UI and saved sets, got: ' .. table.concat(cats, ','))
+-- Re-register with a changed priority re-sorts the fan-out.
+ok(Registry.register({ category = 'order_tool', defaultPriority = 1, discover = noop, claim = noop, retained = noop }),
+    'setup: re-register with new priority ok')
+fanout = {}
+for _, p in ipairs(Registry.all()) do fanout[#fanout + 1] = p.category end
+ok(table.concat(fanout, ',') == 'order_tool,order_clean,order_cook,order_craft',
+    're-register re-sorts the fan-out, got: ' .. table.concat(fanout, ','))
+-- pendingScore takes the highest score, not the first positive in
+-- registration order.
+Registry.reset()
+local lowFirst = { category = 'score_low', defaultPriority = 2, discover = noop, claim = noop, retained = noop,
+    pendingScore = function() return 5 end }
+local highSecond = { category = 'score_high', defaultPriority = 3, discover = noop, claim = noop, retained = noop,
+    pendingScore = function() return 9 end }
+ok(Registry.register(lowFirst) and Registry.register(highSecond), 'setup: scorers register')
+ok(Registry.pendingScore('npc1') == 9, 'pendingScore takes the highest score, got: ' .. tostring(Registry.pendingScore('npc1')))
 
 Registry.reset()
 
 -- ---- P4 kernel hooks and the priorityRequired declaration ----
 for _, hook in ipairs({ 'retained', 'command', 'orderCommanded', 'retireUnclaimed', 'orderRetired', 'reset' }) do
     Registry.reset()
-    pass, err = Registry.register({ category = 'test_p4', discover = noop, claim = noop, [hook] = true })
+    pass, err = Registry.register({ category = 'test_p4', defaultPriority = 3, discover = noop, claim = noop, retained = noop, [hook] = true })
     ok(pass == false and err == 'PROVIDER_HOOK_NOT_FUNCTION:' .. hook, 'non-function ' .. hook .. ' must fail, got: ' .. tostring(err))
 end
 Registry.reset()
-pass, err = Registry.register({ category = 'test_p4', discover = noop, claim = noop, priorityRequired = 'yes' })
+pass, err = Registry.register({ category = 'test_p4', defaultPriority = 3, discover = noop, claim = noop, retained = noop, priorityRequired = 'yes' })
 ok(pass == false and err == 'PROVIDER_INVALID', 'non-boolean priorityRequired must fail, got: ' .. tostring(err))
 Registry.reset()
 

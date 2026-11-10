@@ -20,14 +20,14 @@ description: Add or refactor a PublicWork provider using the actual dispatcher, 
 | advance | `provider.advance({actor=actor,now=now,directory=directory})`；适用于有后台推进的领域，不是每个身体Session的帧回调 |
 | reconcile | `provider.reconcile()`；领域按真实业务记录核对责任，不是统一的reconcile(jobId,outcome) |
 | hasWork | 当前为无参数的领域查询；具体用途以调用方为准，不等于“可给此NPC派工” |
-| retained | `provider.retained(npcId)`；本领域有该NPC未结束的Job时返回true，eligible按注册顺序问，第一个true即不派新工。延迟加载的薄壳也要转发，并保留原有门控：Field薄壳直接调FieldWork.retained，不受原生能力门控；cooking仍按原样受carrierActive门控，载体未激活时返回false。新工种不要因原生能力关闭而返回false |
+| retained | `provider.retained(npcId)`；本领域有该NPC未结束的Job时返回true，注册时强制——缺失即拒绝注册（`PROVIDER_MISSING_RETAINED`），不再静默跳过。eligible按显式优先级顺序（defaultPriority，再按category）问，第一个true即不派新工。延迟加载的薄壳也要转发，并保留原有门控：Field薄壳直接调FieldWork.retained，不受原生能力门控；cooking仍按原样受carrierActive门控，载体未激活时返回false。新工种不要因原生能力关闭而返回false |
 | reset | `provider.reset()`；世界根替换时由`Providers.resetWorld()`按注册顺序调用，只清本模块的每世界缓存 |
 | command | `provider.command(o,action)`；订单category等于本工种时，PublicWork.command过完通用守卫（可用、Ledger、revision）后整单交给它，返回值原样返回（现为cooking） |
 | orderCommanded / orderRetired | 无category的公共制作订单被玩家命令改变 / 已结清订单被退役时扇出通知，`orderRetired(id,readyWorkers)`（现为crafting清计划代数） |
 | retireUnclaimed | `provider.retireUnclaimed(o)`；无Job、无craftProgress的DONE订单只有其category工种返回true才退役（现为cooking） |
 | priorityRequired | 布尔声明，不是函数；为true时setPriorities必须带此工种的优先级（现为crafting、hauling） |
 
-`PublicWorkProviders.register(def)`检查category与defaultPriority，要求discover与claim是函数，可选钩子（列表见注册表`optHooks`）若存在也须是函数；不合格返回`false,原因码`，内置工种由PublicWork的assertRegister在加载时报错。按真实业务实现需要的钩子，不发明通用参数或返回值。
+`PublicWorkProviders.register(def)`检查category，要求`defaultPriority`（0–4数字）与`retained`（函数）必须存在——缺失分别报`PROVIDER_MISSING_PRIORITY` / `PROVIDER_MISSING_RETAINED`，存在但类型不对报`PROVIDER_INVALID` / `PROVIDER_HOOK_NOT_FUNCTION:retained`；要求discover与claim是函数；其余可选钩子（列表见注册表`optHooks`，retained已不在其中）若存在也须是函数；不合格返回`false,原因码`，内置工种由PublicWork的assertRegister在加载时报错。扇出顺序由各工种的显式`defaultPriority`字段（再按category）决定，不由注册顺序决定；`categories()`仍按注册顺序枚举（UI列表与保存集）；`pendingScore`取各工种最高分，不取首个正分。按真实业务实现需要的钩子，不发明通用参数或返回值。
 
 ## 3. 身体执行
 
@@ -49,7 +49,7 @@ TaskController由运行时创建。`TaskController.new():request(...)`排队，`
 
 | 位置 | 改什么 |
 |---|---|
-| `client/EmberRoutesProbe/Work/LaborManifest.lua` `categories` | 加一条category/providerType/provider；插入位置决定categories()顺序和pendingScore平局 |
+| `client/EmberRoutesProbe/Work/LaborManifest.lua` `categories` | 加一条category/providerType/provider；插入位置只决定`categories()`枚举顺序（UI列表与保存集），扇出顺序由各工种的`defaultPriority`字段决定 |
 | 同文件 `jobKinds` | 只在新增TaskJobs种类时加：kind、recovery，可选monitor；插入位置决定读档恢复顺序 |
 | `shared/EmberRoutesProbe/Kernel/BuiltinJobContracts.lua` | 新种类的JobContracts条目（shared，记录模块须延迟加载） |
 | 领域 `*PolicyDef.lua` 与 `client/EmberRoutesProbe.lua` | 有工作策略页时新增定义并在入口require |

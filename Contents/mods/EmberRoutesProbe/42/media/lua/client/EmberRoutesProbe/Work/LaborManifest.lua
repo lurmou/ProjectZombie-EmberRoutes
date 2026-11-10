@@ -5,8 +5,11 @@
 -- tests/lua/labor-wiring-order-test.lua pins both orders below.
 local M={}
 
--- Public work categories, in PublicWorkProviders.categories() order. That order
--- drives every provider fan-out and the pendingScore tie (first positive wins).
+-- Public work categories, in registration order. That order is only the stable
+-- enumeration behind PublicWorkProviders.categories() (UI lists, saved
+-- priority sets). Scheduling fan-out follows each provider's explicit
+-- defaultPriority field, and the pendingScore tie takes the highest score;
+-- neither depends on the order below.
 -- providerType names the TaskJobs kind the claim creates (jobKinds below);
 -- nil means the category creates no TaskJob of its own.
 M.categories={
