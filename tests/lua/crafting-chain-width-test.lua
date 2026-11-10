@@ -1,5 +1,7 @@
 -- Reuse the actual draft and Kahlua layout host; no game renderer is exercised.
+ERSettlementFixtureOnly=true
 dofile('tests/lua/settlement-tabs-test.lua')
+ERSettlementFixtureOnly=nil
 local checks=0
 local function check(value,message) checks=checks+1 assert(value,message) end
 for _,height in ipairs({17,20,24}) do

@@ -235,6 +235,41 @@ if ERDeliveryPreviewOnly or ERMonitorPreviewOnly then
     end
     return
 end
+
+-- Optional visual QA export: real pages and prepared draw data, synthetic business snapshots.
+function ERSettlementPreview(tab,height,screenWidth,screenHeight)
+    sw,sh,fh=screenWidth or 1280,screenHeight or 960,height
+    local shell=Dashboard.open(actor,entry.id,(tab=='publicOrder' or tab=='priorities') and 'personnel' or tab)
+    shell.x=0 shell.y=0
+    if tab=='publicOrder' then
+        shell:openPublicOrder({recipeId='Base.SawLogs',recipeName='Saw logs'})
+        local dialog=shell.publicDialog dialog.x=0 dialog.y=0 return dialog
+    elseif tab=='priorities' then
+        shell:openPriorities() return shell
+    end
+    if tab=='crafting' then
+        local browser=shell.pages.crafting.views.recipes
+        browser:change({recipeId='Base.SawLogs',quantity=1})
+        browser:change({preview={state='READY',conditions={},counts={[0]={available=0,required=1},[1]={available=1,required=1}},
+            chain={nodes={{recipeId='precursor',recipeName='Precursor',product='Base.Log',requested=1,surface=false},
+            {recipeId='Base.SawLogs',recipeName='Saw logs',product='Base.Plank',requested=3,surface=true}}}}})
+
+    elseif tab=='warehouse' then
+        local page=shell.pages.warehouse local samples={}
+        for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do
+            page.itemNames[id]=ERTestTranslations and ERTestTranslations['TEST_ItemName_'..id] or id
+            samples[i]={fullType=id,node='other',count=i*8,sources={{id='sample',x=3575,y=10898,z=0,count=i*8}}}
+        end
+        page:receive({state='READY',revision=2,rows=samples,counts={loaded=3,containers=4,items=80,unloaded=1,private=0,missing=0,limited=0}})
+        for i,row in ipairs(samples) do
+            page:addToDeliveryCart({fullType=row.fullType,label=page.itemNames[row.fullType],count=row.count},i*2)
+        end
+
+    end
+    return shell
+end
+-- Fixture-only load: reuse the full preview helper without running the tab assertions.
+if ERSettlementFixtureOnly then return end
 local shell=Dashboard.open(actor,entry.id,'warehouse')
 local page=shell.pages.warehouse
 check(shell.activeTab=='warehouse' and not shell.pages.policies and wareCount==1,'only initial warehouse page is created and subscribed')
@@ -471,35 +506,3 @@ check(shell.activeTab=='warehouse','switching tabs cleanly switches active page'
 shell:close()
 check(wareCount==0 and logCount==0 and stops==0,'all test windows release watches and never stop business')
 print('PASS '..checks..' unified shell/page lifecycle/layout checks; native host mocked, game renderer NOT RUN')
--- Optional visual QA export: real pages and prepared draw data, synthetic business snapshots.
-function ERSettlementPreview(tab,height,screenWidth,screenHeight)
-    sw,sh,fh=screenWidth or 1280,screenHeight or 960,height
-    local shell=Dashboard.open(actor,entry.id,(tab=='publicOrder' or tab=='priorities') and 'personnel' or tab)
-    shell.x=0 shell.y=0
-    if tab=='publicOrder' then
-        shell:openPublicOrder({recipeId='Base.SawLogs',recipeName='Saw logs'})
-        local dialog=shell.publicDialog dialog.x=0 dialog.y=0 return dialog
-    elseif tab=='priorities' then
-        shell:openPriorities() return shell
-    end
-    if tab=='crafting' then
-        local browser=shell.pages.crafting.views.recipes
-        browser:change({recipeId='Base.SawLogs',quantity=1})
-        browser:change({preview={state='READY',conditions={},counts={[0]={available=0,required=1},[1]={available=1,required=1}},
-            chain={nodes={{recipeId='precursor',recipeName='Precursor',product='Base.Log',requested=1,surface=false},
-            {recipeId='Base.SawLogs',recipeName='Saw logs',product='Base.Plank',requested=3,surface=true}}}}})
-
-    elseif tab=='warehouse' then
-        local page=shell.pages.warehouse local samples={}
-        for i,id in ipairs({'Base.Hammer','Base.Nails','Base.TinnedBeans','Base.CordlessPhone'}) do
-            page.itemNames[id]=ERTestTranslations and ERTestTranslations['TEST_ItemName_'..id] or id
-            samples[i]={fullType=id,node='other',count=i*8,sources={{id='sample',x=3575,y=10898,z=0,count=i*8}}}
-        end
-        page:receive({state='READY',revision=2,rows=samples,counts={loaded=3,containers=4,items=80,unloaded=1,private=0,missing=0,limited=0}})
-        for i,row in ipairs(samples) do
-            page:addToDeliveryCart({fullType=row.fullType,label=page.itemNames[row.fullType],count=row.count},i*2)
-        end
-
-    end
-    return shell
-end
