@@ -14,6 +14,10 @@ actor.x=4.5
 local entry=assert(Ledger.commit(actor,nil,'Routing',{x=0,y=0,w=40,h=10}))
 dofile('tests/lua/membership-fixture.lua')(function() return Ledger.get(entry.id) end,{npc.id,f.b.id})
 Probe.publicDispatch=true
+-- Dual-track: the fixture Probe may be a stub table without the reader;
+-- the real Boot defines it, a stub gets it here. Production reads the
+-- switch only through Probe.isPublicDispatch().
+if not Probe.isPublicDispatch then Probe.isPublicDispatch=function() return Probe.publicDispatch==true end end
 local function box(x,types,role)
     local o=f.fixture.object(x) actor.x=x+0.5
     local config=Filter.new() for _,id in ipairs(types) do config.types[id]=true end

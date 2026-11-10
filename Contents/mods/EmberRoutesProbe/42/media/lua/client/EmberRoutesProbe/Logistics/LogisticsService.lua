@@ -69,10 +69,18 @@ function Service.invalidate(id)
         if key==id then roster(ctx) ctx.publicPlans={} ctx.publicWait={} ctx.cache=nil ctx.nextTick=0 end
     end
 end
+-- Public dispatch owns the suspended flag: start/stop only flip it, they
+-- never build a ctx, never schedule:add, never allowAutomation. Real
+-- admission lives in advance()/eligible(); a public start only clears the
+-- suspension. (F-04: C4/C5 converge here; the start short-circuit itself is
+-- unchanged -- see F-12, still to be qualified.)
+function Service.setSuspended(id,value)
+    Store.get(id).suspended=value
+end
 function Service.stop(actor,id)
     local entry,reason=Ledger.view(actor,id)
     if not entry then return reason end
-    if Probe.publicDispatch then Store.get(id).suspended=true end
+    if Probe.isPublicDispatch() then Service.setSuspended(id,true) end
     local ctx=contexts[id]
     if ctx then ctx.running=false ctx.plan=nil ctx.cache=nil ctx.members={} ctx.actor=nil schedule:remove(id) end
     for npcId in pairs(Store.get(id).workers) do
@@ -84,7 +92,7 @@ end
 function Service.start(actor,id)
     local entry,reason=Ledger.view(actor,id)
     if not entry then return reason end
-    if Probe.publicDispatch then Store.get(id).suspended=false changed(id) return 'STARTED' end
+    if Probe.isPublicDispatch() then Service.setSuspended(id,false) changed(id) return 'STARTED' end
     if not Probe.ready or Probe.enabled==false or not Probe.hasJava() then return "DRIVER_UNAVAILABLE" end
     local settings=Store.get(id)
     if not settings.intake and not settings.tidy then return "MODES_DISABLED" end
@@ -185,6 +193,14 @@ local function advance(ctx)
     else ctx.reason="SCANNING" end
 end
 function Service.preparePublic(actor,entry,recovery)
+    -- Fail-closed: only public dispatch may mint a public ctx. Callers used
+    -- to guard this themselves (and HaulingProvider.blocksDecision has no
+    -- guard at all); the check now lives here so a new caller cannot
+    -- silently get a ctx while the switch is off.
+    -- recovery is NOT unified: recovery=nil (blocksDecision, publicOffer)
+    -- still requires intake/tidy, while recovery=true (recover, taskCommand)
+    -- skips that check. Both are denied while suspended.
+    if not Probe.isPublicDispatch() then return nil end
     local settings=Store.get(entry.id)
     if settings.suspended or not recovery and not settings.intake and not settings.tidy then return nil end
     local ctx=contexts[entry.id]
@@ -196,6 +212,10 @@ function Service.preparePublic(actor,entry,recovery)
     return ctx
 end
 function Service.publicOffer(actor,entry,npc)
+    -- Fail-closed like preparePublic: a direct caller must not get an offer
+    -- while the switch is off (same guard lives in preparePublic below, this
+    -- one keeps the intent explicit at the public API boundary).
+    if not Probe.isPublicDispatch() then return nil end
     local ctx=Service.preparePublic(actor,entry) if not ctx then return nil end
     local settings=Store.get(entry.id)
     local id=EmberRoutesProbeJava.carrierId(npc)
@@ -247,7 +267,7 @@ function Service.recover()
                 and require('EmberRoutesProbe/Settlement/MembershipService').check(id,'WORK',
                     {x=b.handle:getX(),y=b.handle:getY(),z=b.handle:getZ(),scopeId=entry.id}).allowed then
                 local ctx=contexts[entry.id]
-                if Probe.publicDispatch then ctx=Service.preparePublic(actor,entry,true) end
+                if Probe.isPublicDispatch() then ctx=Service.preparePublic(actor,entry,true) end
                 if ctx and ctx.running then
                     recoveryWait[id]={job=r.id,due=now+5000+recoveryCursor%7*137,watch=wake.capture(entry)}
                     Work.resumeFor(actor,id)
@@ -256,14 +276,29 @@ function Service.recover()
         end
     end
 end
-function Service.tick()
-    Service.recover()
-    if Probe.publicDispatch then
-        local pending=false for _ in pairs(dirty) do pending=true break end
-        if not pending then return end
+local function notifyDirty()
+    local pending=dirty dirty={}
+    for id in pairs(pending) do
+        local snapshot=Service.status(id)
+        local list=watchers[id] or {}
+        for callback in pairs(list) do
+            local ok=pcall(callback,snapshot)
+            if not ok then list[callback]=nil end
+        end
     end
+end
+-- Public branch: dirty-watcher notification only. The private planner
+-- (schedule:step(advance)) never runs while public dispatch owns the work.
+local function tickPublic()
+    local pending=false for _ in pairs(dirty) do pending=true break end
+    if not pending then return end
     if not Probe.ready or Probe.enabled==false or not Probe.hasJava() or isClient() or isServer() then return end
-    if not Probe.publicDispatch then schedule:step(1,function(id)
+    notifyDirty()
+end
+-- Private branch: one planner step per tick, then watcher notification.
+local function tickPrivate()
+    if not Probe.ready or Probe.enabled==false or not Probe.hasJava() or isClient() or isServer() then return end
+    schedule:step(1,function(id)
         local ctx=contexts[id] local before=ctx.reason local ok,reason=pcall(advance,ctx)
         if before~=ctx.reason then changed(id) end
         if not ok then
@@ -276,16 +311,11 @@ function Service.tick()
             end
         end
     end)
-    end
-    local pending=dirty dirty={}
-    for id in pairs(pending) do
-        local snapshot=Service.status(id)
-        local list=watchers[id] or {}
-        for callback in pairs(list) do
-            local ok=pcall(callback,snapshot)
-            if not ok then list[callback]=nil end
-        end
-    end
+    notifyDirty()
+end
+function Service.tick()
+    Service.recover()
+    if Probe.isPublicDispatch() then tickPublic() else tickPrivate() end
 end
 function Service.report(id)
     local ctx=contexts[id] local settings=Store.get(id) local count=0

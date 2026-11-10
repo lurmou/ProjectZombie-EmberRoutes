@@ -181,6 +181,13 @@ Planner.new=function()
     end}
 end
 Service.reset()
+-- Public discovery runs behind the publicDispatch switch (F-06): the real
+-- publicOffer fails closed while the switch is off, so enable it on the
+-- exact Boot table LogisticsService required. Set here, at the end of the
+-- test, so the earlier private-planner assertions are unaffected.
+local Boot=require 'EmberRoutesProbe/Kernel/Boot'
+Boot.publicDispatch=true
+if not Boot.isPublicDispatch then Boot.isPublicDispatch=function() return Boot.publicDispatch==true end end
 local settings=Store.get(entry.id) settings.suspended=false settings.intake=true
 Service.publicOffer(actor,entry,a) Service.publicOffer(actor,entry,a)
 check(created==1 and progress==2,'in-flight public scan advances without cooldown')

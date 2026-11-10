@@ -16,7 +16,9 @@ package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() 
 package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
 package.loaded['EmberRoutesProbe/Warehouse/DisplayNames']={name=function(id) return id end}
 package.loaded['EmberRoutesProbe/Field/FieldDemand']={rows=function() return field end}
-package.loaded['EmberRoutesProbe/Kernel/Boot']={publicDispatch=true}
+local boot={publicDispatch=true}
+boot.isPublicDispatch=function() return boot.publicDispatch==true end
+package.loaded['EmberRoutesProbe/Kernel/Boot']=boot
 package.loaded['EmberRoutesProbe/Work/PublicWork']={orders=function() return {order} end,rules=function() return {rule,rule} end}
 local projector
 package.loaded['EmberRoutesProbe/SelfCare/MedicalCare']={demands=function() return {} end}

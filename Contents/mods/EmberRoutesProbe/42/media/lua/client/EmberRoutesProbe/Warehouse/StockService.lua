@@ -160,6 +160,13 @@ end
 Production.earlySettleCheck=StockService.checkEarlySettle
 
 -- Evaluates a single rule and dispatches if needed
+-- Guardrail: only reachable when public dispatch is OFF -- StockService.tick
+-- returns early while Probe.isPublicDispatch(). This private dispatch calls
+-- Production.execute directly (no public order, no provider claim), so it
+-- must never run alongside PublicWork.stock() or the same rule would be
+-- restocked twice. Deleting it outright needs end-to-end test coverage of
+-- the public stock() path first; until then the tick guard is the only
+-- isolation. Do not call evaluateRule from anywhere except tick.
 local function evaluateRule(actor,r)
     local now=gameSeconds()
     lastEvaluated[r.id]=now
@@ -342,7 +349,7 @@ end
 
 -- Tick hook: executes bounded evaluations per tick
 function StockService.tick()
-    if Probe.publicDispatch then return end -- Public dispatch owns stock rules; this tick never dispatches.
+    if Probe.isPublicDispatch() then return end -- Public dispatch owns stock rules; this tick never dispatches.
     if isPaused() or pausedForSave then return end
     syncWatchers()
 

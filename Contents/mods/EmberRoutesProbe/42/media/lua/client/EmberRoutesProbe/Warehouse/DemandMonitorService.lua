@@ -71,7 +71,7 @@ function D.status(actor,scope)
         append({id='DEMAND:cleaning:'..scope,title=getText('IGUI_EmberRoutesProbe_Public_cleaning'),
             demandSummary=text('cleaningUnderway')},cleaning)
     end
-    if probe.publicDispatch then
+    if probe.isPublicDispatch() then
         local public=require 'EmberRoutesProbe/Work/PublicWork'
         local byId={}
         for _,o in ipairs(public.orders(scope)) do byId[o.id]=o end

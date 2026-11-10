@@ -8,7 +8,9 @@ local craft={id='craft-one',npcId='a',generation=4,settlementId='s',state='PAUSE
 local haul={id='haul-one',npcId='b',generation=2,state='PAUSED',phase='DELIVER',reason='USER',source='in',destination='out',items={21},delivered=0}
 local root={craftProbes={byNpc={a=craft}},labor={tasks={[haul.id]=haul}}}
 local allowed=true local mode='FOLLOW' local control local calls={} local callback local released=false
-package.loaded['EmberRoutesProbe/Kernel/Boot']={ready=true,hasJava=function() return true end}
+local boot={ready=true,hasJava=function() return true end}
+boot.isPublicDispatch=function() return boot.publicDispatch==true end
+package.loaded['EmberRoutesProbe/Kernel/Boot']=boot
 package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,
     describe=function(id) if id=='in' or id=='out' then return {x=1,y=2,z=0} end end}
 package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function(_,id) if allowed then return {id=id} end return nil,'ACCESS_DENIED' end}

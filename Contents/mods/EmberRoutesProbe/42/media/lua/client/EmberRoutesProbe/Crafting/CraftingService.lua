@@ -171,9 +171,17 @@ local function command(actor,id,npcId,command,surfaceId,recipeId,quantity)
     local options=recipeId and (command=="run" or command=="teach") and {recipeId=recipeId,quantity=quantity==nil and 1 or quantity,chain=true} or nil
     local result=Craft.execute(actor,command,object,npcId,true,options) changed() invalidate() return result
 end
+-- Public-order entry codes for Service.command only. Production.execute has
+-- its own teach->READ_BOOK_REQUIRED (Production.lua:662, different layer,
+-- same code), but no equivalent intercept for run: a direct
+-- Production.execute 'run' bypasses this table entirely. This table only
+-- gates the Service.command entry point.
+local publicOrderCodes={run='PUBLIC_ORDER_ENTRY_REQUIRED',teach='READ_BOOK_REQUIRED'}
 function Service.command(actor,id,npcId,action,surfaceId,recipeId,quantity)
-    if Probe.publicDispatch and action=='run' then return 'PUBLIC_ORDER_ENTRY_REQUIRED' end
-    if Probe.publicDispatch and action=='teach' then return 'READ_BOOK_REQUIRED' end
+    if Probe.isPublicDispatch() then
+        local code=publicOrderCodes[action]
+        if code then return code end
+    end
     local result=command(actor,id,npcId,action,surfaceId,recipeId,quantity)
     Log.write('CRAFTING_COMMAND','npc='..tostring(npcId)..' command='..tostring(action)..' result='..tostring(result))
     return result

@@ -10,6 +10,12 @@ local Performance = require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 -- for tests (stub Boot tables) and for a PublicWork load failure.
 local Probe = { build = build, ready = false, runtimeReady=false, failureCode = "NOT_STARTED", controlledExecution=true }
 
+-- Read the switch through this function so the spelling stays in one place;
+-- test Boot stubs define the same function next to the field (dual-track).
+function Probe.isPublicDispatch()
+    return Probe.publicDispatch==true
+end
+
 -- World-reset registry: each domain registers its reset once. Boot.reset()
 -- calls them in a fixed order, skipping keys that never registered, which
 -- matches the old `if Probe.resetX then ... end` guard semantics.

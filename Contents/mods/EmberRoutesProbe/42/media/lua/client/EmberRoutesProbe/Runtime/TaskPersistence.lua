@@ -50,7 +50,7 @@ function Save.load()
     Craft.prepareRecovery()
     Store.data()
     require('EmberRoutesProbe/Field/FieldWork').prepareRecovery()
-    if Probe.publicDispatch then require('EmberRoutesProbe/Work/PublicWork').prepareRecovery() end
+    if Probe.isPublicDispatch() then require('EmberRoutesProbe/Work/PublicWork').prepareRecovery() end
     if not validReceipt(root.executionSave) then error('SAVE_RECOVERY_FORMAT_INVALID') end
     if Probe.prepareCareRecovery and Probe.prepareCareRecovery(root.executionSave)~=true then error('PERSONAL_RECOVERY_FAILED') end
     if require('EmberRoutesProbe/Activity/ActivityParticipant').prepareRecovery(root.executionSave)~=true then error('ACTIVITY_RECOVERY_FAILED') end

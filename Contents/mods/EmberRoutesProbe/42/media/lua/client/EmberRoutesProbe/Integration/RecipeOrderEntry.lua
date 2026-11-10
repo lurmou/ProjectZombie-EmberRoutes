@@ -9,7 +9,7 @@ local original=ISCraftRecipePanel.createDynamicChildren
 
 function ISCraftRecipePanel:createDynamicChildren()
     original(self)
-    if not Probe.ready or not Probe.publicDispatch or not Probe.hasJava() then return end
+    if not Probe.ready or not Probe.isPublicDispatch() or not Probe.hasJava() then return end
     local native=self:getRecipe() if not native then return end
     local id=EmberRoutesProbeJava.recipeKey(native)
     if not Recipe.read(id) then return end

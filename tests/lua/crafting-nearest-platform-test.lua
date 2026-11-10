@@ -126,7 +126,9 @@ package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe'] = {
         return surfaceRecipe
     end
 }
-package.loaded['EmberRoutesProbe/Kernel/Boot'] = { ready = true, runtimeReady = true, publicDispatch = true, hasJava = function() return true end }
+local boot = { ready = true, runtimeReady = true, publicDispatch = true, hasJava = function() return true end }
+boot.isPublicDispatch = function() return boot.publicDispatch == true end
+package.loaded['EmberRoutesProbe/Kernel/Boot'] = boot
 package.loaded['EmberRoutesProbe/Work/LaborSignals'] = { changed = function() end }
 package.loaded['EmberRoutesProbe/Runtime/PlanningWake'] = {
     capture = function() return 1 end,
