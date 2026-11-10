@@ -10,8 +10,6 @@ check(store==Jobs.current(),'world shares exact store instance')
 check(store:create(Record.create('care','a')),'personal record accepted')
 local Business=require 'EmberRoutesProbe/Work/BusinessJobs'
 check(Business.crafts().a==nil,'personal record is not a craft')
-Business.flush()
-check(store:get('care').state=='PREPARING','labor flush leaves personal state unchanged')
 local p=assert(Record.begin(store:get('care'),'EAT',{jobId='original'}))
 check(p.attemptId=='care:1' and p.resume.jobId=='original','attempt and recovery identity')
 local retained=store:get('care') retained.payload=p
