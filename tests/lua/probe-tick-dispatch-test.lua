@@ -35,13 +35,16 @@ javaTickFn = EmberRoutesProbeJava.tick
 
 -- Recording fake Performance: observes exactly what Probe.tick measures.
 local perfActive, perfNow = false, 0
-local perfCalls, finishCalls = {}, {}
+local perfCalls, finishCalls, reportSlowCalls = {}, {}, {}
 package.loaded["EmberRoutesProbe/Kernel/Build"] = { version = "test", prefix = "TEST" }
 package.loaded["EmberRoutesProbe/Kernel/Log"] = { write = function() end }
 package.loaded["EmberRoutesProbe/Kernel/RuntimeMetrics"] = {
     active = function() return perfActive end,
     now = function() perfNow = perfNow + 1 return perfNow end,
     measure = function(label, fn) perfCalls[#perfCalls + 1] = { label = label, fn = fn } fn() end,
+    -- Slow-handler naming needs a diagnostic clock; this bridge has none,
+    -- so the unmeasured dispatch must stay untimed and never call it.
+    reportSlow = function(label, elapsed, ended) reportSlowCalls[#reportSlowCalls + 1] = { label = label, elapsed = elapsed, ended = ended } return false end,
     finishTick = function(started) finishCalls[#finishCalls + 1] = started end,
     reset = function() end,
 }
@@ -79,7 +82,7 @@ local function registerAll()
     Probe.tickDelivery = function() calls[#calls + 1] = "tickDelivery" end
 end
 local function resetState()
-    calls, perfCalls, finishCalls = {}, {}, {}
+    calls, perfCalls, finishCalls, reportSlowCalls = {}, {}, {}, {}
     javaTicks = 0
     gates.hz60, gates.hz15, gates.hz5, gates.hz1 = true, true, true, true
 end
@@ -91,6 +94,7 @@ callbacks.OnTick()
 check(javaTicks == 1, "unmeasured tick still runs the Java tick first")
 checkSeq(calls, ALL_KEYS, "unmeasured path calls hooks in original order")
 check(#perfCalls == 0 and #finishCalls == 0, "unmeasured path records no measures")
+check(#reportSlowCalls == 0, "unmeasured path without a diagnostic clock names no slow handler")
 
 -- 2. Measured path (Performance active): same order, same labels, Java first.
 perfActive = true

@@ -2,10 +2,42 @@
 -- Fixed histogram buckets; p95/p99 are conservative bucket upper bounds.
 -- Calls/totals/max remain exact. No per-call sample list or copy at END.
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local TickConfig=require 'EmberRoutesProbe/Kernel/TickConfig'
 local M={}
 local sample,last
 local epoch=0
+-- Last slow-handler log per domain, on the diagnostic clock (ms). Cleared
+-- by reset() with the sample so a new world starts with a fresh log budget.
+local lastSlowLog={}
 local function clock() return EmberRoutesProbeJava.diagnosticTimeNanos()/1000000 end
+-- NPC count at log time, from the same bridge call the domains already use
+-- (workerCount); 0 when the bridge is absent so a stubbed clock can still
+-- name the domain instead of failing the log line.
+local function npcCount()
+    local bridge=EmberRoutesProbeJava
+    if bridge and type(bridge.workerCount)=='function' then
+        local n=bridge.workerCount()
+        if type(n)=='number' then return n end
+    end
+    return 0
+end
+-- Names one slow domain tick in the log (Viewpoint/Smooth Frames pilot):
+-- the sampling table alone is never read mid-game, so a domain at or above
+-- TickConfig.slowHandlerMs gets one structured line -- domain, cost, NPC
+-- count -- in the same RUNTIME_PERF category and key=value shape as the
+-- sampling END summary. Repeats from the same domain inside
+-- TickConfig.slowHandlerLogCooldownMs are dropped. nowMs is the end
+-- timestamp on the same clock that measured elapsedMs, so callers pass the
+-- timestamp they already have and no extra clock read is needed. Returns
+-- true when a line was written.
+function M.reportSlow(name,elapsedMs,nowMs)
+    if type(elapsedMs)~='number' or elapsedMs<TickConfig.slowHandlerMs then return false end
+    local lastAt=lastSlowLog[name]
+    if lastAt and type(nowMs)=='number' and nowMs-lastAt<TickConfig.slowHandlerLogCooldownMs then return false end
+    lastSlowLog[name]=nowMs
+    Log.event('RUNTIME_PERF','SLOW_HANDLER',{domain=name,ms=string.format('%.3f',elapsedMs),npcs=npcCount()})
+    return true
+end
 function M.active() return sample~=nil end
 function M.now() return clock() end
 -- Sampling sessions are epoch-numbered so callers can cache per-session
@@ -49,7 +81,11 @@ end
 function M.measure(name,fn)
     local started=clock()
     fn()
-    addElapsed(name,clock()-started)
+    local elapsed=clock()-started
+    addElapsed(name,elapsed)
+    -- Same naming as the unmeasured Boot dispatch below: a slow domain is
+    -- named in the log the moment it happens, not only in the END summary.
+    M.reportSlow(name,elapsed,started+elapsed)
 end
 -- Span variant for wrappers that must keep the wrapped function's return value.
 function M.measureSpan(name,started)
@@ -91,5 +127,5 @@ function M.finishTick(started)
     end
 end
 function M.result() return last end
-function M.reset() sample,last=nil,nil epoch=epoch+1 end
+function M.reset() sample,last=nil,nil lastSlowLog={} epoch=epoch+1 end
 return M
