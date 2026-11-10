@@ -126,6 +126,21 @@ public final class WarehouseFastIndexTest {
         KahluaTable afterReset = WarehouseFastIndex.scanSettlement("settlement_one", containerList, false);
         check(afterReset != updatedResult, "After reset, a new snapshot is generated");
 
+        // 6. tickDue follows the master 15Hz tier, not a per-settlement wall clock.
+        // No wall-clock backoff state survives: the same settlement answers
+        // only from ProbeMasterScheduler.is15Hz(), urgent, or "never scanned".
+        ProbeMasterScheduler.reset();
+        check(ProbeMasterScheduler.is15Hz(), "Scheduler reset leaves the 15Hz tier due");
+        check(WarehouseFastIndex.tickDue("settlement_one", false), "Known settlement due on a 15Hz tick");
+        check(WarehouseFastIndex.tickDue("settlement_one", true), "Urgent change due on a 15Hz tick");
+        check(WarehouseFastIndex.tickDue("settlement_unknown", false), "Unknown settlement always due (first scan)");
+        for (int i = 0; i < 10 && ProbeMasterScheduler.is15Hz(); i++) ProbeMasterScheduler.tick();
+        check(!ProbeMasterScheduler.is15Hz(), "Back-to-back scheduler ticks leave the 15Hz tier not due");
+        check(!WarehouseFastIndex.tickDue("settlement_one", false), "Known settlement not due off the 15Hz tier");
+        check(WarehouseFastIndex.tickDue("settlement_one", true), "Urgent still due off the 15Hz tier");
+        check(WarehouseFastIndex.tickDue("settlement_unknown", false), "Unknown settlement still due off the 15Hz tier");
+        check(WarehouseFastIndex.tickDue(null, false), "Null settlement id due (first scan)");
+
         System.out.println("PASS " + checks + " WarehouseFastIndex & WarehouseFingerprint assertions cleanly!");
     }
 }

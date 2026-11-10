@@ -338,18 +338,15 @@ local function advanceNative(ctx,budget)
     end
     if applied>0 then return applied end
     -- Idle: re-verify mounted handles on a lengthening period instead of
-    -- rescanning every container on a fixed one.
+    -- rescanning every container on a fixed one. No bridge call asks
+    -- whether a verify is due: the gate is the local step clock plus the
+    -- backoff below, and every real change already arrives as a dirty
+    -- apply (Ledger.listeners / inventory listeners / OnContainerUpdate).
+    -- The verify only exists for silent scripted mutations that raise no
+    -- event; its fingerprint fast path republishes nothing when unchanged.
     if not ctx.verifyAt or Index.clock>=ctx.verifyAt then
-        -- URGENT/SLOWER lives in Java: a quiet settlement backs off 200ms -> 5s
-        -- and is skipped entirely, so idle dispatch no longer pays O(containers)
-        -- verify calls. Any container change resets the deadline on the Java side.
-        local bridge=EmberRoutesProbeJava
-        local due=not (bridge and bridge.warehouseTickDue)
-            or bridge.warehouseTickDue(ctx.id,ctx.pending or ctx.membershipDirty or false)
-        if due then
-            local quiet=verifyHandles(ctx)
-            ctx.verifySteps=quiet and math.min((ctx.verifySteps or VERIFY_MIN_STEPS)*2,VERIFY_MAX_STEPS) or VERIFY_MIN_STEPS
-        end
+        local quiet=verifyHandles(ctx)
+        ctx.verifySteps=quiet and math.min((ctx.verifySteps or VERIFY_MIN_STEPS)*2,VERIFY_MAX_STEPS) or VERIFY_MIN_STEPS
         ctx.verifyAt=Index.clock+(ctx.verifySteps or VERIFY_MIN_STEPS)
     end
     return 0
