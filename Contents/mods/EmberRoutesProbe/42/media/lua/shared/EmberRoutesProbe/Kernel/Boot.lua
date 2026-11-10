@@ -143,78 +143,77 @@ function Probe.begin()
     end
 end
 
-local function tickServices()
-    if Probe.ready and EmberRoutesProbeJava then EmberRoutesProbeJava.tick() end
+-- One table-driven tick dispatch shared by tickServices (unmeasured) and
+-- Probe.tick (measured). Each tier lists its hooks in call order with the
+-- Performance.measure label Probe.tick uses; a hook whose Probe key is
+-- absent is silently skipped, exactly like the old `if Probe.tickX then`
+-- guards. tickDelivery is intentionally absent: DeliveryService nils the
+-- key at load and no production writer registers it (p1-probe-deadkeys
+-- removes the same two guard rows; this branch carries that deletion so
+-- the merge resolves cleanly). The table is built once at load and the
+-- dispatch below allocates nothing per tick.
+local tickHooks = {
+    -- 60Hz: Locomotion, direct actions and task session execution
+    { cadence = "60Hz", hooks = {
+        { key = "tickTasks", label = "Tasks" },
+        { key = "tickActions", label = "Actions" },
+    } },
+    -- 15Hz: Work, hauling, crafting
+    { cadence = "15Hz", hooks = {
+        { key = "tickWork", label = "Work" },
+        { key = "tickHaul", label = "Haul" },
+        { key = "tickCrafting", label = "Crafting" },
+    } },
+    -- 5Hz: Self-care, leisure, public work dispatch, logistics, craft view & read
+    { cadence = "5Hz", hooks = {
+        { key = "tickSelfCare", label = "SelfCare" },
+        { key = "tickActivities", label = "Activities" },
+        { key = "tickPublicWork", label = "PublicWork" },
+        { key = "tickLogistics", label = "Logistics" },
+        { key = "tickCraftView", label = "CraftView" },
+        { key = "tickCraftRead", label = "CraftRead" },
+    } },
+    -- 1Hz: Membership validation, persistence heartbeat, settled task retirement
+    { cadence = "1Hz", hooks = {
+        { key = "tickMembership", label = "Membership" },
+        { key = "tickPersistence", label = "Persistence" },
+        { key = "tickRetirement", label = "Retirement" },
+    } },
+}
+
+local function runTier(gateOpen, tier, measured)
+    if not gateOpen then return end
+    local hooks = tier.hooks
+    for i = 1, #hooks do
+        local hook = hooks[i]
+        local fn = Probe[hook.key]
+        if fn then
+            if measured then Performance.measure(hook.label, fn) else fn() end
+        end
+    end
+end
+
+local function dispatchTicks(measured)
     local is60 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs60Hz or EmberRoutesProbeJava.cadenceIs60Hz()
     local is15 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs15Hz or EmberRoutesProbeJava.cadenceIs15Hz()
     local is5 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs5Hz or EmberRoutesProbeJava.cadenceIs5Hz()
     local is1 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs1Hz or EmberRoutesProbeJava.cadenceIs1Hz()
+    runTier(is60, tickHooks[1], measured)
+    runTier(is15, tickHooks[2], measured)
+    runTier(is5, tickHooks[3], measured)
+    runTier(is1, tickHooks[4], measured)
+end
 
-    -- 60Hz: Locomotion, direct actions and task session execution
-    if is60 then
-        if Probe.tickTasks then Probe.tickTasks() end
-        if Probe.tickActions then Probe.tickActions() end
-    end
-
-    -- 15Hz: Work, hauling, crafting
-    if is15 then
-        if Probe.tickWork then Probe.tickWork() end
-        if Probe.tickHaul then Probe.tickHaul() end
-        if Probe.tickCrafting then Probe.tickCrafting() end
-    end
-
-    -- 5Hz: Self-care, leisure, public work dispatch, logistics, craft view & read
-    if is5 then
-        if Probe.tickSelfCare then Probe.tickSelfCare() end
-        if Probe.tickActivities then Probe.tickActivities() end
-        if Probe.tickPublicWork then Probe.tickPublicWork() end
-        if Probe.tickLogistics then Probe.tickLogistics() end
-        if Probe.tickCraftView then Probe.tickCraftView() end
-        if Probe.tickCraftRead then Probe.tickCraftRead() end
-    end
-
-    -- 1Hz: Membership validation, persistence heartbeat, settled task retirement
-    if is1 then
-        if Probe.tickMembership then Probe.tickMembership() end
-        if Probe.tickPersistence then Probe.tickPersistence() end
-        if Probe.tickRetirement then Probe.tickRetirement() end
-    end
+local function tickServices()
+    if Probe.ready and EmberRoutesProbeJava then EmberRoutesProbeJava.tick() end
+    dispatchTicks(false)
 end
 
 function Probe.tick()
     if not Performance.active() then tickServices() return end
     local started=Performance.now()
     if Probe.ready and EmberRoutesProbeJava then Performance.measure("Java",EmberRoutesProbeJava.tick) end
-    local is60 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs60Hz or EmberRoutesProbeJava.cadenceIs60Hz()
-    local is15 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs15Hz or EmberRoutesProbeJava.cadenceIs15Hz()
-    local is5 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs5Hz or EmberRoutesProbeJava.cadenceIs5Hz()
-    local is1 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs1Hz or EmberRoutesProbeJava.cadenceIs1Hz()
-
-    if is60 then
-        if Probe.tickTasks then Performance.measure("Tasks", Probe.tickTasks) end
-        if Probe.tickActions then Performance.measure("Actions", Probe.tickActions) end
-    end
-
-    if is15 then
-        if Probe.tickWork then Performance.measure("Work", Probe.tickWork) end
-        if Probe.tickHaul then Performance.measure("Haul", Probe.tickHaul) end
-        if Probe.tickCrafting then Performance.measure("Crafting", Probe.tickCrafting) end
-    end
-
-    if is5 then
-        if Probe.tickSelfCare then Performance.measure("SelfCare", Probe.tickSelfCare) end
-        if Probe.tickActivities then Performance.measure("Activities", Probe.tickActivities) end
-        if Probe.tickPublicWork then Performance.measure("PublicWork", Probe.tickPublicWork) end
-        if Probe.tickLogistics then Performance.measure("Logistics", Probe.tickLogistics) end
-        if Probe.tickCraftView then Performance.measure("CraftView", Probe.tickCraftView) end
-        if Probe.tickCraftRead then Performance.measure("CraftRead", Probe.tickCraftRead) end
-    end
-
-    if is1 then
-        if Probe.tickMembership then Performance.measure("Membership", Probe.tickMembership) end
-        if Probe.tickPersistence then Performance.measure("Persistence", Probe.tickPersistence) end
-        if Probe.tickRetirement then Performance.measure("Retirement", Probe.tickRetirement) end
-    end
+    dispatchTicks(true)
     Performance.finishTick(started)
 end
 
