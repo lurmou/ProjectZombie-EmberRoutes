@@ -80,9 +80,9 @@ Translator = nil
 currentTime = 1000
 actor.sayCount = 0
 local spoke = Service.speak(actor, "CMD_FOLLOW")
-check(spoke == true, "Actor speaks CMD_FOLLOW within 20 tiles")
+check(spoke == true, "Actor speaks CMD_FOLLOW within 30 tiles")
 check(actor.sayCount == 1, "Actor:Say called once")
-check(actor.lastSay.dist == 20.0, "Standard bark distance is 20.0")
+check(actor.lastSay.dist == 30.0, "Standard bark distance is 30.0 (native Say radius)")
 
 -- Test 4: Regular cooldown (8s)
 currentTime = 2000 -- only 1s passed
@@ -101,11 +101,15 @@ currentTime = 3000 -- only 1s passed since urgent
 local spokeUrgentSpam = Service.speak(actor, "HEALTH_BLEEDING")
 check(spokeUrgentSpam == false, "Same urgent bark throttled within 4s")
 
--- Test 7: Distance guard (> 20 tiles)
+-- Test 7: Distance guard (> 30 tiles, native Say radius)
 currentTime = 20000 -- reset cooldowns
-actor.x = 25 -- distSq = 25*25 + 5*5 = 650 > 400
+actor.x = 25 -- distSq = 25*25 + 5*5 = 650 < 900: inside the 30-tile hearing gate
+local spokeNear = Service.speak(actor, "CMD_FOLLOW")
+check(spokeNear == true, "Actor at 25 tiles still speaks within 30-tile gate")
+currentTime = 30000 -- reset cooldown after the pin above
+actor.x = 35 -- distSq = 35*35 + 5*5 = 1250 > 900
 local spokeFar = Service.speak(actor, "CMD_FOLLOW")
-check(spokeFar == false, "Actor beyond 20 tiles stays quiet")
+check(spokeFar == false, "Actor beyond 30 tiles stays quiet")
 actor.x = 5 -- restore position
 
 -- Test 8: Floor guard (different Z)
@@ -129,7 +133,7 @@ check(spokeSneakCasual == false, "Casual chatter suppressed when player sneaks")
 
 local spokeSneakUrgent = Service.speak(actor, "HEALTH_BLEEDING")
 check(spokeSneakUrgent == true, "Urgent chatter allowed during sneak")
-check(actor.lastSay.dist == 5.0, "Urgent chatter during sneak drops to 5.0 whisper distance")
+check(actor.lastSay.dist == 10.0, "Urgent chatter during sneak drops to 10.0 whisper distance (native SayWhisper radius)")
 player.sneaking = false
 
 -- Test 11: onActionResult

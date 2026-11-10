@@ -2,7 +2,7 @@
     Ember Chatter Service
     统一口语台词仲裁与发声下发服务
     - 纯表现层，不侵入身体控制权，不写入业务持久化
-    - 视距过滤 (<= 20格同楼层)、战术潜行礼仪 (闭嘴/低语)、睡眠静默
+    - 视距过滤 (<= 30格同楼层，与原生 Say 默认半径 30.0 一致)、战术潜行礼仪 (闭嘴/低语)、睡眠静默
     - 个人 8 秒冷却节流，致命伤情 (Urgent) 抢占穿透
 ]]
 
@@ -34,11 +34,11 @@ local function nearbyPlayer(actor)
     local playerZ = player.getZ and player:getZ() or 0
     if math.floor(actorZ) ~= math.floor(playerZ) then return false end
 
-    -- 20 格视距判定 (400 平方格)
+    -- 30 格视距判定 (900 平方格)，与原生 IsoGameCharacter.Say 默认半径 30.0 一致
     local ax, ay = actor.getX and actor:getX() or 0, actor.getY and actor:getY() or 0
     local px, py = player.getX and player:getX() or 0, player.getY and player:getY() or 0
     local dx, dy = ax - px, ay - py
-    if (dx * dx + dy * dy) > 400 then return false end
+    if (dx * dx + dy * dy) > 900 then return false end
 
     return true, player
 end
@@ -58,7 +58,7 @@ function ChatterService.canSpeak(actor, eventKey, isUrgent)
     -- 睡眠静默 (即使是流血，睡觉时也无法清晰呼救)
     if isAsleep(actor) then return false end
 
-    -- 战术潜行礼仪：领队潜行时日常台词完全闭嘴，紧急呼救降级为 5 格低语
+    -- 战术潜行礼仪：领队潜行时日常台词完全闭嘴，紧急呼救降级为 10 格低语
     local whisper = false
     if isSneaking(player) then
         if not isUrgent then return false end
@@ -90,7 +90,8 @@ function ChatterService.speak(actor, eventKey, opts)
     local line, r, g, b, font = Catalog.get(eventKey, opts.context)
     if not line or line == "" then return false end
 
-    local distance = (opts.whisper or whisper) and 5.0 or 20.0
+    -- 原生半径：Say 30.0 / SayWhisper 10.0（javap IsoGameCharacter）
+    local distance = (opts.whisper or whisper) and 10.0 or 30.0
 
     -- 原生下发：优先调用 PZ v42 原生 7 参数带色签名，降级兼容单参数
     if actor.Say then
