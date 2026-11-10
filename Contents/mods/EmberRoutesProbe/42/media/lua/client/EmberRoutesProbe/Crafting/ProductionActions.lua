@@ -36,7 +36,7 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
             and (to==npcRoot or Store.availableCapacity(endpoint.id,to:getFreeCapacity(c.npc))>=item:getUnequippedWeight())
     end
     if not valid() then return nil,"TRANSFER_PRECONDITION" end
-    local action=ISInventoryTransferAction:new(c.npc,item,from,to,20)
+    local action=ISInventoryTransferAction:new(c.npc,item,from,to)
     ---@cast action EmberRoutesProductionTransfer
     local nativeValid,nativePerform,nativeStop,nativeAnim=action.isValid,action.perform,action.stop,action.startActionAnim
     action.useProgressBar,action.forceProgressBar=false,false

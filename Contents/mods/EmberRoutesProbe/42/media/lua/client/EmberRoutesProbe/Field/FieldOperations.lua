@@ -67,7 +67,7 @@ local function toolNode(c,item,secondary)
     if from~=own then
         return Native.new(c,{kind='READY_TOOL',transfer=item,
             valid=function() return item:getContainer()==from and from:isInCharacterInventory(c.npc) end,
-            create=function() return ISInventoryTransferAction:new(c.npc,item,from,own,50) end,
+            create=function() return ISInventoryTransferAction:new(c.npc,item,from,own) end,
             observe=function(ok,finished)
                 if item:getContainer()==own and own:getItems():contains(item) then return true,true end
                 return item:getContainer()==from,false,not finished
@@ -412,7 +412,7 @@ local function waste(c,t)
                 and Transfer.reachable(c.npc,ep) and item:getContainer()==ep.container and item:isRotten()
                 and Store.validField(c.job,c.token,'item:'..item:getID())
         end,
-        create=function() return ISInventoryTransferAction:new(c.npc,item,ep.container,own,90) end,
+        create=function() return ISInventoryTransferAction:new(c.npc,item,ep.container,own) end,
         observe=function(ok,finished)
             if item:getContainer()==own and own:getItems():contains(item) and not ep.container:getItems():contains(item) then
                 local saved=c.change(function(j)

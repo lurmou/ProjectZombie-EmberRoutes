@@ -5,6 +5,7 @@ local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local TransferDuration=require 'EmberRoutesProbe/Work/TransferDuration'
 local Record=require 'EmberRoutesProbe/Field/ToolReturnRecord'
 local CraftSupply=require 'EmberRoutesProbe/Crafting/CraftSupply'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
@@ -277,12 +278,15 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
                 if not task.action then
                     if not transferAllowed() then task.failed=true return end
                     task.committed=true
+                    -- Native and Lua paths share one duration source:
+                    -- the Lua action computes the vanilla formula itself,
+                    -- the native presentation asks TransferDuration for it.
                     if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
                         task.action='NATIVE'
                         task.startedAt=getTimestampMs()
-                        EmberRoutesProbeJava.nativeActionStart(npc,"Loot",20,true)
+                        EmberRoutesProbeJava.nativeActionStart(npc,"Loot",TransferDuration.forTransfer(npc,task.item,inv,task.endpoint.container),true)
                     else
-                        task.action=ISInventoryTransferAction:new(npc,task.item,inv,task.endpoint.container,60)
+                        task.action=ISInventoryTransferAction:new(npc,task.item,inv,task.endpoint.container)
                         local action=task.action local valid,transfer=action.isValid,action.transferItem
                         action.isValid=function(self) return transferAllowed() and valid(self) end
                         action.transferItem=function(self,item)

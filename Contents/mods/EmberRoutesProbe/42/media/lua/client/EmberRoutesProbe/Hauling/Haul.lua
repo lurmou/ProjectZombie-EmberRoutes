@@ -6,6 +6,7 @@ local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local TransferDuration=require 'EmberRoutesProbe/Work/TransferDuration'
 
 local Haul = { endpoints = {}, fixtures = {}, batch = nil }
 local controlled
@@ -168,7 +169,10 @@ local function transferStep(name, fixture, source, destination, endpoint)
             Haul.npc:faceThisObject(endpoint.object)
         end
 
-        local duration = 40
+        -- Presentation only: the physical transfer is done by Lua below.
+        -- Duration shares its source with the Lua transfer path
+        -- (TransferDuration, vanilla ISInventoryTransferAction formula).
+        local duration = TransferDuration.forTransfer(Haul.npc, fixture.item, source, destination)
         if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
             EmberRoutesProbeJava.nativeActionStart(Haul.npc, "Loot", duration, true)
         end
