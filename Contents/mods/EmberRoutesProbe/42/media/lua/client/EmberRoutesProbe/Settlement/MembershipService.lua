@@ -2,6 +2,9 @@
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Policy=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
+-- Static wiring table only (no domain module loads on require): the
+-- category set behind the labor switches below.
+local Manifest=require 'EmberRoutesProbe/Work/LaborManifest'
 local S={}
 local indexWorld,index,squadIndex,dirty=nil,{},{},true
 local contexts={WAIT=true,FOLLOW=true,RETURN=true,SETTLEMENT=true}
@@ -20,6 +23,33 @@ local function validWorkPriorities(v)
     if type(v)~='table' then return false end
     for k,x in pairs(v) do
         if not WORK_PRIORITY_CATEGORIES[k] or type(x)~='number' or x~=math.floor(x) or x<0 or x>4 then return false end
+    end
+    return true
+end
+-- P0 pilot (cross-game Dwarf Fortress): per-NPC labor switches, one key per
+-- provider category from LaborManifest. The keys are provider categories,
+-- not LaborManifest providerTypes: a providerType is the TaskJobs kind, and
+-- FIELD_WORK alone covers four labors, so keying by it would merge four
+-- switches into one. Only `false` is stored (off); a missing key means on,
+-- so rows written before this pilot read as all-on. The set is derived from
+-- the manifest at runtime, never restated here, so a new provider needs no
+-- edit in this file.
+local laborSwitchCategoriesCache
+local function laborSwitchCategories()
+    if laborSwitchCategoriesCache then return laborSwitchCategoriesCache end
+    local set={}
+    for _,e in ipairs(Manifest.categories) do
+        if type(e)=='table' and type(e.category)=='string' then set[e.category]=true end
+    end
+    laborSwitchCategoriesCache=set
+    return set
+end
+local function validLaborSwitches(v)
+    if v==nil then return true end
+    if type(v)~='table' then return false end
+    local cats=laborSwitchCategories()
+    for k,x in pairs(v) do
+        if not cats[k] or type(x)~='boolean' then return false end
     end
     return true
 end
@@ -77,6 +107,7 @@ local function validRow(id,r)
             and scalarId(r.posting.zoneId) and scalarId(r.posting.category))
         and (r.obligations==nil or type(r.obligations)=='table')
         and validWorkPriorities(r.workPriorities)
+        and validLaborSwitches(r.laborSwitches)
         and (r.lastCommand==nil or type(r.lastCommand)=='table' and kinds[r.lastCommand.kind]
             and scalarId(r.lastCommand.requestId))
         and (r.bedReason==nil or type(r.bedReason)=='string')
@@ -232,6 +263,121 @@ function S.setWorkPriority(actor,id,category,value,expected)
     else row.workPriorities[category]=value end
     row.revision=row.revision+1
     notify(id) return 'WORK_PRIORITY_SAVED'
+end
+-- Effective switches for one member: stored false is off, anything else
+-- (missing key, or a stored true) is on. Returns nil,'NO_MEMBERSHIP' for
+-- an unknown id. The map is a detached copy.
+function S.laborSwitches(id)
+    local data=store() local r=data and data.byNpc[id]
+    if not r then return nil,'NO_MEMBERSHIP' end
+    local result={}
+    for cat in pairs(laborSwitchCategories()) do
+        result[cat]=not (r.laborSwitches and r.laborSwitches[cat]==false)
+    end
+    return result
+end
+-- Hard-gate read for decide: true unless this member has the category
+-- explicitly switched off. Unknown members and unknown categories fail
+-- open (on): the gate must never block on a missing read.
+function S.laborAllowed(id,category)
+    local data=store() local r=data and data.byNpc[id]
+    if not r or type(category)~='string' then return true end
+    return not (r.laborSwitches and r.laborSwitches[category]==false)
+end
+-- providerType -> category for kinds that own exactly one category, plus
+-- the shared kinds (one providerType, several categories) resolved from
+-- the job payload instead. Both halves are derived from LaborManifest,
+-- never restated here, so a new provider needs no edit in this file.
+local providerTypeSingle,providerTypeShared
+local function providerTypeMaps()
+    if providerTypeSingle then return providerTypeSingle,providerTypeShared end
+    providerTypeSingle,providerTypeShared={},{}
+    for _,e in ipairs(Manifest.categories) do
+        if type(e)=='table' and type(e.providerType)=='string' then
+            if providerTypeSingle[e.providerType] then
+                providerTypeSingle[e.providerType]=nil providerTypeShared[e.providerType]=true
+            elseif not providerTypeShared[e.providerType] then
+                providerTypeSingle[e.providerType]=e.category
+            end
+        end
+    end
+    return providerTypeSingle,providerTypeShared
+end
+-- The category of the NPC's current non-terminal labor Job, or nil. Read
+-- from the JobStore, the one place that knows which labor a body is
+-- actually doing: a shared providerType resolves through the job payload's
+-- category, written by the claim. A missing or unreadable job ledger fails
+-- open with nil: the decide gate still blocks new dispatch of the
+-- switched-off labor, and the running job finishes on its own path.
+local function currentLaborCategory(id)
+    local okJobs,Jobs=pcall(require,'EmberRoutesProbe/Runtime/TaskJobs')
+    if not okJobs or type(Jobs)~='table' or type(Jobs.current)~='function' then return nil end
+    local okCurrent,current=pcall(Jobs.current)
+    if not okCurrent or type(current)~='table' or type(current.visitNpc)~='function' then return nil end
+    local okState,JobState=pcall(require,'EmberRoutesProbe/Kernel/JobState')
+    if not okState or type(JobState)~='table' or type(JobState.isTerminal)~='function' then return nil end
+    local single,shared=providerTypeMaps()
+    local cats=laborSwitchCategories()
+    local found
+    local okVisit=pcall(function()
+        current:visitNpc(id,function(j)
+            if found or type(j)~='table' or JobState.isTerminal(j.state) then return end
+            local cat
+            if shared[j.providerType] then
+                local payloadCat=j.payload and j.payload.category
+                if type(payloadCat)=='string' and cats[payloadCat] then cat=payloadCat end
+            else
+                cat=single[j.providerType]
+            end
+            if cat then found=cat end
+        end)
+    end)
+    if not okVisit then return nil end
+    return found
+end
+-- Pilot write path for one per-NPC labor switch (UI lands later; tests and
+-- future UI use this). enabled=false stores the off key, enabled=true
+-- deletes it back to "no override" (on). Bumps the member revision so the
+-- next discovery pass re-decides, and notifies so decide runs promptly.
+-- Switching a labor OFF also releases the NPC's current task of that kind,
+-- if any, through the one Work.pause flow: 'USER' carries the established
+-- manual-pause semantics (body stops, record marked manualPaused so no
+-- provider auto-resumes it, pending reservation cancelled). No second
+-- release path is built: a labor whose running task Work.pause cannot reach
+-- (tool return has no TaskJob and no Work executor) is not stopped here --
+-- its in-flight task finishes, and the switch gate still blocks any new
+-- dispatch of it. Other labors are untouched: the pause runs only when the
+-- current Job's category is the one switched off.
+function S.setLaborSwitch(actor,id,category,enabled,expected)
+    local data=store() local row=data and data.byNpc[id]
+    if not data then return 'MEMBERSHIP_NEW_WORLD_REQUIRED' end
+    if not Ledger.authorized(actor) then return 'ACCESS_DENIED' end
+    if not row or row.retired then return 'NO_MEMBERSHIP' end
+    if not validRow(id,row) then return 'MEMBERSHIP_FORMAT_INVALID' end
+    if not laborSwitchCategories()[category] then return 'LABOR_SWITCH_CATEGORY_INVALID' end
+    if type(enabled)~='boolean' then return 'LABOR_SWITCH_INVALID' end
+    if row.revision~=expected then return 'STALE_MEMBERSHIP' end
+    local wasOff=row.laborSwitches and row.laborSwitches[category]==false
+    if enabled then
+        if row.laborSwitches then row.laborSwitches[category]=nil end
+    else
+        row.laborSwitches=row.laborSwitches or {}
+        row.laborSwitches[category]=false
+    end
+    row.revision=row.revision+1
+    notify(id)
+    if not enabled and not wasOff and currentLaborCategory(id)==category then
+        -- Direct call: no registry or event owns "labor switched off", and
+        -- Work.pause is the one controlled pause funnel (Probe.registerCancel
+        -- wires it as the Work cancel handler), so the switch calls it
+        -- directly. The pause is best-effort: the switch itself is already
+        -- saved and gated, so a pause failure must not fail the save.
+        local okWork,Work=pcall(require,'EmberRoutesProbe/Work/Work')
+        if okWork and type(Work)=='table' and type(Work.pause)=='function' then
+            pcall(Work.pause,'USER',id)
+        end
+    end
+    return 'LABOR_SWITCH_SAVED'
 end
 -- Rebuild only on membership changes/world replacement; UI receives detached stable IDs.
 function S.members(scope)
