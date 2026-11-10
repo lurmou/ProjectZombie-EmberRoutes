@@ -17,6 +17,12 @@
 
 保持中文简短沟通，在授权范围持续完成；不默认启用子代理。成组交付可玩流程，避免把内部切片逐个交给用户测试。
 
+## 本轮接力（2026-11-11）
+
+- 职责身份 spec 与方案 A 的对齐已做完，完整结论在 BACKLOG 的 2026-11-11 条目；本文件不复制细节。
+- main `7ae33f4` 已合入 P0 三项（SupplyEstimate、Hauling retained、SelfCare 门禁），各在独立分支推过；spec 对齐本身只改文档，分支 `p0-spec-alignment`。
+- 下一步 OPEN 项（按 BACKLOG 条目）：SelfCare `haulOnDuty` 补丁可删；`blocksDecision` / L591 移除须先移走恢复逻辑；会话内退避未做；恢复对等唤醒须先设计；Forager 三阶段重构是长期项。实机复测 UNVERIFIED。
+
 ## 历史查询
 
 历史构建探针与阶段审查记录已完整归纳在 Git 提交历史中（可通过 `git log` 追溯）。历史中的“当前”“下一步”、分支回退建议与旧验收状态均不能直接作为本轮指令。
