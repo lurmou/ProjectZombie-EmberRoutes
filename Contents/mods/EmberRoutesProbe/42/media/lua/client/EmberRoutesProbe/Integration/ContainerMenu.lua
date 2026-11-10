@@ -34,7 +34,7 @@ function Menu.getNearbyStorage(actor, maxDist)
         currentSettlement = settlements[1]
     end
 
-    local dMaxSq = (maxDist or 15) * (maxDist or 15)
+    local dMaxSq = (maxDist or PlayerStashRoutine.DEFAULT_MAX_DISTANCE) * (maxDist or PlayerStashRoutine.DEFAULT_MAX_DISTANCE)
 
     for id, rec in pairs(data.containers or {}) do
         if rec.z == pz then
@@ -72,10 +72,10 @@ function Menu.stashRoutine(actor)
     local settlements = Ledger.at(px, py)
     local inSettlement = settlements and #settlements > 0
 
-    local containers = Menu.getNearbyStorage(actor, inSettlement and 9999 or 15)
+    local containers = Menu.getNearbyStorage(actor, inSettlement and PlayerStashRoutine.UNLIMITED_DISTANCE or PlayerStashRoutine.DEFAULT_MAX_DISTANCE)
     local plan, reason = PlayerStashRoutine.plan(actor, containers, {
         unlimitedDistance = inSettlement,
-        maxDistance = inSettlement and 9999 or 15
+        maxDistance = inSettlement and PlayerStashRoutine.UNLIMITED_DISTANCE or PlayerStashRoutine.DEFAULT_MAX_DISTANCE
     })
     if not plan then
         local errKey = "IGUI_EmberRoutesProbe_Stash_" .. tostring(reason)

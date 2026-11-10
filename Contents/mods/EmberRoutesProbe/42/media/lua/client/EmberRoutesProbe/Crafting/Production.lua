@@ -13,6 +13,7 @@ local Stations=require "EmberRoutesProbe/Crafting/CraftStations"
 local Surfaces=require "EmberRoutesProbe/Crafting/CraftSurfaces"
 local Signals=require "EmberRoutesProbe/Work/LaborSignals"
 local Log=require "EmberRoutesProbe/Kernel/Log"
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
 local Reasons=TaskResume.Reasons
@@ -553,7 +554,7 @@ local function tick(c)
     end
     if c.moving then
         local state,reason=c.moving.poll()
-        if state=="FAILED" or now-c.started>185000 then return reason or "MOVE_TIMEOUT" end
+        if state=="FAILED" or now-c.started>Constants.Timeout.MOVE_MS then return reason or "MOVE_TIMEOUT" end
         if state=="PASSED" then c.moving=nil end return
     end
     if c.action then

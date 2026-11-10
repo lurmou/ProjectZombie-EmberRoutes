@@ -2,6 +2,7 @@
 local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Driver = require "EmberRoutesProbe/Runtime/Driver"
 local Producers = require "EmberRoutesProbe/Work/LaborProducers"
+local Constants = require 'EmberRoutesProbe/Kernel/Constants'
 local Transfer = {}
 
 function Transfer.reachable(npc, endpoint)
@@ -58,7 +59,7 @@ function Transfer.move(context, endpoint,prepared)
         requested=true
     end
     return {
-        timeout=185000,
+        timeout=Constants.Timeout.MOVE_MS,
         start = function()
             if Transfer.reachable(context.npc, endpoint) then return end
             local targetSq = endpoint.playerId and endpoint.object:getCurrentSquare() or (endpoint.object and endpoint.object:getSquare())

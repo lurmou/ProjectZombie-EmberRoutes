@@ -3,6 +3,7 @@ local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local C={}
 function C.new(actor,job,binding,def,root)
     local c={actor=actor,npc=binding.handle,binding=binding,job=job,reason=nil,nextTick=0}
@@ -96,7 +97,7 @@ function C.new(actor,job,binding,def,root)
             return 'Running'
         end
         local result=EmberRoutesProbeJava.motionResult(c.npc)
-        if result=='MOVING' and getTimestampMs()-c.path.at<185000 then return 'Running' end
+        if result=='MOVING' and getTimestampMs()-c.path.at<Constants.Timeout.MOVE_MS then return 'Running' end
         if result=='REACHED' and math.abs(c.npc:getZ()-square:getZ())<=0.2
             and (c.npc:getX()-(square:getX()+0.5))^2+(c.npc:getY()-(square:getY()+0.5))^2<=0.25 then
             c.path=nil return 'Success'

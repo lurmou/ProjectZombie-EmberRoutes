@@ -1,4 +1,5 @@
 local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local Furniture={}
 local function near(npc,object)
     local s=object:getSquare() local current=npc:getCurrentSquare()
@@ -77,7 +78,7 @@ function Furniture.move(c,seatKind)
         if not chosen then c.reason='SITE_PATH_FAILED' return 'Failure' end
         local ok,result=c.body.move(c.actor,{x=chosen:getX()+0.5,y=chosen:getY()+0.5,z=chosen:getZ()})
         if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then c.reason='SITE_PATH_FAILED' return 'Failure' end
-        moving=true deadline=getTimestampMs()+185000
+        moving=true deadline=getTimestampMs()+Constants.Timeout.MOVE_MS
         return 'Running'
     end}
 end

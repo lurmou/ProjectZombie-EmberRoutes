@@ -46,6 +46,14 @@ check(C.Supply.STATUS_CRITICAL_DAYS==2.0 and C.Supply.STATUS_WARNING_DAYS==5.0
     and C.Supply.HUNGER_MEALS==0.35 and C.Supply.HUNGER_STABLE==0.25
     and C.Supply.HUNGER_DEFAULT==0.15,'supply status days and hunger fallbacks')
 check(C.Priority.MIN==0 and C.Priority.MAX==4,'priority range 0-4')
+check(C.Timeout.MOVE_MS==185000,'move-step watchdog is 185000ms')
+
+-- Stash distances: 15 in the open, 9999 = unlimited inside a settlement.
+-- The 9999 is a distance sentinel only, NOT the 9999 quantity cap used by
+-- Production/DeliveryService/OrderStore/StockRule/CraftRecord.
+local Stash=require 'EmberRoutesProbe/Warehouse/PlayerStashRoutine'
+check(Stash.DEFAULT_MAX_DISTANCE==15 and Stash.UNLIMITED_DISTANCE==9999,
+    'stash distances: 15 open, 9999 unlimited in-settlement')
 
 -- Tick table: new cadences present with the pre-refactor values.
 check(Tick.wakeMs==50 and Tick.discoveryWakeMs==100 and Tick.reconcileMs==1000
