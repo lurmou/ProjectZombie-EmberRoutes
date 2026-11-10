@@ -1,5 +1,7 @@
 -- TEST ONLY: host Lua model of NEW Java work-capacity logic, NOT Java proof.
--- COOKING capability is a test-only switch, restored and asserted at exit; production stays OFF.
+-- Production BuiltinJobContracts registers COOKING capacityMutable=true; this
+-- file toggles the switch only for the off/on contract checks and restores the
+-- original value, asserted, at exit.
 local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
 local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
 local Budget=require 'EmberRoutesProbe/Cooking/CookingBudget'
