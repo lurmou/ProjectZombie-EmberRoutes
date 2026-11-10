@@ -1,6 +1,7 @@
 -- Custom Themed Kits Manager.
 -- Allows players to snapshot container contents or item sets as high-priority custom categories.
 local Filter = require "EmberRoutesProbe/Warehouse/StorageFilter"
+local Templates = require "EmberRoutesProbe/Kernel/ModDataTemplates"
 
 local CustomKits = {
     LIMIT = 64,
@@ -17,8 +18,12 @@ function CustomKits.data()
     if not data and ModData and ModData.getOrCreate then
         data = ModData.getOrCreate("EmberRoutes/CustomKits/v1")
     end
-    if not data then data = CustomKits._fallbackData or { format = 1, kits = {} } CustomKits._fallbackData = data end
-    if data.format ~= 1 then data.format = 1 data.kits = data.kits or {} end
+    if not data then data = CustomKits._fallbackData or Templates.fresh('customKits') CustomKits._fallbackData = data end
+    -- A wrong version is refused with an explicit code; the stored table is
+    -- left untouched. The old branch silently relabelled any version as 1.
+    local ok,why=Templates.open(data,Templates.templates.customKits,'CUSTOM_KITS_FORMAT_UNSUPPORTED')
+    if not ok then error(why) end
+    if type(data.kits)~='table' then error('CUSTOM_KITS_FORMAT_UNSUPPORTED') end
     return data
 end
 

@@ -488,6 +488,7 @@ local entry901={
 local reloadRoot={
     taskJobs={format=1,byId={}},
     toolCustody={
+        format=1,
         byId={['custody:9:901']=entry901},
         byNpc={['9']={['custody:9:901']=entry901}},
         byItem={[901]=entry901}

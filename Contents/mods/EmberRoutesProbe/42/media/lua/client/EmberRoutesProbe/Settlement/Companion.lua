@@ -3,6 +3,7 @@ local Driver=require "EmberRoutesProbe/Runtime/Driver"
 local Factory=require "EmberRoutesProbe/Settlement/CompanionAgent"
 local Runtime=require "EmberRoutesProbe/Runtime/TaskRuntime"
 local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Reasons=TaskResume.Reasons
 local Companion={}
 local agents={}
@@ -38,8 +39,11 @@ local function request(actor,worker,binding,command,intent)
     local function persist(data,fact,reason)
         if Registry.data()~=root then return false end
         local store=root.companionIntents
-        if store and store.format~=1 then return false end
-        if not store then store={format=1,byNpc={}} root.companionIntents=store end
+        if not store then store=Templates.fresh('companionIntents') root.companionIntents=store end
+        -- Missing fields take the template values; a wrong version, or a
+        -- non-empty table without one, refuses the write (false, no replace).
+        local ok=Templates.open(store,Templates.templates.companionIntents,'COMPANION_INTENTS_FORMAT')
+        if not ok or type(store.byNpc)~='table' then return false end
         -- Scalar intent only. This is a recovery record, not a disk-save receipt.
         store.byNpc[binding.id]={jobId=jobId,mode=data.mode,hasHome=data.hasHome==true,
             homeX=data.homeX,homeY=data.homeY,homeZ=data.homeZ,membershipRevision=membershipRevision,effects=fact.effects,reason=reason}

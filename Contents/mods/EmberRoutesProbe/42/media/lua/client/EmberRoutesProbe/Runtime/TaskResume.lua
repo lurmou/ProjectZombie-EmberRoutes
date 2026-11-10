@@ -1,5 +1,6 @@
 local Commit=require 'EmberRoutesProbe/SelfCare/SelfCareCommit'
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 -- Durable cross-session relation. Never owns a body or reclaims public work.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
@@ -26,9 +27,13 @@ Resume.Reasons={
 local kinds={PRODUCTION='CRAFT',TRANSFER='HAUL',COMPANION='COMPANION',COOKING='COOKING',FIELD_WORK='FIELD_WORK'}
 local function epochs()
     local root=Registry.data()
-    if root.careCommandEpochs==nil then root.careCommandEpochs={format=1,byNpc={}} end
+    if root.careCommandEpochs==nil then root.careCommandEpochs=Templates.fresh('careCommandEpochs') end
     local data=root.careCommandEpochs
-    if type(data)~='table' or data.format~=1 or type(data.byNpc)~='table' then error('COMMAND_EPOCH_INVALID') end
+    -- Missing fields take the template values; a wrong version, or a
+    -- non-empty table without one, is refused with an explicit code.
+    local ok,why=Templates.open(data,Templates.templates.careCommandEpochs,'COMMAND_EPOCH_INVALID')
+    if not ok then error(why) end
+    if type(data.byNpc)~='table' then error('COMMAND_EPOCH_INVALID') end
     return data.byNpc
 end
 -- The one shared reading of a resume reference: it still binds its owner

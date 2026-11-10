@@ -3,6 +3,7 @@
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
 local StockRule=require "EmberRoutesProbe/Warehouse/StockRule"
+local Templates=require "EmberRoutesProbe/Kernel/ModDataTemplates"
 
 local StockStore={}
 
@@ -41,10 +42,14 @@ function StockStore.data()
     local root=Registry.data()
     local store=root.maintainStock
     if not store then
-        store={format=1,revision=0,rules={}}
+        store=Templates.fresh('maintainStock')
         root.maintainStock=store
-    elseif store.format~=1 or type(store.rules)~="table" then
-        error("STOCK_STORE_CORRUPTED")
+    else
+        -- Missing fields take the template values; a wrong version, or a
+        -- non-empty table without one, is refused with an explicit code.
+        local ok,why=Templates.open(store,Templates.templates.maintainStock,'STOCK_STORE_CORRUPTED')
+        if not ok then error(why) end
+        if type(store.rules)~='table' or type(store.revision)~='number' then error('STOCK_STORE_CORRUPTED') end
     end
     return store
 end

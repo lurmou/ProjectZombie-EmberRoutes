@@ -822,6 +822,7 @@ local multiProvRoot = {
         }
     },
     toolCustody = {
+        format = 1,
         byId = {
             ["cust-q"] = {
                 format = 1,
@@ -2120,7 +2121,7 @@ end
     -- Two custody entries share the same original claim identity. Neither may
     -- escape collision detection through prefix normalization or recover first.
     local custody={nextClaimSeq=100,containers={},taskJobs={format=1,byId={}},quarantineResources={},
-        toolCustody={byId={},byNpc={},byItem={}}}
+        toolCustody={format=1,byId={},byNpc={},byItem={}}}
     for i,id in ipairs({'custody-A','custody-B'}) do
         custody.toolCustody.byId[id]={format=1,id=id,npcId='npc-'..i,itemId=23000+i,
             role='CLEAN_TOOL',state='HELD',sequence=1,claims={'item:'..(23000+i)},claimId='custody-A:c1'}

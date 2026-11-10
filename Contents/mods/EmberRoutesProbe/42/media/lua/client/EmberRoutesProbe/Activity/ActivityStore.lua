@@ -4,6 +4,7 @@ local Definitions=require 'EmberRoutesProbe/Activity/ActivityRegistry'
 local Stages=require 'EmberRoutesProbe/Activity/ActivityStages'
 local Duties=require 'EmberRoutesProbe/Activity/ActivityDuties'
 local Relief=require 'EmberRoutesProbe/Activity/ActivityReliefRecord'
+local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Store={LIMIT=128}
 local phases={GATHERING=true,RUNNING=true,WINDING_DOWN=true,SETTLING=true,CLOSED=true}
 local world,opened,index,activeIds,activeAt,activeVersion
@@ -100,8 +101,12 @@ end
 function Store.current()
     local root=Registry.data()
     if root~=world or root.communityActivities~=opened then
-        local saved=root.communityActivities or {format=1,revision=0,events={}}
-        if type(saved)~='table' or saved.format~=1 or not integer(saved.revision,0,9007199254740000)
+        local saved=root.communityActivities or Templates.fresh('communityActivities')
+        -- Missing fields take the template values; a wrong version, or a
+        -- non-empty table without one, is refused with an explicit code.
+        local ok,why=Templates.open(saved,Templates.templates.communityActivities,'ACTIVITY_FORMAT_UNSUPPORTED')
+        if not ok then return nil,why end
+        if not integer(saved.revision,0,9007199254740000)
             or type(saved.events)~='table' or saved.worldId~=nil and not text(saved.worldId) then return nil,'ACTIVITY_FORMAT_UNSUPPORTED' end
         local count,requests=0,{}
         for id,row in pairs(saved.events) do

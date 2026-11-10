@@ -30,7 +30,10 @@ end
 local function validReceipt(value)
     if value==nil then return true end -- No receipt yet: manual recovery stays available.
     if type(value)~='table' or value.format~=1 or type(value.id)~='string'
-        or (value.state~='CAPTURED' and value.state~='BLOCKED') or type(value.byNpc)~='table' then return false end
+        or (value.state~='CAPTURED' and value.state~='BLOCKED') then return false end
+    -- A missing byNpc map takes the template value; a wrong-typed one is refused.
+    if value.byNpc==nil then value.byNpc={} end
+    if type(value.byNpc)~='table' then return false end
     local count=0
     for id,r in pairs(value.byNpc) do
         count=count+1
