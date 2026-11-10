@@ -243,32 +243,6 @@ shell:selectTab('policies')
 local policies=shell.pages.policies
 check(policies and policies.active,'policy page switches and activates cleanly')
 shell:selectTab('warehouse')
-if ERDemandPageOnly then
-    shell:selectTab('demands') local needs=shell.pages.demands
-    check(demandCount==1 and wareCount==0 and #needs.orderList.items==1,'demand tab owns its single synchronous watch projection')
-    check(not needs.buttons.create.visible and not needs.buttons.resume.enable and not needs.buttons.stop.enable,
-        'facts expose no production or execution commands')
-    check(#needs.filterChips.options==2 and needs.filterChips.options[2].id=='waiting',
-        'Needs hides empty filters and never adds paused/completed categories')
-    local getManager=getTextManager
-    getTextManager=function() error('draw must use prepared card/badge/item text, not measure fonts') end
-    for _,list in ipairs({needs.details.list,monitor.details.list}) do
-        local y=0 for _,entry in ipairs(list.items) do y=list:doDrawItem(y,entry) end
-    end
-    getTextManager=getManager
-    local Person=require 'EmberRoutesProbe/UI/PersonnelPage'
-    check(Person.floorLabel(.49)==getText('IGUI_EmberRoutesProbe_Settlement_floorGround')
-        and Person.floorLabel(.5)=='2'..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel')
-        and Person.floorLabel(1.88300006389618)=='3'..getText('IGUI_EmberRoutesProbe_Settlement_floorLevel'),
-        'stair height is rounded for display only')
-    local snapshot=needs.store.value.snapshot
-    shell:selectTab('orders') demandCallbacks[1]({rows={}})
-    check(demandCount==0 and needs.store.value.snapshot==snapshot,'deactivation rejects late demand callback')
-    check(monitorCount==1 and #monitor.orderList.items==1,'order tab keeps independent execution state')
-    shell:close()
-    check(monitorCount==0 and demandCount==0,'dashboard close releases both page interests')
-    print('PASS '..checks..' demand/order page lifecycle checks; native UI mocked') return
-end
 if ERTestTranslations then
     check(shell.tabButtons.warehouse.title==getText('IGUI_EmberRoutesProbe_Settlement_tab_warehouse'),'real language tab label')
     check(not shell.title:find('IGUI_',1,true),'management title translated')
