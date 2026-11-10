@@ -1,4 +1,5 @@
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Claims=require "EmberRoutesProbe/Kernel/LaborClaims"
 local CraftRetirement=require "EmberRoutesProbe/Crafting/CraftLegacyRecovery"
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
@@ -101,7 +102,7 @@ function Store.data()
 		candidates[#candidates+1]={record=record,id=id,keys=keys or {},job=job}
 	    end
 	    for id,job in pairs(current.taskJobs and current.taskJobs.byId or {}) do
-		if type(job)=='table' and job.state~='DONE' and job.state~='CANCELLED' then
+		if type(job)=='table' and not JobState.isTerminal(job.state) then
 		    candidate(job,id,job.payload.claims,job)
 		end
 	    end
@@ -239,7 +240,7 @@ function Store.data()
 
         if current.taskJobs and current.taskJobs.byId then
             for id, job in pairs(current.taskJobs.byId) do
-                if type(job) == "table" and job.state ~= 'DONE' and job.state ~= 'CANCELLED' and type(job.payload) == 'table' and type(job.payload.claims) == 'table' then
+                if type(job) == "table" and not JobState.isTerminal(job.state) and type(job.payload) == 'table' and type(job.payload.claims) == 'table' then
                     for _, key in ipairs(job.payload.claims) do
                         if type(key) == "string" then
                             recordClaimant(key, { kind = "JOB", id = id, job = job })

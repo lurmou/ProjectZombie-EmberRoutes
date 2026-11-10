@@ -1,5 +1,6 @@
 -- Composed field providers. TaskRuntime owns bodies; JobStore/LaborStore own facts/claims.
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
@@ -19,7 +20,7 @@ local function reset()
     return root
 end
 local function pending(j)
-    return j.providerType=='FIELD_WORK' and j.state~='DONE' and j.state~='CANCELLED'
+    return j.providerType=='FIELD_WORK' and not JobState.isTerminal(j.state)
 end
 function F.retained(id)
     local retained=false
@@ -89,7 +90,7 @@ function F.advance(env)
                 live[id]=nil l=nil
             end
             if not l and not runtime:status(j.npcId,id) then
-                if j.state=='DONE' or j.state=='CANCELLED' then
+                if JobState.isTerminal(j.state) then
                     if env.directory then env.directory:release(j.payload.offerKey,id,{effects='KNOWN',obligationsCleared=true}) end
                     if Store.finishField(j) and not Store.hasTaskClaims(id) then Jobs.current():removeSettled(id,j.revision) Signals.changed(j.npcId) end
                 elseif j.effects=='KNOWN' and (j.state=='SUSPENDED' or j.state=='PREPARING') and budget>0 then

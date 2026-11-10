@@ -1,12 +1,11 @@
 -- COOKING is an ordinary shared Job. Claims and furnace duty outlive its Session.
 local Policy=require 'EmberRoutesProbe/Cooking/CookingPolicy'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Fluids=require 'EmberRoutesProbe/Crafting/CraftFluids'
 local R={limit=32,bindingLimit=64}
 local phases={PREPARING=true,FETCHING=true,FILLING=true,ADDING=true,SEASONING=true,HEATING=true,
     UNLOADING=true,DELIVERING=true,RETURNING=true,SETTLED=true,RECONCILE=true}
 local kinds={TRANSFER=true,ADD=true,CRAFT=true,TOGGLE=true,WATER=true,FLUID=true}
-local states={PREPARING=true,RUNNING=true,STOPPING=true,SUSPENDED=true,SETTLING=true,
-    DONE=true,CANCELLED=true,RECONCILE_REQUIRED=true}
 local function id(v) return type(v)=='string' and v~='' and #v<=256 end
 local function integer(v) return Policy.finite(v) and v==math.floor(v) end
 local function itemId(v) return type(v)=='number' and v==v and math.abs(v)<9007199254740992 and v==math.floor(v) end
@@ -111,7 +110,7 @@ local function equal(a,b,depth)
 end
 function R.valid(job)
     if type(job)~='table' or job.providerType~='COOKING' or not id(job.id) or not id(job.npcId)
-        or not id(job.scopeId) or not states[job.state] or not integer(job.revision) or job.revision<1 or job.revision>1e12
+        or not id(job.scopeId) or not JobState.isValid(job.state) or not integer(job.revision) or job.revision<1 or job.revision>1e12
         or (job.effects~='KNOWN' and job.effects~='UNKNOWN') or type(job.obligations)~='table' then return false end
     local p=job.payload
     if type(p)~='table' or p.format~=1 or not phases[p.phase] or not id(p.profileId)
@@ -307,8 +306,8 @@ function R.valid(job)
         local seen={}
         for _,key in ipairs(heat.itemIds) do if not itemId(key) or not assets[key] or seen[key] then return false end seen[key]=true end
     end
-    if job.state=='DONE' or job.state=='CANCELLED' or p.phase=='SETTLED' then
-        if (job.state~='DONE' and job.state~='CANCELLED') or p.phase~='SETTLED' or job.effects~='KNOWN'
+    if JobState.isTerminal(job.state) or p.phase=='SETTLED' then
+        if not JobState.isTerminal(job.state) or p.phase~='SETTLED' or job.effects~='KNOWN'
             or #p.claims>0 or p.duty or attempt and attempt.state~='APPLIED' and attempt.state~='ABORTED' then return false end
         for _ in pairs(job.obligations) do return false end
     end

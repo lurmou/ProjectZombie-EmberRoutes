@@ -1,5 +1,6 @@
 -- Read-only facts and their current handlers. Never creates Orders/Jobs or owns assets.
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Orders=require 'EmberRoutesProbe/Warehouse/OrderMonitorService'
 local D={}
@@ -52,7 +53,7 @@ function D.status(actor,scope)
     end}
     for _,job in pairs(jobs) do
         if job.scopeId==scope and job.providerType=='FIELD_WORK' and job.payload.category=='cleaning'
-            and not ((job.state=='DONE' or job.state=='CANCELLED') and job.effects=='KNOWN') then
+            and not (JobState.isTerminal(job.state) and job.effects=='KNOWN') then
             local child=require('EmberRoutesProbe/Field/FieldWorkMonitor').project(context,job)
             if child.bucket=='active' and not child.uncertain then child.reasonText=nil end
             cleaning[#cleaning+1]=child

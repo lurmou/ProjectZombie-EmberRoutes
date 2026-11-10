@@ -1,6 +1,7 @@
 -- Haul execution drafts and verified manifest settlement. Persistent facts
 -- remain in JobStore; all claims/capacity changes use LaborStore.mutateJob.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
@@ -26,7 +27,7 @@ function M.record(npcId)
     local selected
     for _,j in ipairs(jobs:forNpc(npcId,'HAUL')) do
 	if j.payload.format==3 and j.payload.executor=='ENTITY' then
-	    if not selected or selected.state=='DONE' and j.state~='DONE' then selected=j end
+	    if not selected or JobState.isTerminal(selected.state) and not JobState.isTerminal(j.state) then selected=j end
 	end
     end
     return selected and adopt(selected) or nil
@@ -74,7 +75,7 @@ end
 function M.commit(r,capacity)
     local e=entry(r)
     if not e or e.failed then return false,'HAUL_DRAFT_STALE' end
-    if e.job.state=='DONE' or e.job.state=='CANCELLED' then return r.state==e.job.payload.state and r.generation==e.job.payload.generation,'JOB_TERMINAL' end
+    if JobState.isTerminal(e.job.state) then return r.state==e.job.payload.state and r.generation==e.job.payload.generation,'JOB_TERMINAL' end
     local live=Jobs.current():peek(r.id)
     if not live or live.revision~=e.job.revision then e.failed=true return false,'STALE_REVISION' end
     r.sequence=r.generation r.claims=Record.activeClaims(r)
@@ -111,7 +112,7 @@ function M.claim(r)
     currentWorld() local e=entry(r)
     if not e then
 	for _,job in ipairs(Jobs.current():forNpc(r.npcId)) do
-	    if job.providerType=='CRAFT' and job.state~='DONE' and job.state~='CANCELLED'
+	    if job.providerType=='CRAFT' and not JobState.isTerminal(job.state)
 		and not require('EmberRoutesProbe/Crafting/ProductionYield').assetFree(job.payload) then return nil,'OTHER_TASK_RETAINED' end
 	end
 	r.generation=(r.generation or 0)+1 r.sequence=r.generation r.claims=Record.activeClaims(r)
@@ -202,7 +203,7 @@ function M.prepareRecovery()
     local jobs=Jobs.current()
     for id,j in pairs(root.taskJobs.byId) do
         if j.providerType=='HAUL' and j.payload.format==3 and j.payload.executor=='ENTITY'
-            and j.state~='DONE' and j.state~='CANCELLED' then
+            and not JobState.isTerminal(j.state) then
             local saved=jobs:get(id) local p=saved.payload
             local unknown=saved.effects=='UNKNOWN' or p.controlUncertain or p.activeAttempt~=nil
             p.state='PAUSED' p.reason='LOAD_RECOVERY' p.generation=p.generation+1 p.sequence=p.generation

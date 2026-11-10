@@ -1,6 +1,7 @@
 -- Haul domain reconstruction; called only after global collision scanning.
 -- Records are read as detached copies; every state change is deferred to
 -- pendingHaul / pendingAdopt so nothing writes the Kernel ledger here.
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local M={}
 function M.restore(context)
     local function reconcile(id,job,reason)
@@ -39,7 +40,7 @@ function M.restore(context)
                             end
                         end
                         claimKeys = claimKeys or {}
-                        if #claimKeys > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+                        if #claimKeys > 0 and not JobState.isTerminal(job.state) then
                             if hasConflict(claimKeys) then
                                 reconcile(id,job,'HAUL_CLAIM_CONFLICT')
                             else

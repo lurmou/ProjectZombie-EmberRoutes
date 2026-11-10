@@ -2,6 +2,7 @@
 -- Records are read as detached copies and every write is queued, so this pass
 -- never mutates the Kernel ledger directly. LaborStore applies the queue through
 -- JobStore:adopt once the rebuilt authority is published.
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local M={}
 function M.restore(context)
     local current=context.current
@@ -16,7 +17,7 @@ function M.restore(context)
         if jobs:providerType(id)=='FIELD_WORK' then
             local job=jobs:get(id)
             if not Record.valid(job) then error('FIELD_RECORD_INVALID') end
-            if #job.payload.claims > 0 and job.state ~= 'DONE' and job.state ~= 'CANCELLED' then
+            if #job.payload.claims > 0 and not JobState.isTerminal(job.state) then
                 local patch={}
                 if hasConflict(job.payload.claims) then
                     patch.state='RECONCILE_REQUIRED'

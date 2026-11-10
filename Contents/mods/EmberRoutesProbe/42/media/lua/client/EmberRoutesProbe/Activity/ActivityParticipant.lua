@@ -1,6 +1,7 @@
 -- One participant Job, short Runtime wait Session, then FREE personal Sessions.
 -- This module observes those personal attempts; it never drives their bodies.
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
@@ -95,7 +96,7 @@ local function settle(event,id,member)
     local neverStarted=not job.payload.started and result and (result.state=='CANCELLED' or result.state=='REJECTED')
     if not releasePlacement(job,job.payload.stopped or neverStarted) then return false end
     job=Jobs.current():peek(job.id)
-    if job.state~='DONE' and job.state~='CANCELLED' then
+    if not JobState.isTerminal(job.state) then
         local p=Store.copy(job.payload) p.step='SETTLED'
         if job.state~='SETTLING' then
             if not update(job,p,'SETTLING') then return false end job=Jobs.current():peek(job.id)
@@ -157,7 +158,7 @@ end
 function P.retains(id)
     load() local retained=false
     Jobs.current():visitNpc(id,function(job)
-        if job.providerType=='ACTIVITY' and job.state~='DONE' and job.state~='CANCELLED' then
+        if job.providerType=='ACTIVITY' and not JobState.isTerminal(job.state) then
             if job.effects~='KNOWN' or not empty(job.obligations) or #job.payload.claims>0
                 or job.payload.started and not job.payload.stopped then retained=true end
             local e=Store.get(job.payload.eventId)
@@ -364,7 +365,7 @@ end
 function P.prepareRecovery(receipt)
     load()
     for _,job in pairs(world.taskJobs and world.taskJobs.byId or {}) do
-        if job.providerType=='ACTIVITY' and job.state~='DONE' and job.state~='CANCELLED' then
+        if job.providerType=='ACTIVITY' and not JobState.isTerminal(job.state) then
             local p=Store.copy(job.payload)
             local fact=receipt and receipt.state=='CAPTURED' and receipt.byNpc and receipt.byNpc[job.npcId]
             local proven=fact and fact.jobId==job.id and fact.bodyStopped==true and fact.effects=='KNOWN'

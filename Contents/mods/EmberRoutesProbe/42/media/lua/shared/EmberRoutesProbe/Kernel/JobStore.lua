@@ -1,13 +1,11 @@
 -- Independent persistent Job identity. No Session, asset authority or scheduler.
 local Store={LIMIT=512,PERSONAL_LIMIT=256}
 local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 require('EmberRoutesProbe/Kernel/BuiltinJobContracts').install()
 local emptyContract={}
 local function contract(kind) return Contracts.get(kind) or emptyContract end
 local function personalJob(job) return contract(job.providerType).persistentPersonal==true end
-local states={PREPARING=true,RUNNING=true,STOPPING=true,SUSPENDED=true,SETTLING=true,
-    DONE=true,CANCELLED=true,RECONCILE_REQUIRED=true}
-local terminal={DONE=true,CANCELLED=true}
 local transitions={
     PREPARING={RUNNING=true,SUSPENDED=true,SETTLING=true,RECONCILE_REQUIRED=true},
     RUNNING={STOPPING=true,SETTLING=true,RECONCILE_REQUIRED=true},
@@ -48,10 +46,10 @@ local function validClaimId(claimId, entityId)
 end
 local function valid(job)
     local basic=type(job)=='table' and id(job.id) and id(job.npcId) and id(job.providerType)
-        and id(job.scopeId) and integer(job.revision) and job.revision>0 and states[job.state]
+        and id(job.scopeId) and integer(job.revision) and job.revision>0 and JobState.isValid(job.state)
         and (job.effects=='KNOWN' or job.effects=='UNKNOWN') and type(job.obligations)=='table'
         and type(job.payload)=='table' and (not job.orderId or id(job.orderId))
-        and (not terminal[job.state] or (job.effects=='KNOWN' and empty(job.obligations) and #(job.payload.claims or {}) == 0))
+        and (not JobState.isTerminal(job.state) or (job.effects=='KNOWN' and empty(job.obligations) and #(job.payload.claims or {}) == 0))
         and (job.claimId == nil or validClaimId(job.claimId, job.id))
     if not basic then return false end
     local rule=contract(job.providerType)
@@ -236,7 +234,7 @@ function Store.open(root)
     local function update(key,revision,patch,cancelling)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
-        if terminal[old.state] then return false,'JOB_TERMINAL' end
+        if JobState.isTerminal(old.state) then return false,'JOB_TERMINAL' end
         if type(patch)~='table' then return false,'JOB_PATCH_INVALID' end
         for field in pairs(patch) do
             if field~='state' and field~='effects' and field~='obligations' and field~='payload' then return false,'JOB_PATCH_INVALID' end
@@ -283,7 +281,7 @@ function Store.open(root)
 	    or not rule.transferValid or not rule.transferValid(old,candidate) then return false,rule.transferReason or 'COOKING_HANDOFF_CHANGED' end
         for otherId in pairs(byNpc[candidate.npcId] or {}) do
             local other=data.byId[otherId]
-            if not terminal[other.state] then
+            if not JobState.isTerminal(other.state) then
 		if not personalJob(other) or other.effects~='KNOWN' or not empty(other.obligations)
                     or #(other.payload.claims or {})>0 then return false,'OTHER_TASK_RETAINED' end
             end
@@ -299,7 +297,7 @@ function Store.open(root)
     function api:removeSettled(key,revision)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
-	if personalJob(old) or not terminal[old.state]
+	if personalJob(old) or not JobState.isTerminal(old.state)
             or old.effects~='KNOWN' or not empty(old.obligations) then return false,'JOB_NOT_SETTLED' end
 	indexAttempt(old,true)
         data.byId[key]=nil mirror(key,nil)

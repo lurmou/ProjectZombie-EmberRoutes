@@ -1,5 +1,6 @@
 -- Ordinary outdoor work uses the existing Job envelope, not a private ledger.
 local Validate=require 'EmberRoutesProbe/Kernel/Validate'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local R={}
 local categories={cleaning=true,farming=true,lumberjack=true,forager=true}
 function R.valid(j)
@@ -34,7 +35,7 @@ function R.valid(j)
                 or not Validate.stringId(req.containerId) then return false end
         end
     end
-    if j.state=='DONE' or j.state=='CANCELLED' then
+    if JobState.isTerminal(j.state) then
         if p.phase~='SETTLED' or #p.claims>0 or p.holding or p.capacity or p.toolSupply then return false end
         for _,asset in ipairs(p.assets) do if asset.custody~='DELIVERED' then return false end end
     end

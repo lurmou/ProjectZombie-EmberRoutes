@@ -1,5 +1,6 @@
 -- Public offers and recovery coordination only. Bodies run in TaskRuntime.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Record=require 'EmberRoutesProbe/Cooking/CookingRecord'
@@ -25,7 +26,7 @@ local function load()
     if root~=world then
         world,plans,order,cursor,retained,jobCursor,offers,samples,nextPump=root,{},{},0,{},0,{},{},0
         for id,j in pairs(root.taskJobs and root.taskJobs.byId or {}) do
-            if j.providerType=='COOKING' and j.state~='DONE' and j.state~='CANCELLED' then retained[#retained+1]=id end
+            if j.providerType=='COOKING' and not JobState.isTerminal(j.state) then retained[#retained+1]=id end
         end
         table.sort(retained) frame=nil retryJobs={} sites={} crewScan=nil nextCrew=0 failedAuto={}
     end
@@ -92,7 +93,7 @@ end
 function S.retained(id)
     load() local found=false
     Jobs.current():visitNpc(id,function(j)
-        if j.providerType=='COOKING' and j.state~='DONE' and j.state~='CANCELLED' then found=true end
+        if j.providerType=='COOKING' and not JobState.isTerminal(j.state) then found=true end
     end)
     return found
 end
@@ -211,7 +212,7 @@ function S.advance(env)
         for _,o in pairs(world.publicWork and world.publicWork.orders or {}) do
             if o.parentOrderId and not o.jobId and o.state=='WAITING' and not Orders.parentAllows(o) then
                 local parent=world.publicWork.orders[o.parentOrderId]
-                if not parent or parent.state=='DONE' or parent.state=='CANCELLED' or parent.cancelRequested then
+                if not parent or JobState.isTerminal(parent.state) or parent.cancelRequested then
                     o.state='CANCELLED' o.reason='CANCELLED' o.revision=o.revision+1 Signals.changed()
                 end
             end
@@ -443,7 +444,7 @@ function S.reconcile()
     for key,offer in pairs(offers) do
         local j=Jobs.current():peek(offer.jobId)
         if j then Orders.settle(j) end
-        if j and (j.state=='DONE' or j.state=='CANCELLED') and j.effects=='KNOWN' and #j.payload.claims==0 then
+        if j and JobState.isTerminal(j.state) and j.effects=='KNOWN' and #j.payload.claims==0 then
             local empty=true for _ in pairs(j.obligations) do empty=false end
             if empty and offer.directory:release(key,offer.ticket,{effects='KNOWN',obligationsCleared=true}) then
                 if j.state=='CANCELLED' and j.payload.source=='AUTO' and j.payload.heat and j.payload.heat.aborted
@@ -466,7 +467,7 @@ function S.retire(limit)
     S.reconcile()
     local keep={}
     for _,id in ipairs(retained) do
-        local j=Jobs.current():peek(id) local can=j and (j.state=='DONE' or j.state=='CANCELLED')
+        local j=Jobs.current():peek(id) local can=j and JobState.isTerminal(j.state)
             and j.effects=='KNOWN' and #j.payload.claims==0 and not runtime:status(j.npcId,id) and not Store.hasTaskClaims(id)
         for _,offer in pairs(offers) do if offer.jobId==id then can=false end end
         if can and count<limit then
@@ -508,7 +509,7 @@ function S.command(actor,scopeId,jobId,action)
     load()
     local job=Jobs.current():peek(jobId)
     if not job or job.providerType~='COOKING' or job.scopeId~=scopeId then return 'TASK_CHANGED' end
-    if job.state=='DONE' or job.state=='CANCELLED' then return 'TASK_CHANGED' end
+    if JobState.isTerminal(job.state) then return 'TASK_CHANGED' end
     if action=='resume' and job.effects~='KNOWN' then return 'COOKING_RECONCILE_REQUIRED' end
     local runtime=Runtime.current()
     local live=runtime and runtime:status(job.npcId,job.id)
