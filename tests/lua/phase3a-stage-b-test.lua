@@ -442,7 +442,7 @@ assertTrue(okWithFree, "createClaimedJob with valid free capacity must succeed: 
 assertEq(jobIdWithFree, "haul-with-free", "Job ID match")
 local tokenWithFree = Store.getToken("haul-with-free")
 assertTrue(tokenWithFree ~= nil, "Token exists for created haul job")
-local claimsInst = Store.claimsInstance()
+local claimsInst = Store.claimsInstanceForTests()
 assertEq(claimsInst.capacity["cont-b"].total, 5.0, "Capacity reserved in bucket")
 
 print("PASS Part 3: Store.createClaimedJob Atomic Creation & Rollback.")
@@ -1104,7 +1104,7 @@ assertFalse(Store.owner(9002) ~= nil, "item:9002 released on DONE")
 -- Test 6.4: Capacity reserve bounds (negative, NaN, overflow)
 local dummyToken = Store.getToken("craft-p6-stale")
 assertTrue(dummyToken ~= nil, "craft-p6-stale token available")
-local currentClaims = Store.claimsInstance()
+local currentClaims = Store.claimsInstanceForTests()
 local okNeg, errNeg = currentClaims:reserve(dummyToken, "cap-target", 7001, 10, -5)
 assertFalse(okNeg, "Negative free capacity must be rejected")
 assertEq(errNeg, "CAPACITY_UNAVAILABLE", "Rejection reason is CAPACITY_UNAVAILABLE")
@@ -1151,7 +1151,7 @@ do
     }
     ContainerRegistry.data = function() return bootRootCap end
     Store.data()
-    local bootClaims = Store.claimsInstance()
+    local bootClaims = Store.claimsInstanceForTests()
     assertEq(bootClaims.owners["item:7001"].kind, "SYSTEM_QUARANTINE", "Item 7001 restored as quarantine")
     assertTrue(bootClaims.capacity["crate-persist-cap"] ~= nil, "Bucket crate-persist-cap restored")
     assertEq(bootClaims.capacity["crate-persist-cap"].total, 15.0, "Quarantined capacity total restored on cold boot Pass 1")
@@ -1182,7 +1182,7 @@ do
     ContainerRegistry.data = function() return bootRootCrash end
     -- First cold boot recovery
     Store.data()
-    local crashClaims1 = Store.claimsInstance()
+    local crashClaims1 = Store.claimsInstanceForTests()
     -- P0-1: Missing verified settlement completion evidence -> MUST REMAIN PROTECTED UNDER SYSTEM_QUARANTINE!
     assertTrue(crashClaims1.owners["item:8888"] ~= nil, "RESOLVING item remains protected under SYSTEM_QUARANTINE in claims memory")
     assertEq(crashClaims1.owners["item:8888"].kind, "SYSTEM_QUARANTINE", "Owner kind is SYSTEM_QUARANTINE")
@@ -1208,7 +1208,7 @@ do
     }
     ContainerRegistry.data = function() return bootRootCrash2 end
     Store.data()
-    local crashClaims2 = Store.claimsInstance()
+    local crashClaims2 = Store.claimsInstanceForTests()
     assertTrue(crashClaims2.owners["item:8888"] ~= nil, "item:8888 still protected under SYSTEM_QUARANTINE on second reboot")
     assertEq(crashClaims2.owners["item:8888"].kind, "SYSTEM_QUARANTINE", "Owner kind remains SYSTEM_QUARANTINE on second reboot")
     assertEq(bootRootCrash2.quarantineResources["item:8888"].status, "ACTIVE", "Restored to ACTIVE on second consecutive reboot")
@@ -1350,7 +1350,7 @@ do
     assertEq(t_p9_recreated.claimId, "task-persistent-claim-1:c12", "Recreated job receives NEW monotonic claimId (12)")
 
     -- Recreated token CANNOT canShrink or shrink old quarantined item:9101!
-    local reloadedClaims = Store.claimsInstance()
+    local reloadedClaims = Store.claimsInstanceForTests()
     assertFalse(reloadedClaims:canShrink(t_p9_recreated, { "item:9101" }), "Recreated token with new claimId CANNOT shrink old quarantine")
     assertFalse(reloadedClaims:shrink(t_p9_recreated, { "item:9101" }), "shrink on old quarantine by recreated token fails")
 end
@@ -1372,7 +1372,7 @@ do
     ContainerRegistry.data = function() return bootRootUnqFail end
     Store.data()
     -- Item is restored to claims owners in Pass 1. Now remove it from claims memory to simulate memory inconsistency:
-    Store.claimsInstance().owners["item:unq-fail-test"] = nil
+    Store.claimsInstanceForTests().owners["item:unq-fail-test"] = nil
 
     -- Attempt unquarantine: claims:unquarantine will return false (not found in memory)
     local okUnqFail, errUnqFail = Store.unquarantineResource("item:unq-fail-test", "SHOULD_FAIL")
@@ -1401,7 +1401,7 @@ do
     }
     ContainerRegistry.data = function() return bootRootRetain end
     Store.data()
-    local claims = Store.claimsInstance()
+    local claims = Store.claimsInstanceForTests()
     assertTrue(claims.capacity["crate-retain-bucket"] ~= nil, "Bucket crate-retain-bucket restored")
     assertEq(claims.capacity["crate-retain-bucket"].total, 10.0, "Bucket total reflects quarantined capacity")
 
@@ -1643,7 +1643,7 @@ do
     assertTrue(okGoodLoad, "LaborStore.data succeeds for normal job: " .. tostring(errGoodLoad))
     local t_good = Store.getToken("haul-e2e-good")
     assertTrue(t_good ~= nil, "Token acquired for normal job")
-    assertEq(Store.claimsInstance().owners["item:7701"], t_good, "Claims owner assigned to token")
+    assertEq(Store.claimsInstanceForTests().owners["item:7701"], t_good, "Claims owner assigned to token")
 end
 
 -- Test 6.14: B.5-R1 - RETAIN recipient verification, capacity conservation, and fail-close guards
@@ -1670,7 +1670,7 @@ do
     }
     ContainerRegistry.data = function() return bootRootRetainAudit end
     Store.data()
-    local claims = Store.claimsInstance()
+    local claims = Store.claimsInstanceForTests()
     assertEq(claims.capacity["crate-audit-bucket"].total, 12.5, "Bucket total initial quarantined capacity is 12.5")
 
     -- Case A: Fake token (arbitrary unauthenticated table) -> MUST FAIL with CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID
@@ -1909,7 +1909,7 @@ do
     assertFalse(Store.getToken("job-colliding-2") ~= nil, "Colliding job MUST NOT acquire any runtime token")
 
     -- Colliding job CANNOT shrink or steal primary job's quarantined resource!
-    local reloadedClaims = Store.claimsInstance()
+    local reloadedClaims = Store.claimsInstanceForTests()
     local fakeCollidingToken = { taskId = "job-colliding-2", claimId = env2.claimId, resources = {} }
     assertFalse(reloadedClaims:canShrink(fakeCollidingToken, { "item:5555" }), "Colliding job CANNOT canShrink primary quarantine")
     assertFalse(reloadedClaims:shrink(fakeCollidingToken, { "item:5555" }), "Colliding job CANNOT shrink primary quarantine")
@@ -1924,7 +1924,7 @@ do
         for k, v in pairs(value) do result[k] = clone(v) end
         return result
     end
-    local firstClaims = Store.claimsInstance()
+    local firstClaims = Store.claimsInstanceForTests()
     for boot = 1, 2 do
         -- Fresh module handles AND a detached persisted root; no runtime token is copied.
         collisionBootRoot = clone(collisionBootRoot)
@@ -1936,8 +1936,8 @@ do
         assertTrue(opened ~= nil, "Collision ledger reopens on boot " .. boot .. ": " .. tostring(why))
         local freshStore = require('EmberRoutesProbe/Work/LaborStore')
         freshStore.data()
-        assertFalse(freshStore.claimsInstance() == firstClaims, "Cold boot creates fresh Claims")
-        firstClaims = freshStore.claimsInstance()
+        assertFalse(freshStore.claimsInstanceForTests() == firstClaims, "Cold boot creates fresh Claims")
+        firstClaims = freshStore.claimsInstanceForTests()
         local saved = collisionBootRoot.taskJobs.byId['job-colliding-2']
         assertEq(saved.id, 'job-colliding-2', "Stable job ID survives cold boot")
         assertEq(saved.claimId, env2.claimId, "Replacement claimId stays stable")
@@ -2080,17 +2080,17 @@ end
     local legacyCid=legacy1.taskJobs.byId[haulId].claimId
     assertEq(legacy1.taskJobs.byId[haulId].payload.claimId,legacyCid,'Envelope and legacy payload rekey together')
     assertFalse(ls1.getToken(haulId)~=nil,'Legacy colliding haul gets no runtime token')
-    assertEq(ls1.claimsInstance().capacity['haul-bin'].total,4,'Legacy capacity isolated without loss')
+    assertEq(ls1.claimsInstanceForTests().capacity['haul-bin'].total,4,'Legacy capacity isolated without loss')
     local legacy2,ls2=boot(legacy1,true)
     assertEq(legacy2.taskJobs.byId[haulId].claimId,legacyCid,'Legacy replacement identity is stable after reload')
-    assertEq(ls2.claimsInstance().capacity['haul-bin'].total,4,'Legacy reload counts isolated capacity once')
+    assertEq(ls2.claimsInstanceForTests().capacity['haul-bin'].total,4,'Legacy reload counts isolated capacity once')
     assertFalse(ls2.getToken(haulId)~=nil,'Legacy reload cannot reacquire originals')
     local failed,why=ls2.unquarantineResource('item:22501',{capacityAction='RETAIN',targetToken={taskId='forged'}})
     assertFalse(failed,'Unquarantine fails with an unauthenticated recipient')
     assertEq(why,'CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID','Failure preserves RETAIN guard contract')
     local failedReload,failedStore=boot(legacy2,false)
     assertEq(failedReload.quarantineResources['item:22501'].status,'ACTIVE','Failed resolution remains active after reload')
-    assertEq(failedStore.claimsInstance().capacity['haul-bin'].total,4,'Failed resolution reload preserves capacity once')
+    assertEq(failedStore.claimsInstanceForTests().capacity['haul-bin'].total,4,'Failed resolution reload preserves capacity once')
     assertEq(failedStore.resourceOwner('item:22501').kind,'SYSTEM_QUARANTINE','Failed resolution reload preserves protection')
 
     -- Non-item cooking batch promises must be isolated once, while ordinary
@@ -2108,13 +2108,13 @@ end
 	quarantineResources={['item:22600']={status='ACTIVE',originalTaskId='other-cook',originalClaimId=cook.claimId}}}
     local cooking1,cookStore1=boot(cookingRoot,false)
     assertFalse(cookStore1.getToken(cook.id)~=nil,'Cooking collision does not acquire a token')
-    assertEq(cookStore1.claimsInstance().capacity['cold-bin'].total,6,'Cooking capacity isolated exactly once')
+    assertEq(cookStore1.claimsInstanceForTests().capacity['cold-bin'].total,6,'Cooking capacity isolated exactly once')
     assertEq(cooking1.quarantineResources['craft-surface:stove'].capacityAmount,nil,'Workstation does not duplicate batch capacity')
     local cooking2,cookStore2=boot(cooking1,true)
-    assertEq(cookStore2.claimsInstance().capacity['cold-bin'].total,6,'Cooking reload preserves capacity exactly once')
+    assertEq(cookStore2.claimsInstanceForTests().capacity['cold-bin'].total,6,'Cooking reload preserves capacity exactly once')
     assertTrue(cookStore2.unquarantineResource('cooking:capacity:cook-collision',{capacityAction='RELEASE'}),
 	'Explicit resolution releases the isolated batch reservation')
-    assertEq(cookStore2.claimsInstance().capacity['cold-bin'],nil,'Resolved non-item reservation leaves no capacity leak')
+    assertEq(cookStore2.claimsInstanceForTests().capacity['cold-bin'],nil,'Resolved non-item reservation leaves no capacity leak')
     print('PASS legacy HAUL reload capacity=4; COOKING reload capacity=6, explicit RELEASE=0')
 
     -- Two custody entries share the same original claim identity. Neither may
@@ -2192,7 +2192,7 @@ end)()
     for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
     local s=require('EmberRoutesProbe/Work/LaborStore')
     s.data()
-    local kernel=s.claimsInstance()
+    local kernel=s.claimsInstanceForTests()
     local original=kernel:acquireNew('partial-persist',1,{'item:25011','item:25012'})
     assertTrue(kernel:reserve(original,'persist-bin',25011,3,100),'Persistent original capacity 3')
     assertTrue(kernel:reserve(original,'persist-bin',25012,4,100),'Persistent normal capacity 4')
@@ -2211,16 +2211,16 @@ end)()
     for _,name in ipairs({'TaskJobs','BusinessJobs','LaborStore'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
     local fresh=require('EmberRoutesProbe/Work/LaborStore')
     fresh.data()
-    assertFalse(fresh.claimsInstance()==kernel,'Reload uses a different Claims instance')
-    assertEq(fresh.claimsInstance().capacity['persist-bin'].total,3,'After reload: isolated capacity remains 3')
+    assertFalse(fresh.claimsInstanceForTests()==kernel,'Reload uses a different Claims instance')
+    assertEq(fresh.claimsInstanceForTests().capacity['persist-bin'].total,3,'After reload: isolated capacity remains 3')
     assertEq(fresh.resourceOwner('item:25011').kind,'SYSTEM_QUARANTINE','Reload preserves resource protection')
     assertTrue(fresh.unquarantineResource('item:25011','VERIFIED_RELEASE'),'Explicit settlement after reload')
-    assertEq(fresh.claimsInstance().capacity['persist-bin'],nil,'Final settlement removes empty bucket')
+    assertEq(fresh.claimsInstanceForTests().capacity['persist-bin'],nil,'Final settlement removes empty bucket')
     print('PASS R5 partial quarantine: 7 -> normal release 3 -> reload 3 -> explicit settlement 0')
 
     -- A runtime token may legally acquire runtime-only fields. Neither the
     -- in-progress intent nor the completed audit may hold that object reference.
-    local k=fresh.claimsInstance()
+    local k=fresh.claimsInstanceForTests()
     local source=k:acquireNew('audit-source',1,{'item:25021'})
     assertTrue(k:reserve(source,'audit-bin',25021,5,100),'Audit source reserves capacity')
     assertTrue(fresh.quarantineResource('item:25021','AUDIT_TEST'),'Audit source isolated')

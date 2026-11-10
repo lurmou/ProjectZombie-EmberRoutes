@@ -67,7 +67,7 @@ local function boot(world)
 end
 local function worldWithItem(item)
     local world={containers={},taskJobs={format=1,byId={}}}
-    local s=boot(world);local c=s.claimsInstance()
+    local s=boot(world);local c=s.claimsInstanceForTests()
     local t=c:acquireNew('evidence-job',1,{'item:'..item})
     check(c:reserve(t,'evidence-bin',item,3,100),'Reserve protected capacity')
     return world,s,c,t
@@ -108,7 +108,7 @@ end
 
 -- Check both evidence argument forms and a real persistent Job revision.
 world={containers={},taskJobs={format=1,byId={}}}
-s=boot(world);c=s.claimsInstance()
+s=boot(world);c=s.claimsInstanceForTests()
 check(s.createClaimedJob({id='durable',npcId='npc',providerType='CRAFT',scopeId='local-world',
     revision=1,state='PREPARING',effects='KNOWN',obligations={asset=true},
     payload={format=4,sequence=0,recipeId='Base.MakeAxe',target=1,produced=0,materials={{id=27300}},
@@ -152,7 +152,7 @@ eq(q.interruptedEvidence.nested.proof,'before','Recovery detaches interrupted ev
 check(not q.interruptedEvidenceReport.complete,'Recovery preserves incompleteness')
 eq(q.status,'ACTIVE','Recovery retains quarantine')
 check(not s.unquarantineResource('item:27400','ATTEMPT'),'Incomplete interrupted evidence blocks release')
-eq(s.claimsInstance().capacity['recover-bin'].total,3,'Recovery retains capacity')
+eq(s.claimsInstanceForTests().capacity['recover-bin'].total,3,'Recovery retains capacity')
 eq(world.quarantineAudit.old,historical,'Historical audit was not migrated')
 local historyView,historyReport=s.quarantineAuditRecord('old')
 check(not historyReport.complete,'Invalid legacy audit is diagnosed on read')
@@ -170,7 +170,7 @@ local detached,worldReport=E.snapshot(world)
 check(worldReport.complete,'Partial evidence plus its diagnostic report is serializable')
 s=boot(detached)
 check(not s.unquarantineResource('item:27402',{evidence={verified=true}}),'Cold boot cannot launder incomplete evidence')
-eq(s.claimsInstance().capacity['evidence-bin'].total,3,'Cold boot retains incomplete-record capacity')
+eq(s.claimsInstanceForTests().capacity['evidence-bin'].total,3,'Cold boot retains incomplete-record capacity')
 local qAfter=detached.quarantineResources['item:27402']
 local _,resnapshot=E.snapshot(qAfter.evidence,qAfter.evidenceReport)
 check(not resnapshot.complete and resnapshot.recordedIncomplete,'Repeated snapshots preserve incompleteness')
@@ -206,7 +206,7 @@ check(world.quarantineResources['item:28000'].evidenceEvents.events[1].evidence.
 local retained=s.quarantineRecord('item:28000')
 world={containers={},taskJobs={format=1,byId={}},quarantineResources={['item:28000']=retained}}
 s=boot(world)
-eq(s.claimsInstance().capacity['evidence-bin'].total,3,'Twenty-event reload preserves capacity')
+eq(s.claimsInstanceForTests().capacity['evidence-bin'].total,3,'Twenty-event reload preserves capacity')
 check(s.unquarantineResource('item:28000','VERIFIED'),'Twenty healthy events still allow normal release')
 local archive,archiveReport=s.quarantineAuditRecord('item:28000')
 check(archiveReport.complete,'Completed history can be read at full payload depth')
@@ -224,7 +224,7 @@ eq(#limited.evidenceEvents.events,E.MAX_EVENTS,'Stored event count remains bound
 eq(limited.evidenceEvents.omittedEvents,1,'Overflow count is explicit')
 check(not s.unquarantineResource('item:28001','ATTEMPT'),'Overflow cannot silently discard unresolved history')
 
-world={containers={},taskJobs={format=1,byId={}}};s=boot(world);c=s.claimsInstance()
+world={containers={},taskJobs={format=1,byId={}}};s=boot(world);c=s.claimsInstanceForTests()
 check(s.createClaimedJob({id='duplicate-add',npcId='npc',providerType='CRAFT',scopeId='local-world',
     revision=1,state='PREPARING',effects='KNOWN',obligations={},payload={format=4,sequence=0,
 	recipeId='Base.MakeAxe',target=1,produced=0,materials={{id=28200}},tools={},outputs={},claims={'item:28200'}}}),

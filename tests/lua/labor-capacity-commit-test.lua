@@ -19,7 +19,7 @@ local function create(id,first)
     check(Store.createClaimedJob(job),'Create claimed HAUL') return job
 end
 local a=create('rollback',100)
-local token=Store.getToken(a.id) local claims=Store.claimsInstance()
+local token=Store.getToken(a.id) local claims=Store.claimsInstanceForTests()
 local p=Jobs.current():get(a.id).payload p.reservation.key='other'
 local ok,why=Store.mutateJob(a.id,1,p,{capacity={key='other',items=p.reservation.items,free=0}})
 check(not ok and why=='CAPACITY_FAILURE','Rejected target switch reports Phase 1 capacity failure')

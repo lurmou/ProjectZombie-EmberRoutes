@@ -218,7 +218,7 @@ local function batch(o,env)
 	    if not target and Registry.logistics(e)=='STORAGE' and not hasSuppressed and EmberRoutesProbeJava and EmberRoutesProbeJava.deliverySelectSlice then
 		while scanned<256 and #state.picks<256 do
 		    local result=EmberRoutesProbeJava.deliverySelectSlice(e.container,env.npc,id,o.items,
-			Store.claimsInstance().owners,state,256-scanned)
+			Store.claimOwners(),state,256-scanned)
 		    scanned=scanned+result.scanned i=state.offset
 		    if not result.virtualItem then break end
 		    -- Only mod-defined virtual ModData reads need a Lua decision.

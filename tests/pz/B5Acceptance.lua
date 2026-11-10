@@ -53,7 +53,7 @@ function Q.prepare(actor)
     local p=capacity.payload p.materials={{id=f.items.capacity}} p.claims={key(f.items.capacity)}
     p.reservation.items={[f.items.capacity]=3}
     need(jobs:update(capacity.id,capacity.revision,{payload=p,state='RECONCILE_REQUIRED',effects='UNKNOWN'}),'B5_CAPACITY_JOB_UPDATE_FAILED')
-    Store.claimsInstance():release(Store.getToken(capacity.id))
+    Store.claimsInstanceForTests():release(Store.getToken(capacity.id))
     need(Store.availableCapacity(f.bucket,100)==97,'B5_QUARANTINE_CAPACITY_LOST')
     need(Store.quarantineResource(key(f.items.invalid),'B5_INVALID_EVIDENCE',
 	{fixtureId=f.id,bad=function() end}),'B5_INVALID_CREATION_MUST_PROTECT')
@@ -88,7 +88,7 @@ function Q.verify(actor)
     need(q.originalClaimId==f.originalClaimId and q.evidence.identityCollisions
 	and q.evidence.identityCollisions[f.jobId],'B5_COLLISION_EVIDENCE_LOST')
     need(q.evidenceReport.complete and #q.evidenceEvents.events==20,'B5_REPEAT_EVIDENCE_CHANGED')
-    local c=Store.claimsInstance() local revision=c.revision local capKey=key(f.items.capacity)
+    local c=Store.claimsInstanceForTests() local revision=c.revision local capKey=key(f.items.capacity)
     need(c:restoreQuarantine(capKey,root.quarantineResources[capKey]),'B5_REPEAT_RESTORE_REJECTED')
     need(c:restoreQuarantine(capKey,root.quarantineResources[capKey]),'B5_SECOND_RESTORE_REJECTED')
     need(c.revision==revision and Store.availableCapacity(f.bucket,100)==97,'B5_RESTORE_DOUBLE_COUNTED')
