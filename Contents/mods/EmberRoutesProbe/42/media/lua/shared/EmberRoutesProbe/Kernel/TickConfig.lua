@@ -34,4 +34,10 @@ return {
     -- TaskRuntime business pacing between an attached task's spec.tick
     -- pairs, and its idle poll when no task is attached.
     businessPaceMs=18, businessIdleMs=50,
+    -- Slow-handler naming (Viewpoint/Smooth Frames pilot): one domain
+    -- tick at or above this cost is named once in the RUNTIME_PERF log
+    -- with its NPC count; repeats from the same domain are throttled to
+    -- one line per slowHandlerLogCooldownMs so a stuck domain cannot
+    -- flood the log every tick.
+    slowHandlerMs=8, slowHandlerLogCooldownMs=5000,
 }

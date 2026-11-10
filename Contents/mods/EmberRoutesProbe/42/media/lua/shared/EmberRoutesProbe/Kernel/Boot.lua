@@ -195,14 +195,26 @@ local tickHooks = {
     } },
 }
 
-local function runTier(gateOpen, tier, measured)
+local function runTier(gateOpen, tier, measured, timed)
     if not gateOpen then return end
     local hooks = tier.hooks
     for i = 1, #hooks do
         local hook = hooks[i]
         local fn = Probe[hook.key]
         if fn then
-            if measured then Performance.measure(hook.label, fn) else fn() end
+            if measured then Performance.measure(hook.label, fn)
+            elseif timed then
+                -- Unmeasured path (no sampling session): time the hook with
+                -- the same diagnostic clock Performance uses and name it
+                -- the moment it goes slow. Two clock reads per hook, no
+                -- allocation unless a line is actually logged; timed is
+                -- false when the bridge has no diagnostic clock, so this
+                -- branch costs nothing on a bridgeless/test tick.
+                local started = Performance.now()
+                fn()
+                local ended = Performance.now()
+                Performance.reportSlow(hook.label, ended - started, ended)
+            else fn() end
         end
     end
 end
@@ -212,10 +224,16 @@ local function dispatchTicks(measured)
     local is15 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs15Hz or EmberRoutesProbeJava.cadenceIs15Hz()
     local is5 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs5Hz or EmberRoutesProbeJava.cadenceIs5Hz()
     local is1 = not EmberRoutesProbeJava or not EmberRoutesProbeJava.cadenceIs1Hz or EmberRoutesProbeJava.cadenceIs1Hz()
-    runTier(is60, tickHooks[1], measured)
-    runTier(is15, tickHooks[2], measured)
-    runTier(is5, tickHooks[3], measured)
-    runTier(is1, tickHooks[4], measured)
+    -- Slow-handler naming stays on outside a sampling session: the
+    -- measured path names through Performance.measure, this flag arms the
+    -- same reportSlow call on the unmeasured path. Existence check only,
+    -- no clock read per tick.
+    local timed = not measured and EmberRoutesProbeJava ~= nil
+        and type(EmberRoutesProbeJava.diagnosticTimeNanos) == "function"
+    runTier(is60, tickHooks[1], measured, timed)
+    runTier(is15, tickHooks[2], measured, timed)
+    runTier(is5, tickHooks[3], measured, timed)
+    runTier(is1, tickHooks[4], measured, timed)
 end
 
 local function tickServices()
