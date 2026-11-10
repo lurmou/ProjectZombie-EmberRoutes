@@ -102,9 +102,6 @@ local function load()
     local root=Registry.data()
     if root~=world then
         for _,release in pairs(stockWatches) do release() end stockWatches={} ruleCursor=0
-        if root.maintainStock and root.maintainStock.rules then
-            for _ in pairs(root.maintainStock.rules) do error('LEGACY_STOCK_RESET_REQUIRED') end
-        end
         idle=IdleDiscovery.new() catalogEpoch,retryWake,idleStudyTargets={},{},{}
         data=OrderStore.load(root)
         world=root directory=Directory.new()

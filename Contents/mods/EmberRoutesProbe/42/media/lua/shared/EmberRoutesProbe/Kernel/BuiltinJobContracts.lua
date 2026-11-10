@@ -20,7 +20,7 @@ function M.install()
     add('CRAFT',{
 	validate=function(j)
 	    if j.payload.format==4 then return record('Crafting/CraftJobRecord').valid(j) end
-	    -- Admission only for return-only retirement; no legacy execution contract.
+	    -- Admission only for return-only retirement; no execution contract for retired formats.
 	    return j.payload.format==1 or j.payload.format==2 or j.payload.format==3
 	end,
 	transition=function(a,b)

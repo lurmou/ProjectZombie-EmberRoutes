@@ -99,11 +99,6 @@ function Provider.advance(env)
         if not key then iterator=nil break end
         if c.state=='PENDING_RETURN' and not ToolReturnService.liveTask(c.npcId) then
             ToolReturnService.startFor(env.actor,tostring(c.npcId),c.id,c.returnJobId,nil)
-        elseif c.state=='DEAD_CARRIER' then
-            -- Legacy entries written before death became a release settlement:
-            -- the carrier is dead and no path can consume this state, so
-            -- releasing the custody is the only exit it can ever take.
-            Store.releaseCustody(c.id)
         end
     end
 end

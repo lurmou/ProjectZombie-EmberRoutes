@@ -16,47 +16,9 @@ local Theme = require 'EmberRoutesProbe/UI/Theme'
 local InlineCardDrawer = {}
 
 -- Pre-allocated immutable palette (Zero GC)
-local COLOR_DRAWER_BG     = {r = 0.05, g = 0.06, b = 0.08, a = 0.95}
-local COLOR_DRAWER_BORDER = {r = 0.78, g = 0.62, b = 0.32, a = 0.90} -- Tactical Amber gold
 local COLOR_BTN_BG        = {r = 0.12, g = 0.16, b = 0.20, a = 0.90}
 local COLOR_BTN_HOVER     = {r = 0.20, g = 0.28, b = 0.36, a = 1.00}
 local COLOR_BTN_BORDER    = {r = 0.35, g = 0.45, b = 0.55, a = 0.85}
-
----LEGACY whole-drawer skin (tactical amber border + 2px seam welding).
----Production work-order drawers use a continuous frame with low-contrast
----internal separators instead; this function is retained only for the
----mechanism regression tests. New code should reuse drawButton/hitTest.
----@deprecated
----@param list ISScrollingListBox
----@param y number Card top Y
----@param baseHeight number Height of header card
----@param drawerHeight number Height of extended drawer
----@param cardX number Card left X
----@param cardW number Card width
----@param isSelected boolean
----@param renderContentFn function(drawerX, drawerY, drawerW, drawerH)
----@return number nextY (y + totalHeight)
-function InlineCardDrawer.draw(list, y, baseHeight, drawerHeight, cardX, cardW, isSelected, renderContentFn)
-    local drawerY = y + baseHeight - 2 -- 2px upward overlap for seam welding
-    local drawerW = cardW
-    local bg = COLOR_DRAWER_BG
-
-    -- 1. Drawer Body Background and Outer Frame
-    Theme.rect(list, cardX, drawerY, drawerW, drawerHeight, bg)
-    Theme.rect(list, cardX, drawerY, drawerW, drawerHeight, COLOR_DRAWER_BORDER, true)
-
-    -- 2.【2px Seam Erasure Welding Trick】:
-    -- Overwrite the seam line with background color so the header card and drawer
-    -- read visually as ONE SINGLE SOLID EXTRUDED OBJECT!
-    Theme.rect(list, cardX + 1, drawerY, drawerW - 2, 2, bg)
-
-    -- 3. Render Virtual Drawer Content
-    if renderContentFn then
-        renderContentFn(cardX + 8, drawerY + 6, drawerW - 16, drawerHeight - 12)
-    end
-
-    return y + baseHeight + drawerHeight - 2
-end
 
 ---Skin-free virtual button primitive with Flat 2.0 tactile feedback.
 ---@param list ISScrollingListBox
@@ -76,24 +38,6 @@ function InlineCardDrawer.drawButton(list, bx, by, bw, bh, label, tw, th, bg, bo
     end
     Theme.text(list, label, bx + math.floor((bw - tw) / 2) + off,
         by + math.floor((bh - th) / 2) + off, textColor)
-end
-
----Backwards-compatible convenience wrapper (legacy palette, measures text).
----Convenience helper to draw a virtual action button inside the drawer.
----@param list ISScrollingListBox
----@param bx number Button X
----@param by number Button Y
----@param bw number Button Width
----@param bh number Button Height
----@param label string Button Text
----@param isHover boolean
----@param font UIFont?
-function InlineCardDrawer.drawVirtualButton(list, bx, by, bw, bh, label, isHover, font)
-    local f = font or UIFont.Small
-    local tm = getTextManager()
-    InlineCardDrawer.drawButton(list, bx, by, bw, bh, label,
-        tm:MeasureStringX(f, label), tm:getFontHeight(f),
-        isHover and COLOR_BTN_HOVER or COLOR_BTN_BG, COLOR_BTN_BORDER, Theme.textColor)
 end
 
 ---Determines if a mouse click inside the list hits a virtual rectangle.

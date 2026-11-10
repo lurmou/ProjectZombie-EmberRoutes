@@ -3,7 +3,7 @@
 local Validate=require 'EmberRoutesProbe/Kernel/Validate'
 local R={}
 
-local validStates={RESERVED=true,HELD=true,PENDING_RETURN=true,DEAD_CARRIER=true,RECONCILE_REQUIRED=true}
+local validStates={RESERVED=true,HELD=true,PENDING_RETURN=true,RECONCILE_REQUIRED=true}
 
 function R.valid(entry)
     if type(entry)~='table' then return false end

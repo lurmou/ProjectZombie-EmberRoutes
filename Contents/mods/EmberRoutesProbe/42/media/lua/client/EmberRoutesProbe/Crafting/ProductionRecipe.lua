@@ -1,9 +1,9 @@
-local Legacy=require "EmberRoutesProbe/Crafting/CraftRecipeAdapter"
+local BenchGuard=require "EmberRoutesProbe/Crafting/CraftRecipeAdapter"
 local Stations=require "EmberRoutesProbe/Crafting/CraftStations"
 local Facts=require "EmberRoutesProbe/Crafting/CraftRecipeFacts"
 local Recipe={limit=64,outputLimit=32}
 local function integer(n,max) return type(n)=="number" and n>=1 and n<=max and n==math.floor(n) end
--- Legacy executor capability. Unsupported facts remain discoverable elsewhere.
+-- Executor capability. Unsupported facts remain discoverable elsewhere.
 function Recipe.fromFacts(facts)
     if not facts then return nil,"RECIPE_UNAVAILABLE" end
     local recipe,id=facts.recipe,facts.id
@@ -119,7 +119,7 @@ function Recipe.inspect(actor,npc,object,id,requireKnowledge,near,jobId)
             or not square or not cell or cell:getGridSquare(square:getX(),square:getY(),square:getZ())~=square
             or not square:getObjects():contains(object) then return nil,"CRAFT_SURFACE_REQUIRED" end
         if object:getUsingPlayer() and object:getUsingPlayer()~=npc then return nil,"BENCH_OCCUPIED" end
-        if near and (not Legacy.atBench(npc,object) or not npc:canUseAsGenericCraftingSurface(object)) then return nil,"STAND_BY_SURFACE" end
+        if near and (not BenchGuard.atBench(npc,object) or not npc:canUseAsGenericCraftingSurface(object)) then return nil,"STAND_BY_SURFACE" end
     end
     return spec
 end

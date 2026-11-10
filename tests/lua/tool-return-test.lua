@@ -109,8 +109,6 @@ local validCustody={
     claims={'item:501'}
 }
 check(CustodyRecord.valid(validCustody),'custody record with returnJobId passes schema')
-validCustody.state='DEAD_CARRIER'
-check(CustodyRecord.valid(validCustody),'custody record with DEAD_CARRIER passes schema')
 validCustody.state='RECONCILE_REQUIRED'
 check(CustodyRecord.valid(validCustody),'custody record with RECONCILE_REQUIRED passes schema')
 validCustody.state='HELD'

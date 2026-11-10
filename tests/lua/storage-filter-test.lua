@@ -44,9 +44,9 @@ Filter.registerClassifier("chemicals-adapter",function(d) if d.display=="chemist
 config.groups.chemicals=true
 check(Filter.matchesDescription(config,desc("ChemMod.Acid","chemistry")),"registered mod classifier extends without changing executor")
 check(not pcall(Filter.registerCategory,"chemicals"),"duplicate category registration rejected")
-check(not Filter.access(Filter.legacy(nil)) and not Filter.access(Filter.legacy("private")),"legacy unconfigured/private stay private")
-check(Filter.matchesDescription(Filter.legacy("food"),canned) and not Filter.matchesDescription(Filter.legacy("food"),gun),"legacy tag maps conservatively")
-check(Filter.matchesDescription(Filter.legacy("outbox"),unknown),"legacy explicit outbound remains broad")
+check(not Filter.access(Filter.fromTag(nil)) and not Filter.access(Filter.fromTag("private")),"unconfigured/private tags stay private")
+check(Filter.matchesDescription(Filter.fromTag("food"),canned) and not Filter.matchesDescription(Filter.fromTag("food"),gun),"tag maps conservatively")
+check(Filter.matchesDescription(Filter.fromTag("outbox"),unknown),"explicit outbound tag remains broad")
 local model=Editor.new(config,{{fullType=fresh.fullType,node="food.perishable"}})
 local group={kind="group",id="food"}
 check(Editor.mark(model,group)=="[-]","partial subtree shown mixed")

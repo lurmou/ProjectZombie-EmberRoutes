@@ -94,7 +94,7 @@ end
 function methods:all(rows,search,category,sort)
     return self:page(rows,search,category,false,sort)
 end
--- Compatibility for one-shot consumers; interactive views own a Query.new().
+-- One-shot convenience; interactive views own a Query.new().
 function Query.page(rows,search,category,page,sort,anchor)
     return Query.new():page(rows,search,category,page,sort,anchor)
 end

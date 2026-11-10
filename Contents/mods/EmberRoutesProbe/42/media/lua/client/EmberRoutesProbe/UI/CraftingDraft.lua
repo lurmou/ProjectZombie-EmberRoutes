@@ -496,7 +496,7 @@ function Draft.new(owner,bounds)
                 local stepBadge=getText("IGUI_EmberRoutesProbe_Crafting_"..(isLast and "stepFinal" or "stepPrecursor"),i)
                 local surfaceBadge
                 -- Chain nodes carry a boolean surface requirement, not a container name.
-                -- Only legacy string labels may be used as container translation keys.
+                -- Only string labels may be used as container translation keys.
                 if type(node.surface)=="string" then
                     surfaceBadge=getTextOrNull("IGUI_ContainerTitle_"..node.surface) or node.surface
                 elseif node.surface==true then

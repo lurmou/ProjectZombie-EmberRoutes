@@ -28,7 +28,7 @@ local function stopped(npc)
     return not q or type(q.queue)=='table' and #q.queue==0 and q.current==nil
 end
 local function validReceipt(value)
-    if value==nil then return true end -- Old saves keep manual recovery.
+    if value==nil then return true end -- No receipt yet: manual recovery stays available.
     if type(value)~='table' or value.format~=1 or type(value.id)~='string'
         or (value.state~='CAPTURED' and value.state~='BLOCKED') or type(value.byNpc)~='table' then return false end
     local count=0
@@ -44,7 +44,7 @@ function Save.load()
     local root=Registry.data() -- Reject unsupported formats before any recovery mutation.
     if Probe.prepareMembershipRecovery then Probe.prepareMembershipRecovery() end
     if Probe.resetStock then Probe.resetStock() end
-    -- Normalize legacy records and rebuild every original-ID/capacity claim
+    -- Normalize stored records and rebuild every original-ID/capacity claim
     -- BEFORE the runtime may admit any observation or recovery candidate.
     assert(require('EmberRoutesProbe/Hauling/HaulJobs').prepareRecovery(), 'HAUL_RECOVERY_FAILED')
     Craft.prepareRecovery()

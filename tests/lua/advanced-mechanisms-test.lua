@@ -186,15 +186,6 @@ print("Testing InlineCardDrawer...")
 local InlineCardDrawer = require 'EmberRoutesProbe/UI/InlineCardDrawer'
 check(InlineCardDrawer ~= nil, "InlineCardDrawer loaded")
 
--- Seam erasure welding
-local contentDrawn = false
-local nextY = InlineCardDrawer.draw(mockOwner, 20, 60, 120, 0, 200, true, function(dx, dy, dw, dh)
-    contentDrawn = true
-    check(dw == 184, "Content width properly padded")
-end)
-check(contentDrawn == true, "Virtual drawer content callback executed")
-check(nextY == 20 + 60 + 120 - 2, "nextY accounts for 2px upward seam overlap")
-
 -- Virtual button hit test
 check(InlineCardDrawer.hitTest(50, 50, 40, 40, 30, 20) == true, "Point inside button")
 check(InlineCardDrawer.hitTest(20, 20, 40, 40, 30, 20) == false, "Point outside button")
