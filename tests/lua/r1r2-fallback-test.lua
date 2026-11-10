@@ -48,11 +48,11 @@ local sample={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
 -- Decisions retain the same offer, unlike the independent legacy cases.
 local memory={cooldowns={OBSERVE=11}}
 local function reset()
- Service.reset() Service.workState('a',f.entry,'IDLE')
+ Service.reset() Service.offer('a',f.entry)
  memory={cooldowns={OBSERVE=11}} advances=0
 end
 local function decide(scan)
- Service.workState('a',f.entry,'IDLE')
+ Service.offer('a',f.entry)
  local c,done=Service.candidate(f.actor,{id='a',handle=f.npc},sample,{scan=scan or 0,paths=0},memory)
  check(done,'bounded decision completes')
  return c
@@ -122,9 +122,12 @@ reset() sample.safe=false
 check(not decide(),'safety authoritative') sample.safe=true
 reset() sample.hunger=1
 check(not decide(),'needs authoritative') sample.hunger=0
-reset() Service.workState('a',f.entry,'READY')
-local ready=Service.candidate(f.actor,{id='a',handle=f.npc},sample,{scan=0,paths=0},memory)
-check(not ready,'work READY wins')
+-- 67d0e15 removed the work-state dimension: the work report survives only
+-- as an idle status reason (note/status); candidate() is no longer gated.
+reset() Service.note('a','WORK_READY')
+check(Service.status('a').reason=='WORK_READY','ready work is recorded as idle status')
+local _,bounded=Service.candidate(f.actor,{id='a',handle=f.npc},sample,{scan=0,paths=0},memory)
+check(bounded,'ordinary discovery still completes a bounded decision without the removed work-state gate')
 -- Failed SIT keeps its 60s deadline despite STROLL/OBSERVE outcomes.
 reset() directions(true)
 row.slots={}

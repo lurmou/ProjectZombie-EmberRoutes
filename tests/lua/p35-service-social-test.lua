@@ -99,9 +99,17 @@ now=3000 Service.offer('a',entry) bindings.b=nil discover()
 assert(chanceRolls==2,'missing actual partner does not consume chance')
 bindings.b={id='b',handle=npc}
 discover() assert(chanceRolls==3,'eligible partner can roll once after binding appears')
-Service.workState('a',entry,'READY') discover()
+-- 67d0e15 removed the work-state dimension: the work report survives only
+-- as an idle status reason (note/status). The advert is still withdrawn,
+-- now because ordinary discovery picks a non-social activity (FITNESS),
+-- which withdraws 'a' at the end of candidate().
+Service.note('a','WORK_READY')
+assert(Service.status('a').reason=='WORK_READY','ready work is recorded as an idle status reason')
+discover()
 assert(not Social.invite('b',entry,now,function(a,b) return a,b end),'ready work withdraws advert')
-Service.workState('a',entry,'OBSERVING') discover()
+Service.note('a','WORK_OBSERVING')
+assert(Service.status('a').reason=='WORK_OBSERVING','observing work is recorded as an idle status reason')
+discover()
 assert(not Social.invite('b',entry,now,function(a,b) return a,b end),'observing work withdraws advert')
 print('PASS cut 3 eligible-only single chance per round, later retry and WORK_READY/WORK_OBSERVING withdrawal')
 

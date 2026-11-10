@@ -28,15 +28,22 @@ local npc={getX=function() return 1 end,getY=function() return 1 end,getZ=functi
     getFitness=function() return fitness end,getCurrentState=function() return idle end}
 local s={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
 local Service=require 'EmberRoutesProbe/Leisure/LeisureService' local binding={id='a',handle=npc}
-local brief=Service.candidate({},binding,s,{scan=32,paths=1})
-assert(brief and brief.leisure.brief,'membership independently permits a no-resource short wait while work is unknown')
+-- 67d0e15 removed the work-state dimension: with no prior offer, candidate()
+-- no longer defaults to a brief OBSERVE -- ordinary discovery runs instead.
+local first=Service.candidate({},binding,s,{scan=32,paths=1})
+assert(first and first.leisure.activity=='FITNESS','membership independently permits idle discovery while work is unknown')
 Service.offer('a',entry)
 local candidate,done=Service.candidate({},binding,s,{scan=32,paths=1})
 assert(done and candidate.leisure.activity=='FITNESS','observed idle offer plus native eligibility produces an idle candidate')
 s.fatigue=0.9 assert(not Service.candidate({},binding,s,{scan=32,paths=1}),'sleep care overrides all leisure') s.fatigue=0
 selectedJob={id='job',effects='KNOWN',payload={step='ACTING',kind='LEISURE'}}
 assert(Service.probeable('a')) Service.workReady('a') assert(stopCount==1)
-Service.workState('a',entry,'READY')
-assert(not Service.candidate({},binding,s,{scan=32,paths=1}),'ready work prevents new leisure')
+-- 67d0e15 removed the work-state dimension: the work report survives only
+-- as an idle status reason (note/status); precedence lives in workReady
+-- stopping the job above, not in a candidate gate.
+Service.note('a','WORK_READY')
+assert(Service.status('a').reason=='WORK_READY','ready work is recorded as an idle status reason')
+local afterWork=Service.candidate({},binding,s,{scan=32,paths=1})
+assert(afterWork and afterWork.leisure.activity=='FITNESS','without the removed work-state gate, ordinary discovery proceeds')
 selectedJob.effects='UNKNOWN' assert(not Service.probeable('a'),'unknown personal effects never permit work probing')
 print('P3.5 discovery: native guards, idle freshness, work wakeup, UNKNOWN separation')

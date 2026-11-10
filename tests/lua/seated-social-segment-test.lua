@@ -71,12 +71,12 @@ local function newSit()
  c.persist=function() local live=jobs:get(job.id) return jobs:update(job.id,live.revision,{payload=p,effects=c.effects}) end
  local leaf=require('EmberRoutesProbe/Leisure/LeisureSit').new(c)
  check(leaf.run()=='Running' and leaf.run()=='Running','SIT enters and seats through original leaf')
- Service.workState('a',f.entry,'IDLE')
+ Service.offer('a',f.entry)
  return c,leaf
 end
 local function advertisePartner() Social.advertise('b',f.entry,{x=1.5,y=0.5,z=0},now,f.actor) end
 local function startPair(c,leaf)
- Service.workState('a',f.entry,'IDLE') advertisePartner()
+ Service.offer('a',f.entry) advertisePartner()
  c.budget={scan=32,paths=8,containers=0}
  check(leaf.run()=='Running','seated leaf invites without leaving SIT')
  local key=assert(Social.pending('a'))
@@ -176,7 +176,7 @@ pb.site=otherProof pb.claims=Sites.keys(otherProof,'REST') pb.settlementId=f.ent
 assert(jobs:update(jb.id,jb.revision,{payload=pb})) assert(Store.claimPersonal(jobs:get(jb.id)))
 partner.isSittingOnFurniture=function() return true end partner.isResting=function() return true end
 partner.getZ=function() return 0 end
-Social.reset() Service.workState('a',f.entry,'IDLE') advertisePartner()
+Social.reset() Service.offer('a',f.entry) advertisePartner()
 check(Social.seated('b',f.actor)~=nil,'second seat has valid independent proof/claim')
 check(not Service.seatedSocial(c) and not Social.pending('a'),'seated-seated not formed')
 releaseSit(c,leaf,'COMPLETED')

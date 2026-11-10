@@ -44,8 +44,8 @@ local Registry=require 'EmberRoutesProbe/Leisure/LeisureRegistry'
 -- Leave only SIT in the registered pool: normal seek receives zero scan.
 local sit=Registry.get('SIT') Registry.all=function() return {sit} end
 local sample={safe=true,hunger=0,thirst=0,fatigue=0,endurance=1}
-local function discover(id,memory,state)
- Service.reset() Service.workState(id,f.entry,state or 'IDLE')
+local function discover(id,memory)
+ Service.reset() Service.offer(id,f.entry)
  advances=0
  local c,done=Service.candidate(f.actor,{id=id,handle=f.npc},sample,{scan=0,paths=0},memory or {cooldowns={OBSERVE=11}})
  check(done,'decision never blocks on the nearby scan')
@@ -81,7 +81,13 @@ Policy.allowed=function(kind,...) if kind=='SIT' then return false end return al
 check(discover('a').leisure.ambient,'SIT Policy gate retained') Policy.allowed=allowed
 check(discover('a',{cooldowns={OBSERVE=11},moveAfter=11}).leisure.ambient,'movement cooldown retained')
 sample.safe=false check(not discover('a'),'unsafe rejects leisure') sample.safe=true
-check(discover('a',nil,'OBSERVING').leisure.brief,'non-IDLE retains brief observe')
+-- 67d0e15 removed the work-state dimension: no report yields a brief
+-- OBSERVE from candidate() any more; the observation survives only as an
+-- idle status reason, and ordinary discovery still finds the seat.
+Service.note('a','WORK_OBSERVING')
+check(Service.status('a').reason=='WORK_OBSERVING','observing work is recorded as an idle status reason')
+local observed=discover('a')
+check(observed.leisure.activity=='SIT' and not observed.leisure.ambient and observed.leisure.moving,'without the removed work-state gate, ordinary discovery still finds the seat')
 row.slots={}
 for i=1,9 do row.slots[i]=seat(f.furniture,100,100) end
 row.slots[10]=seat(f.furniture,0,0)

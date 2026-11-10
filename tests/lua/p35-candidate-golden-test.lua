@@ -96,14 +96,20 @@ Service.failed('a',c.targetKey,'SITE_PATH_FAILED')
 rolls={0,0}
 c=Service.candidate({},binding,s,fresh())
 assert(c and c.leisure.activity~='SIT','failed target cools down without blocking alternatives')
-Service.workState('a',entry,'OBSERVING')
+-- 67d0e15 removed the work-state dimension: offer() takes no state, so a
+-- work observation survives only as an idle status reason (note/status),
+-- and candidate() is no longer gated by it -- ordinary discovery proceeds.
+Service.note('a','WORK_OBSERVING')
+assert(Service.status('a').reason=='WORK_OBSERVING','observing work is recorded as an idle status reason')
 c=Service.candidate({},binding,s,fresh())
-assert(c and c.leisure.activity=='OBSERVE' and c.leisure.brief and not c.site,'unknown work permits only resource-free waiting')
-Service.workState('a',entry,'READY')
-assert(not Service.candidate({},binding,s,fresh()),'ready work wins')
+assert(c and c.leisure.activity=='FITNESS' and not c.site,'without the removed work-state gate, ordinary discovery proceeds')
+Service.note('a','WORK_READY')
+assert(Service.status('a').reason=='WORK_READY','ready work is recorded as an idle status reason')
+c=Service.candidate({},binding,s,fresh())
+assert(c and c.leisure.activity=='FITNESS','without the removed work-state gate, ready work no longer vetoes discovery')
 print('P3.5 golden v1.2: shared pool, slow discovery, bounded target backoff, independent membership and work observations')
 
-Service.workState('a',entry,'IDLE')
+Service.offer('a',entry)
 local c,done,why=Service.candidate({},binding,s,fresh(),{cooldowns={},decisionAfter=2})
 assert(c and c.leisure.ambient and c.leisure.activity=='OBSERVE' and c.leisure.untilHours==2
     and not c.leisure.point and done and why=='LEISURE_PAUSE',
@@ -124,10 +130,13 @@ fallback.leisure.finished=true
 Service.finished({job={npcId='a'},payload={leisure=fallback.leisure,leisureMemory=memory}},true)
 assert(memory.cooldowns.OBSERVE==2 and memory.decisionAfter==nil,
     'ambient completion neither changes cooldowns nor starts another decision pause')
-Service.workState('a',entry,'READY')
+Service.note('a','WORK_READY')
+assert(Service.status('a').reason=='WORK_READY','ready work is recorded as an idle status reason')
 c,done,why=Service.candidate({},binding,s,fresh(),{cooldowns={},decisionAfter=2})
-assert(not c and Service.status('a').reason=='WORK_READY','work takes precedence over an idle decision pause')
-Service.workState('a',entry,'IDLE')
+assert(c and c.leisure.ambient and c.leisure.activity=='OBSERVE' and c.leisure.untilHours==2
+    and not c.leisure.point and done and why=='LEISURE_PAUSE',
+    'without the removed work-state gate, an idle decision pause still returns resource-free observation with the original deadline')
+Service.offer('a',entry)
 mode.socialPending=false mode.seat=false mode.readingCandidate=nil mode.readingDone=false
 local incumbent={actor={},npc=npc,job={npcId='a'},sample=function() return s end,budget=fresh(),
     payload={leisure={activity='SIT'},leisureMemory={cooldowns={}}}}
@@ -216,9 +225,11 @@ for _,state in ipairs({'RESTORED','INVALIDATED'}) do
     local restored=copy(saved) restored.payload.resume={state=state}
     assert(Personal.valid(restored) and restored.payload.leisureMemory.resumeHint.activity=='SIT')
 end
-Service.workState('a',entry,'READY')
-assert(not Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory)))
-assert(saved.payload.leisureMemory.resumeHint,'work discovery does not consume the hint')
+Service.note('a','WORK_READY')
+assert(Service.status('a').reason=='WORK_READY','ready work is recorded as an idle status reason')
+local held=Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory))
+assert(held and held.resume and held.site.id=='chair','without the removed work-state gate, discovery still honours the durable resume hint')
+assert(saved.payload.leisureMemory.resumeHint,'resumed discovery does not consume the hint before issuance is accepted')
 Service.offer('a',entry)
 local resumed=Service.candidate({},binding,s,fresh(),copy(saved.payload.leisureMemory))
 assert(resumed and resumed.resume and resumed.site.id=='chair' and resumed.claims[1]=='repose:s:p')
