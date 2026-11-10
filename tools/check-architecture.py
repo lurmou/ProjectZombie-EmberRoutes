@@ -306,7 +306,6 @@ GLOBAL_WRITE_BASELINE = {
     'client/EmberRoutesProbe/UI/WorkPolicyPage.lua': {'EmberRoutesWorkPolicyPage'},
     # Undeclared locals that leak into _G (pre-existing; fixing them changes behavior).
     'client/EmberRoutesProbe/Field/FieldDiscovery.lua': {'seenLimit'},
-    'client/EmberRoutesProbe/UI/SettlementOverviewPage.lua': {'isHauling', 'isCrafting'},
 }
 
 
@@ -663,7 +662,8 @@ def check_compat(lua_root, java_root, errors, repo_root=None):
 
 
 # Long-file tripwire. Current maxima on main 673da20 are 1699 Lua lines
-# (UI/SettlementOverviewPage.lua, already slated for a P1-9 split) and 1146
+# (UI/SettlementOverviewPage.lua before the P1-9 split; now split into
+# SettlementOverview*.lua modules, each under ~400 lines) and 1146
 # Java lines (ProbeNpc.java); the limits sit just above them so any further
 # growth fails instead of silently adding a second SettlementOverviewPage.
 LUA_LONG_FILE_LIMIT = 1800
