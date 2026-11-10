@@ -11,6 +11,17 @@ function Probe.cancelAll(reason)
     Actions.cancel(reason)
     Haul.cancel(reason)
 end
+-- Test double mirrors Boot.cancelEvery (Kernel/Boot.lua): pause-all first, then
+-- every companion exactly once, then actions, then haul. Production Persistence
+-- calls cancelEvery directly and carries no fallback, so the double must too.
+function Probe.cancelEvery(reason)
+    if Probe.pauseAllWork then Probe.pauseAllWork(reason)
+    elseif Probe.cancelWork then Probe.cancelWork(reason) end
+    if Probe.cancelEveryCompanion then Probe.cancelEveryCompanion(reason)
+    elseif Probe.cancelCompanion then Probe.cancelCompanion(reason) end
+    if Probe.cancelActions then Probe.cancelActions(reason) end
+    if Probe.cancelHaul then Probe.cancelHaul(reason) end
+end
 local currentActor = actor
 function actor:getCurrentSquare() return {} end
 function getSpecificPlayer(index) assert(index == 0) return currentActor end

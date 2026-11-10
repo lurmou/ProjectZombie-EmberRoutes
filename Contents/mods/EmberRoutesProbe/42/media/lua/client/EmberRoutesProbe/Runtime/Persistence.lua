@@ -146,12 +146,9 @@ local function captureOnSave()
         local intent=Companion.exportState(id~="" and id or nil)
         intent.id=intent.id or (id~="" and id or nil) intents[id]=intent
     end
-    if Probe.cancelEvery then Probe.cancelEvery("SAVE")
-    else
-        if Probe.pauseAllWork then Probe.pauseAllWork("SAVE") end
-        if Probe.cancelEveryCompanion then Probe.cancelEveryCompanion("SAVE") end
-        Probe.cancelAll("SAVE")
-    end
+    -- Boot is required at the top of this module, so cancelEvery always exists;
+    -- never re-add a hand-rolled fallback here (it cancelled companions twice).
+    Probe.cancelEvery("SAVE")
     if Probe.cleanupHaul and not Probe.cleanupHaul() then return block("HAUL_FIXTURE_CLEANUP_BLOCKED") end
     if not Actions.cleanupForHaul() then return block("ACTION_FIXTURE_CLEANUP_BLOCKED") end
     local results={}
