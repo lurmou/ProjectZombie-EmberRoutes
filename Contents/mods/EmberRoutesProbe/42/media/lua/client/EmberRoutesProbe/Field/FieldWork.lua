@@ -27,6 +27,19 @@ function F.retained(id)
     Jobs.current():visitNpc(id,function(j) if pending(j) then retained=true end end)
     return retained
 end
+-- E-08: no invalidateCare here, deliberately (doc-only; see verify-probe-E08-cooking-field.md).
+-- The FIELD_WORK spec hardcodes nonPreemptive=true (FieldSession.lua), so a
+-- new command never preempts the current holder: TaskRuntime.submit rejects
+-- it NPC_BUSY while the body is occupied, and the owns() / careBlocksWork
+-- checks inside this function already return false while a care ref is
+-- still pending. The
+-- resume intent is protected by these two gates, not by an epoch bump. The
+-- only cost of the epoch not rising is a missing signal for the Activity
+-- roster and Production yield re-run, both of which still have
+-- body-occupancy / eligibility gates as backstop. Do NOT copy Production's
+-- `if not spec.nonPreemptive` guard here: it is always false for FIELD_WORK.
+-- Reassess if nonPreemptive stops being hardcoded, the careBlocksWork gate
+-- is relaxed, or a new submit path bypasses this function.
 local function submit(actor,job,careId)
     local runtime=Runtime.current()
     if not runtime or not runtime:accepting() or runtime:owns(job.npcId) then return false end
