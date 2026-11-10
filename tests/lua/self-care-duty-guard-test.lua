@@ -54,6 +54,16 @@ package.loaded['EmberRoutesProbe/Leisure/LeisureService']={candidate=function()
     return {leisure={format=1,activity='OBSERVE',hours=1},entry={id='home'}},true
 end,failed=function() end,note=function() end,consumeResume=function() return true end}
 package.loaded['EmberRoutesProbe/Activity/SocialCoordinator']={withdraw=function() end,pending=function() return nil end}
+-- The HAUL sections below go through the production path: the real
+-- HaulingProvider.retained (via Providers.retained), not a test double.
+-- Its only Work dependency is record(), stubbed here onto the real
+-- LaborStore.record (production Work.record resolves the same way for a
+-- non-nil npcId); DeliveryService/LogisticsService are stubbed because
+-- retained never touches them.
+package.loaded['EmberRoutesProbe/Logistics/DeliveryService']={discover=function() end,
+    claim=function() return 'QUEUED' end,hasWork=function() return false end,advance=function() end}
+package.loaded['EmberRoutesProbe/Logistics/LogisticsService']={}
+package.loaded['EmberRoutesProbe/Work/Work']={record=function(id) return Store.record(id) end}
 EmberRoutesProbeJava={workerCount=function() return 1 end,workerIdAt=function() return 'a' end}
 if ERLaborTestBridge then for name,method in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[name]=method end end
 local Service=require 'EmberRoutesProbe/SelfCare/SelfCare'
@@ -62,6 +72,8 @@ local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 check(Providers.register({category='dutygap',defaultPriority=3,
     discover=function() end,claim=function() return 'QUEUED' end,
     retained=function() return retainedFlag end}),'duty-gap provider registers')
+local HaulingProvider=require 'EmberRoutesProbe/Hauling/HaulingProvider'
+check(Providers.register(HaulingProvider),'hauling provider registers')
 Service.install()
 local function tick() now=now+5000 Service.tick() end
 local function submissions() return #submitted end
@@ -126,8 +138,8 @@ studyEnabled=true leisureEnabled=false
 -- 3. The same haul, once DONE, releases the NPC.
 freshWorld() haul=createHaul() finishHaul(haul,'DONE') before=submissions() tick()
 check(submissions()==before+1,'DONE haul releases STUDY discovery')
--- 4. A CANCELLED haul also releases the NPC. Its payload state stays PAUSED,
--- so a payload.state ~= 'DONE' check would wrongly keep the NPC on duty.
+-- 4. A CANCELLED haul also releases the NPC: the haul settles first (payload
+-- DONE), so HaulingProvider.retained sees the DONE record and releases.
 freshWorld() haul=createHaul() finishHaul(haul,'CANCELLED') before=submissions() tick()
 check(submissions()==before+1,'CANCELLED haul releases STUDY discovery')
 -- 5. Generic provider path: Providers.retained blocks, then releases.
