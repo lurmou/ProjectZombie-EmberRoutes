@@ -6,7 +6,15 @@ local SortPolicy = require "EmberRoutesProbe/Warehouse/SortPolicy"
 local ItemLock = require "EmberRoutesProbe/Warehouse/ItemLock"
 
 local PlayerStashRoutine = {
-    DEFAULT_MAX_DISTANCE = 15
+    DEFAULT_MAX_DISTANCE = 15,
+    -- "Unlimited" distance inside a settlement: not a real range, just the
+    -- number passed where a maxDistance is required (getNearbyStorage /
+    -- plan maxDistance). The real gate is options.unlimitedDistance;
+    -- this only names the 9999 so the two call sites cannot drift apart.
+    -- Deliberately NOT shared with the 9999 quantity caps (Production,
+    -- DeliveryService, OrderStore, StockRule, CraftRecord, ...): same
+    -- digits, different meaning (a count limit, not a distance).
+    UNLIMITED_DISTANCE = 9999
 }
 
 --- Calculates distance squared between two points.

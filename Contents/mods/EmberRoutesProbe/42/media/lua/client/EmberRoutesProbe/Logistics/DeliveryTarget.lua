@@ -4,6 +4,7 @@ local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local D={}
 local function service() return require 'EmberRoutesProbe/Logistics/DeliveryService' end
 function D.order(r) return service().order(r.orderId) end
@@ -156,7 +157,7 @@ function D.move(c)
         end
         return 'WAIT'
     end
-    return {timeout=185000,progressAt=function() return progressBase end,start=function() return poll() end,poll=poll}
+    return {timeout=Constants.Timeout.MOVE_MS,progressAt=function() return progressBase end,start=function() return poll() end,poll=poll}
 end
 function D.returnTarget(c,item)
     local line=require('EmberRoutesProbe/Hauling/HaulManifest').line(c.job,item:getID())

@@ -1,6 +1,7 @@
 -- A selected kitchen constrains preparation as well as stove discovery.
 local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Policy=require 'EmberRoutesProbe/Work/JobPolicyService'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local K={}
 function K.leaf(c)
     local id,revision,zone,point,requested,deadline
@@ -54,7 +55,7 @@ function K.leaf(c)
         if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then
             c.reason=result or 'KITCHEN_MOVE_FAILED' return 'Failure'
         end
-        requested=true deadline=getTimestampMs()+185000 return 'Running'
+        requested=true deadline=getTimestampMs()+Constants.Timeout.MOVE_MS return 'Running'
     end}
 end
 return K

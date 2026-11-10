@@ -14,7 +14,7 @@
 --   min/max taken from the native enum itself. MORALE and PANIC have no
 --   in-repo reader/writer that uses their range, so their rows rest on the
 --   slider steps only: UNVERIFIED against the jar, do not treat as proof.
--- * Health/Threat/Needs/Supply/Priority: cross-module values that used to
+-- * Health/Threat/Needs/Supply/Priority/Timeout: cross-module values that used to
 --   be restated as bare literals in two or more files. Same value with a
 --   different meaning is deliberately NOT merged (see the inventory doc):
 --   e.g. the 15000ms backoff cap and the 15000ms reservation expiry are
@@ -120,6 +120,18 @@ Constants.Supply={
 Constants.Priority={
     MIN=0,
     MAX=4,
+}
+
+-- Move-step watchdog (ms): one native move leg (production, cooking,
+-- field, delivery, self-care furniture, transfer) may run this long
+-- before its caller declares MOVE_TIMEOUT / PATH_TIMEOUT. A watchdog,
+-- not an action duration: native TimedActions have no timeout concept.
+-- Deliberately NOT shared with Production's ACTION_TIMEOUT (180000ms):
+-- different value, different job (a stalled action vs a stalled move).
+-- Consumers (CookingCargo, SelfCareCustody) read operation.timeout, never
+-- this literal, so they need no change when the value moves.
+Constants.Timeout={
+    MOVE_MS=185000,
 }
 
 return Constants
