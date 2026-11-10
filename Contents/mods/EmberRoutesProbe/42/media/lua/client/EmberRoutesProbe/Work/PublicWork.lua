@@ -3,6 +3,10 @@
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
+-- Posting filter for decide, loaded here so decide never loads it mid-tick.
+-- MembershipPosting only loads SettlementZones and ContainerRegistry, so
+-- this adds no load cycle with PublicWork.
+local PostingFilter=require 'EmberRoutesProbe/Settlement/MembershipPosting'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Work=require 'EmberRoutesProbe/Work/Work'
@@ -580,6 +584,45 @@ local function advanceReservations(now,actor)
         end
     end
 end
+-- Discovery environment for one provider scan. Built here so decide no longer
+-- knows the env's field shape; fields, closures and evaluation order are
+-- unchanged from the inline table it replaces.
+local function newDiscoverEnv(actor,npc,npcId,entry,priorities,now,candidates,setStudyTarget)
+    return {
+        actor=actor,npc=npc,npcId=npcId,entry=entry,priorities=priorities,
+        now=now,candidates=candidates,
+        setStudyTarget=setStudyTarget,
+        directory=directory,
+        orders=data.orders,
+        orderIds=OrderQuery.orderIds(entry.id),
+        sequence=data.sequence,
+        candidateReady=function(key) return retryReady({id=key},npcId,now) end,
+        retryReady=retryReady,
+        cool=cool,
+        signal=signal,
+        upsertOffer=function(key,rev,cat,scope)
+            return directory:upsert(key,rev,cat,scope or entry.id)
+        end
+    }
+end
+-- Posting filter for one tier's candidates. Marks rejected candidates in
+-- place and returns the updated posting reason and acceptance flag.
+local function applyPostingFilter(posting,zone,candidates,postingReason,postingAccepted)
+    if posting and #candidates>0 then
+        for _,candidate in ipairs(candidates) do
+            if candidate.allowed~=false then
+                local allowed,blocked=PostingFilter.allows(posting,zone,candidate)
+                if not allowed then
+                    candidate.allowed=false
+                    if blocked=='POSTING_TARGET_UNAVAILABLE' then postingReason=blocked end
+                elseif candidate.allowed then
+                    postingAccepted=true
+                end
+            end
+        end
+    end
+    return postingReason,postingAccepted
+end
 local function decide(actor,npcId,now,binding,entry)
     if pendingReservations[npcId] then return end
 
@@ -609,22 +652,7 @@ local function decide(actor,npcId,now,binding,entry)
     end
     if retryWake[npcId] and retryWake[npcId]<=now then retryWake[npcId]=nil end
 
-    local envDiscover={
-        actor=actor,npc=npc,npcId=npcId,entry=entry,priorities=priorities,
-        now=now,candidates=candidates,
-        setStudyTarget=function(t) studyTarget=t end,
-        directory=directory,
-        orders=data.orders,
-        orderIds=OrderQuery.orderIds(entry.id),
-        sequence=data.sequence,
-        candidateReady=function(key) return retryReady({id=key},npcId,now) end,
-        retryReady=retryReady,
-        cool=cool,
-        signal=signal,
-        upsertOffer=function(key,rev,cat,scope)
-            return directory:upsert(key,rev,cat,scope or entry.id)
-        end
-    }
+    local envDiscover=newDiscoverEnv(actor,npc,npcId,entry,priorities,now,candidates,function(t) studyTarget=t end)
     local providersByTier={{},{},{},{}}
     for _,provider in ipairs(Providers.all()) do
         local p=priorities[provider.category] or 0
@@ -635,8 +663,7 @@ local function decide(actor,npcId,now,binding,entry)
     end
 
     local posting=member and member.posting
-    local Filter=posting and require('EmberRoutesProbe/Settlement/MembershipPosting')
-    local zone,why=posting and Filter.zone(posting,entry)
+    local zone,why=posting and PostingFilter.zone(posting,entry)
     local postingReason=why or (posting and (priorities[posting.category] or 0)==0 and 'POSTING_PRIORITY_ZERO' or 'POSTING_NO_ELIGIBLE_WORK')
     local postingAccepted=false
 
@@ -657,19 +684,7 @@ local function decide(actor,npcId,now,binding,entry)
                 end
             end
 
-            if posting and #candidates>0 then
-                for _,candidate in ipairs(candidates) do
-                    if candidate.allowed~=false then
-                        local allowed,blocked=Filter.allows(posting,zone,candidate)
-                        if not allowed then
-                            candidate.allowed=false
-                            if blocked=='POSTING_TARGET_UNAVAILABLE' then postingReason=blocked end
-                        elseif candidate.allowed then
-                            postingAccepted=true
-                        end
-                    end
-                end
-            end
+            postingReason,postingAccepted=applyPostingFilter(posting,zone,candidates,postingReason,postingAccepted)
 
             if #candidates>0 then
                 local firstMap=OrderQuery.firstLiveByProduct()
