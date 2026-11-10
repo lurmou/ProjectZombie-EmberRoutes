@@ -88,4 +88,42 @@ check(math.abs(resCustom.foodDays - (4.0 / 0.6)) < 0.001, "reads native script h
 
 _G.getScriptManager = nil
 
+-- 7. Returned daily demand matches the demand used to compute days (P0 fix:
+-- foodDailyDemand was hardcoded to pop * 2.0 while days were computed with
+-- pop * 0.6, so the same card contradicted itself).
+-- 20 meals (7.0 hunger) for 2 people: days = 7.0 / 1.2, demand = 1.2.
+check(math.abs(resMeals.foodDailyDemand - 1.2) < 0.001, "foodDailyDemand is pop * 0.6")
+check(math.abs(resMeals.foodTotalHunger / resMeals.foodDailyDemand - resMeals.foodDays) < 0.001,
+    "foodDays equals hunger / foodDailyDemand")
+-- 30 water for 2 people: days = 30 / 4.0, demand = 4.0.
+check(math.abs(resBoth.waterDailyDemand - 4.0) < 0.001, "waterDailyDemand is pop * 2.0")
+check(math.abs(resBoth.waterCount / resBoth.waterDailyDemand - resBoth.waterDays) < 0.001,
+    "waterDays equals waterCount / waterDailyDemand")
+
+-- 8. Population 0 boundary: no settlers, but days are computed with
+-- effectivePop = 1, so the returned demand must be that same effective rate
+-- (0.6 food / 2.0 water), not 0, or days and demand would disagree again.
+check(math.abs(res0.foodDailyDemand - 0.6) < 0.001, "pop 0 foodDailyDemand is effective rate 0.6")
+check(math.abs(res0.waterDailyDemand - 2.0) < 0.001, "pop 0 waterDailyDemand is effective rate 2.0")
+check(res0.foodDays == 0 and res0.waterDays == 0, "pop 0 with no stock has 0 days")
+local resEmptyPop = SupplyEstimate.calculate(rowsMeals, 0)
+check(math.abs(resEmptyPop.foodDays - (7.0 / 0.6)) < 0.001, "pop 0 with stock uses effectivePop 1 for days")
+check(math.abs(resEmptyPop.foodTotalHunger / resEmptyPop.foodDailyDemand - resEmptyPop.foodDays) < 0.001,
+    "pop 0 days still equal hunger / foodDailyDemand")
+
+-- 9. Large population: 1000 people, 12000 meals (4200 hunger) + 20000 water.
+-- foodDailyDemand = 600, waterDailyDemand = 2000; foodDays = 4200/600 = 7.0,
+-- waterDays = 20000/2000 = 10, minDays = 7.0 -> SECURE.
+local rowsLarge = {
+    {fullType = "Base.PotOfStew", node = "food.meals", count = 12000},
+    {fullType = "Base.WaterBottleFull", node = "water", count = 20000}
+}
+local resLarge = SupplyEstimate.calculate(rowsLarge, 1000)
+check(math.abs(resLarge.foodDailyDemand - 600.0) < 0.001, "large pop foodDailyDemand is 600")
+check(math.abs(resLarge.waterDailyDemand - 2000.0) < 0.001, "large pop waterDailyDemand is 2000")
+check(math.abs(resLarge.foodDays - 7.0) < 0.001, "large pop foodDays is 7.0")
+check(math.abs(resLarge.foodTotalHunger / resLarge.foodDailyDemand - resLarge.foodDays) < 0.001,
+    "large pop days equal hunger / foodDailyDemand")
+check(resLarge.status == "SECURE", "large pop status is SECURE when minDays is 7.0")
+
 print("PASS " .. n .. " SupplyEstimate checks cleanly executed.")
