@@ -491,7 +491,15 @@ function Service.retireSettled(limit)
     return count
 end
 -- Cheap eligibility is shared by discovery and private precheck admission.
-local function eligible(actor,npcId,scope)
+-- P0 pilot (Dwarf Fortress labor switch): a switched-off labor is a hard
+-- gate, not a weight. MembershipService owns the switch table; a service
+-- without laborAllowed (older fixtures) fails open, so the gate never
+-- blocks on a missing read. No category name is written here: the check
+-- always runs on the provider's own category string.
+local function laborAllowed(npcId,category)
+    return not Members or not Members.laborAllowed or Members.laborAllowed(npcId,category)
+end
+local function eligible(actor,npcId,scope,category)
     if require('EmberRoutesProbe/Activity/ActivityAttendance').blocksOrdinary(npcId) then return end
     local binding=Driver.bindId(actor,npcId)
     -- A parked carrier keeps its binding but must not receive new work: its
@@ -512,6 +520,7 @@ local function eligible(actor,npcId,scope)
     local M=Members
     local eligible=M.check(npcId,'WORK',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=scope})
     if not eligible.allowed then return end
+    if category and not laborAllowed(npcId,category) then return end
     local entry=M.entry(npcId,scope)
     if not entry then return end
     return binding,entry
@@ -578,12 +587,18 @@ local function advanceReservations(now,actor)
             and personalJob.payload.kind~='LEISURE' and personalJob.payload.kind~='STUDY' then
             cancelReservation(npcId,'URGENT_SELF_CARE')
         else
-            local binding,entry=eligible(actor,npcId,res.selected.scopeId or res.entry.id)
+            -- The reservation predates the switch: re-check the labor it was
+            -- reserved for, so a switch flipped after reserving still holds.
+            local binding,entry=eligible(actor,npcId,res.selected.scopeId or res.entry.id,res.selected.category)
             local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
             if binding and not probing then
                 pendingReservations[npcId]=nil
                 -- The reservation's own entry, as before; the fresh one only gates eligibility.
                 claimSelected(actor,npcId,now,res.selected,res.jobId,res.entry)
+            elseif not laborAllowed(npcId,res.selected.category) then
+                -- Drop it now instead of holding the worker out of decide
+                -- until the 15s reservation expiry.
+                cancelReservation(npcId,'LABOR_SWITCH_OFF')
             else
                 local bind=Driver.bindId(actor,npcId)
                 local fatal=not bind or not bind.handle or Driver.suspended(bind.handle)
@@ -761,7 +776,9 @@ local function decide(actor,npcId,now,binding,entry)
     local orderedProviders={}
     for _,provider in ipairs(Providers.all()) do
         local p=priorities[provider.category] or 0
-        if p>=1 and p<=4 and provider.discover then orderedProviders[#orderedProviders+1]=provider end
+        -- Labor switch (hard gate): a switched-off provider never discovers
+        -- for this NPC, whatever its priority or score.
+        if p>=1 and p<=4 and provider.discover and laborAllowed(npcId,provider.category) then orderedProviders[#orderedProviders+1]=provider end
     end
     table.sort(orderedProviders,function(a,b)
         local pa,pb=priorities[a.category] or 0,priorities[b.category] or 0
