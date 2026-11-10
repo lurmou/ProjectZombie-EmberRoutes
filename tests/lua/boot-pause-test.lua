@@ -29,7 +29,13 @@ EmberRoutesProbeJava = {moveSeatWithControl=stub,reachedSeat=stub,
     commandFor=stub,carrierFor=stub,ownedCarrierId=stub,selectedId=stub,spawnAdditional=stub,selectCarrier=stub,
     workerCount=stub,workerIdAt=stub,saveCheckpointFor=stub,blockAllCheckpoints=stub,
 }
-local Probe = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Boot.lua")
+local Probe = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua")
+-- Game loads EvenPaused alongside Boot; retirement rides the mod's single
+-- even-paused dispatcher. Boot wired this itself before 67d0e15 dropped it,
+-- so the test installs the same handler to exercise the paused path.
+require("EmberRoutesProbe/Kernel/EvenPaused").add(function()
+    if Probe.ready then EmberRoutesProbeJava.retirementTick() end
+end)
 Probe.controlledExecution=false -- Explicit legacy lifecycle fixture; activation has a separate regression.
 Probe.tickActions = function() jobs = jobs + 1 end
 Probe.tickHaul = Probe.tickActions
