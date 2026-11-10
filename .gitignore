@@ -10,3 +10,6 @@
 __pycache__/
 *.pyc
 
+
+# Game jars (proprietary, ~76 MB): never commit; CI reads them from here only on a self-hosted runner.
+/game-root/
