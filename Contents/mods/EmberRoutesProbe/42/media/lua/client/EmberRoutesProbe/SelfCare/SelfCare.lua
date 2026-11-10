@@ -112,7 +112,14 @@ local function settle(actor,binding,job,row)
         Commit.update(job.id,job.revision,{payload=p,effects='UNKNOWN',state='RECONCILE_REQUIRED'}) return
     end
     if p.step=='RECONCILE_REQUIRED' or job.effects~='KNOWN' then return end
-    if p.resume and p.resume.state=='REQUESTED' then row.reason='PREDECESSOR_STOP_PENDING' return end
+    -- E-09: the wait is for a *live* REQUESTED predecessor. Resume.pending
+    -- is the epoch-aware form of that fact (blocksWork reads the same
+    -- predicate): once invalidate() has bumped the epoch, a ref left at
+    -- REQUESTED by a failed Commit.update is already superseded, and
+    -- waiting on its state alone stalls the tick forever. STOP_CONFIRMED
+    -- and other states still fall through exactly as before.
+    if p.resume and p.resume.state=='REQUESTED' and Resume.pending(p.resume,binding.id) then
+        row.reason='PREDECESSOR_STOP_PENDING' return end
     if (p.step=='REQUESTED' or p.step=='STOP_CONFIRMED') and p.kind~='STUDY'
         and not (p.activityRef and p.activityRef.dutyId)
         and not p.consumption and not p.transfer and not p.repose and not p.reading then
