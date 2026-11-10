@@ -199,7 +199,7 @@ end
 -- UTF-8 / Kahlua UTF-16 Multi-byte String Helper
 -- =============================================================================
 local function makeStr(codepoints, utf8bytes)
-    local ok, str = pcall(string.char, unpack(codepoints))
+    local ok, str = pcall(string.char, (table.unpack or unpack)(codepoints))
     if ok and str and #str == #codepoints then return str end
     return utf8bytes
 end
