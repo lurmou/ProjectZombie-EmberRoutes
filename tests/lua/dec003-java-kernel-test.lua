@@ -1,7 +1,7 @@
 -- Run ONLY with KahluaLaborTest --java-labor; never a Lua kernel substitute.
 assert(ERLaborTestBridge,'Actual LaborCommitKernel bridge required')
 local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
-assert(Contracts.register('DEC003_KERNEL',{capacityMutable=true,validate=function() return true end,errorCodes={}}))
+assert(Contracts.register('DEC003_KERNEL',{schemaVersion=1,capacityMutable=true,validate=function() return true end,errorCodes={}}))
 local Claims=require 'EmberRoutesProbe/Kernel/LaborClaims'
 local Jobs=require 'EmberRoutesProbe/Kernel/JobStore'
 local root={nextClaimSeq=0}
@@ -123,7 +123,7 @@ check(not ok and why=='ROLLBACK_FAILURE' and type(evidence)=='string'
     and jobs:get(f.id).revision==1 and jobs:get(f.id).state=='PREPARING','single restore failure marker only')
 check(not Store.createRefusedBeforeWrite(why,evidence),'restore failure is never a clean refusal')
 -- A store refusal before its write is the only TASK_WRITE_FAILURE proven clean.
-assert(Contracts.register('DEC003_FENCE',{validate=function() return true end,
+assert(Contracts.register('DEC003_FENCE',{schemaVersion=1,validate=function() return true end,
     blocksScope=function(j) return j.payload.fence==true end,errorCodes={}}))
 local fence=draft('fence',70) fence.providerType='DEC003_FENCE' fence.scopeId='fenced' fence.payload.fence=true
 assert(Store.createClaimedJob(fence))

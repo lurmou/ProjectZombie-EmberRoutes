@@ -8,7 +8,10 @@
 -- transition callback must declare at least one code (JobStore propagates
 -- the transition's second return value verbatim, so an undeclared code
 -- would surface with no documented meaning).
-local C={}
+-- Datapack pack_format analogy: every contract table carries schemaVersion
+-- and registration refuses a table whose version is not C.SCHEMA_VERSION
+-- (JOB_CONTRACT_SCHEMA_VERSION), never silently running an old table.
+local C={SCHEMA_VERSION=1}
 local definitions={}
 local function validErrorCodes(contract)
     local codes=contract.errorCodes
@@ -22,6 +25,7 @@ local function validErrorCodes(contract)
 end
 function C.register(kind,contract)
     if type(kind)~='string' or kind=='' or type(contract)~='table' then return false,'JOB_CONTRACT_INVALID' end
+    if contract.schemaVersion~=C.SCHEMA_VERSION then return false,'JOB_CONTRACT_SCHEMA_VERSION' end
     if definitions[kind] then return false,'JOB_CONTRACT_EXISTS' end
     if not validErrorCodes(contract) then return false,'JOB_CONTRACT_ERROR_CODES_REQUIRED' end
     definitions[kind]=contract
