@@ -21,4 +21,16 @@ local C={
         FITNESS={mode='bounded'},SOCIAL={mode='finite'},READING={mode='finite'},SMOKE={mode='finite'}},
     switchMargin=0.35,switchMoveCost=0.25,habituationMs=600000,
 }
+-- Datapack pack_format analogy: this config table carries schemaVersion=1.
+-- checkSchema is the single version gate for this table; the module
+-- self-checks at load (assert below), so a shipped table with a wrong
+-- version fails loudly at require time instead of being silently used.
+-- Callers never re-check per read: the gate runs once, at load.
+C.SCHEMA_VERSION=1
+C.schemaVersion=1
+function C.checkSchema(t)
+    if type(t)~='table' or t.schemaVersion~=C.SCHEMA_VERSION then return nil,'LEISURE_CONFIG_SCHEMA_VERSION' end
+    return true
+end
+assert(C.checkSchema(C),'LEISURE_CONFIG_SCHEMA_VERSION')
 return C

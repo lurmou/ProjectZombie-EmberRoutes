@@ -6,7 +6,7 @@ local function record(name) return require('EmberRoutesProbe/'..name) end
 function M.install()
     if installed then return end
     local function add(kind,contract) assert(C.register(kind,contract)) end
-    add('COOKING',{
+    add('COOKING',{schemaVersion=1,
 	validate=function(j) return record('Cooking/CookingRecord').valid(j) end,
 	transition=function(a,b) return record('Cooking/CookingRecord').transition(a,b),'COOKING_TRANSITION_INVALID' end,
 	transferValid=function(a,b) return record('Cooking/CookingRecord').transferValid(a,b) end,
@@ -19,13 +19,13 @@ function M.install()
 	},
     })
     -- validate returns a boolean only: no codes to declare.
-    add('FIELD_WORK',{validate=function(j) return record('Field/FieldRecord').valid(j) end,tokenBucket='field',capacityMutable=true,errorCodes={}})
-    add('ACTIVITY',{validate=function(j) return record('Activity/ActivityRecord').valid(j) end,tokenBucket='activity',errorCodes={}})
+    add('FIELD_WORK',{schemaVersion=1,validate=function(j) return record('Field/FieldRecord').valid(j) end,tokenBucket='field',capacityMutable=true,errorCodes={}})
+    add('ACTIVITY',{schemaVersion=1,validate=function(j) return record('Activity/ActivityRecord').valid(j) end,tokenBucket='activity',errorCodes={}})
     -- JobStore historically validates only the SELF_CARE envelope; its domain
     -- adapter validates SelfCareRecord at execution/recovery. Keep that contract.
     -- No callbacks, no codes.
-    add('SELF_CARE',{persistentPersonal=true,tokenBucket='personal',errorCodes={}})
-    add('CRAFT',{
+    add('SELF_CARE',{schemaVersion=1,persistentPersonal=true,tokenBucket='personal',errorCodes={}})
+    add('CRAFT',{schemaVersion=1,
 	validate=function(j)
 	    if j.payload.format==4 then return record('Crafting/CraftJobRecord').valid(j) end
 	    -- Admission only for return-only retirement; no execution contract for retired formats.
@@ -47,7 +47,7 @@ function M.install()
 	    CLAIM_IDENTITY_COLLISION='identity collision pauses the job (job.reason)',
 	},
     })
-    add('HAUL',{
+    add('HAUL',{schemaVersion=1,
 	validate=function(j)
 	    local p=j.payload
 	    if p.format~=3 then return false end

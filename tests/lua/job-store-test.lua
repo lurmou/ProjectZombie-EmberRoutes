@@ -55,13 +55,13 @@ check(store:removeSettled('counted',3) and store:ordinaryCount()==1,'safe retire
 print('PASS '..n..' independent Job store checks; persistence table only, game/save codec NOT RUN')
 
 local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
-check(Contracts.register('TEST_DOMAIN',{
+check(Contracts.register('TEST_DOMAIN',{schemaVersion=1,
     validate=function(j) return type(j.payload.work)=='number' end,
     transition=function(a,b) return b.payload.work>=a.payload.work,'TEST_WORK_REVERSED' end,
     blocksScope=function(j) return j.payload.pending==true end,
     errorCodes={TEST_WORK_REVERSED='work decreased across transition'},
 }), 'new domain registers without editing core')
-check(not Contracts.register('TEST_DOMAIN',{}),'duplicate domain registration rejected')
+check(not Contracts.register('TEST_DOMAIN',{schemaVersion=1,errorCodes={}}),'duplicate domain registration rejected')
 local custom=job('registered') custom.providerType='TEST_DOMAIN' custom.payload={work=1}
 check(store:create(custom),'registered validator accepts domain facts')
 check(not store:update(custom.id,1,{payload={work=0}}),'registered transition enforces domain rule')

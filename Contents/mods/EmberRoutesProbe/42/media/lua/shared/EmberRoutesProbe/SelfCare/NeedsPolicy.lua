@@ -9,6 +9,17 @@
 -- lets dispatch deprioritize heavy work first (P0 pilot: HAUL). Only the
 -- two pilot needs carry warn; DRINK/REST keep no warn level.
 local Policy={}
+-- Datapack pack_format analogy: this policy table carries schemaVersion=1.
+-- checkSchema is the single version gate for this table; the module
+-- self-checks at load (assert below), so a shipped table with a wrong
+-- version fails loudly at require time instead of being silently used.
+-- Callers never re-check per call: the gate runs once, at load.
+Policy.SCHEMA_VERSION=1
+Policy.schemaVersion=1
+function Policy.checkSchema(t)
+    if type(t)~='table' or t.schemaVersion~=Policy.SCHEMA_VERSION then return nil,'NEEDS_POLICY_SCHEMA_VERSION' end
+    return true
+end
 local HYSTERESIS=0.15 -- added to the active need's score so it is not
     -- dropped by a marginal reading the next tick (debounce, not a threshold)
 local rules={{kind='DRINK',field='thirst',enter=0.20,leave=0.05,workEnter=0.45},
@@ -115,4 +126,5 @@ function Policy.choose(sample,previous,context,offers)
     end
     return best
 end
+assert(Policy.checkSchema(Policy),'NEEDS_POLICY_SCHEMA_VERSION')
 return Policy
