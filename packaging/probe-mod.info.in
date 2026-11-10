@@ -8,3 +8,4 @@ require=\ZombieBuddy
 javaJarFile=media/java/EmberRoutesProbe.jar
 javaPkgName=emberroutes.probe
 ZBVersionMin=2.3.4
+ZBVersionMax=2.3.4
