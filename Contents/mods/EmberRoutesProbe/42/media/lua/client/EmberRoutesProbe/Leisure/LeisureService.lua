@@ -2,15 +2,17 @@
 -- Activities are data: LeisureRegistry holds the ordered seek defs, each with
 -- its own budget kind and def-private offer state. Adding an activity means
 -- Registry.define here (and an action builder in LeisureActions) until 4.5
--- formalizes the public surface.
+-- formalizes the public surface. Seeks do not find facilities themselves:
+-- they query LeisureAds, the single advertisement table; finding lives in
+-- its collectors (SOCIAL/READING/SMOKE/SIT/PUBLIC_LIFE pilot).
 local Registry=require 'EmberRoutesProbe/Leisure/LeisureRegistry'
+local Ads=require 'EmberRoutesProbe/Leisure/LeisureAds'
 local Perf=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local ContainerRegistry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Policy=require 'EmberRoutesProbe/Leisure/LeisurePolicy'
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
-local Tick=require 'EmberRoutesProbe/Kernel/TickConfig'
 local LifeZones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
 local Service={}
@@ -152,69 +154,12 @@ function Service.standable(entry,point,allowed)
     return square
 end
 local standable=Service.standable
+Ads.install({zoneRule=zoneRule,standable=standable})
 
 local function seekSocial(env)
-    local rule=zoneRule(env.entry,env.point,'SOCIAL',env.id)
-    if not rule or rule==0 then Social.withdraw(env.id) return nil,true end
-    if env.hours>=(env.cooling.SOCIAL or 0) then
-        Social.advertise(env.id,env.entry,env.point,env.now,env.actor)
-    end
-    local key=Social.pending(env.id)
-    local time=getGameTime():getTimeOfDay()
-    local chance=time>=Config.socialChance.from and time<Config.socialChance.to
-        and Config.socialChance.evening or Config.socialChance.other
-    if rule==2 then chance=math.min(1,chance*2) end
-    if not key and env.hours>=(env.cooling.SOCIAL or 0) and env.budget.paths>0 then
-        env.budget.paths=env.budget.paths-1
-        -- One outcome per eligible partner in each existing discovery round.
-        local round=math.floor(env.now/Tick.socialRoundMs)
-        if env.state.round~=round then env.state.round=round env.state.rolls={} end
-        key=Social.invite(env.id,env.entry,env.now,function(a,b,aid,bid,seatedA,seatedB)
-            local partner=require('EmberRoutesProbe/Runtime/Driver').bindId(env.actor,bid)
-            if not partner then return end
-            local allowed={env.npc,partner.handle}
-            if seatedA or seatedB then
-                local seat=seatedA or seatedB
-                local seatedId,standingId=seatedA and aid or bid,seatedA and bid or aid
-                if (zoneRule(env.entry,seat,'SOCIAL',seatedId) or 0)==0 then return end
-                for _,offset in ipairs({{1,0},{0,1},{-1,0},{0,-1}}) do
-                    if env.budget.scan<1 then return end env.budget.scan=env.budget.scan-1
-                    local p={x=seat.x+offset[1],y=seat.y+offset[2],z=seat.z}
-                    local square=standable(env.entry,p,allowed)
-                    local seatSquare=getCell():getGridSquare(math.floor(seat.x),math.floor(seat.y),seat.z)
-                    if square and seatSquare and square:canReachTo(seatSquare) and (zoneRule(env.entry,p,'SOCIAL',standingId) or 0)>0 then
-                        if seatedA then return seat,p else return p,seat end
-                    end
-                end
-                return
-            end
-            local target={x=math.floor(b.x)+0.5,y=math.floor(b.y)+0.5,z=b.z}
-            for _,offset in ipairs({{1,0},{0,1},{-1,0},{0,-1}}) do
-                local p={x=target.x+offset[1],y=target.y+offset[2],z=target.z}
-                if env.budget.scan<1 then return end env.budget.scan=env.budget.scan-1
-                local sa,sb=standable(env.entry,p,allowed),standable(env.entry,target,allowed)
-                local aRule,bRule=zoneRule(env.entry,p,'SOCIAL',aid),zoneRule(env.entry,target,'SOCIAL',bid)
-                if sa and sb and aRule and aRule>0 and bRule and bRule>0 and sa:canReachTo(sb) then return p,target end
-            end
-        end,function(other)
-            local passed=env.state.rolls[other]
-            if passed==nil then
-                passed=ZombRand(10000)/10000<chance
-                env.state.rolls[other]=passed
-            end
-            return passed
-        end)
-    end
-    if key then
-        local mine=Social.view(key,env.id,nil,env.now)
-        local other=mine and Social.view(key,mine.other,nil,env.now)
-        if not mine or not other or (zoneRule(env.entry,mine.point,'SOCIAL',env.id) or 0)==0
-            or (zoneRule(env.entry,other.point,'SOCIAL',mine.other) or 0)==0 then
-            Social.withdraw(env.id) return nil,true
-        end
-        return {leisure={format=1,activity='SOCIAL',socialId=key,hours=env.hours},entry=env.entry,pure=true},true
-    end
-    return nil,true
+    local ad,done,reason=Ads.lookup('SOCIAL',env)
+    if not ad then return nil,done,reason end
+    return {leisure={format=1,activity='SOCIAL',socialId=ad.payload.key,hours=env.hours},entry=env.entry,pure=true},true
 end
 function Service.seatedSocialAllowed(c)
     local entry=require('EmberRoutesProbe/Settlement/MembershipService').entry(c.job.npcId,c.payload.settlementId)
@@ -245,92 +190,38 @@ end
 
 
 local function seekReading(env)
-    if env.resume and env.budget.scan<1 then return nil,false end
-    if env.hours<(env.cooling.READING or 0) or env.budget.scan<1 then return nil,true end
-    local candidate,done,reason,offset=require('EmberRoutesProbe/Leisure/LibraryIndex').choose(
-        env.actor,env.npc,env.entry,nil,env.budget,env.state.offset,true,env.resume and env.resume.itemId)
-    env.state.offset=done and 1 or offset or env.state.offset
-    if candidate then return require('EmberRoutesProbe/Leisure/StudyService').decorateLeisure(candidate,env.id),true end
-    if not done then return nil,false,reason end
-    return nil,true
+    local ad,done,reason=Ads.lookup('READING',env)
+    if not ad then return nil,done,reason end
+    return require('EmberRoutesProbe/Leisure/StudyService').decorateLeisure(ad.payload.candidate,env.id),true
 end
 
 local function seekSmoke(env)
-    if not Policy.allowed('SMOKE',env.s,{hold=true}) or env.hours<(env.cooling.SMOKE or 0)
-        or env.budget.scan<1 then return nil,true end
-    env.state.cache=env.state.cache or {}
-    local smoke,done=require('EmberRoutesProbe/Leisure/LeisureSmoke').find(env.npc,env.budget,env.state.cache)
-    if smoke then
-        return {leisure={format=1,activity='SMOKE',hours=env.hours,fireId=smoke.fire:getID()},
-            item=smoke.item,fire=smoke.fire,entry=env.entry,pure=true},true
-    end
-    if not done then return nil,false end
-    return nil,true
+    local ad,done,reason=Ads.lookup('SMOKE',env)
+    if not ad then return nil,done,reason end
+    local smoke=ad.payload
+    return {leisure={format=1,activity='SMOKE',hours=env.hours,fireId=smoke.fire:getID()},
+        item=smoke.item,fire=smoke.fire,entry=env.entry,pure=true},true
 end
 
 -- Seated idle reuses the P2 furniture discovery/reservation untouched: a
 -- prepared proof plus its repose keys ride the LEISURE payload the same
 -- way REST carries them, so occupancy claims interlock with the same store.
 local function seekSit(env,preview,nearby)
-    if env.resume and env.budget.scan<1 then return nil,false end
-    if not Policy.allowed('SIT',env.s,{hold=true}) or env.hours<(env.cooling.SIT or 0)
-        or env.budget.scan<1
-        or not (EmberRoutesProbeJava and EmberRoutesProbeJava.reposeAtWithControl) then return nil,true end
-    if env.resume then
-        local h=env.resume local p=h.point
-        env.budget.scan=env.budget.scan-1
-        local square=getCell():getGridSquare(p.x,p.y,p.z)
-        local objects=square and square:getObjects()
-        if not objects or objects:size()>64 then return nil,true end
-        local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
-        for i=0,objects:size()-1 do
-            local object=objects:get(i)
-            local meta=object:getModData().EmberRoutesRepose
-            if meta and meta.id==h.objectId and meta.partId==h.partId then
-                local quality,seats=require('EmberRoutesProbe/Settlement/SettlementFacilities').describe(object)
-                if not quality and (not seats or seats<1) then return nil,true end
-                local proof=Sites.prepare({object=object,revision=meta.revision,key=h.targetKey,
-                    settlementId=env.entry.id},env.actor,env.npc,env.id,'REST')
-                if proof then return {leisure={format=1,activity='SIT',hours=env.hours},entry=env.entry,
-                    site=proof,claims=Sites.keys(proof,'REST'),targetKey=proof.key},true end
-                return nil,true
-            end
-        end
-        return nil,true
+    local ad,done,reason=Ads.lookup('SIT',env,{preview=preview,nearby=nearby})
+    if not ad then return nil,done,reason end
+    if ad.payload.preview then return {leisure={activity='SIT'},moving=true,targetKey=ad.payload.found.key},true end
+    if ad.payload.site then
+        return {leisure={format=1,activity='SIT',hours=env.hours},entry=env.entry,
+            site=ad.payload.site,claims=ad.payload.claims,targetKey=ad.payload.targetKey},true
     end
-    local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
-    local facility=Facilities.watch(env.entry,Facilities.describe)
-    local location=math.floor(env.point.x)..':'..math.floor(env.point.y)..':'..env.point.z
-    local stamp=tostring(facility.version)..':'..tostring(env.offer.seatEpoch or 0)..':'..location
-    if env.state.stamp~=stamp and not env.state.iter then
-        env.state.retryAt=nil env.state.stamp=stamp
-        if nearby then env.state.offset=1 end
+    -- Claim step only: the seat was found and advertised by the collector.
+    local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
+    local proof=Sites.prepare(ad.payload.found,env.actor,env.npc,env.id,'REST')
+    if proof then
+        return {leisure={format=1,activity='SIT',hours=env.hours},entry=env.entry,site=proof,
+            claims=Sites.keys(proof,'REST')},true
     end
-    if env.now<(env.state.retryAt or 0) then return nil,true end
-    env.offer.blocked=env.offer.blocked or {}
-    env.state.blocked=env.offer.blocked
-    if not env.state.iter then
-        env.state.iter=require('EmberRoutesProbe/SelfCare/ReposeSites').new(env.actor,env.npc,env.id,'REST',env.state.blocked,
-            {seatingOnly=true,excludeBeds=true,preferredPoint=env.memory and env.memory.seatPreference,
-                indexedOnly=nearby,maxDistance=nearby and 4 or nil,sameFloor=nearby,
-                offset=nearby and env.state.offset or nil})
-    end
-    local slice=math.min(8,env.budget.scan)
-    local found,done,reason,nextOffset=env.state.iter:step(slice)
-    if nearby then env.state.offset=nextOffset or 1 end
-    env.budget.scan=env.budget.scan-slice
-    if not done then return nil,false,reason end
-    env.state.iter=nil
-    if found then
-        if preview then return {leisure={activity='SIT'},moving=true,targetKey=found.key},true end
-        local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
-        local proof=Sites.prepare(found,env.actor,env.npc,env.id,'REST')
-        if proof then
-            return {leisure={format=1,activity='SIT',hours=env.hours},entry=env.entry,site=proof,
-                claims=Sites.keys(proof,'REST')},true
-        end
-        env.state.blocked[found.key]=getTimestampMs()+5000
-    end
+    env.state.blocked[ad.payload.found.key]=getTimestampMs()+5000
     env.state.retryAt=env.now+Config.seatRetryMs
     return nil,true
 end
@@ -343,7 +234,9 @@ Registry.define({id='SIT',budget='scan',seek=seekSit,review=function(env)
 end})
 Registry.define({id='PUBLIC_LIFE',budget='scan',policyAtTarget=true,seek=function(env)
     if require('EmberRoutesProbe/Activity/ActivityService').context(env.id) then return nil,true end
-    return require('EmberRoutesProbe/Settlement/LifeZoneVisits').seek(env,standable)
+    local ad,done,reason=Ads.lookup('PUBLIC_LIFE',env)
+    if not ad then return nil,done,reason end
+    return ad.payload.candidate,true
 end})
 
 -- Resource release wakes failed seat discovery, without owning or reserving a
@@ -787,5 +680,5 @@ function Service.finished(c,stopped)
         Social.release(l.socialId,c.job.npcId,p.attemptId,stopped)
     end
 end
-function Service.reset() world,offers,statuses=nil,{},{ } preferred={} idleLogged={} Social.reset() end
+function Service.reset() world,offers,statuses=nil,{},{ } preferred={} idleLogged={} Social.reset() Ads.reset() end
 return Service
