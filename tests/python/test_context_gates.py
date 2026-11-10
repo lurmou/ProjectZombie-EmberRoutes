@@ -127,6 +127,234 @@ return require('EmberRoutesProbe/UI/' .. name)
         self.assertIn('PublicWorkProviders.lua: 1 quoted category', errors[0])
 
 
+class ProviderRetainedTests(unittest.TestCase):
+    """Static side of the provider retained contract (P1-8).
+
+    The manifest is the only wiring the check resolves: PublicWork calls
+    e.provider() per LaborManifest entry and hands the def to
+    Providers.register, which rejects a missing retained at runtime.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)  # fake LUA_ROOT
+
+    def put(self, area, module, source='return {}'):
+        p = self.root/area/('EmberRoutesProbe/'+module+'.lua')
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding='utf-8')
+        return p
+
+    def manifest(self, entries):
+        body = '\n'.join(
+            "    {category='%s',provider=function() return require '%s' end}," % (c, m)
+            for c, m in entries)
+        return self.put('client', 'Work/LaborManifest',
+                        'local M={}\nM.categories={\n' + body + '\n}\nreturn M')
+
+    def errors(self):
+        errors = []
+        arch.check_provider_retained(self.root, errors)
+        return errors
+
+    def test_manifest_providers_with_retained_pass(self):
+        # The three accepted export shapes on main: method def, inline
+        # function field, and a named-function reference.
+        self.put('client', 'Cooking/CookingProvider',
+                 "local P={category='cooking'}\nfunction P.retained(id) return false end\nreturn P")
+        self.put('client', 'Crafting/CraftingProvider',
+                 "return {category='crafting',retained=function(npcId) return false end}")
+        self.put('client', 'Field/FieldWork', 'return {retained=function(id) return false end}')
+        self.put('client', 'Field/CleaningProvider',
+                 "local P={category='cleaning',retained=require('EmberRoutesProbe/Field/FieldWork').retained}\nreturn P")
+        self.manifest([('cooking', 'EmberRoutesProbe/Cooking/CookingProvider'),
+                       ('crafting', 'EmberRoutesProbe/Crafting/CraftingProvider'),
+                       ('cleaning', 'EmberRoutesProbe/Field/CleaningProvider')])
+        self.assertEqual([], self.errors())
+
+    def test_manifest_provider_without_retained_fails(self):
+        self.put('client', 'Hauling/HaulingProvider', 'return {category=\'hauling\'}')
+        self.manifest([('hauling', 'EmberRoutesProbe/Hauling/HaulingProvider')])
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn("'hauling'", errors[0])
+        self.assertIn('without retained', errors[0])
+
+    def test_manifest_provider_only_calling_retained_fails(self):
+        # Using retained is not exporting it: a provider that only reads
+        # p.retained must still fail.
+        self.put('client', 'Hauling/HaulingProvider',
+                 'local p=require "EmberRoutesProbe/Hauling/HaulJobs"\nreturn {category=\'hauling\',check=function(id) return p.retained(id) end}')
+        self.manifest([('hauling', 'EmberRoutesProbe/Hauling/HaulingProvider')])
+        self.assertTrue(any('without retained' in e for e in self.errors()))
+
+    def test_manifest_provider_retained_nil_fails(self):
+        self.put('client', 'Hauling/HaulingProvider', 'return {category=\'hauling\',retained=nil}')
+        self.manifest([('hauling', 'EmberRoutesProbe/Hauling/HaulingProvider')])
+        self.assertTrue(any('without retained' in e for e in self.errors()))
+
+    def test_manifest_unresolvable_provider_fails(self):
+        self.put('client', 'Work/LaborManifest',
+                 "local M={}\nM.categories={\n    {category='hauling',provider=someFn},\n}\nreturn M")
+        self.assertTrue(any('no literal-require provider thunk' in e for e in self.errors()))
+
+    def test_manifest_missing_provider_module_fails(self):
+        self.manifest([('hauling', 'EmberRoutesProbe/Hauling/Missing')])
+        self.assertTrue(any('not found' in e for e in self.errors()))
+
+    def test_literal_register_without_retained_fails(self):
+        self.put('client', 'Cooking/CookingProvider',
+                 "local P={}\nfunction P.retained(id) return false end\nreturn P")
+        self.manifest([('cooking', 'EmberRoutesProbe/Cooking/CookingProvider')])
+        p = self.put('client', 'Work/Extra',
+                     "Providers.register({category='extra',discover=function() end})")
+        errors = []
+        arch.check_provider_retained(self.root, errors)
+        self.assertTrue(any('literal Providers.register' in e for e in errors))
+        p.write_text("Providers.register({category='extra',retained=function(id) return false end})",
+                     encoding='utf-8')
+        self.assertEqual([], self.errors())
+
+    def test_dynamic_register_def_is_runtime_backstop(self):
+        # Providers.register(def) with a variable def cannot be resolved
+        # statically; the runtime register rejects a missing retained.
+        self.put('client', 'Cooking/CookingProvider',
+                 "local P={}\nfunction P.retained(id) return false end\nreturn P")
+        self.manifest([('cooking', 'EmberRoutesProbe/Cooking/CookingProvider')])
+        self.put('client', 'Work/PublicWork', 'Providers.register(def)')
+        self.assertEqual([], self.errors())
+
+    def test_non_manifest_retained_is_not_a_provider(self):
+        # CraftLegacyRecovery.M.retained(r, j) has a different signature and
+        # semantics; it is only examined if wired as a manifest provider.
+        self.put('client', 'Crafting/CraftLegacyRecovery',
+                 'local M={}\nfunction M.retained(r,j) return false end\nreturn M')
+        self.put('client', 'Cooking/CookingProvider',
+                 "local P={}\nfunction P.retained(id) return false end\nreturn P")
+        self.manifest([('cooking', 'EmberRoutesProbe/Cooking/CookingProvider')])
+        self.assertEqual([], self.errors())
+
+
+class CompatRatchetTests(unittest.TestCase):
+    """No-new-compat ratchet (P1-8): marker rules + only-shrink baseline."""
+
+    # (line, java, is_marker, note)
+    MARKER_CASES = [
+        ("local legacyStockResume", False, True, 'legacy name'),
+        ("r.reason='LEGACY_CRAFT_RETIRED'", False, True, 'LEGACY_ code'),
+        ("-- Compatibility adapter for optional Debug probes.", False, True, 'compat comment'),
+        ("area=firstArea, -- backward compatibility for single area reads", False, True, 'backward compat'),
+        ("if value==nil then return true end -- Old saves keep manual recovery.", False, True, 'old saves'),
+        ("-- migrate legacy records or authorize resource release.", False, True, 'migrate + legacy'),
+        ("local x = fallbackForOldSave()", False, True, 'fallback + old'),
+        ("local alias = oldName", False, True, 'alias + old'),
+        ("if not Definitions.compatible(event.definition,event.definitionVersion) then return end",
+         False, False, 'current definition-version gate call'),
+        ("function R.compatible(id,version)", False, False, 'gate definition'),
+        ('return result("API_INCOMPATIBLE", error.toString());', True, False, 'incompatible error code'),
+        ("-- Rebind only before a unit's native effect; replace atomically migrates bench claims.",
+         False, False, 'migrate without old context'),
+        ("-- Subscribing never opens/migrates a ledger from a presentation path.",
+         False, False, 'migrates without old context'),
+        ("local x = value or 2000 -- fallback", False, False, 'plain runtime fallback'),
+        ("function EmberRoutesPersonnelPage:syncLayoutAliases()", False, False, 'layout alias'),
+        ("local alias=preferences.callsigns[row.id]", False, False, 'call-sign alias'),
+        ("public boolean legacyAllowed(String npc) { return !frozen; }", True, False,
+         'Java legacyAllowed is a current-behavior gate, not old-save compat'),
+        ('probeId = slot.equals("legacy") ? UUID.randomUUID().toString() : slot;', True, False,
+         'Java "legacy" carrier slot id is current behavior'),
+        ("return migrateRecords(root,legacy,LuaManager.platform);", True, True,
+         'Java v1 migration call'),
+        ('Object legacy=root.rawget("snapshot")==null ? GlobalModData.instance.getOrCreate(KEY).rawget("record") : null;',
+         True, True, 'Java legacy snapshot/record line'),
+        ("root.rawset(\"snapshot\", snapshot); // Publish migration once, never consult v1 again.",
+         True, True, 'Java migration + v1'),
+    ]
+
+    def test_marker_rules(self):
+        for line, java, expected, note in self.MARKER_CASES:
+            with self.subTest(note=note):
+                self.assertEqual(expected, arch.compat_marker(line, java))
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)  # fake repo root
+        self.lua = self.root/'Contents/mods/EmberRoutesProbe/42/media/lua'
+        self.java = self.root/'java/src/main/java'
+        (self.lua/'client/EmberRoutesProbe/Work').mkdir(parents=True)
+        (self.java/'emberroutes/probe').mkdir(parents=True)
+        self.sample = self.lua/'client/EmberRoutesProbe/Work/Sample.lua'
+        self.rel = 'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/Sample.lua'
+        saved = dict(arch.COMPAT_BASELINE)
+        self.addCleanup(lambda: (arch.COMPAT_BASELINE.clear(), arch.COMPAT_BASELINE.update(saved)))
+        arch.COMPAT_BASELINE.clear()
+        arch.COMPAT_BASELINE[self.rel] = 2
+
+    def errors(self):
+        errors = []
+        arch.check_compat(self.lua, self.java, errors, repo_root=self.root)
+        return errors
+
+    def test_baselined_count_passes_and_new_line_fails(self):
+        self.sample.write_text("-- legacy stock resume\nlocal x = legacyThing\nreturn {}\n", encoding='utf-8')
+        self.assertEqual([], self.errors())
+        self.sample.write_text("-- legacy stock resume\nlocal x = legacyThing\nlocal y = legacyOther\nreturn {}\n", encoding='utf-8')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('baseline 2', errors[0])
+
+    def test_new_file_with_marker_fails(self):
+        self.sample.write_text("-- legacy stock resume\nlocal x = legacyThing\nreturn {}\n", encoding='utf-8')
+        other = self.lua/'client/EmberRoutesProbe/Work/Other.lua'
+        other.write_text("local legacyThing = 1\n", encoding='utf-8')
+        self.assertTrue(any('new compat-marker' in e for e in self.errors()))
+
+    def test_removed_marker_requires_baseline_lowering(self):
+        self.sample.write_text("-- legacy stock resume\nreturn {}\n", encoding='utf-8')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('lower the COMPAT_BASELINE', errors[0])
+
+    def test_removed_all_markers_requires_baseline_removal(self):
+        self.sample.write_text("return {}\n", encoding='utf-8')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('remove it from COMPAT_BASELINE', errors[0])
+
+    def test_clean_file_passes(self):
+        self.sample.write_text("-- legacy stock resume\nlocal x = legacyThing\nreturn {}\n", encoding='utf-8')
+        other = self.lua/'client/EmberRoutesProbe/Work/Other.lua'
+        other.write_text("local x = value or 2000 -- fallback\nreturn {}\n", encoding='utf-8')
+        self.assertEqual([], self.errors())
+
+
+class LongFileTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.lua = self.root/'Contents/mods/EmberRoutesProbe/42/media/lua'
+        self.java = self.root/'java/src/main/java'
+        (self.lua/'client/EmberRoutesProbe/Work').mkdir(parents=True)
+        (self.java/'emberroutes/probe').mkdir(parents=True)
+
+    def errors(self):
+        errors = []
+        arch.check_long_files(self.lua, self.java, errors, repo_root=self.root)
+        return errors
+
+    def test_over_limit_fails_at_limit_passes(self):
+        p = self.lua/'client/EmberRoutesProbe/Work/Big.lua'
+        p.write_text('-- x\n' * arch.LUA_LONG_FILE_LIMIT, encoding='utf-8')
+        self.assertEqual([], self.errors())
+        p.write_text('-- x\n' * (arch.LUA_LONG_FILE_LIMIT + 1), encoding='utf-8')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('over the', errors[0])
+
+
 class I18nSourceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
