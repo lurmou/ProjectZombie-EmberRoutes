@@ -205,7 +205,7 @@ function Service.status(actor,id)
             if row then result.rows[#result.rows+1]=row end
         end
     end
-    if Probe.publicDispatch then
+    if Probe.isPublicDispatch() then
         for _,o in ipairs(require('EmberRoutesProbe/Work/OrderQuery').orders(id)) do
             if not o.jobId then
                 local closed=o.state=='DONE' or o.state=='CANCELLED'

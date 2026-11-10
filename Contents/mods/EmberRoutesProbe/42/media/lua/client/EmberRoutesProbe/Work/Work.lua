@@ -111,6 +111,21 @@ function Work.assign(actor,id,intent)
     if worker.busy() then schedule:add(id) end
     return result
 end
+-- Recovery deliberately does NOT check suspended[id] or automationAllowed,
+-- unlike Work.assign (which returns 'MANUAL_OVERRIDE' for suspended).
+-- Recovery paths depend on a paused NPC still being resumable:
+--   MembershipRuntime.recover resumes any PAUSED record (no manualPaused /
+--     suspended check), including a user-paused one;
+--   DeliveryService.advance resumes system-paused deliveries (e.g. a
+--     HAUL_ORDER pause sets suspended but not manualPaused, which its
+--     `not r.manualPaused` gate does not exclude);
+--   TaskPersistence.candidate (TRANSFER) resumes a DELIVERY record on
+--     load with no manualPaused check;
+--   HaulingProvider.blocksDecision resumes a retained LOGISTICS haul
+--     (gated on manualPaused only).
+-- Whether automationAllowed belongs here is open: callers check it today
+-- (LogisticsService.advance, PublicWork.eligible); adding it here would
+-- change every recovery path at once, so it stays a caller-side check.
 function Work.resumeFor(actor,id)
     if retained(id) or nativeExecutor(id) then return "OTHER_TASK_RETAINED" end
     local worker=agent(actor,id)
@@ -126,7 +141,7 @@ function Work.taskCommand(actor,id,jobId,generation,command)
     if r.state=='DONE' then return 'DONE' end
     if command=='stop' then Work.pause('USER',id) return 'STOP_REQUESTED' end
     if command~='resume' then return 'INVALID_COMMAND' end
-    if Probe.publicDispatch and r.producer=='LOGISTICS' then
+    if Probe.isPublicDispatch() and r.producer=='LOGISTICS' then
         local entry,why=require('EmberRoutesProbe/Settlement/SettlementLedger').view(actor,r.settlementId)
         if not entry then return why end
         if not require('EmberRoutesProbe/Logistics/LogisticsService').preparePublic(actor,entry,true) then return 'LOGISTICS_STOPPED' end
