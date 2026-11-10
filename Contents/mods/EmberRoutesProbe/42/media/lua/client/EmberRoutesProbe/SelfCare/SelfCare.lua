@@ -10,6 +10,7 @@ local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
 local Resources=require 'EmberRoutesProbe/SelfCare/SelfCareResources'
 local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
 local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
@@ -288,7 +289,7 @@ local function advance(actor,binding,row,now)
         {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ()})
     local ownOnly=not eligibility.sharedResources
     local offers={MEDICAL=sample.externalSafe==true,EAT=sample.safe,DRINK=sample.safe,REST=sample.safe and repose,SLEEP=sample.safe and repose and (forcedSleep or (not ownOnly
-        and sample.hunger<0.5 and sample.thirst<0.5))}
+        and sample.hunger<Constants.Needs.SLEEP_MAX_HUNGER and sample.thirst<Constants.Needs.SLEEP_MAX_THIRST))}
     for blocked,deadline in pairs(row.unavailable or {}) do if now<deadline then offers[blocked]=false end end
     local current=runtime and runtime:status(id)
     local onDuty=hasUnfinishedDuty(id)

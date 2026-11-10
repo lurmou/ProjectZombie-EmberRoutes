@@ -1,4 +1,5 @@
 -- Observable body facts, bounded to one native body-part list. No healing or asset writes.
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local H={}
 function H.read(npc)
     if not npc or not npc.isDead or npc:isDead() or not npc.getBodyDamage then return nil,'HEALTH_UNAVAILABLE' end
@@ -7,7 +8,7 @@ function H.read(npc)
     local parts=damage:getBodyParts()
     if not parts or parts:size()<1 or parts:size()>64 then return nil,'HEALTH_UNAVAILABLE' end
     local s={health=damage:getOverallBodyHealth(),bleeding=false,needsCare=false,deep=false}
-    if type(s.health)~='number' or s.health~=s.health or s.health<0 or s.health>100 then return nil,'HEALTH_UNAVAILABLE' end
+    if not Constants.Stat.isNative('HEALTH',s.health) then return nil,'HEALTH_UNAVAILABLE' end
     for i=0,parts:size()-1 do
         local p=parts:get(i)
         if not p or not p.HasInjury or not p.bandaged or not p.bleeding then return nil,'HEALTH_UNAVAILABLE' end
@@ -32,7 +33,7 @@ function H.canWork(npc)
     local root=require('EmberRoutesProbe/Warehouse/ContainerRegistry').data()
     if world~=root then cache,world={},root end
     local now=getTimestampMs() local saved=cache[npc]
-    if not saved or now-saved.at>=1000 or now<saved.at then
+    if not saved or now-saved.at>=Constants.Health.CACHE_MS or now<saved.at then
         local facts,why=H.read(npc) saved={at=now,facts=facts,reason=why} cache[npc]=saved
     end
     local s=saved.facts

@@ -46,7 +46,14 @@ stub('Runtime/TaskJobs',{current=function() return {ordinaryCount=function() ret
 stub('Kernel/JobStore',{LIMIT=100})
 stub('Kernel/DispatchMetrics',{new=function() return {claims=0,record=function() end,snapshot=function() end} end})
 stub('Runtime/PlanningWake',{revision=function() return 0 end,changed=function() return false end,capture=function() return {} end})
-stub('Kernel/TickConfig',{discoveryMs=1,discoveryIdleMs=1,precheckMs=1})
+-- TickConfig stub must list every field PublicWork reads: the dispatcher
+-- takes wake/backoff/reservation/social cadences from the same table.
+-- Timing-sensitive fields keep production values: the reservation must
+-- outlive the 100ms promote gap below, and the social round gates the
+-- leisure-ready throttle the promoted path exercises.
+stub('Kernel/TickConfig',{discoveryMs=1,discoveryIdleMs=1,precheckMs=1,wakeMs=1,
+    discoveryWakeMs=1,reconcileMs=1,stockMs=1,backoffMs={1,1,1},
+    reservationExpiryMs=15000,socialRoundMs=1500,workerRemoteMs=1,workerRemoteRadius=1})
 stub('Kernel/RuntimeMetrics',{active=function() return false end})
 local gate={field=true}
 stub('Kernel/RuntimeGate',{isSinglePlayer=function() return true end,hasFieldOperations=function() return gate.field end})

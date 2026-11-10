@@ -3,6 +3,7 @@
 -- state, no phase clock and no provider lifecycle; PublicWork resets those.
 -- Splitting the two is what lets domain code read orders without depending on
 -- the dispatcher.
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local S={}
 local world,data=nil,nil
 local function integer(n,min,max)
@@ -31,7 +32,7 @@ local function validate(root)
     if not integer(value.sequence,0,1e12) or type(value.rules)~='table' then return nil,'PUBLIC_WORK_FORMAT_INVALID' end
     for id,p in pairs(value.priorities) do
         if type(id)~='string' or type(p)~='table' or not integer(p.revision,1,1e12) then return nil,'PUBLIC_PRIORITY_INVALID' end
-        for k,v in pairs(p) do if k~='revision' and not integer(v,0,4) then return nil,'PUBLIC_PRIORITY_INVALID' end end
+        for k,v in pairs(p) do if k~='revision' and not integer(v,Constants.Priority.MIN,Constants.Priority.MAX) then return nil,'PUBLIC_PRIORITY_INVALID' end end
     end
     local n=0
     for id,r in pairs(value.rules) do

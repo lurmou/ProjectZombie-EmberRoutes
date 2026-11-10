@@ -2,6 +2,7 @@
 local Controller=require 'EmberRoutesProbe/Runtime/TaskController'
 local Schedule=require 'EmberRoutesProbe/Work/LaborSchedule'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Tick=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Runtime={}
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local function luaStopped(binding)
@@ -339,7 +340,7 @@ function Runtime.current()
     local root=Registry.data()
     if root~=world then
         if service then service:retire(true) end
-        world,service=root,Runtime.new({pace=18,stopped=function(fact)
+        world,service=root,Runtime.new({pace=Tick.businessPaceMs,stopped=function(fact)
             if Registry.data()~=root then return false end
             return not Boot.taskStopped or Boot.taskStopped(fact)==true
         end})
@@ -352,7 +353,7 @@ function Runtime.tick()
     if active:count()==0 then
         local now=getTimestampMs()
         if now<nextIdleTick then return end
-        nextIdleTick=now+50
+        nextIdleTick=now+Tick.businessIdleMs
     end
     active:step()
 end

@@ -1,4 +1,5 @@
 -- Pure, bounded macro survival estimation. No inventory mutation, physical side effects or world handles.
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local SupplyEstimate = {
     DAILY_FOOD_PER_PERSON = 0.6,       -- Standard survivor hunger accumulated per 24 hours in PZ (~2 meals)
     DAILY_WATER_PER_PERSON = 2.0,      -- Water portions/drinks consumed per 24 hours
@@ -77,13 +78,13 @@ local function resolveHunger(fullType, node)
         local hc = script:getHungerChange()
         if type(hc) == "number" and hc ~= 0 then
             local val = math.abs(hc)
-            return val > 1 and (val / 100) or val
+            return Constants.Stat.normalizeHungerChange(val)
         end
     end
     local n = (node or ""):lower()
-    if n:find("^food%.meals") then return 0.35 end
-    if n:find("^food%.stable") then return 0.25 end
-    return 0.15
+    if n:find("^food%.meals") then return Constants.Supply.HUNGER_MEALS end
+    if n:find("^food%.stable") then return Constants.Supply.HUNGER_STABLE end
+    return Constants.Supply.HUNGER_DEFAULT
 end
 
 function SupplyEstimate.calculate(rows, population)
@@ -138,9 +139,9 @@ function SupplyEstimate.calculate(rows, population)
     local minDays = math.min(totalFoodDays, waterDays)
     local status = "SECURE"
     if pop > 0 then
-        if minDays < 2.0 then
+        if minDays < Constants.Supply.STATUS_CRITICAL_DAYS then
             status = "CRITICAL"
-        elseif minDays < 5.0 then
+        elseif minDays < Constants.Supply.STATUS_WARNING_DAYS then
             status = "WARNING"
         else
             status = "SECURE"

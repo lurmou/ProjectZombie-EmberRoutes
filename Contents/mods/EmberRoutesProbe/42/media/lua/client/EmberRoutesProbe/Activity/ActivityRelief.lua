@@ -1,6 +1,8 @@
 -- Sole activity effect writer, invoked only by the existing world's Pump.
 -- Does not issue bodies, clear Claims or settle another action's effects.
 local Record=require 'EmberRoutesProbe/Activity/ActivityReliefRecord'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Stat=Constants.Stat
 local Store=require 'EmberRoutesProbe/Activity/ActivityStore'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
@@ -46,8 +48,10 @@ function E.step(event,id,allow)
         if hours<marker.untilHours or event.reliefAt<marker.untilHours then return finish(event,r,'SKIPPED','COOLDOWN') end
     end
     local before={stats:get(CharacterStat.BOREDOM),stats:get(CharacterStat.UNHAPPINESS),stats:get(CharacterStat.STRESS)}
-    if not Record.finite(before[1]) or before[1]>100 or not Record.finite(before[2]) or before[2]>100
-        or not Record.finite(before[3]) or before[3]>1 then return finish(event,r,'SKIPPED','UNSUPPORTED') end
+    -- Native scales (Constants.Stat): BOREDOM/UNHAPPINESS 0-100, STRESS 0-1.
+    if not Record.finite(before[1]) or not Stat.isNative('BOREDOM',before[1])
+        or not Record.finite(before[2]) or not Stat.isNative('UNHAPPINESS',before[2])
+        or not Record.finite(before[3]) or not Stat.isNative('STRESS',before[3]) then return finish(event,r,'SKIPPED','UNSUPPORTED') end
     local after={math.max(0,before[1]-Record.BOREDOM*r.hours),math.max(0,before[2]-Record.UNHAPPINESS*r.hours),
         math.max(0,before[3]-Record.STRESS*r.hours)}
     if after[1]==before[1] and after[2]==before[2] and after[3]==before[3] then return finish(event,r,'SKIPPED','NO_CHANGE') end
@@ -64,9 +68,9 @@ function E.step(event,id,allow)
         r.observed={stats:get(CharacterStat.BOREDOM),stats:get(CharacterStat.UNHAPPINESS),stats:get(CharacterStat.STRESS)}
     end)
     if not ok or not r.observed or not Record.finite(r.observed[1]) or not Record.finite(r.observed[2]) or not Record.finite(r.observed[3])
-        or math.abs((r.observed and r.observed[1] or -1)-after[1])>0.0001
-        or math.abs((r.observed and r.observed[2] or -1)-after[2])>0.0001
-        or math.abs((r.observed and r.observed[3] or -1)-after[3])>0.000001 then
+        or math.abs((r.observed and r.observed[1] or -1)-after[1])>Stat.TOLERANCE_CENT
+        or math.abs((r.observed and r.observed[2] or -1)-after[2])>Stat.TOLERANCE_CENT
+        or math.abs((r.observed and r.observed[3] or -1)-after[3])>Stat.TOLERANCE_UNIT then
         marker.state='UNKNOWN' return finish(event,r,'UNKNOWN','WRITE_UNCONFIRMED')
     end
     marker.state='APPLIED'

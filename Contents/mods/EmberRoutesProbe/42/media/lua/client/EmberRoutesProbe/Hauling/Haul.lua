@@ -5,6 +5,7 @@ local Batch = require "EmberRoutesProbe/Runtime/Batch"
 local Rules = require "EmberRoutesProbe/Hauling/HaulRules"
 local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 
 local Haul = { endpoints = {}, fixtures = {}, batch = nil }
 local controlled
@@ -358,7 +359,7 @@ local function dispatch(actor,command,object)
         validate=function(binding)
             return not Haul.busy() and not Actions.isBusy() and (not Haul.npc or Haul.npc==binding.handle)
                 and (command=='cleanup' or (source==Haul.endpoints.source and destination==Haul.endpoints.destination
-                    and endpointsValid() and binding.handle:getBodyDamage():getOverallBodyHealth()>=95))
+                    and endpointsValid() and binding.handle:getBodyDamage():getOverallBodyHealth()>=Constants.Health.WORK_MIN))
         end,
         start=function(context)
             if command=='cleanup' and not Actions.cleanupForHaul(context.npc,context.body) then return false,'CLEANUP_BLOCKED' end
