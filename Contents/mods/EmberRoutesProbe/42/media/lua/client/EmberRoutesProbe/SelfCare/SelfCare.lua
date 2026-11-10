@@ -10,6 +10,7 @@ local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
 local Resources=require 'EmberRoutesProbe/SelfCare/SelfCareResources'
 local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
 local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
+local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
 local Performance=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
@@ -178,6 +179,27 @@ local function observe(actor,binding,row,now)
     row.sample,row.reason=Observer.sample(binding.handle,binding.id,now)
     if row.sample then use('SelfCare/MedicalCare').observe(binding.handle,binding.id,row.sample,now) end
 end
+-- Duty guard: a claimed-but-unfinished ordinary job must block idle
+-- STUDY/LEISURE discovery and raise the working threshold. The old
+-- Probe.hasPendingWork only covers pendingReservations (a directory offer
+-- claimed but not yet promoted); it misses jobs already claimed.
+-- Primary check is Providers.retained (the generic provider contract).
+-- Hauling has no retained yet (parallel P0 item adds it), so until then a
+-- HAUL-only fallback reads the haul record through LaborStore and compares
+-- the JobStore job state: the haul payload has no CANCELLED value, so
+-- payload.state ~= 'DONE' would wrongly count a cancelled haul as on-duty.
+-- Remove the fallback once HaulingProvider.retained exists.
+local function haulOnDuty(id)
+    local record=Store.record(id)
+    if not record or type(record.id)~='string' then return false end
+    local job=Jobs.current():peek(record.id)
+    return job~=nil and job.state~='DONE' and job.state~='CANCELLED'
+end
+local function hasUnfinishedDuty(id)
+    if Probe.hasPendingWork and Probe.hasPendingWork(id) then return true end
+    if Providers.retained(id) then return true end
+    return haulOnDuty(id)
+end
 local function advance(actor,binding,row,now)
     local id=binding.id local runtime=Runtime.current()
     local forcedSleep=row.forced and row.forced.kind=='SLEEP' and now<row.forced.untilTime
@@ -280,8 +302,8 @@ local function advance(actor,binding,row,now)
         and sample.hunger<0.5 and sample.thirst<0.5))}
     for blocked,deadline in pairs(row.unavailable or {}) do if now<deadline then offers[blocked]=false end end
     local current=runtime and runtime:status(id)
-    local hasPending=Probe.hasPendingWork and Probe.hasPendingWork(id)
-    local isWorking=(hasPending or (current and current.state=='ACTIVE' and current.started and current.kind~='SELF_CARE')) and not (job and job.payload.step~='IDLE')
+    local onDuty=hasUnfinishedDuty(id)
+    local isWorking=(onDuty or (current and current.state=='ACTIVE' and current.started and current.kind~='SELF_CARE')) and not (job and job.payload.step~='IDLE')
     local kind=Policy.choose(sample,job and job.payload.lastKind,{safe=true,isWorking=isWorking},offers)
     -- A player sleep order overrides the fatigue threshold only; safety,
     -- backoff windows and the bed requirement below still gate it.
@@ -302,7 +324,7 @@ local function advance(actor,binding,row,now)
     if discoverReady and not gathering and not kind and idleEligible
         and not (job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint) and (not job or not job.payload.resume or job.payload.resume.state=='RESTORED'
         or job.payload.resume.state=='INVALIDATED') and budget.scan>0
-        and not (Probe.hasPendingWork and Probe.hasPendingWork(id)) then
+        and not onDuty then
         studyAttempted=true
         local candidate,done,reason=use('Leisure/StudyService').candidate(actor,binding.handle,id,budget,job and job.payload.leisureMemory)
         row.studyReason=reason
@@ -310,7 +332,7 @@ local function advance(actor,binding,row,now)
         elseif not done then row.studyReason=reason or 'LIBRARY_OBSERVING' end
     end
     if discoverReady and not kind and idleEligible and not runtime:owns(id) and (not ref or ref.state=='RESTORED' or ref.state=='INVALIDATED')
-        and not (Probe.hasPendingWork and Probe.hasPendingWork(id)) then
+        and not onDuty then
         leisureAttempted=true
         local candidate,done=use('Leisure/LeisureService').candidate(actor,binding,sample,budget,job and job.payload.leisureMemory)
         if job then job=Jobs.current():get(job.id) end
