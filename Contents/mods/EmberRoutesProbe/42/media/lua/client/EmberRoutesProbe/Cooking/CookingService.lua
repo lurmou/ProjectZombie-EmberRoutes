@@ -67,6 +67,18 @@ local function idle(actor,id,careId)
     end
     if safe(binding,getTimestampMs()) then return binding end
 end
+-- E-08: no invalidateCare here, deliberately (doc-only; see verify-probe-E08-cooking-field.md).
+-- The COOKING spec hardcodes nonPreemptive=true (CookingAgent.lua), so a new
+-- command never preempts the current holder: TaskRuntime.submit rejects it
+-- NPC_BUSY while the body is occupied. While a care ref is still pending,
+-- careBlocksWork in idle() above (plus PublicWork.eligible) blocks new
+-- commands, so the resume intent is protected by these two gates, not by an
+-- epoch bump. The only cost of the epoch not rising is a missing signal for
+-- the Activity roster and Production yield re-run, both of which still have
+-- body-occupancy / eligibility gates as backstop. Do NOT copy Production's
+-- `if not spec.nonPreemptive` guard here: it is always false for COOKING.
+-- Reassess if nonPreemptive stops being hardcoded, the careBlocksWork gate
+-- is relaxed, or a new submit path bypasses idle().
 local function submit(actor,binding,job,settle)
     local object
     if job.payload.fixed and not settle then
