@@ -39,7 +39,7 @@ check(not Store.clear(npc.id) and Store.owner(a:getID()) and require('EmberRoute
     'clear retains uncollected responsibility and persistent revision')
 -- Capacity rejection is a no-write result, not loss of the execution draft.
 local capItem=f.fixture.item('tool',source.container)
-local capClaims=Store.claimsInstance()
+local capClaims=Store.claimsInstanceForTests()
 local rival=assert(capClaims:acquire('capacity-rival',1,{'item:'..capItem:getID()}))
 local capKey=Registry.metadata(fridge,fridge.container).id
 assert(capClaims:reserve(rival,capKey,capItem:getID(),1,1))

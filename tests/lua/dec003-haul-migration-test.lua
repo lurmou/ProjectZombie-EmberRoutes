@@ -15,7 +15,16 @@ local function setup(old)
     EmberRoutesProbeJava=nil
     local root={nextClaimSeq=0} local jobs=assert(Jobs.open(root))
     local state={root=root,claims=Claims.new(),tokens={}}
-    local Store={data=function() return root end,claimsInstance=function() return state.claims end}
+    local Store={data=function() return root end,claimsInstanceForTests=function() return state.claims end}
+    -- Test double for the production Store.capacityEntries contract (HaulJobs
+    -- releaseItemId path reads through it); mirrors LaborStore over state.claims.
+    function Store.capacityEntries(key, jobId)
+        local bucket=key and state.claims.capacity[key]
+        local entry=bucket and bucket.entries and bucket.entries[jobId]
+        local items=entry and entry.items
+        if not items then return nil end
+        local copy={} for id,amount in pairs(items) do copy[id]=amount end return copy
+    end
     function Store.getToken(id) return state.claims.tokensByTaskId[id] end
     local function alloc(r,id) r.nextClaimSeq=r.nextClaimSeq+1 return id..':c'..r.nextClaimSeq end
     local function clean(id) state.tokens[id]=nil end

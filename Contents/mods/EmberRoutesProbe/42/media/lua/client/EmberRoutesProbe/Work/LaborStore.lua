@@ -420,7 +420,26 @@ end
 function Store.owner(itemId) Store.data() return snapshotOwner(claims.owners["item:"..itemId]) end
 function Store.resourceOwner(key) Store.data() return snapshotOwner(claims.owners[key]) end
 function Store.claimsVersion() Store.data() return claims.revision end
-function Store.claimsInstance() Store.data() return claims end
+-- Production read for HaulJobs: snapshot copy of one job's reserved items in
+-- one capacity bucket (nil when the bucket/entry holds nothing). Callers get
+-- a copy, never the live claims table.
+function Store.capacityEntries(key, jobId)
+    Store.data()
+    if not key or not jobId then return nil end
+    local bucket=claims.capacity and claims.capacity[key]
+    local entry=bucket and bucket.entries and bucket.entries[jobId]
+    local items=entry and entry.items
+    if not items then return nil end
+    local copy={} for id,amount in pairs(items) do copy[id]=amount end return copy
+end
+-- Production read for the Java delivery bridge: the live owners table.
+-- Java (deliverySelectSlice) reads only; Lua side must never write through
+-- it. Use Store.owner(itemId)/Store.resourceOwner(key) for Lua-side reads.
+function Store.claimOwners() Store.data() return claims.owners end
+-- Test-only entry point: returns the live claims instance so tests can assert
+-- on capacity totals, write owners, compare instance identity and drive
+-- :acquire/:release. Production code must use the narrow entries above.
+function Store.claimsInstanceForTests() Store.data() return claims end
 local function cleanToken(jobId)
     if not jobId then return end
     if tokens then tokens[jobId] = nil end

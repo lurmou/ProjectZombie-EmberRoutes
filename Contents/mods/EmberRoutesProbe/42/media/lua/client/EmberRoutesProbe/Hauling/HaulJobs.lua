@@ -52,10 +52,8 @@ local function validCapacity(r,capacity,token)
     if capacity~=false and type(capacity)~='table' then return false end
     if capacity~=false then
         if capacity.releaseItemId then
-            local claims=Store.claimsInstance()
-            local bucket=key and claims.capacity[key]
-            local prior=bucket and bucket.entries[r.id]
-            for id,amount in pairs(prior and prior.items or {}) do
+            local priorItems=Store.capacityEntries(key, r.id)
+            for id,amount in pairs(priorItems or {}) do
                 if id~=capacity.releaseItemId then expected[id]=amount end
             end
         else expected=capacity.items key=capacity.key end
