@@ -10,6 +10,20 @@
 -- (defaultPriority, category). `registrationOrder` keeps the stable
 -- registration sequence behind categories(), which UI lists and saved
 -- priority sets enumerate.
+--
+-- NOTE (F-10): two different "retained" registries -- do NOT merge them.
+--   * Providers.retained (this file): a provider still holds one of the
+--     worker's unfinished Jobs (e.g. an unclaimed/unfinished public order).
+--     Used by PublicWork.eligible/decide to skip a worker who already has
+--     public work pending. Answers "does a provider hold a Job".
+--   * Work executor retained (Work.lua:14-21, `retained(id)`): a registered
+--     native executor still holds the worker's BODY (`retains(id)`), or
+--     `nativeExecutor(id)` finds one `busy(id)`. Used by Work.assign /
+--     resumeFor / execute to refuse starting new work on a body that is
+--     already driven. Answers "does an executor hold the body".
+-- Same word, different registry, different object (Job vs body), different
+-- callers. A provider can retain a Job while no executor retains the body
+-- (and vice versa); that is normal, not a bug to "converge".
 local Registry={}
 local defs={}
 local order={}

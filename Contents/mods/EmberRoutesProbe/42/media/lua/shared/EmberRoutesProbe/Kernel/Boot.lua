@@ -2,6 +2,12 @@ local build = require "EmberRoutesProbe/Kernel/Build"
 local Log = require "EmberRoutesProbe/Kernel/Log"
 local Performance = require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 -- P1 complete execution path enabled for single-player acceptance. No live toggle.
+-- NOTE (F-01): `Probe.publicDispatch` is NOT in this table on purpose. It is a
+-- "PublicWork has loaded" flag, not a runtime feature toggle: it stays nil
+-- until PublicWork.lua finishes loading and sets it to true (see its :907),
+-- and production code never sets it back to false/nil. In production it is
+-- therefore always true; the `false`/nil branches guarded by it only exist
+-- for tests (stub Boot tables) and for a PublicWork load failure.
 local Probe = { build = build, ready = false, runtimeReady=false, failureCode = "NOT_STARTED", controlledExecution=true }
 
 -- World-reset registry: each domain registers its reset once. Boot.reset()

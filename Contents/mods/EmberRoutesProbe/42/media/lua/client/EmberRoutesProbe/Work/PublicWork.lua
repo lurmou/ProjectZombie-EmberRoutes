@@ -904,6 +904,14 @@ end
 function Service.cancelReservation(npcId)
     cancelReservation(npcId,'MANUAL_CANCEL')
 end
+-- NOTE (F-01): `Probe.publicDispatch` is a "PublicWork has loaded" flag, not a
+-- runtime feature toggle. Setting it here (module-load side effect, alongside
+-- installing the real dispatch entry `Probe.tickPublicWork`) is the only place
+-- in production code that writes it, and nothing ever writes it back to
+-- false/nil -- so in production it is always true once this file loads. The
+-- `false`/nil branches guarded by it only exist for tests (stub Boot tables)
+-- and for a PublicWork load failure (this line never runs, the flag stays nil
+-- and the system silently falls back to the private dispatch paths).
 Probe.publicDispatch=true Probe.tickPublicWork=Service.tick
 Probe.hasPendingWork=Service.hasReservation
 Probe.cancelReservation=Service.cancelReservation
