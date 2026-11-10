@@ -27,5 +27,6 @@ public final class EnvironmentInteractionTest {
     private static void testNullSafetyAndTraversalGuard() {
         assert EnvironmentInteraction.interactAhead(null, 10.0f, 10.0f, false) == EnvironmentInteraction.Result.NONE;
         assert EnvironmentInteraction.interactAhead(null, 10.0f, 10.0f, true) == EnvironmentInteraction.Result.NONE;
+        assert EnvironmentInteraction.Result.valueOf("WAIT_DOORWAY") == EnvironmentInteraction.Result.WAIT_DOORWAY : "WAIT_DOORWAY enum must exist";
     }
 }

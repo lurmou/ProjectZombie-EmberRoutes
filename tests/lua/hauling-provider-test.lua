@@ -5,6 +5,7 @@ local mockWorkRecord = nil
 local mockDeliveryDiscovered = false
 local mockDeliveryHasWork = false
 local mockDeliveryClaimed = false
+local mockAssignResult = nil
 
 -- Mock dependencies
 package.loaded['EmberRoutesProbe/Logistics/DeliveryService'] = {
@@ -28,7 +29,7 @@ package.loaded['EmberRoutesProbe/Work/Work'] = {
     allowAutomation = function(npcId) end,
     assign = function(actor, npcId, intent)
         mockWorkAssigned = { npcId = npcId, intent = intent }
-        return "QUEUED"
+        return mockAssignResult or "QUEUED"
     end,
     record = function(npcId)
         return mockWorkRecord
@@ -141,5 +142,31 @@ assert(HaulingProvider.hasWork() == false, "reset clears all active hauling item
 mockWorkAssigned = nil
 assert(HaulingProvider.claim(selected, 'npc_3', 'job_haul_3', {}) == 'OFFER_CHANGED'
     and mockWorkAssigned == nil, "missing directory cannot start physical work")
+local _, declared = HaulingProvider.claim(selected, 'npc_3', 'job_haul_3', {})
+assert(declared == 'ROLLED_BACK', "refusal before any work declares its rollback")
+
+-- Test 8 (P2): a refusal after the haul Job was created must not declare a rollback.
+local storedJobs = {}
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs'] = {
+    current = function() return { peek = function(_, id) return storedJobs[id] end } end
+}
+mockAssignResult = 'HAUL_TRANSITION_UNRESOLVED'
+storedJobs['job_haul_4'] = { id = 'job_haul_4', state = 'PREPARING', obligations = { business = true }, payload = { claims = { 'item:1' } } }
+local result4, declared4 = HaulingProvider.claim(selected, 'npc_4', 'job_haul_4', env)
+assert(result4 == 'HAUL_TRANSITION_UNRESOLVED' and declared4 == nil, "created Job keeps the offer: no rollback declaration")
+assert(HaulingProvider.hasWork() == false, "refused claim is not tracked as active hauling")
+-- Same refusal with no Job left behind declares the rollback.
+local result5, declared5 = HaulingProvider.claim(selected, 'npc_5', 'job_haul_5', env)
+assert(result5 == 'HAUL_TRANSITION_UNRESOLVED' and declared5 == 'ROLLED_BACK', "refusal with no Job declares rollback")
+-- A settled Job with nothing held also counts as rolled back.
+storedJobs['job_haul_6'] = { id = 'job_haul_6', state = 'DONE', obligations = {}, payload = { claims = {} } }
+local _, declared6 = HaulingProvider.claim(selected, 'npc_6', 'job_haul_6', env)
+assert(declared6 == 'ROLLED_BACK', "settled empty Job declares rollback")
+-- ERROR is a caught exception with unknown effects.
+mockAssignResult = 'ERROR'
+local _, declared7 = HaulingProvider.claim(selected, 'npc_7', 'job_haul_7', env)
+assert(declared7 == nil, "ERROR never declares rollback")
+mockAssignResult = nil
+package.loaded['EmberRoutesProbe/Runtime/TaskJobs'] = nil
 
 print("PASS: hauling-provider-test")

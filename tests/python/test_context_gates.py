@@ -80,6 +80,52 @@ return require('EmberRoutesProbe/UI/' .. name)
         self.put('client','UI/View','if ModData.x == 1 then return end')
         self.assertEqual([],self.errors())
 
+    def test_global_writes_respect_lua_scopes(self):
+        cases = {
+            'someNewGlobal={}': ['someNewGlobal'],
+            'local decisionScans={}\ndecisionScans={}': [],
+            'local function f() x=1 end': ['x'],
+            'function g() end local function h() h=nil end': ['g'],
+            'local M={} function M.f(a) a=1 self=2 end function M:g(b) self=1 b=2 end': ['self'],
+            'for i=1,2 do i=3 end for k,v in pairs(t) do k,v=1,2 end': [],
+            'local t={a=1,b={c=2}} t.x=1 t[1]=2 if a==1 then end': [],
+            'local a if c then local b b=1 else b=2 end': ['b'],
+            'local a,b=1,2 a,b=b,a c,a=1,2': ['c'],
+            'f(function() y=1 end) while true do q=1 end': ['y', 'q'],
+            '-- z=1\nlocal s="w=1" local l=[[v=1]]': [],
+            'repeat local r=1 r=2 until r': [],
+        }
+        for source, expected in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(expected, [n for n, _ in arch.global_writes(arch.tokens(source))])
+
+    def test_global_write_ratchet(self):
+        self.put('client', 'Work/Kernel', 'local ok=1 newGlobal=ok')
+        errors = []
+        arch.check_global_writes(self.root, errors)
+        self.assertEqual(1, len(errors))
+        self.assertIn("'newGlobal'", errors[0])
+        key = 'client/EmberRoutesProbe/Work/Kernel.lua'
+        saved = dict(arch.GLOBAL_WRITE_BASELINE)
+        self.addCleanup(lambda: (arch.GLOBAL_WRITE_BASELINE.clear(), arch.GLOBAL_WRITE_BASELINE.update(saved)))
+        arch.GLOBAL_WRITE_BASELINE[key] = {'newGlobal', 'removedGlobal'}
+        errors = []
+        arch.check_global_writes(self.root, errors)
+        self.assertEqual(1, len(errors))
+        self.assertIn("'removedGlobal' is gone", errors[0])
+
+    def test_kernel_category_names_cover_the_provider_registry(self):
+        self.put('client', 'Work/LaborManifest', "return {{category='cooking'},{category='crafting'}}")
+        self.put('client', 'Work/PublicWork', "local a,b='cooking','cooking'")
+        providers = self.put('client', 'Work/PublicWorkProviders', "-- 'crafting' in a comment is fine\nreturn {}")
+        errors = []
+        arch.check_kernel_categories(self.root, errors)
+        self.assertEqual([], errors)
+        providers.write_text("local skip='crafting'\nreturn {}", encoding='utf-8')
+        arch.check_kernel_categories(self.root, errors)
+        self.assertEqual(1, len(errors))
+        self.assertIn('PublicWorkProviders.lua: 1 quoted category', errors[0])
+
 
 class I18nSourceTests(unittest.TestCase):
     def setUp(self):

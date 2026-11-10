@@ -56,6 +56,7 @@ public final class ProbeNpc extends IsoPlayer {
     private static final long MOVE_BACKOFF_MAX_NANOS = 8_000_000_000L;
     private int moveFailureCount;
     private long moveBlockedUntilNanos;
+    private long doorWaitStartedNanos;
     private zombie.iso.IsoObject requestedFurniture, reachedFurniture;
     private double furniturePathLimit;
     private boolean furniturePathChecked;
@@ -608,6 +609,8 @@ public final class ProbeNpc extends IsoPlayer {
     }
     /** Locomotion-only halt while the follow session keeps its body grant. */
     void holdFollowMovement() {
+        DoorwayArbiter.releaseByNpc(DoorwayArbiter.resolveNpcId(this));
+        doorWaitStartedNanos = 0L;
         if (!movement.active() && getPath2()==null && !isMoving()) return;
         movement.cancel();
         getPathFindBehavior2().cancel(); getPathFindBehavior2().pathNextIsSet=false;
@@ -761,6 +764,8 @@ public final class ProbeNpc extends IsoPlayer {
     }
 
     void stopProbe() {
+        DoorwayArbiter.releaseByNpc(DoorwayArbiter.resolveNpcId(this));
+        doorWaitStartedNanos = 0L;
         closeFollow();
         furnitureExit.request();
         StopAllActionQueue();
@@ -1007,6 +1012,7 @@ public final class ProbeNpc extends IsoPlayer {
         advancingPath=true;
         try { result=path.update(); }
         finally { advancingPath=false; }
+        DoorwayArbiter.checkAndReleaseCleared(DoorwayArbiter.resolveNpcId(this), getX(), getY());
         if (requestedFurniture!=null && result==PathFindBehavior2.BehaviorResult.Succeeded) {
             zombie.iso.IsoObject goal=path.getGoalSitOnFurnitureObject();
             if (goal!=requestedFurniture) return ProbeMovement.PathResult.FAILED;
@@ -1031,9 +1037,28 @@ public final class ProbeNpc extends IsoPlayer {
                     );
                     if (env == EnvironmentInteraction.Result.BLOCKED) {
                         path.cancel();
+                        doorWaitStartedNanos = 0L;
                         currentSpeedScale = 1.0f;
                         playerMoveDir.set(0, 0);
                         return ProbeMovement.PathResult.FAILED;
+                    }
+                    if (env == EnvironmentInteraction.Result.WAIT_DOORWAY) {
+                        long now = System.nanoTime();
+                        if (doorWaitStartedNanos == 0L) {
+                            doorWaitStartedNanos = now;
+                        } else if (now - doorWaitStartedNanos > DoorwayArbiter.ROUTE_FAILURE_NANOS) {
+                            doorWaitStartedNanos = 0L;
+                            path.cancel();
+                            currentSpeedScale = 1.0f;
+                            playerMoveDir.set(0, 0);
+                            return ProbeMovement.PathResult.FAILED;
+                        }
+                        currentSpeedScale = 0.0f;
+                        playerMoveDir.set(0, 0);
+                        movement.pause(now);
+                        return ProbeMovement.PathResult.WORKING;
+                    } else {
+                        doorWaitStartedNanos = 0L;
                     }
                 }
                 updateLocomotionSteering(path);
@@ -1044,6 +1069,7 @@ public final class ProbeNpc extends IsoPlayer {
             return ProbeMovement.PathResult.WORKING;
         }
         currentSpeedScale = 1.0f;
+        doorWaitStartedNanos = 0L;
         return result == PathFindBehavior2.BehaviorResult.Failed
                 ? ProbeMovement.PathResult.FAILED : ProbeMovement.PathResult.SUCCEEDED;
     }

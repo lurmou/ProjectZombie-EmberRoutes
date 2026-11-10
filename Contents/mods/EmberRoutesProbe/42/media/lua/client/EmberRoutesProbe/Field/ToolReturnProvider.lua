@@ -60,7 +60,8 @@ function Provider.claim(selected,npcId,jobId,env)
         owned[jobId]={key=selected.key,directory=env.directory}
         return 'STARTED'
     end
-    return err or 'TOOL_RETURN_FAILED'
+    -- startFor aborts its own return intent before refusing after assignment.
+    return err or 'TOOL_RETURN_FAILED','ROLLED_BACK'
 end
 
 function Provider.reconcile()

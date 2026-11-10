@@ -30,10 +30,8 @@ local npcObj={
 package.loaded['EmberRoutesProbe/Kernel/Boot']={
     ready=true,runtimeReady=true,hasJava=function() return true end,
     careProbeWork=function(id) return id==npcId and inLeisure end,
-    leisureWorkReady=function(id)
+    leisureWorkReady=function(id,targetJobId)
         leisureReadyCount=leisureReadyCount+1
-        -- Simulates native action stop after external request
-        inLeisure=false
     end,
     idleLeisure=function(id,e) idleLeisureCount=idleLeisureCount+1 end
 }
@@ -105,6 +103,7 @@ local testProvider={
     defaultPriority=3,
     discover=function(env)
         local o=env.upsertOffer('delivery:order-1',1,'hauling',env.entry.id)
+        offer=o
         if o and not o.jobId then
             env.candidates[#env.candidates+1]={
                 key='delivery:order-1',revision=1,category='hauling',allowed=true,score=1,delivery=true
@@ -133,9 +132,10 @@ tick() tick()
 -- Verify:
 -- 1. leisureWorkReady was called to wake the NPC up
 check(leisureReadyCount==1,'leisureWorkReady notified on candidate discovery')
--- 2. Directory offer was NOT locked with a ghost claim
+-- 2. Directory offer was reserved with a deterministic claim
 local currentOffer=offer
-check(currentOffer.jobId==nil,'directory offer remained unclaimed during leisure probe')
+
+check(currentOffer.jobId=='job-uuid-1' and currentOffer.npcId==npcId,'directory offer deterministically reserved for the worker during leisure probe')
 -- 3. Job was NOT assigned while NPC was in leisure
 check(assigned==nil,'job was not claimed while NPC in leisure')
 -- 4. Idle leisure was NOT triggered (NPC was already in leisure)
@@ -157,5 +157,38 @@ assigned=nil
 testProvider.discover=function() end -- no more work
 tick() tick()
 check(idleLeisureCount>0,'idle leisure offered when truly no work exists')
+
+-- TEST STEP 4: TaskDirectory withdrawal rejects claims
+local dir2=Directory.new()
+dir2:upsert('craft:order-x',1,'crafting','settlement-1')
+dir2:claim('craft:order-x',1,'npc-x','job-x')
+dir2:withdraw('craft:order-x')
+check(dir2:isWithdrawn('craft:order-x')==true,'withdrawn offer is reported as withdrawn')
+local ok,why=dir2:claim('craft:order-x',1,'npc-x','job-x')
+check(ok==false and why=='OFFER_WITHDRAWN','withdrawn offer rejects claim with OFFER_WITHDRAWN')
+
+-- TEST STEP 5: CraftingProvider rejects CANCELLED or PAUSED orders
+package.loaded['EmberRoutesProbe/Cooking/CookingOrders']={parentAllows=function() return true end}
+local CraftingProvider=require 'EmberRoutesProbe/Crafting/CraftingProvider'
+local craftResult=CraftingProvider.claim({order={state='CANCELLED'}},'npc-1','job-1',{})
+check(craftResult=='TASK_CHANGED','CraftingProvider rejects cancelled orders')
+local craftResult2=CraftingProvider.claim({order={state='PAUSED'}},'npc-1','job-1',{})
+check(craftResult2=='TASK_CHANGED','CraftingProvider rejects paused orders')
+
+-- TEST STEP 6: Manual cancel reservation via Probe.cancelReservation
+inLeisure=true
+assigned=nil
+testProvider.discover=function(env)
+    local o=env.upsertOffer('delivery:order-2',1,'hauling',env.entry.id)
+    if o and not o.jobId then
+        env.candidates[#env.candidates+1]={
+            key='delivery:order-2',revision=1,category='hauling',allowed=true,score=1,delivery=true
+        }
+    end
+end
+tick()
+check(Public.hasReservation(npcId)==true,'reservation active for delivery:order-2')
+package.loaded['EmberRoutesProbe/Kernel/Boot'].cancelReservation(npcId,'USER')
+check(Public.hasReservation(npcId)==false,'Probe.cancelReservation immediately clears reservation')
 
 print('PASS '..checks..' leisure-to-work transition & zero-lock invariant checks')

@@ -10,8 +10,9 @@ local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local Companion=require 'EmberRoutesProbe/Settlement/Companion'
 local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Monitors=require 'EmberRoutesProbe/Runtime/TaskMonitorProviders'
-assert(Monitors.register(require 'EmberRoutesProbe/Cooking/CookingMonitor'))
-assert(Monitors.register(require 'EmberRoutesProbe/Field/FieldWorkMonitor'))
+for _,e in ipairs(require('EmberRoutesProbe/Work/LaborManifest').jobKinds) do
+    if e.monitor then assert(Monitors.register(e.monitor())) end
+end
 local Service={}
 local blocked={ITEM_MISSING=true,ITEM_ID_CONFLICT=true,RECONCILE_REQUIRED=true,INPUT_CHANGED=true}
 local paused={DESTINATION_FILTER_REJECTED=true,DESTINATION_UNREGISTERED=true,DESTINATION_FULL=true,DESTINATION_UNREACHABLE=true,USER=true,REPLACED=true,SAVE=true,LOAD_RECOVERY=true,COMPANION_ORDER=true,SELF_CARE=true}

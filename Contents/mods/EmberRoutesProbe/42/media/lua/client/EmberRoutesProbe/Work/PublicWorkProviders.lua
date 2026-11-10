@@ -11,6 +11,26 @@ function Registry.register(def)
         or (def.defaultPriority~=nil and (type(def.defaultPriority)~='number' or def.defaultPriority<0 or def.defaultPriority>4)) then
         return false,'PROVIDER_INVALID'
     end
+    if type(def.discover)~='function' then
+        return false,'PROVIDER_MISSING_DISCOVER'
+    end
+    if type(def.claim)~='function' then
+        return false,'PROVIDER_MISSING_CLAIM'
+    end
+    -- priorityRequired: every saved priority set must carry this category.
+    if def.priorityRequired~=nil and type(def.priorityRequired)~='boolean' then
+        return false,'PROVIDER_INVALID'
+    end
+    -- Optional hooks: if present, must be functions.
+    local optHooks={'advance','reconcile','idle','step','hasWork','reset','cancel',
+        'scanStatus','precheck','hasPrechecks','capacityBlocked','blocksDecision',
+        'holdSelection','pendingScore','pending','beforeClaim','observeDemand','retained',
+        'command','orderCommanded','retireUnclaimed','orderRetired'}
+    for _,hook in ipairs(optHooks) do
+        if def[hook]~=nil and type(def[hook])~='function' then
+            return false,'PROVIDER_HOOK_NOT_FUNCTION:'..hook
+        end
+    end
     if not defs[def.category] then
         order[#order+1]=def.category
     end
@@ -66,6 +86,27 @@ function Registry.hasPending(npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.pending and p.pending(npcId) then return true end end
     return false
 end
+-- A player command changed a public order handled by the kernel (one with no
+-- owning provider command); providers drop any plan built for it.
+function Registry.orderCommanded(orderId)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.orderCommanded then p.orderCommanded(orderId) end end
+end
+-- A settled public order left the order document; readyWorkers is the
+-- kernel's current precheck-ready list.
+function Registry.orderRetired(orderId,readyWorkers)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.orderRetired then p.orderRetired(orderId,readyWorkers) end end
+end
+-- World root replaced: each provider drops its own per-world caches. Not
+-- Registry.reset below, which clears the registrations themselves.
+function Registry.resetWorld()
+    for _,kind in ipairs(order) do local p=defs[kind] if p.reset then p.reset() end end
+end
+-- A provider still holding this worker's unfinished job keeps it out of new
+-- ordinary work. Registration order; the first holder stops the check.
+function Registry.retained(npcId)
+    for _,kind in ipairs(order) do local p=defs[kind] if p.retained and p.retained(npcId) then return true end end
+    return false
+end
 function Registry.capacityBlocked(npcId,orders,signal)
     for _,kind in ipairs(order) do local p=defs[kind] if p.capacityBlocked then p.capacityBlocked(npcId,orders,signal) end end
 end
@@ -103,6 +144,18 @@ function Registry.discoveryChanged(watch)
 	return false
     end
     return Wake.changed(watch)
+end
+-- Claim failure contract. When provider.claim does not return QUEUED/STARTED,
+-- it returns CLAIM_ROLLED_BACK as its second value only if the failed claim
+-- left no business effects of its own (nothing created, or all undone). Only
+-- that declaration lets the coordinator release the directory offer; without
+-- it the offer stays allocated and the returned reason is the diagnosis.
+Registry.CLAIM_ROLLED_BACK='ROLLED_BACK'
+function Registry.settleFailedClaim(directory,key,jobId,declaration)
+    if declaration~=Registry.CLAIM_ROLLED_BACK then return 'CLAIM_ROLLBACK_UNDECLARED' end
+    local released,why=directory:release(key,jobId,{effects='KNOWN',obligationsCleared=true})
+    if not released then return why or 'OFFER_RELEASE_FAILED' end
+    return nil
 end
 function Registry.beforeClaim(selected,npcId)
     for _,kind in ipairs(order) do local p=defs[kind] if p.beforeClaim then p.beforeClaim(selected,npcId) end end

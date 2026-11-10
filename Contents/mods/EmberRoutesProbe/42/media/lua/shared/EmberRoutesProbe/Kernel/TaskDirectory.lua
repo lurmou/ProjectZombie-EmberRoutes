@@ -14,6 +14,7 @@ function Directory.new()
     function api:claim(key,revision,npcId,jobId)
         local offer=offers[key]
         if not offer or offer.revision~=revision then return false,'OFFER_CHANGED' end
+        if offer.withdrawn then return false,'OFFER_WITHDRAWN' end
         if offer.jobId then
             return offer.jobId==jobId and offer.npcId==npcId,'OFFER_ALLOCATED'
         end
@@ -23,6 +24,10 @@ function Directory.new()
     function api:withdraw(key)
         local offer=offers[key]
         if offer and offer.jobId then offer.withdrawn=true else offers[key]=nil end
+    end
+    function api:isWithdrawn(key)
+        local offer=offers[key]
+        return not offer or offer.withdrawn==true
     end
     function api:release(key,jobId,proof)
         local offer=offers[key]

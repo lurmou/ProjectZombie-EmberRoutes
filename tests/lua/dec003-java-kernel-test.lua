@@ -121,4 +121,25 @@ jobs.update=originalUpdate
 check(not ok and why=='ROLLBACK_FAILURE' and type(evidence)=='string'
     and evidence:find('RECONCILE_REQUIRED',1,true) and updates==1
     and jobs:get(f.id).revision==1 and jobs:get(f.id).state=='PREPARING','single restore failure marker only')
+check(not Store.createRefusedBeforeWrite(why,evidence),'restore failure is never a clean refusal')
+-- A store refusal before its write is the only TASK_WRITE_FAILURE proven clean.
+assert(Contracts.register('DEC003_FENCE',{validate=function() return true end,
+    blocksScope=function(j) return j.payload.fence==true end}))
+local fence=draft('fence',70) fence.providerType='DEC003_FENCE' fence.scopeId='fenced' fence.payload.fence=true
+assert(Store.createClaimedJob(fence))
+check(jobs:scopeBlocked('fenced'),'fence fixture blocks its scope')
+local refused=draft('fenced-refusal',71) refused.scopeId='fenced'
+ok,why,evidence=Store.createClaimedJob(refused)
+check(not ok and why=='TASK_WRITE_FAILURE' and evidence=='CRAFT_SCOPE_RECONCILE_REQUIRED','scope fence refusal: code and exact evidence')
+check(not jobs:peek(refused.id) and not state.claims.owners['item:71'] and not state.claims.tokensByTaskId[refused.id],
+    'refusal wrote no Job and released the new token')
+check(Store.createRefusedBeforeWrite(why,evidence),'refusal before the write is recognised')
+-- A throw after the store wrote the Job is prefixed and never recognised.
+-- The thrown text names a refusal code: only an exact, unprefixed match counts.
+jobs.create=function(self,job) originalCreate(self,job) error('CRAFT_SCOPE_RECONCILE_REQUIRED') end
+ok,why,evidence=Store.createClaimedJob(draft('after-write',72))
+jobs.create=originalCreate
+check(not ok and why=='TASK_WRITE_FAILURE' and jobs:peek('after-write') and type(evidence)=='string'
+    and evidence:find('CAS_REACHED_RELOAD_FROM_SAVE:',1,true)==1,'post-write throw is prefixed')
+check(not Store.createRefusedBeforeWrite(why,evidence),'post-write throw is not recognised')
 print('PASS '..n..' actual Java kernel contract checks; game NOT RUN')

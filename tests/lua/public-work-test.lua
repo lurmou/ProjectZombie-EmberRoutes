@@ -4,7 +4,7 @@ local function check(v,s) checks=checks+1 assert(v,s) end
 local root={} local serial=0 local now=0 local allowed=true local accepting=true
 local workers={'alice','bob'} local busy={} local calls={} local records={} local offers={} local cargo={}
 local recipe={recipe={getName=function() return 'saw' end},id='saw',name='Saw',product='Base.Plank',yield=3,surface=false}
-local actor={getUsername=function() return 'owner' end,isRecipeKnown=function() return true end,isDead=function() return false end}
+local actor={getUsername=function() return 'owner' end,getX=function() return 1 end,getY=function() return 1 end,isRecipeKnown=function() return true end,isDead=function() return false end}
 local entry={id='s'}
 local membershipRows=dofile('tests/lua/membership-fixture.lua')(function() if allowed then return entry end end,workers)
 local function npc(id) return {id=id,getX=function() return 1 end,getY=function() return 1 end,getZ=function() return 0 end,
@@ -22,7 +22,7 @@ package.loaded['EmberRoutesProbe/Kernel/Boot']={ready=true,runtimeReady=true,has
 package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end,id=function() serial=serial+1 return 'id-'..serial end}
 package.loaded['EmberRoutesProbe/Settlement/SettlementLedger']={view=function() if allowed then return entry end return nil,'ACCESS_DENIED' end,at=function() return {entry} end}
 package.loaded['EmberRoutesProbe/Settlement/SettlementGeometry']={inside=function() return true end}
-package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(_,id) return {handle=handles[id]} end}
+package.loaded['EmberRoutesProbe/Runtime/Driver']={bindId=function(_,id) return {handle=handles[id]} end,suspended=function() return false end}
 package.loaded['EmberRoutesProbe/Runtime/TaskRuntime']={current=function() return {accepting=function() return accepting end,
  status=function(_,id,job) return busy[id] and {jobId=job} or nil end} end}
 package.loaded['EmberRoutesProbe/Work/Work']={busy=function(id) return busy[id] end,hasCargo=function(_,id) return cargo[id] end,
@@ -59,6 +59,8 @@ package.loaded['EmberRoutesProbe/Field/ToolReturnService']={canInterrupt=functio
  reconcile=function() end,returnResult=function() end,liveTask=function() end,
  forgetResult=function() error('no tracked tool return in dispatch-only fixture') end,
  startFor=function() error('unexpected tool return in dispatch-only fixture') end}
+-- No field demand in this craft/haul fixture; the real observer loads the warehouse index.
+package.loaded['EmberRoutesProbe/Field/FieldDemand']={advance=function() end}
 local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local rawCreate=Public.create local requestTokens={}
 Public.create=function(a,s,r,n,surface,label,preferences)
@@ -74,7 +76,9 @@ local snapshot=Public.orders('s') snapshot[1].quantity=99
 check(root.publicWork.orders[order].quantity==4,'order snapshots are detached')
 check(Public.setPriority(actor,'s','alice','crafting',1)=='PRIORITY_SAVED','per-worker priority saved')
 check(Public.setPriorities(actor,'s','alice',{crafting=0,hauling=0},0)=='PRIORITY_CHANGED','stale settings revision is rejected')
-tick() check(#calls==0,'NPC without known recipe cannot claim even at highest priority')
+-- Decisions are phase-spread over the discovery window (decidePhaseMs), so
+-- the first decision for each worker lands within a few discovery ticks.
+tick() tick() tick() check(#calls==0,'NPC without known recipe cannot claim even at highest priority')
 check(studyTargets.alice and studyTargets.alice.recipeId=='saw' and studyTargets.alice.knowledge[1]=='saw',
     'missing knowledge publishes a personal study target without claiming the public order')
 tick() tick() tick() check(#calls==1 and calls[1].npc=='bob','other capable idle NPC claims the public order')

@@ -3,7 +3,31 @@
 local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 local Kernel=require 'EmberRoutesProbe/Kernel/LaborKernelAvailability'
 local M={}
+-- JobStore api:create refusals; each returns before its first write
+-- (JobStore.lua api:create, the checks before nextClaimSeq/byId).
+local CREATE_REFUSALS={JOB_RECORD_INVALID=true,JOB_EXISTS=true,PERSONAL_JOB_EXISTS=true,
+    PERSONAL_JOB_LIMIT=true,JOB_LIMIT=true,JOB_DATA_UNSERIALIZABLE=true}
+-- True only when a failed createClaimedJob is proven to have written nothing.
+-- laborCreate reports a store refusal as TASK_WRITE_FAILURE with the store's
+-- code as evidence, and only after its one restore released the new token: a
+-- failed restore is ROLLBACK_FAILURE, a throw after the write is prefixed
+-- CAS_REACHED_RELOAD_FROM_SAVE:. Anything else (absent, unknown, prefixed,
+-- another code) is unknown effects. shortcut: matches LaborCommitKernel.create
+-- by its result text; upgrade to a structured refusal field if the kernel grows one.
+function M.createRefusedBeforeWrite(code,evidence)
+    if code~='TASK_WRITE_FAILURE' or type(evidence)~='string' then return false end
+    return CREATE_REFUSALS[evidence]==true
+        or evidence==require('EmberRoutesProbe/Kernel/BuiltinJobContracts').scopeBlockedReason
+end
+-- A failed createClaimedJob whose effects are unknown: a write failure not
+-- proven to be a refusal, or a failed restore. Other failure codes are
+-- returned before the write or after a successful restore.
+function M.createEffectsUnknown(code,evidence)
+    return (code=='TASK_WRITE_FAILURE' or code=='ROLLBACK_FAILURE') and not M.createRefusedBeforeWrite(code,evidence)
+end
 function M.install(Store,state,nextAuthoritativeClaimId,cleanToken)
+    Store.createRefusedBeforeWrite=M.createRefusedBeforeWrite
+    Store.createEffectsUnknown=M.createEffectsUnknown
     local function invoke(entry,...)
         local available,diagnosis=Kernel.validate()
         if not available then return false,'KERNEL_UNAVAILABLE',diagnosis end

@@ -18,6 +18,7 @@ local planGenerations = {}
 local CraftingProvider = {
     category = 'crafting',
     defaultPriority = 3,
+    priorityRequired = true,
 }
 
 local function waiting(o, e)
@@ -91,6 +92,16 @@ end
 function CraftingProvider.bumpGeneration(orderId)
     planGenerations[orderId] = (planGenerations[orderId] or 0) + 1
     return planGenerations[orderId]
+end
+
+-- PublicWorkProviders hook: a player command changed a craft order.
+function CraftingProvider.orderCommanded(orderId)
+    CraftingProvider.bumpGeneration(orderId)
+end
+
+-- PublicWorkProviders hook: a settled order was retired.
+function CraftingProvider.orderRetired(orderId, readyWorkers)
+    CraftingProvider.cleanupOrder(orderId, readyWorkers)
 end
 
 function CraftingProvider.cleanupOrder(orderId, readyWorkers)
@@ -267,7 +278,8 @@ end
 
 function CraftingProvider.claim(selected, npcId, jobId, env)
     local o = selected.order
-    if not CookingOrders.parentAllows(o) then return 'TASK_CHANGED' end
+    if not o or o.state == 'CANCELLED' or o.state == 'PAUSED' then return 'TASK_CHANGED', 'ROLLED_BACK' end
+    if not CookingOrders.parentAllows(o) then return 'TASK_CHANGED', 'ROLLED_BACK' end
     o.jobId, o.npcId, o.state = jobId, npcId, 'CLAIMING'
     o.revision = o.revision + 1
     local result = Production.execute(env.actor, 'run', selected.object, npcId, {
@@ -286,6 +298,8 @@ function CraftingProvider.claim(selected, npcId, jobId, env)
         o.state = 'WAITING'
         if env.cool then env.cool(o, npcId, { watch = Wake.capture(env.entry) }, result, env.now) end
         if env.signal then env.signal(o, result) end
+        -- Production.execute queued no session; the order claim is undone above.
+        return result, 'ROLLED_BACK'
     end
     return result
 end

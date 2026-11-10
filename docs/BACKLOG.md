@@ -4,6 +4,17 @@
 
 ## NPC 架构执行记录
 
+2026-11-09 调度投机性打断消除与闲暇两阶段确定性认领架构（方案 A 全生命周期闭环落地）：针对实机观察到 NPC 刚加入据点时做俯卧撑 1 秒立即起立、走两步停下，以及反复去书架拿书再还书的死循环震荡问题，彻底溯源日志与全链路代码并实施系统级两阶段认领修复与全景异常闭环：
+(1) 根除投机打断无凭证唤醒（PublicWork.lua）：废除旧逻辑中一旦探测到候选工单便盲目调用 Probe.leisureWorkReady 唤醒 NPC 的投机行为。引入两阶段确定性预锁（Two-Phase Reservation）：在发现候选工单时，调度器首先原子通过 directory:claim 锁定工单席位并生成 pendingReservations[npcId]，此时才凭据向闲暇层下发 leisureWorkReady(npcId, jobId) 唤醒意图；
+(2) 独立高频推进器（PublicWork.lua: advanceReservations）：彻底剥离 decide() 主循环与 cursor 轮询、eligible() 门禁束缚，在 advance() 头部以 50ms 节拍独立推进在途预留；在 NPC 动作清空且满足物理工作准入瞬间原子调用 provider.claim 派发正式任务；杜绝起身后 500ms~2000ms 的降频发呆；
+(3) 全景异常打断与退单防复活闭环（PublicWork.lua / TaskDirectory.lua / CraftingProvider.lua / Work.lua）：
+  - 玩家退单阻断：TaskDirectory:claim 显式拦截 offer.withdrawn，CraftingProvider.claim 守卫 CANCELLED/PAUSED 状态，彻底杜绝已取消工单幽灵复活；
+  - 玩家指令最高权威：Work.pause 联动 Probe.cancelReservation，玩家手动打断时当帧释放目录席位；
+  - 紧急生存让位：NPC 若遭遇极度饥饿（>0.50）或突发重伤进入 EAT/MEDICAL，调度器立即释放预留席位转由据点其他空闲人员接管，不傻等 15s；
+  - 失能与超时兜底：15s 超时或伤病死亡、驱逐时安全释放席位，根除僵尸锁；
+(4) 生理耐饥无缝过渡与优先级隔离（SelfCare.lua / PublicWork.lua）：在 SelfCare.advance() 中将 hasPendingWork 纳入 isWorking 计算，平稳过渡至工作态耐饥阈值（0.50），避免起身微饿被截流去厨房；for tierIdx 循环内隔离重置 candidates 数组，杜绝跨优先级污染；
+(5) 契约与测试全闭环：适配 tests/lua/leisure-dispatch-transition-test.lua 断言为方案 A 的确定性预锁契约（15 项全景异常与状态断言全部 PASS）；test-execution-sessions.ps1（48 项）全部 PASS；build-probe.ps1 Exit 0，391 份 Lua 编译 0 错误，2211 对多语言翻译全量对齐。
+
 2026-11-08 据点日常物流搬运一对多与多对一闭环（根除单箱折返跑与单件搬运缺陷）：针对实机观察到 NPC 在日常搬运（分拣与箱柜整理）时“一对多与多对一未生效，依然一件一件搬运”的痛点，彻底溯源并打通规划器与执行层生命周期：
 (1) 打通“一对多”规划与交付（LogisticsPlanner.lua / HaulAgent.lua）：废除 LogisticsPlanner.lua:102 中强制要求后续物品最佳目标必须等于首件目标（self.best.id==self.batch.destination）的单标量限制；改为按每个目标箱分别累计预留容量（self.destWeights[endpoint.id]），在不超过 NPC 背包负重与各箱可用容量的前提下，允许分拣箱内去往不同箱子的物品一次性全部装入背包；HaulAgent 在 DELIVER 阶段按背包内物品所属目标箱依次巡回送达交付；
 (2) 打通“多对一”跨源集货（LogisticsPlanner.lua / HaulManifest.lua / HaulAgent.lua）：废除 LogisticsPlanner.lua:78 首箱扫描完毕后盲目立即返回的缺陷，在未达最大件数（30件）或负重仍有充裕（>1.0kg）时持续推进扫描下一个源箱；在 HaulManifest.valid 中放开 LOGISTICS 必须与主记录单一 source 相同的限制，允许每行记录真实 sourceId 与 destinationId；HaulAgent 引入 nextSource(r) 循环遍历多个源箱，逐箱取货直至全量收集；

@@ -70,13 +70,13 @@ function Service.probeable(id)
     return job and job.effects=='KNOWN' and p.step=='ACTING'
         and (p.kind=='LEISURE' or p.kind=='STUDY') or false
 end
-function Service.workReady(id)
+function Service.workReady(id,targetJobId)
     load() offers[id]=nil preferred[id]=nil Social.withdraw(id)
     require('EmberRoutesProbe/Leisure/StudyService').changed(nil,id)
     local job=Jobs.current():forNpc(id,'SELF_CARE')[1]
     if job and Service.probeable(id) then
         local runtime=require('EmberRoutesProbe/Runtime/TaskRuntime').current()
-        require "EmberRoutesProbe/Kernel/Log".write("LEISURE","WORK_READY npc="..tostring(id).." job="..tostring(job.id))
+        require "EmberRoutesProbe/Kernel/Log".write("LEISURE","WORK_READY npc="..tostring(id).." job="..tostring(job.id)..(targetJobId and (" target="..tostring(targetJobId)) or ""))
         if runtime then runtime:stopJob(id,job.id,'LEISURE_WORK_READY') end
     end
 end

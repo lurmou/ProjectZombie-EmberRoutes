@@ -8,6 +8,7 @@ local hauling = {}
 local HaulingProvider = {
     category = 'hauling',
     defaultPriority = 3,
+    priorityRequired = true,
 }
 
 function HaulingProvider.reset()
@@ -36,18 +37,32 @@ function HaulingProvider.discover(env)
     end
 end
 
+-- A refused haul claim is rolled back only when no Job under its id still
+-- holds anything. HaulJobs.claim can create the Job and then fail its commit,
+-- and ERROR is a caught exception with unknown effects; neither is declared.
+local function leftNoJob(jobId)
+    local job = require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(jobId)
+    if not job then return true end
+    if job.state ~= 'DONE' and job.state ~= 'CANCELLED' then return false end
+    for _ in pairs(job.obligations or {}) do return false end
+    return not (job.payload and job.payload.claims and #job.payload.claims > 0)
+end
+
 function HaulingProvider.claim(selected, npcId, jobId, env)
+    local result
     if selected.delivery then
-        return DeliveryService.claim(selected, npcId, jobId, env)
+        result = DeliveryService.claim(selected, npcId, jobId, env)
+    else
+        if not env.directory then return 'OFFER_CHANGED', 'ROLLED_BACK' end
+        Work.allowAutomation(npcId)
+        selected.intent.jobId = jobId
+        result = Work.assign(env.actor, npcId, selected.intent)
+        if result == 'QUEUED' or result == 'STARTED' then
+            hauling[selected.key] = { npcId = npcId, jobId = jobId, directory = env.directory }
+        end
     end
-    if not env.directory then return 'OFFER_CHANGED' end
-    Work.allowAutomation(npcId)
-    selected.intent.jobId = jobId
-    local result = Work.assign(env.actor, npcId, selected.intent)
-    if result == 'QUEUED' or result == 'STARTED' then
-        hauling[selected.key] = { npcId = npcId, jobId = jobId, directory = env.directory }
-    end
-    return result
+    if result == 'QUEUED' or result == 'STARTED' or result == 'ERROR' or not leftNoJob(jobId) then return result end
+    return result, 'ROLLED_BACK'
 end
 
 function HaulingProvider.reconcile()

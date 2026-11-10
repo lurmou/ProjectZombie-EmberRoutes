@@ -357,13 +357,23 @@ local function rejectEmpty(job,token)
     local ok,final,finalToken=Store.replaceCooking(saved,nextToken,j)
     if ok then Store.finishCooking(final,finalToken) end
 end
+local admit
+-- Every non-QUEUED admit() return precedes the first durable write: the only
+-- write before them is book:reserve/createClaimedJob, which stores nothing when
+-- it fails cleanly. A write failure may have stored part of the Job and a
+-- failed restore may keep claims; only a refusal before the write is clean.
 function S.claim(selected,npcId,jobId,env)
+    local result,evidence=admit(selected,npcId,jobId,env)
+    if result=='QUEUED' or Store.createEffectsUnknown(result,evidence) then return result end
+    return result,'ROLLED_BACK'
+end
+admit=function(selected,npcId,jobId,env)
     load() local row=plans[npcId] local binding=idle(env.actor,npcId)
     if not row or not binding or row.entry.id~=selected.scopeId or not row.ready then return 'COOKING_CANDIDATE_CHANGED' end
     -- A failed native revalidation must trigger fresh observation, rather than
     -- advertising the same stale originals forever.
     plans[npcId]=nil
-    local job,prepared,ok,reason
+    local job,prepared,ok,reason,evidence
     local o=selected.orderId and Orders.get(selected.orderId)
     if selected.orderId then
         if not o or o.jobId or o.state~='WAITING' or o.id~=row.orderId or not Orders.parentAllows(o)
@@ -393,7 +403,7 @@ function S.claim(selected,npcId,jobId,env)
         if not prepared then return reason or 'COOKING_BATCH_INVALID' end
         local book=require('EmberRoutesProbe/Cooking/CookingBudget').open(world,Jobs.current())
         local view=book and book:view(row.entry.id) if not view then return 'COOKING_SUPPLY_CHANGED' end
-        ok,reason=book:reserve(job,{scopeId=row.entry.id,stamp=view.stamp,complete=true})
+        ok,reason,evidence=book:reserve(job,{scopeId=row.entry.id,stamp=view.stamp,complete=true})
     else
         local selection,why=row.menu:result() if not selection then plans[npcId]=nil return why end
         local snapshot,err=Supply.observe(row.entry,env.now,getGameTime():getWorldAgeHours(),budgets()) if not snapshot then return err end
@@ -414,9 +424,9 @@ function S.claim(selected,npcId,jobId,env)
             prepared.payload.claims={'item:'..base.id}
         else prepared,reason=Evolved.prepare(job,selection.recipe,selection) end
         if not prepared then return reason end
-        ok,reason=Supply.reserve(row.entry,job,snapshot,selection.minimum,env.now,getGameTime():getWorldAgeHours())
+        ok,reason,evidence=Supply.reserve(row.entry,job,snapshot,selection.minimum,env.now,getGameTime():getWorldAgeHours())
     end
-    if not ok then return reason end
+    if not ok then return reason,evidence end
     if o then o.jobId=jobId o.npcId=npcId o.state='RUNNING' o.revision=o.revision+1 Signals.changed(npcId) end
     -- From here the directory offer stays retained until THIS Job proves closure.
     offers[selected.key]={jobId=jobId,directory=env.directory,ticket=jobId}

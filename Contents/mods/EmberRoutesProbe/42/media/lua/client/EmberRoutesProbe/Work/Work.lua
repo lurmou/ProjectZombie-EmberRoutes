@@ -78,6 +78,7 @@ function Work.pause(reason,id)
         or reason=="ACTION_ORDER" or reason=="HAUL_ORDER" or reason=="PERSISTENCE_SAMPLE" then
         suspended[key]=true
         if Probe.invalidateCare then Probe.invalidateCare(key,reason) end
+        if Probe.cancelReservation then Probe.cancelReservation(key,reason) end
     end
     if worker then worker.pause(reason) schedule:remove(key) end
     for _,executor in pairs(executors) do executor.pause(reason,key) end

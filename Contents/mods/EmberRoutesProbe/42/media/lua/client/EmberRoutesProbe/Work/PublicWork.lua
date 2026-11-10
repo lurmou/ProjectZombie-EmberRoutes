@@ -28,8 +28,10 @@ local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
 local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Perf=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local Gate=require 'EmberRoutesProbe/Kernel/RuntimeGate'
-local HaulingProvider=require 'EmberRoutesProbe/Hauling/HaulingProvider'
-local CraftingProvider=require 'EmberRoutesProbe/Crafting/CraftingProvider'
+-- Load order only: these provider trees have loaded here since before the
+-- manifest; moving them would reorder module load side effects (unverified).
+require 'EmberRoutesProbe/Hauling/HaulingProvider'
+require 'EmberRoutesProbe/Crafting/CraftingProvider'
 local IdleDiscovery=require 'EmberRoutesProbe/Work/IdleDiscovery'
 local CraftYield=require 'EmberRoutesProbe/Crafting/ProductionYield'
 local idle=IdleDiscovery.new()
@@ -90,6 +92,7 @@ local FAULT_RETRY_MS,FAULT_LIMIT=1000,5
 local faultWorld,faultUntil
 local faultCount=0
 local leisureStops,careWaking={},{}
+local pendingReservations={}
 -- Enabled-rule projection with a stable id order; rebuilt only when the rule
 -- set changes (saveRule bumps the revision) or the world root is replaced.
 local rulesCache={world=nil,revision=-1,list={}}
@@ -101,14 +104,13 @@ local function load()
         if root.maintainStock and root.maintainStock.rules then
             for _ in pairs(root.maintainStock.rules) do error('LEGACY_STOCK_RESET_REQUIRED') end
         end
-        decisionScans={}
         idle=IdleDiscovery.new() catalogEpoch,retryWake,idleStudyTargets={},{},{}
         data=OrderStore.load(root)
         world=root directory=Directory.new()
-        CraftingProvider.reset()
-        retryAt={} leisureStops={} careWaking={} faultWorld=nil faultUntil=nil faultCount=0
+        Providers.resetWorld()
+        retryAt={} leisureStops={} careWaking={} pendingReservations={} faultWorld=nil faultUntil=nil faultCount=0
         metrics=Metrics.new() readyWorkers={}
-        cursor,nextTick,orderCursor=0,0,0 HaulingProvider.reset()
+        cursor,nextTick,orderCursor=0,0,0
         nextPrecheck,nextWake,observedWake,dispatchDirty=0,0,nil,true
         nextWakePoll=0 discoveryActive=false providerDue=false workerFaults={}
         nextReconcile,nextStock=0,0
@@ -177,14 +179,17 @@ function Service.setPriorities(actor,scope,npcId,values,revision)
     local binding=Driver.bindId(actor,npcId)
     if not binding or not Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()) then return 'NPC_OUTSIDE_SETTLEMENT' end
     if type(values)~='table' then return 'INVALID_PRIORITY' end
-    -- crafting and hauling are mandatory; every other declared category is
+    -- Providers declaring priorityRequired must be present; every other key is
     -- optional. One pass per shape, no value validated twice.
-    for _,key in ipairs({'crafting','hauling'}) do
-        local value=values[key]
-        if type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
+    for _,p in ipairs(Providers.all()) do
+        if p.priorityRequired then
+            local value=values[p.category]
+            if type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
+        end
     end
     for k,value in pairs(values) do
-        if k~='revision' and k~='crafting' and k~='hauling' then
+        local p=Providers.get(k)
+        if k~='revision' and not (p and p.priorityRequired) then
             if type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
         end
     end
@@ -202,7 +207,7 @@ function Service.setPriorities(actor,scope,npcId,values,revision)
 end
 function Service.setPriority(actor,scope,npcId,category,value)
     local entry,reason=Ledger.view(actor,scope) if not entry then return reason end
-    if (not Providers.has(category) and category~='crafting' and category~='hauling') or type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
+    if not Providers.has(category) or type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
     local binding=Driver.bindId(actor,npcId)
     if not binding or not Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()) then return 'NPC_OUTSIDE_SETTLEMENT' end
     -- priorities() returns a shared read-only projection; copy before editing.
@@ -296,14 +301,17 @@ function Service.command(actor,scope,id,revision,action)
     local entry,reason=Ledger.view(actor,scope) if not entry then return reason end
     local o=load().orders[id]
     if not o or o.settlementId~=scope or o.revision~=revision then return 'TASK_CHANGED' end
-    if o.category=='cooking' then return require('EmberRoutesProbe/Cooking/CookingOrders').command(o,action) end
+    -- An order whose category names a provider with its own command is handled
+    -- there entirely; the rest (no category) are public craft orders, below.
+    local owner=o.category and Providers.get(o.category)
+    if owner and owner.command then return owner.command(o,action) end
     if o.jobId then return 'ORDER_ALREADY_CLAIMED' end
     if o.state=='CANCELLED' or o.state=='DONE' then return 'TASK_CHANGED' end
     if action=='return' then o.state='CANCELLED' directory:withdraw('craft:'..id)
     elseif action=='stop' then o.state='PAUSED' directory:withdraw('craft:'..id)
     elseif action=='resume' and o.state=='PAUSED' then o.state='WAITING'
     else return 'INVALID_COMMAND' end
-    CraftingProvider.bumpGeneration(id)
+    Providers.orderCommanded(id)
     if Probe.invalidateStudy then Probe.invalidateStudy(scope) end
     o.revision=o.revision+1 catalogEpoch[scope]=(catalogEpoch[scope] or 0)+1
     Signals.changed() return 'ORDER_UPDATED'
@@ -403,19 +411,22 @@ local function retryReady(o,npcId,now)
     if r and r.untilTime>now then retryWake[npcId]=math.min(retryWake[npcId] or math.huge,r.untilTime) end
     return not r or now>=r.untilTime or Wake.changed(r.watch)
 end
-Providers.register(CraftingProvider)
-Providers.register(HaulingProvider)
-Providers.register(require 'EmberRoutesProbe/Cooking/CookingProvider')
-Providers.register(require 'EmberRoutesProbe/Field/CleaningProvider')
-Providers.register(require 'EmberRoutesProbe/Field/FarmingProvider')
-Providers.register(require 'EmberRoutesProbe/Field/LumberjackProvider')
-Providers.register(require 'EmberRoutesProbe/Field/ForagerProvider')
-Providers.register(require 'EmberRoutesProbe/Field/ToolReturnProvider')
+local function assertRegister(def)
+    local ok,err=Providers.register(def)
+    if not ok then error('PROVIDER_REGISTRATION_FAILED:'..tostring(err)..':'..tostring(type(def)=='table' and def.category or '?')) end
+end
+for _,e in ipairs(require('EmberRoutesProbe/Work/LaborManifest').categories) do assertRegister(e.provider()) end
 
 local function reconcile()
     for _,p in ipairs(Providers.all()) do
         if p.reconcile then p.reconcile({orders=data.orders,directory=directory,catalogEpoch=catalogEpoch,signal=signal}) end
     end
+end
+-- A DONE order with neither a job nor craft progress retires only when the
+-- provider its category names says so (cooking settles its own jobs).
+local function retiresUnclaimed(o)
+    local owner=o.category and Providers.get(o.category)
+    return owner and owner.retireUnclaimed and owner.retireUnclaimed(o) or false
 end
 function Service.retireSettled(limit)
     load()
@@ -435,7 +446,7 @@ function Service.retireSettled(limit)
         -- An unclaimed cancellation has never acquired originals. Claimed
         -- work must prove its exact Job is closed, not merely absent.
         if settled and (o.jobId and Jobs.canRetire(o.jobId,id)
-            or not o.jobId and (not o.craftProgress and (o.state=='CANCELLED' or o.category=='cooking' and o.state=='DONE')
+            or not o.jobId and (not o.craftProgress and (o.state=='CANCELLED' or retiresUnclaimed(o))
                 or o.craftProgress and (Jobs.canRetire(o.craftProgress.settledJobId,id)
                     or Jobs.record(o.craftProgress.settledJobId,'CRAFT')==nil))) then
             if not o.jobId or Jobs.retire(o.jobId,id) then
@@ -452,7 +463,7 @@ function Service.retireSettled(limit)
                     r.activeOrder=nil r.nextCheck=getTimestampMs()+2000
                     require('EmberRoutesProbe/Warehouse/WarehouseIndex').refresh(r.settlementId,false)
                 end end
-                CraftingProvider.cleanupOrder(id,readyWorkers)
+                Providers.orderRetired(id,readyWorkers)
                 for key in pairs(retryAt) do if string.sub(key,1,#id+1)==id..':' then retryAt[key]=nil end end
                 data.orders[id]=nil count=count+1
                 if count>=limit then break end
@@ -474,8 +485,7 @@ local function eligible(actor,npcId,scope)
     local returningInterruptible=ToolReturnService and ToolReturnService.canInterrupt and ToolReturnService.canInterrupt(npcId)
     if not binding or not binding.handle or (Work.busy(npcId) and not returningInterruptible and not probing)
         or Probe.careBlocksWork and Probe.careBlocksWork(npcId) and not probing then return end
-    if require('EmberRoutesProbe/Cooking/CookingProvider').retained(npcId) then return end
-    if require('EmberRoutesProbe/Field/FieldWork').retained(npcId) then return end
+    if Providers.retained(npcId) then return end
     local existing=business().crafts()[npcId]
     if existing and not existing.released then return end
     local npc=binding.handle
@@ -498,15 +508,91 @@ local function measured(name,fn,...)
     Perf.measureSpan(name,started)
     return a,b,c,d
 end
+local function cancelReservation(npcId,reason)
+    local res=pendingReservations[npcId]
+    if res then
+        pendingReservations[npcId]=nil
+        if directory then
+            directory:release(res.selected.key,res.jobId,{effects='KNOWN',obligationsCleared=true})
+        end
+        if reason then
+            cool({id=res.selected.key},npcId,{watch=Wake.capture(res.entry)},reason,getTimestampMs())
+        end
+    end
+end
+-- The one provider-claim path for direct decisions and promoted reservations.
+-- A failed claim releases its offer only on the provider's rollback declaration.
+local function claimSelected(actor,npcId,now,selected,jobId,entry)
+    idle:clear(npcId)
+    Providers.cancelPending(npcId)
+    Providers.beforeClaim(selected,npcId)
+    local result,declaration
+    local provider=Providers.get(selected.category)
+    if provider and provider.claim then
+        result,declaration=provider.claim(selected,npcId,jobId,{actor=actor,entry=entry,now=now,directory=directory,
+            releaseOffer=function(k,j,p) return directory:release(k,j,p) end})
+    else
+        -- No provider code ran for this offer, so nothing exists to roll back.
+        declaration=Providers.CLAIM_ROLLED_BACK
+    end
+    local retained
+    if result~='QUEUED' and result~='STARTED' then
+        workerBackoff[npcId]=(workerBackoff[npcId] or 0)+1
+        cool({id=selected.key},npcId,{watch=Wake.capture(entry)},result,now)
+        retained=Providers.settleFailedClaim(directory,selected.key,jobId,declaration)
+    else
+        workerBackoff[npcId]=nil
+        metrics.claims=metrics.claims+1
+    end
+    Signals.changed(npcId)
+    Log.write('DISPATCH','npc='..npcId..' offer='..selected.key..' job='..jobId..' result='..tostring(result)
+        ..(retained and ' OFFER_RETAINED reason='..retained or ''))
+end
+local function advanceReservations(now,actor)
+    for npcId,res in pairs(pendingReservations) do
+        local TaskJobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+        local personalJob=TaskJobs and TaskJobs.current():forNpc(npcId,'SELF_CARE')[1]
+        if now-res.createdAt>15000 then
+            cancelReservation(npcId,'RESERVATION_TIMEOUT')
+            workerBackoff[npcId]=(workerBackoff[npcId] or 0)+1
+        elseif directory and directory.isWithdrawn and directory:isWithdrawn(res.selected.key) then
+            cancelReservation(npcId,'OFFER_WITHDRAWN')
+        elseif personalJob and personalJob.payload and personalJob.payload.step=='ACTING'
+            and personalJob.payload.kind~='LEISURE' and personalJob.payload.kind~='STUDY' then
+            cancelReservation(npcId,'URGENT_SELF_CARE')
+        else
+            local binding,entry=eligible(actor,npcId,res.selected.scopeId or res.entry.id)
+            local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
+            if binding and not probing then
+                pendingReservations[npcId]=nil
+                -- The reservation's own entry, as before; the fresh one only gates eligibility.
+                claimSelected(actor,npcId,now,res.selected,res.jobId,res.entry)
+            else
+                local bind=Driver.bindId(actor,npcId)
+                local fatal=not bind or not bind.handle or Driver.suspended(bind.handle)
+                    or (require('EmberRoutesProbe/SelfCare/HealthAssessment').canWork and not require('EmberRoutesProbe/SelfCare/HealthAssessment').canWork(bind.handle))
+                    or (require('EmberRoutesProbe/Activity/ActivityAttendance').blocksOrdinary and require('EmberRoutesProbe/Activity/ActivityAttendance').blocksOrdinary(npcId))
+                if fatal then
+                    cancelReservation(npcId,'WORKER_FATAL_INELIGIBLE')
+                else
+                    dispatchDirty=true
+                    nextWake=math.min(nextWake,now+50)
+                end
+            end
+        end
+    end
+end
 local function decide(actor,npcId,now,binding,entry)
+    if pendingReservations[npcId] then return end
+
     if not binding then binding,entry=eligible(actor,npcId) end
-    if not binding then Providers.cancelPending(npcId) idle:clear(npcId) return end
+    if not binding then Providers.cancelPending(npcId) idle:clear(npcId) cancelReservation(npcId,'ELIGIBLE_FAILED') return end
     local npc=binding.handle
-    if Providers.blocksDecision(actor,npcId,entry) then return end
-    if Work.hasCargo(actor,npcId) then Providers.cancelPending(npcId) return end
+    if Providers.blocksDecision(actor,npcId,entry) then cancelReservation(npcId,'DECISION_BLOCKED') return end
+    if Work.hasCargo(actor,npcId) then Providers.cancelPending(npcId) cancelReservation(npcId,'CARGO_INTERRUPT') return end
     if TaskJobs.current():ordinaryCount()>=JobStore.LIMIT then
 	Providers.capacityBlocked(npcId,data.orders,signal)
-	Providers.cancelPending(npcId) return
+	Providers.cancelPending(npcId) cancelReservation(npcId,'CAPACITY_BLOCKED') return
     end
     local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
     if not probing then leisureStops[npcId]=nil end
@@ -560,6 +646,8 @@ local function decide(actor,npcId,now,binding,entry)
     for tierIdx=1,4 do
         local tierProviders=providersByTier[tierIdx]
         if #tierProviders>0 then
+            candidates={}
+            envDiscover.candidates=candidates
             envDiscover.priority=tierIdx
             for _,provider in ipairs(tierProviders) do
                 if Perf.active() then
@@ -602,15 +690,6 @@ local function decide(actor,npcId,now,binding,entry)
             for _=1,3 do
                 selected=Selector.choose(candidates,priorities)
                 if not selected then break end
-                if probing then
-                    if now>=(leisureStops[npcId] or 0) then
-                        leisureStops[npcId]=now+1500
-                        if Probe.leisureWorkReady then Probe.leisureWorkReady(npcId) end
-                    end
-                    careWaking[npcId]=true
-                    idle:clear(npcId)
-                    return
-                end
                 jobId=Registry.id()
                 if directory:claim(selected.key,selected.revision,npcId,jobId) then break end
                 cool({id=selected.key},npcId,{watch=Wake.capture(entry)},'CLAIM_BUSY',now)
@@ -643,24 +722,20 @@ local function decide(actor,npcId,now,binding,entry)
             end
             return
     end
-    idle:clear(npcId)
-    Providers.cancelPending(npcId)
-    Providers.beforeClaim(selected,npcId)
-    local result
-    local provider=Providers.get(selected.category)
-    if provider and provider.claim then
-        result=provider.claim(selected,npcId,jobId,{actor=actor,entry=entry,now=now,directory=directory,
-            releaseOffer=function(k,j,p) return directory:release(k,j,p) end})
+
+    if probing then
+        pendingReservations[npcId]={selected=selected,jobId=jobId,entry=entry,createdAt=now}
+        if now>=(leisureStops[npcId] or 0) then
+            leisureStops[npcId]=now+1500
+            if Probe.leisureWorkReady then Probe.leisureWorkReady(npcId,jobId) end
+        end
+        careWaking[npcId]=true
+        idle:clear(npcId)
+        dispatchDirty=true
+        nextWake=math.min(nextWake,now+50)
+        return
     end
-    if result~='QUEUED' and result~='STARTED' then
-        workerBackoff[npcId]=(workerBackoff[npcId] or 0)+1
-        cool({id=selected.key},npcId,{watch=Wake.capture(entry)},result,now)
-        directory:release(selected.key,jobId,{effects='KNOWN',obligationsCleared=true})
-    else
-        workerBackoff[npcId]=nil
-    end
-    if result=='QUEUED' or result=='STARTED' then metrics.claims=metrics.claims+1 end
-    Signals.changed(npcId) Log.write('DISPATCH','npc='..npcId..' offer='..selected.key..' job='..jobId..' result='..tostring(result))
+    claimSelected(actor,npcId,now,selected,jobId,entry)
 end
 
 -- Precheck adapters are hoisted: rebuilding seven closures on every 50 ms pass
@@ -696,6 +771,7 @@ local function advance(now,discover,providerDue,precheckDue)
     load()
     if world.executionSave and world.executionSave.state=='BLOCKED' then return end
     local actor=getSpecificPlayer(0) if not actor or actor:isDead() then return end
+    measured('PublicWork.reservations',advanceReservations,now,actor)
     measured('PublicWork.observe',Providers.observeDemand,actor,now,eligible,Service.priorities)
     if providerDue then
         for _,provider in ipairs(Providers.all()) do
@@ -774,6 +850,11 @@ function Service.tick()
         local revision=Wake.revision and Wake.revision()
         if revision~=observedWake then observedWake=revision dispatchDirty=true end
     end
+    for _ in pairs(pendingReservations) do
+        dispatchDirty=true
+        nextWake=math.min(nextWake,now+50)
+        break
+    end
     local discover=now>=nextTick or (dispatchDirty and now>=nextWake)
     if not discover and now<nextPrecheck then return end
     local precheckDue=now>=nextPrecheck
@@ -806,5 +887,13 @@ function Service.tick()
             ..(faultWorld and ' state=LOCKED' or ' state=RETRY'))
     end
 end
+function Service.hasReservation(npcId)
+    return pendingReservations[npcId]~=nil
+end
+function Service.cancelReservation(npcId)
+    cancelReservation(npcId,'MANUAL_CANCEL')
+end
 Probe.publicDispatch=true Probe.tickPublicWork=Service.tick
+Probe.hasPendingWork=Service.hasReservation
+Probe.cancelReservation=Service.cancelReservation
 return Service

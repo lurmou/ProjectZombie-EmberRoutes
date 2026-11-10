@@ -8,10 +8,17 @@ local function use()
     return service
 end
 function P.discover(env) local s = use() if s then return s.discover(env) end end
-function P.claim(...) local s = use() return s and s.claim(...) or 'CLEANING_UNAVAILABLE' end
+function P.claim(...)
+    local s = use() if not s then return 'CLEANING_UNAVAILABLE', 'ROLLED_BACK' end
+    local result, rollback = s.claim(...)
+    return result or 'CLEANING_UNAVAILABLE', rollback
+end
 function P.reconcile() if service then return service.reconcile() end end
 function P.advance(env) local s = use() if s then return s.advance(env) end end
 function P.hasWork() return service and service.hasWork() or false end
+-- Any unfinished FIELD_WORK job retains the worker. Not gated on field operations:
+-- a saved job still holds its worker while the native adapters are closed.
+function P.retained(id) return require('EmberRoutesProbe/Field/FieldWork').retained(id) end
 function P.observeDemand(actor,now,eligible,priorities)
     return require('EmberRoutesProbe/Field/FieldDemand').advance(actor,now,eligible,priorities)
 end

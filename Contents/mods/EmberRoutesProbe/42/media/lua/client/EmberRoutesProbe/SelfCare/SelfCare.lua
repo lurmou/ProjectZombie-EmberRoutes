@@ -280,7 +280,8 @@ local function advance(actor,binding,row,now)
         and sample.hunger<0.5 and sample.thirst<0.5))}
     for blocked,deadline in pairs(row.unavailable or {}) do if now<deadline then offers[blocked]=false end end
     local current=runtime and runtime:status(id)
-    local isWorking=current and current.state=='ACTIVE' and current.started and current.kind~='SELF_CARE' and not (job and job.payload.step~='IDLE')
+    local hasPending=Probe.hasPendingWork and Probe.hasPendingWork(id)
+    local isWorking=(hasPending or (current and current.state=='ACTIVE' and current.started and current.kind~='SELF_CARE')) and not (job and job.payload.step~='IDLE')
     local kind=Policy.choose(sample,job and job.payload.lastKind,{safe=true,isWorking=isWorking},offers)
     -- A player sleep order overrides the fatigue threshold only; safety,
     -- backoff windows and the bed requirement below still gate it.
@@ -300,14 +301,16 @@ local function advance(actor,binding,row,now)
         {x=binding.handle:getX(),y=binding.handle:getY(),z=binding.handle:getZ()}).allowed
     if discoverReady and not gathering and not kind and idleEligible
         and not (job and job.payload.leisureMemory and job.payload.leisureMemory.resumeHint) and (not job or not job.payload.resume or job.payload.resume.state=='RESTORED'
-        or job.payload.resume.state=='INVALIDATED') and budget.scan>0 then
+        or job.payload.resume.state=='INVALIDATED') and budget.scan>0
+        and not (Probe.hasPendingWork and Probe.hasPendingWork(id)) then
         studyAttempted=true
         local candidate,done,reason=use('Leisure/StudyService').candidate(actor,binding.handle,id,budget,job and job.payload.leisureMemory)
         row.studyReason=reason
         if candidate then studyCandidate=candidate kind='STUDY'
         elseif not done then row.studyReason=reason or 'LIBRARY_OBSERVING' end
     end
-    if discoverReady and not kind and idleEligible and not runtime:owns(id) and (not ref or ref.state=='RESTORED' or ref.state=='INVALIDATED') then
+    if discoverReady and not kind and idleEligible and not runtime:owns(id) and (not ref or ref.state=='RESTORED' or ref.state=='INVALIDATED')
+        and not (Probe.hasPendingWork and Probe.hasPendingWork(id)) then
         leisureAttempted=true
         local candidate,done=use('Leisure/LeisureService').candidate(actor,binding,sample,budget,job and job.payload.leisureMemory)
         if job then job=Jobs.current():get(job.id) end
@@ -592,7 +595,7 @@ function Service.install()
     end
     Probe.careProbeWork=function(id) return use('Leisure/LeisureService').probeable(id) end
 
-    Probe.leisureWorkReady=function(id) use('Leisure/LeisureService').workReady(id) end
+    Probe.leisureWorkReady=function(id,targetJobId) use('Leisure/LeisureService').workReady(id,targetJobId) end
     Probe.invalidateLeisure=function(id,reason) use('Leisure/LeisureService').invalidate(id,reason) end
     Probe.selfCareInstalled=true
 end

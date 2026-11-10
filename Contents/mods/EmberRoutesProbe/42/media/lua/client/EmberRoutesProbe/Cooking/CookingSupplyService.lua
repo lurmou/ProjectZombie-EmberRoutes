@@ -100,8 +100,8 @@ function S.reserve(entry,job,snapshot,minimum,now,hours)
     -- Do not trust mutable caller snapshot values for stock, population or hysteresis.
     local supply={scopeId=entry.id,stamp=live.stamp,complete=true,population=n,
         ready=row.snapshot.ready,active=row.active,minimum=minimum}
-    local ok,reason=book:reserve(job,supply)
+    local ok,reason,evidence=book:reserve(job,supply)
     if ok then row.scan=nil row.snapshot=nil row.watch=nil end
-    return ok,reason
+    return ok,reason,evidence
 end
 return S

@@ -21,7 +21,8 @@ public final class EnvironmentInteraction {
         NONE,
         INTERACTED,
         CLIMBING,
-        BLOCKED
+        BLOCKED,
+        WAIT_DOORWAY
     }
 
     private EnvironmentInteraction() {}
@@ -93,24 +94,44 @@ public final class EnvironmentInteraction {
         IsoObject doorObj = curSq.getDoorTo(nextSq);
         if (doorObj instanceof IsoDoor) {
             IsoDoor door = (IsoDoor) doorObj;
-            if (!door.IsOpen()) {
-                if (door.couldBeOpen(player)) {
-                    door.ToggleDoor(player);
-                    return door.IsOpen() ? Result.INTERACTED : Result.BLOCKED;
-                }
+            if (door.isBarricaded() || door.isObstructed()) return Result.BLOCKED;
+            if (!door.IsOpen() && !door.couldBeOpen(player)) {
                 return Result.BLOCKED;
+            }
+
+            long edgeKey = DoorwayArbiter.coordKey(curSq.getX(), curSq.getY(), nextSq.getX(), nextSq.getY(), curSq.getZ());
+            String npcId = DoorwayArbiter.resolveNpcId(player);
+            long now = System.nanoTime();
+            if (!DoorwayArbiter.acquire(edgeKey, npcId, now, player.getX(), player.getY())) {
+                return Result.WAIT_DOORWAY;
+            }
+
+            if (!door.IsOpen()) {
+                door.ToggleDoor(player);
+                return door.IsOpen() ? Result.INTERACTED : Result.BLOCKED;
             }
             return Result.NONE;
         } else if (doorObj instanceof IsoThumpable) {
             IsoThumpable thump = (IsoThumpable) doorObj;
-            if (thump.isDoor() && !thump.IsOpen()) {
-                if (thump.couldBeOpen(player)) {
+            if (thump.isDoor()) {
+                if (thump.isBarricaded() || thump.isObstructed()) return Result.BLOCKED;
+                if (!thump.IsOpen() && !thump.couldBeOpen(player)) {
+                    return Result.BLOCKED;
+                }
+
+                long edgeKey = DoorwayArbiter.coordKey(curSq.getX(), curSq.getY(), nextSq.getX(), nextSq.getY(), curSq.getZ());
+                String npcId = DoorwayArbiter.resolveNpcId(player);
+                long now = System.nanoTime();
+                if (!DoorwayArbiter.acquire(edgeKey, npcId, now, player.getX(), player.getY())) {
+                    return Result.WAIT_DOORWAY;
+                }
+
+                if (!thump.IsOpen()) {
                     thump.ToggleDoor(player);
                     return thump.IsOpen() ? Result.INTERACTED : Result.BLOCKED;
                 }
-                return Result.BLOCKED;
+                return Result.NONE;
             }
-            return Result.NONE;
         }
 
         // 2. Window check
