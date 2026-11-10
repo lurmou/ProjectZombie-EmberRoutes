@@ -61,7 +61,11 @@ public final class NativeActionSystem {
         stopAction(character);
         try {
             BaseAction action = new BaseAction(character);
-            action.maxTime = durationTicks <= 0 ? Integer.MAX_VALUE : durationTicks;
+            // Vanilla sentinel: BaseAction.finished() never ends on time when
+            // maxTime == -1, so a negative duration means "unbounded" here.
+            // durationTicks == 0 is passed through as maxTime == 0, which the
+            // engine ends immediately (time spent >= maxTime), never hangs.
+            action.maxTime = durationTicks < 0 ? -1 : durationTicks;
             action.stopOnWalk = blockMovement;
             action.stopOnRun = true;
             action.stopOnAim = true;
