@@ -154,7 +154,7 @@ function Companion.report() local worker=agent() return worker.report() end
 function Companion.reset()
     Companion.cancelAll("WORLD_RESET") agents={}
 end
-Probe.cancelCompanion=Companion.cancel
+if Probe.registerCancel then Probe.registerCancel("Companion", Companion.cancel) end
 if Probe.registerReset then Probe.registerReset("Companion", Companion.reset) end
 Probe.cancelEveryCompanion=Companion.cancelAll
 Probe.tickTasks,Probe.beginTasks=Runtime.tick,Runtime.begin

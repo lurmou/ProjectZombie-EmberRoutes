@@ -42,7 +42,7 @@ Probe.tickHaul = Probe.tickActions
 Probe.tickTasks = Probe.tickActions
 Probe.registerCancel("Actions", function() cancelled = cancelled + 1 end)
 Probe.registerCancel("Haul", function() cancelled = cancelled + 1 end)
-Probe.cancelCompanion = function() cancelled = cancelled + 1 end
+Probe.registerCancel("Companion", function() cancelled = cancelled + 1 end)
 tickPaused()
 check(paused == 0, "paused cleanup does nothing before bridge begin")
 callbacks.OnGameStart()
