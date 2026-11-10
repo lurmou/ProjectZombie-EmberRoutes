@@ -2,6 +2,10 @@
 -- resumes or settles another owner's work; unknown business remains blocked.
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
+local LifeZoneVisits=require 'EmberRoutesProbe/Settlement/LifeZoneVisits'
+local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local ProductionYield=require 'EmberRoutesProbe/Crafting/ProductionYield'
+local ActivityOwners=require 'EmberRoutesProbe/Activity/ActivityOwners'
 local R={}
 local responsibilityReasons={CRAFT='ACTIVITY_CRAFT_SETTLING',HAUL='ACTIVITY_HAUL_SETTLING',COOKING='ACTIVITY_COOKING_SETTLING'}
 local function occupied(value) for _ in pairs(value or {}) do return true end return false end
@@ -11,6 +15,49 @@ function R.inspect(id,ref,careId)
         if priority>rank or priority==rank and r<(reason or '') then state,reason,rank=s,r,priority end
     end
     local ownCare,freeCraft
+    local function inspectOther(job,p)
+        if not JobState.isTerminal(job.state) then block('WAIT','ACTIVITY_OTHER_JOB_RETAINED',2) end
+    end
+    local function inspectSelfCare(job,p)
+        local route=p.leisure and p.leisure.zoneVisit
+        local own=job.id==careId and p.kind=='LEISURE' and route and route.eventId==ref.eventId
+            and route.id==ref.id and route.revision==ref.revision and #p.claims==1 and not occupied(job.obligations)
+            and p.leisure.point and p.claims[1]==LifeZoneVisits.tileKey(p.leisure.point)
+        if own then ownCare=job.id
+        elseif p.step~='IDLE' or #p.claims>0 then
+            block('WAIT',p.kind=='STUDY' and 'ACTIVITY_BOOK_RETURN' or 'ACTIVITY_PERSONAL_SETTLING',2)
+        end
+        local resume=p.resume
+        if TaskResume.pending(resume,id) then
+            block('WAIT','ACTIVITY_PREDECESSOR_PENDING',3)
+        end
+    end
+    local function inspectActivity(job,p)
+        if p.eventId==ref.eventId then
+            if not JobState.isTerminal(job.state) and p.step~='INVITED' and p.step~='FREE' and p.step~='PERSONAL' then
+                block('WAIT','ACTIVITY_BODY_BUSY',2)
+            end
+        else
+            -- The old elseif chain fell through to the else branch when an
+            -- ACTIVITY job belonged to another event; keep that fall-through.
+            inspectOther(job,p)
+        end
+    end
+    local function inspectCraft(job,p)
+        local cleared=ProductionYield.assetFree(p)
+        if cleared then freeCraft=true end
+        if not p.released and not cleared or occupied(p.claims) then block('WAIT','ACTIVITY_CRAFT_SETTLING',2) end
+    end
+    local function inspectHaul(job,p)
+        if p.state~='DONE' then block('WAIT','ACTIVITY_HAUL_SETTLING',2) end
+    end
+    local function inspectCooking(job,p)
+        if not JobState.isTerminal(job.state) or p.duty~=nil or occupied(p.claims) then
+            block('WAIT','ACTIVITY_COOKING_SETTLING',3)
+        end
+    end
+    local inspectHandlers={SELF_CARE=inspectSelfCare,ACTIVITY=inspectActivity,CRAFT=inspectCraft,
+        HAUL=inspectHaul,COOKING=inspectCooking}
     Jobs.current():visitNpc(id,function(job)
         local p=job.payload
         if job.effects~='KNOWN' then block('UNKNOWN','ACTIVITY_EFFECTS_UNKNOWN',4) return end
@@ -19,34 +66,8 @@ function R.inspect(id,ref,careId)
             or 'ACTIVITY_OBLIGATIONS_PENDING'
         if occupied(job.obligations) then block('WAIT',responsibility,3) end
         if job.providerType~='SELF_CARE' and occupied(p.claims) then block('WAIT',responsibility,3) end
-        if job.providerType=='SELF_CARE' then
-            local route=p.leisure and p.leisure.zoneVisit
-            local own=job.id==careId and p.kind=='LEISURE' and route and route.eventId==ref.eventId
-                and route.id==ref.id and route.revision==ref.revision and #p.claims==1 and not occupied(job.obligations)
-                and p.leisure.point and p.claims[1]==require('EmberRoutesProbe/Settlement/LifeZoneVisits').tileKey(p.leisure.point)
-            if own then ownCare=job.id
-            elseif p.step~='IDLE' or #p.claims>0 then
-                block('WAIT',p.kind=='STUDY' and 'ACTIVITY_BOOK_RETURN' or 'ACTIVITY_PERSONAL_SETTLING',2)
-            end
-            local resume=p.resume
-            if require('EmberRoutesProbe/Runtime/TaskResume').pending(resume,id) then
-                block('WAIT','ACTIVITY_PREDECESSOR_PENDING',3)
-            end
-        elseif job.providerType=='ACTIVITY' and p.eventId==ref.eventId then
-            if not JobState.isTerminal(job.state) and p.step~='INVITED' and p.step~='FREE' and p.step~='PERSONAL' then
-                block('WAIT','ACTIVITY_BODY_BUSY',2)
-            end
-        elseif job.providerType=='CRAFT' then
-            local cleared=require('EmberRoutesProbe/Crafting/ProductionYield').assetFree(p)
-            if cleared then freeCraft=true end
-            if not p.released and not cleared or occupied(p.claims) then block('WAIT','ACTIVITY_CRAFT_SETTLING',2) end
-        elseif job.providerType=='HAUL' then
-            if p.state~='DONE' then block('WAIT','ACTIVITY_HAUL_SETTLING',2) end
-        elseif job.providerType=='COOKING' then
-            if not JobState.isTerminal(job.state) or p.duty~=nil or occupied(p.claims) then
-                block('WAIT','ACTIVITY_COOKING_SETTLING',3)
-            end
-        elseif not JobState.isTerminal(job.state) then block('WAIT','ACTIVITY_OTHER_JOB_RETAINED',2) end
+        local handler=inspectHandlers[job.providerType] or inspectOther
+        handler(job,p)
     end)
     return {state=state,reason=reason,rank=rank,ownCare=ownCare,freeCraft=freeCraft}
 end
@@ -67,7 +88,7 @@ function R.activeParticipation(job,event,status)
     local member=event.roster[job.npcId] local ref=p.activityRef
     if not member or not ref or ref.controlEpoch~=event.controlEpoch
         or (ref.participantEpoch or 1)~=(member.participantEpoch or 1) then return false end
-    if not require('EmberRoutesProbe/Activity/ActivityOwners').active(event,job) then return false end
+    if not ActivityOwners.active(event,job) then return false end
     return p.kind=='LEISURE' and p.leisure and p.leisure.started and not p.leisure.zoneVisit
         or p.kind=='STUDY' and p.study and p.study.leisure and p.reading and p.reading.started or false
 end
