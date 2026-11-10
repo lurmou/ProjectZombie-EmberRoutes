@@ -376,5 +376,4 @@ function Service.hasWork()
 end
 function Service.reset() nextRecovery=0 scanWorld,scans,discoveryCursor,recoveryCursor=nil,{},{},0 end
 require('EmberRoutesProbe/Kernel/Boot').resetDelivery=Service.reset
-require('EmberRoutesProbe/Kernel/Boot').tickDelivery=nil
 return Service

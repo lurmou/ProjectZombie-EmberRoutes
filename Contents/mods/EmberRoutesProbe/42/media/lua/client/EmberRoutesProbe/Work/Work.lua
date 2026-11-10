@@ -167,6 +167,6 @@ function Work.reset()
     for _,executor in pairs(executors) do executor.reset() end
     agents,handles,schedule,suspended={},{},Schedule.new(),{}
 end
-Probe.tickWork,Probe.cancelWork,Probe.resetWork,Probe.workHasCargo=Work.tick,Work.pause,Work.reset,Work.hasCargo
+Probe.tickWork,Probe.cancelWork,Probe.resetWork=Work.tick,Work.pause,Work.reset
 Probe.pauseAllWork=Work.pauseAll
 return Work

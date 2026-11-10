@@ -4,8 +4,8 @@ local Companion=require "EmberRoutesProbe/Settlement/Companion"
 require "EmberRoutesProbe/Runtime/Persistence"
 require "EmberRoutesProbe/Warehouse/StockService"
 require "EmberRoutesProbe/Work/PublicWork"
--- Load eagerly: Boot registers Probe.tickDelivery once, so a lazy require from the
--- first "call delivery" click would leave early orders without a ticker.
+-- Load eagerly: DeliveryService registers Probe.resetDelivery at load, so a lazy require from the
+-- first "call delivery" click would leave early orders without a registered reset.
 require "EmberRoutesProbe/Logistics/DeliveryService"
 require "EmberRoutesProbe/Activity/ActivityService"
 require('EmberRoutesProbe/Runtime/TaskResume').install()

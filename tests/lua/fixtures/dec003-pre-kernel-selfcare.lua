@@ -563,7 +563,6 @@ function Service.install()
         end
     end
     Probe.careProbeWork=function(id) return use('LeisureService').probeable(id) end
-    Probe.leisureWorkState=function(id,entry,state) use('LeisureService').workState(id,entry,state) end
     Probe.leisureWorkReady=function(id) use('LeisureService').workReady(id) end
     Probe.invalidateLeisure=function(id,reason) use('LeisureService').invalidate(id,reason) end
     Probe.selfCareInstalled=true
