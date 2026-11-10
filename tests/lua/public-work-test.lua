@@ -61,6 +61,14 @@ package.loaded['EmberRoutesProbe/Field/ToolReturnService']={canInterrupt=functio
  startFor=function() error('unexpected tool return in dispatch-only fixture') end}
 -- No field demand in this craft/haul fixture; the real observer loads the warehouse index.
 package.loaded['EmberRoutesProbe/Field/FieldDemand']={advance=function() end}
+-- SettlementZones stub must exist before PublicWork loads: PublicWork now
+-- requires MembershipPosting at its header, and MembershipPosting captures
+-- SettlementZones at load time. Load-order adaptation only; the stub table
+-- and all assertions below are unchanged.
+package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={
+    get=function() return {id='posted',settlementId='s',enabled=true} end,
+    coveredZone=function() return true end,
+    contains=function(_,x,y,z) return x>=0 and x<4 and y>=0 and y<4 and z==0 end}
 local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local rawCreate=Public.create local requestTokens={}
 Public.create=function(a,s,r,n,surface,label,preferences)
@@ -296,10 +304,8 @@ check(discoveredCooking>0 and claimedCooking==1 and calls[#calls].kind=='cook',
 local memberService=package.loaded['EmberRoutesProbe/Settlement/MembershipService']
 local postingReason
 memberService.notePosting=function(_,reason) postingReason=reason end
-package.loaded['EmberRoutesProbe/Settlement/SettlementZones']={
-    get=function() return {id='posted',settlementId='s',enabled=true} end,
-    coveredZone=function() return true end,
-    contains=function(_,x,y,z) return x>=0 and x<4 and y>=0 and y<4 and z==0 end}
+-- SettlementZones stub lives above the PublicWork require (load-order: the
+-- posting filter captures it at load time). See the Gate A section header.
 local postedPoint={x=1,y=1,z=0}
 local oldCookingDiscover=cookingProvider.discover
 cookingProvider.discover=function(env)
