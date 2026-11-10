@@ -130,6 +130,16 @@ end
 function HaulingProvider.blocksDecision(actor,npcId,entry)
     local current=Work.record(npcId)
     if not current or current.state=='DONE' then return false end
+    -- Same payload/job-state split as retained: the kernel writes CANCELLED
+    -- to the JOB state only, so a cancelled haul still carries a
+    -- PAUSED/RUNNING payload. Judging the payload alone would block every
+    -- new decision until the retirement sweep retires the job, and would
+    -- also resumeFor (re-launch) a cancelled LOGISTICS haul, because
+    -- HaulAgent.resume launches on any non-DONE payload.
+    if current.id then
+        local job=require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(current.id)
+        if job and (job.state=='DONE' or job.state=='CANCELLED') then return false end
+    end
     if current.producer=='LOGISTICS' and current.settlementId==entry.id
         and not current.controlUncertain and not current.manualPaused
         and Logistics.preparePublic(actor,entry) then
