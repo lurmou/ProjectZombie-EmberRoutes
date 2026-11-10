@@ -185,6 +185,7 @@ local function actionStep(f, name, kind, cancelAt, dest)
             nativePerform(self)
             performed = true
         end
+        -- callback-first: no TaskController body exists on the uncontrolled probe path; managed-NPC actions use body.add.
         if body then assert(body.add(action),'CONTROL_REQUIRED') else ISTimedActionQueue.add(action) end
     end
     function step.cancel() clearQueue(f.npc,body) end

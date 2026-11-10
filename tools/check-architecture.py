@@ -29,7 +29,12 @@ Also enforced here (P1-8 architecture-gate extension):
   explaining why no registry/event can serve it. Unannotated stock is
   counted per file against DIRECT_CALL_BASELINE; only-shrink, same as the
   compat ratchet. The one exempt queue call is the controlled single point
-  in TaskController.lua, grandfathered in its baseline entry.
+  in TaskController.lua, grandfathered in its baseline entry. The other four
+  stock queue adds carry `-- callback-first:` reasons (player/fallback paths
+  with no TaskController body); because the ratchet cannot see annotated
+  calls, the full enqueue-path inventory -- annotated sites included -- is
+  pinned by tests/python/test_taskcontroller_single_point.py, which fails on
+  any new raw add.
 """
 import re
 from pathlib import Path
@@ -658,9 +663,14 @@ def check_compat(lua_root, java_root, errors, repo_root=None):
 # calls). Stock on 6ed6b25: 66 Probe mounts in 20 files, 5 queue adds in
 # 4 files -- all unannotated, all grandfathered here, none of them permission
 # to add more. TaskController.lua's single queue add is the controlled single
-# point (its `body.add` funnel); the other 4 stock adds (Actions.lua fallback
-# when no body exists, NpcMedical.lua, PlayerStashRoutine.lua x2) are player/
-# fallback paths with no TaskController body, still unannotated stock.
+# point (its `body.add` funnel). The other 4 stock adds (Actions.lua fallback
+# when no body exists, NpcMedical.lua player doctor, PlayerStashRoutine.lua
+# x2 player) are player/fallback paths with no TaskController body; pilot
+# 14/15 annotated all four with `-- callback-first:` reasons, so they no
+# longer count here -- but they are NOT free: the inventory test
+# tests/python/test_taskcontroller_single_point.py pins all five raw adds,
+# annotated included, and fails on any sixth. An annotated new add still
+# fails that test even though this ratchet would let it through.
 # `function Probe.<name>(...)` definitions are NOT mounts here: they define
 # the Probe API itself (12, all in Boot.lua), they do not wire a cross-domain
 # call into it.
@@ -670,12 +680,11 @@ DIRECT_CALL_BASELINE = {
     'client/EmberRoutesProbe/Crafting/CraftingService.lua': (2, 0),
     'client/EmberRoutesProbe/Hauling/Haul.lua': (1, 0),
     'client/EmberRoutesProbe/Logistics/LogisticsService.lua': (1, 0),
-    'client/EmberRoutesProbe/Runtime/Actions.lua': (1, 1),
+    'client/EmberRoutesProbe/Runtime/Actions.lua': (1, 0),
     'client/EmberRoutesProbe/Runtime/Persistence.lua': (4, 0),
     'client/EmberRoutesProbe/Runtime/TaskController.lua': (0, 1),
     'client/EmberRoutesProbe/Runtime/TaskResume.lua': (4, 0),
     'client/EmberRoutesProbe/Runtime/TaskRetirement.lua': (1, 0),
-    'client/EmberRoutesProbe/SelfCare/NpcMedical.lua': (0, 1),
     'client/EmberRoutesProbe/SelfCare/SelfCare.lua': (14, 0),
     'client/EmberRoutesProbe/Settlement/Companion.lua': (2, 0),
     'client/EmberRoutesProbe/Settlement/MembershipLifecycle.lua': (2, 0),
@@ -684,7 +693,6 @@ DIRECT_CALL_BASELINE = {
     'client/EmberRoutesProbe/Work/PublicWork.lua': (4, 0),
     'client/EmberRoutesProbe/Work/Work.lua': (2, 0),
     'shared/EmberRoutesProbe/Kernel/Boot.lua': (22, 0),
-    'shared/EmberRoutesProbe/Warehouse/PlayerStashRoutine.lua': (0, 2),
 }
 CALLBACK_FIRST_MARKER = re.compile(r'callback-first:\s*\S', re.I)
 

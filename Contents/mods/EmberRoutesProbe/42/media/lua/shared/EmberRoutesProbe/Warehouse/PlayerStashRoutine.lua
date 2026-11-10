@@ -160,6 +160,7 @@ function PlayerStashRoutine.execute(player, plan)
             if AdjacentFreeTileFinder and AdjacentFreeTileFinder.Find then
                 freeSquare = AdjacentFreeTileFinder.Find(sq, player) or sq
             end
+            -- callback-first: character is the real player, not a managed NPC; TaskController only admits managed-NPC tickets.
             ISTimedActionQueue.add(ISWalkToTimedAction:new(player, freeSquare))
         end
 
@@ -168,6 +169,7 @@ function PlayerStashRoutine.execute(player, plan)
         if targetContainer then
             for _, item in ipairs(stop.items) do
                 local sourceContainer = item:getContainer() or playerInv
+                -- callback-first: character is the real player, not a managed NPC; TaskController only admits managed-NPC tickets.
                 ISTimedActionQueue.add(ISInventoryTransferAction:new(player, item, sourceContainer, targetContainer))
             end
         end
