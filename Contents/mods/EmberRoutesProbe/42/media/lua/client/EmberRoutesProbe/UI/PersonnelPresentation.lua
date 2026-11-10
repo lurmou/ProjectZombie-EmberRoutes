@@ -1,5 +1,6 @@
 -- Pure display projection of detached personnel details.
 local Theme=require 'EmberRoutesProbe/UI/Theme'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local P={}
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Personnel_'..key,...) end
 function P.rows(value,mode,page)
@@ -30,8 +31,10 @@ function P.rows(value,mode,page)
             if asset.exceptional then rows[#rows+1]={text=asset.reasonText,color=Theme.status.ERROR} end
         end
     end
-    -- Mental warning only if severe
-    if value.mood and (value.mood.UNHAPPINESS or 0)>=80 and (value.mood.STRESS or 0)>=0.8 then
+    -- Mental warning only if severe. The two scales differ by design:
+    -- UNHAPPINESS is native 0-100, STRESS is native 0-1 (Constants.Stat).
+    if value.mood and (value.mood.UNHAPPINESS or 0)>=Constants.Health.MENTAL_UNHAPPINESS_WARN
+        and (value.mood.STRESS or 0)>=Constants.Health.MENTAL_STRESS_WARN then
         rows[#rows+1]={text=text('mentalWarning'),color=Theme.status.ERROR}
     end
 

@@ -3,6 +3,7 @@ local Log = require "EmberRoutesProbe/Kernel/Log"
 local Batch = require "EmberRoutesProbe/Runtime/Batch"
 local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
 local View=require 'EmberRoutesProbe/Warehouse/InventoryView'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 require "TimedActions/ISTimedActionQueue"
 require "TimedActions/ISEatFoodAction"
 require "TimedActions/ISDrinkFluidAction"
@@ -351,7 +352,7 @@ local function dispatch(actor,command)
         validate=function(binding)
             return not busy() and (not Probe.haulBusy or not Probe.haulBusy())
                 and (not Actions.fixtures or Actions.fixtures.npc==binding.handle)
-                and (command=='cleanup' or binding.handle:getBodyDamage():getOverallBodyHealth()>=95)
+                and (command=='cleanup' or binding.handle:getBodyDamage():getOverallBodyHealth()>=Constants.Health.WORK_MIN)
         end,
         start=function(context)
             context.result=execute(actor,command,context) context.recovered=context.result=='CLEANED'

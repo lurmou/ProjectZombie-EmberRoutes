@@ -9,6 +9,8 @@ local ContainerRegistry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Policy=require 'EmberRoutesProbe/Leisure/LeisurePolicy'
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Tick=require 'EmberRoutesProbe/Kernel/TickConfig'
 local LifeZones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
 local Service={}
@@ -105,9 +107,11 @@ function Service.sample(npc,sample)
     if not sample then return end
     local s={} for k,v in pairs(sample) do s[k]=v end
     local stats=npc:getStats()
-    s.pain=stats:get(CharacterStat.PAIN)/100
-    s.boredom=CharacterStat.BOREDOM and stats:get(CharacterStat.BOREDOM)/100 or 0
-    s.stress=CharacterStat.STRESS and stats:get(CharacterStat.STRESS) or 0
+    -- Native scales differ per stat (see Constants.Stat): PAIN and BOREDOM
+    -- are 0-100, STRESS is 0-1. The snapshot below is all 0-1.
+    s.pain=Constants.Stat.toUnit('PAIN',stats:get(CharacterStat.PAIN))
+    s.boredom=CharacterStat.BOREDOM and Constants.Stat.toUnit('BOREDOM',stats:get(CharacterStat.BOREDOM)) or 0
+    s.stress=CharacterStat.STRESS and Constants.Stat.toUnit('STRESS',stats:get(CharacterStat.STRESS)) or 0
     s.health=npc:getBodyDamage():getOverallBodyHealth()
     s.healthy=s.health>=Config.gates.health
     s.handsFree=npc:getPrimaryHandItem()==nil and npc:getSecondaryHandItem()==nil
@@ -158,7 +162,7 @@ local function seekSocial(env)
     if not key and env.hours>=(env.cooling.SOCIAL or 0) and env.budget.paths>0 then
         env.budget.paths=env.budget.paths-1
         -- One outcome per eligible partner in each existing discovery round.
-        local round=math.floor(env.now/1500)
+        local round=math.floor(env.now/Tick.socialRoundMs)
         if env.state.round~=round then env.state.round=round env.state.rolls={} end
         key=Social.invite(env.id,env.entry,env.now,function(a,b,aid,bid,seatedA,seatedB)
             local partner=require('EmberRoutesProbe/Runtime/Driver').bindId(env.actor,bid)

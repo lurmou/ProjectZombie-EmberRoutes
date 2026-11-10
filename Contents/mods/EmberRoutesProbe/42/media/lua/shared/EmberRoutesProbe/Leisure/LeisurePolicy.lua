@@ -1,17 +1,18 @@
 -- Pure eligibility and weighted selection. Never reads or mutates a body.
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local P={}
 function P.allowed(kind,s,context)
     if not s or not s.safe or not context or not context.hold or not s.healthy
         or s.hunger>=Config.gates.hunger or s.thirst>=Config.gates.thirst
         or s.fatigue>=Config.gates.fatigue or s.endurance<=Config.gates.endurance then return false end
     if kind=='FITNESS' then
-        return (s.health or 100)>=95 and s.handsFree==true and s.fitnessKnown==true and not s.stiff
+        return (s.health or 100)>=Constants.Health.WORK_MIN and s.handsFree==true and s.fitnessKnown==true and not s.stiff
             and s.fatigue<Config.fitness.fatigue and s.endurance>Config.fitness.endurance and s.pain<Config.fitness.pain
     end
     if kind=='SMOKE' then return s.smoker==true and s.handsFree==true end
     if kind=='STROLL' then
-        return (s.health or 100)>=85 and s.fatigue<Config.stroll.fatigue and s.endurance>Config.stroll.endurance and s.pain<Config.stroll.pain
+        return (s.health or 100)>=Constants.Health.STROLL_MIN and s.fatigue<Config.stroll.fatigue and s.endurance>Config.stroll.endurance and s.pain<Config.stroll.pain
     end
     return kind=='OBSERVE' or kind=='SOCIAL' or kind=='READING' or kind=='SIT'
 end

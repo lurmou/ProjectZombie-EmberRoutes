@@ -15,6 +15,15 @@ import zombie.characters.IsoZombie;
 public final class ObserverReads {
     /** Lua NeedsObserver caps the spotted scan at this size before reporting UNKNOWN. */
     private static final int SPOTTED_LIMIT = 64;
+    /**
+     * Threat rule, mirrored in Lua (shared/EmberRoutesProbe/Kernel/Constants.lua,
+     * Constants.Threat): a live zombie within THREAT_RADIUS tiles on the same
+     * floor (Z within THREAT_Z_MAX). The radius is stored once; both sides
+     * compare squared distance against RADIUS*RADIUS so no second squared
+     * value can drift. Change one side, grep the other by name.
+     */
+    private static final double THREAT_RADIUS = 10;
+    private static final double THREAT_Z_MAX = 1;
     private ObserverReads() {}
 
     private static KahluaTable table() { return J2SEPlatform.getInstance().newTable(); }
@@ -44,9 +53,9 @@ public final class ObserverReads {
                 double x = npc.getX(), y = npc.getY(), z = npc.getZ();
                 for (Object value : seen) {
                     if (!(value instanceof IsoZombie zombie) || zombie.isDead()) continue;
-                    if (Math.abs(zombie.getZ() - z) >= 1) continue;
+                    if (Math.abs(zombie.getZ() - z) >= THREAT_Z_MAX) continue;
                     double dx = zombie.getX() - x, dy = zombie.getY() - y;
-                    if (dx * dx + dy * dy <= 100) { threat = true; break; }
+                    if (dx * dx + dy * dy <= THREAT_RADIUS * THREAT_RADIUS) { threat = true; break; }
                 }
                 result.rawset("spottedThreat", Boolean.valueOf(threat));
             }

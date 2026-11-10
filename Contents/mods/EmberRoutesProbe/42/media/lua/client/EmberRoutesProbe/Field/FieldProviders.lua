@@ -6,6 +6,7 @@ local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local ToolDiscovery=require 'EmberRoutesProbe/Field/ToolDiscovery'
 local ToolReq=require 'EmberRoutesProbe/Field/ToolRequirements'
 local RuntimeMetrics=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local function tick() return RuntimeMetrics.active() and RuntimeMetrics.now() or nil end
 local function span(name,started) if started then RuntimeMetrics.measureSpan(name,started) end end
 local M={}
@@ -119,7 +120,7 @@ local function policyReady(env,category)
         local max=Discovery.policy(category,env.entry.id).maxStoredLogs or 20
         if max>0 then local count=Discovery.logs(env.entry.id) if not count or count>=max then return false end end
         local stats=env.npc:getStats()
-        if stats and stats:get(CharacterStat.ENDURANCE)<0.4 then return false end
+        if stats and stats:get(CharacterStat.ENDURANCE)<Constants.Needs.FIELD_MIN_ENDURANCE then return false end
     end
     return true
 end

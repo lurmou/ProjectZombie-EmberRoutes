@@ -1,7 +1,10 @@
 -- Bounded, read-only native observation. Missing safety evidence is not safety.
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Stat=Constants.Stat
+local Threat=Constants.Threat
 local Observer={}
 local world,health={},{ }
-local function number(value) return type(value)=='number' and value==value and value>=0 and value<=1 end
+local function number(value) return Stat.isUnit(value) end
 function Observer.sample(npc,id,now)
     local root=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'.data()
     if world~=root then world,health=root,{} end
@@ -27,7 +30,7 @@ function Observer.sample(npc,id,now)
             if type(current)~='number' or current~=current then return nil,'NEED_UNAVAILABLE' end
             local previous=health[id]
             local untilTime=previous and previous.untilTime or 0
-            if previous and current<previous.value-0.01 then untilTime=now+3000 end
+            if previous and current<previous.value-Constants.Observer.DAMAGE_DROP then untilTime=now+Constants.Observer.DAMAGE_GRACE_MS end
             health[id]={value=current,untilTime=untilTime}
             sample.safe=now>=untilTime sample.safety=sample.safe and 'SAFE' or 'RECENT_DAMAGE'
             return sample
@@ -44,12 +47,12 @@ function Observer.sample(npc,id,now)
         sample.safety='UNKNOWN' return sample
     end
     local seen=npc:getSpottedList()
-    if not seen or seen:size()>64 then sample.safety='UNKNOWN' return sample end
+    if not seen or seen:size()>Threat.SPOTTED_LIMIT then sample.safety='UNKNOWN' return sample end
     if npc:isOnFire() or npc:getSurroundingAttackingZombies(false)>0 then sample.safety='UNSAFE' return sample end
     for i=0,seen:size()-1 do
         local object=seen:get(i)
-        if instanceof(object,'IsoZombie') and not object:isDead() and math.abs(object:getZ()-npc:getZ())<1
-            and (object:getX()-npc:getX())^2+(object:getY()-npc:getY())^2<=100 then
+        if instanceof(object,'IsoZombie') and not object:isDead() and math.abs(object:getZ()-npc:getZ())<Threat.Z_MAX
+            and (object:getX()-npc:getX())^2+(object:getY()-npc:getY())^2<=Threat.RADIUS*Threat.RADIUS then
             sample.safety='UNSAFE' return sample
         end
     end
@@ -57,7 +60,7 @@ function Observer.sample(npc,id,now)
     local current=npc:getBodyDamage():getOverallBodyHealth()
     local previous=health[id]
     local untilTime=previous and previous.untilTime or 0
-    if previous and current<previous.value-0.01 then untilTime=now+3000 end
+    if previous and current<previous.value-Constants.Observer.DAMAGE_DROP then untilTime=now+Constants.Observer.DAMAGE_GRACE_MS end
     health[id]={value=current,untilTime=untilTime}
     sample.safe=now>=untilTime sample.safety=sample.safe and 'SAFE' or 'RECENT_DAMAGE'
     return sample

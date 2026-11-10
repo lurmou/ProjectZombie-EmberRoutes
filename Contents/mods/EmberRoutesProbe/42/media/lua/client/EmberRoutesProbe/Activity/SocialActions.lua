@@ -1,4 +1,5 @@
 local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
+local Record=require 'EmberRoutesProbe/Activity/ActivityReliefRecord'
 local A={}
 function A.conversation(c,l,current)
     local id=c.job.npcId local attempt=c.payload.attemptId
@@ -35,9 +36,11 @@ function A.conversation(c,l,current)
             if not current() or l.applied then return l.applied==true end
             c.payload.leisure.applying=true if not c.persist() then error('SOCIAL_EFFECT_NOT_PERSISTED') end
             local stats=c.npc:getStats()
-            stats:set(CharacterStat.BOREDOM,math.max(0,stats:get(CharacterStat.BOREDOM)-6))
-            stats:set(CharacterStat.UNHAPPINESS,math.max(0,stats:get(CharacterStat.UNHAPPINESS)-3))
-            stats:set(CharacterStat.STRESS,math.max(0,stats:get(CharacterStat.STRESS)-0.02))
+            -- Same relief deltas as ActivityReliefRecord: BOREDOM/UNHAPPINESS
+            -- are native 0-100 points, STRESS is native 0-1 (see Constants.Stat).
+            stats:set(CharacterStat.BOREDOM,math.max(0,stats:get(CharacterStat.BOREDOM)-Record.BOREDOM))
+            stats:set(CharacterStat.UNHAPPINESS,math.max(0,stats:get(CharacterStat.UNHAPPINESS)-Record.UNHAPPINESS))
+            stats:set(CharacterStat.STRESS,math.max(0,stats:get(CharacterStat.STRESS)-Record.STRESS))
             l.applied=true c.payload.leisure.applying=nil clear() return true
         end,
         stop=function() clear() if not l.applied then Social.cancel(l.socialId,id,attempt) end end}

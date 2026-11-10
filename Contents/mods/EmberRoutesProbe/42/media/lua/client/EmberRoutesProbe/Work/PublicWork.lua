@@ -26,6 +26,7 @@ local JobStore=require 'EmberRoutesProbe/Kernel/JobStore'
 local Metrics=require 'EmberRoutesProbe/Kernel/DispatchMetrics'
 local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
 local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
+local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local Perf=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local Gate=require 'EmberRoutesProbe/Kernel/RuntimeGate'
 -- Load order only: these provider trees have loaded here since before the
@@ -184,13 +185,13 @@ function Service.setPriorities(actor,scope,npcId,values,revision)
     for _,p in ipairs(Providers.all()) do
         if p.priorityRequired then
             local value=values[p.category]
-            if type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
+            if type(value)~='number' or value~=math.floor(value) or value<Constants.Priority.MIN or value>Constants.Priority.MAX then return 'INVALID_PRIORITY' end
         end
     end
     for k,value in pairs(values) do
         local p=Providers.get(k)
         if k~='revision' and not (p and p.priorityRequired) then
-            if type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
+            if type(value)~='number' or value~=math.floor(value) or value<Constants.Priority.MIN or value>Constants.Priority.MAX then return 'INVALID_PRIORITY' end
         end
     end
     local previous=Service.priorities(npcId) if previous.revision~=revision then return 'PRIORITY_CHANGED' end
@@ -207,7 +208,7 @@ function Service.setPriorities(actor,scope,npcId,values,revision)
 end
 function Service.setPriority(actor,scope,npcId,category,value)
     local entry,reason=Ledger.view(actor,scope) if not entry then return reason end
-    if not Providers.has(category) or type(value)~='number' or value~=math.floor(value) or value<0 or value>4 then return 'INVALID_PRIORITY' end
+    if not Providers.has(category) or type(value)~='number' or value~=math.floor(value) or value<Constants.Priority.MIN or value>Constants.Priority.MAX then return 'INVALID_PRIORITY' end
     local binding=Driver.bindId(actor,npcId)
     if not binding or not Geometry.inside(entry,binding.handle:getX(),binding.handle:getY()) then return 'NPC_OUTSIDE_SETTLEMENT' end
     -- priorities() returns a shared read-only projection; copy before editing.
@@ -552,7 +553,7 @@ local function advanceReservations(now,actor)
     for npcId,res in pairs(pendingReservations) do
         local TaskJobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
         local personalJob=TaskJobs and TaskJobs.current():forNpc(npcId,'SELF_CARE')[1]
-        if now-res.createdAt>15000 then
+        if now-res.createdAt>Config.reservationExpiryMs then
             cancelReservation(npcId,'RESERVATION_TIMEOUT')
             workerBackoff[npcId]=(workerBackoff[npcId] or 0)+1
         elseif directory and directory.isWithdrawn and directory:isWithdrawn(res.selected.key) then
@@ -576,7 +577,7 @@ local function advanceReservations(now,actor)
                     cancelReservation(npcId,'WORKER_FATAL_INELIGIBLE')
                 else
                     dispatchDirty=true
-                    nextWake=math.min(nextWake,now+50)
+                    nextWake=math.min(nextWake,now+Config.wakeMs)
                 end
             end
         end
@@ -726,13 +727,13 @@ local function decide(actor,npcId,now,binding,entry)
     if probing then
         pendingReservations[npcId]={selected=selected,jobId=jobId,entry=entry,createdAt=now}
         if now>=(leisureStops[npcId] or 0) then
-            leisureStops[npcId]=now+1500
+            leisureStops[npcId]=now+Config.socialRoundMs
             if Probe.leisureWorkReady then Probe.leisureWorkReady(npcId,jobId) end
         end
         careWaking[npcId]=true
         idle:clear(npcId)
         dispatchDirty=true
-        nextWake=math.min(nextWake,now+50)
+        nextWake=math.min(nextWake,now+Config.wakeMs)
         return
     end
     claimSelected(actor,npcId,now,selected,jobId,entry)
@@ -794,10 +795,10 @@ local function advance(now,discover,providerDue,precheckDue)
 	for _,id in ipairs(ready) do if Providers.hasPending(id) then measured('PublicWork.decide',safeDecide,actor,id,now) end end
     end
     if not discover then return end
-    nextWake=now+100 dispatchDirty=false
+    nextWake=now+Config.discoveryWakeMs dispatchDirty=false
     nextTick=now+(discoveryActive and Config.discoveryMs or Config.discoveryIdleMs)
-    if now>=nextReconcile then nextReconcile=now+1000 measured('PublicWork.reconcile',reconcile) end
-    if now>=nextStock then nextStock=now+1000 measured('PublicWork.stock',stock,actor,now) end
+    if now>=nextReconcile then nextReconcile=now+Config.reconcileMs measured('PublicWork.reconcile',reconcile) end
+    if now>=nextStock then nextStock=now+Config.stockMs measured('PublicWork.stock',stock,actor,now) end
     local startCursor=cursor
     local window=EmberRoutesProbeJava.workerDecisionWindow and EmberRoutesProbeJava.workerDecisionWindow(startCursor,16)
     local count=window and window.count or EmberRoutesProbeJava.workerCount() if count<1 or count>256 then discoveryActive=false return end
@@ -819,21 +820,19 @@ local function advance(now,discover,providerDue,precheckDue)
             local period=Config.discoveryMs
             if careWaking[id] then
                 careWaking[id]=nil
-                period=50
+                period=Config.wakeMs
                 dispatchDirty=true
-                nextWake=now+50
+                nextWake=now+Config.wakeMs
             else
                 local backoff=workerBackoff[id] or 0
                 if backoff>0 then
-                    if backoff==1 then period=math.max(period,2000)
-                    elseif backoff==2 then period=math.max(period,5000)
-                    else period=math.max(period,15000) end
+                    period=math.max(period,Config.backoffMs[math.min(backoff,3)])
                 end
                 local handle=binding and binding.handle
                 if handle then
-                    local radius=Config.workerRemoteRadius or 48
+                    local radius=Config.workerRemoteRadius
                     local dx=handle:getX()-actor:getX() local dy=handle:getY()-actor:getY()
-                    if dx*dx+dy*dy>radius*radius then period=math.max(period,Config.workerRemoteMs or 2000) end
+                    if dx*dx+dy*dy>radius*radius then period=math.max(period,Config.workerRemoteMs) end
                 end
             end
             decideAt[id]=now+period
@@ -846,13 +845,13 @@ function Service.metrics() return metrics:snapshot() end
 function Service.tick()
     local now=getTimestampMs()
     if now>=nextWakePoll then
-        nextWakePoll=now+50
+        nextWakePoll=now+Config.wakeMs
         local revision=Wake.revision and Wake.revision()
         if revision~=observedWake then observedWake=revision dispatchDirty=true end
     end
     for _ in pairs(pendingReservations) do
         dispatchDirty=true
-        nextWake=math.min(nextWake,now+50)
+        nextWake=math.min(nextWake,now+Config.wakeMs)
         break
     end
     local discover=now>=nextTick or (dispatchDirty and now>=nextWake)
