@@ -367,5 +367,6 @@ Registry.inventoryListeners[#Registry.inventoryListeners+1]=function(id)
     end
 end
 Ledger.listeners[#Ledger.listeners+1]=function(id) Service.invalidate(id) end
-Probe.tickLogistics,Probe.resetLogistics=Service.tick,Service.reset
+Probe.tickLogistics=Service.tick
+if Probe.registerReset then Probe.registerReset("Logistics", Service.reset) end
 return Service

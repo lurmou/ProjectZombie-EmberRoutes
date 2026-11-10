@@ -100,8 +100,11 @@ function Probe.begin()
     Probe.ready = string.sub(result, 1, 5) == "READY"
         or string.sub(result, 1, 14) == "RESET_REQUIRED"
     local canExecute=string.sub(result,1,5)=='READY' and Probe.enabled
+    -- Tasks reset now lives in the registerReset registry (Companion registers
+    -- Runtime.reset); the direct Probe.resetTasks key is still honored so
+    -- tests that wire it directly keep passing admission.
     if canExecute and Probe.controlledExecution==true
-        and not (Probe.prepareTaskRecovery and Probe.beginTasks and Probe.tickTasks and Probe.resetTasks
+        and not (Probe.prepareTaskRecovery and Probe.beginTasks and Probe.tickTasks and (Probe.resetTasks or resets.Tasks)
             and Probe.savePersistentCarrier and Probe.beforeStockSave and Probe.afterStockSave and Probe.resetStock) then
         Probe.ready=false Probe.restorePending=false Probe.failureCode='RUNTIME_MODULES_MISSING'
         Log.write('BOOT','RUNTIME_MODULES_MISSING controlled execution not started')
@@ -224,18 +227,18 @@ end
 function Probe.reset()
     validatedBridge,validatedMode=nil,nil
     Performance.reset()
-    if Probe.resetMembership then Probe.resetMembership() end
+    callReset("Membership")
     callReset("Delivery")
     Probe.runtimeReady = false
     Probe.restorePending = false
-    if Probe.resetTasks then Probe.resetTasks() end
-    if Probe.resetSelfCare then Probe.resetSelfCare() end
-    if Probe.resetPersistence then Probe.resetPersistence() end
-    if Probe.resetLogistics then Probe.resetLogistics() end
+    callReset("Tasks")
+    callReset("SelfCare")
+    callReset("Persistence")
+    callReset("Logistics")
     Probe.cancelEvery("WORLD_RESET")
-    if Probe.resetCompanion then Probe.resetCompanion() end
-    if Probe.resetHaul then Probe.resetHaul() end
-    if Probe.resetWork then Probe.resetWork() end
+    callReset("Companion")
+    callReset("Haul")
+    callReset("Work")
     if Probe.ready and Probe.hasJava() then
         local result = EmberRoutesProbeJava.reset()
         -- Continue bounded retirement while the old body is still owned.

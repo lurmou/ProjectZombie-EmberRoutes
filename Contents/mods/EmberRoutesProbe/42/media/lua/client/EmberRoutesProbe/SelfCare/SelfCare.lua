@@ -586,7 +586,8 @@ function Service.install()
         if previous and previous(receipt)~=true then return false end
         return Service.prepareRecovery(receipt)
     end
-    Probe.tickSelfCare=Service.tick Probe.resetSelfCare=Service.reset
+    Probe.tickSelfCare=Service.tick
+    if Probe.registerReset then Probe.registerReset("SelfCare", Service.reset) end
     Probe.careBlocksWork=Service.blocksWork Probe.careRemovalReady=Service.prepareRemoval
     Probe.careActivity=Service.activity
     Probe.forceCare=Service.force

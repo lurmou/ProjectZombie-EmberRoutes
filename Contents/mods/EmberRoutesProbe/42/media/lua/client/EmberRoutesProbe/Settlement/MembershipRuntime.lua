@@ -194,6 +194,7 @@ function M.reset() world,rows,cursor,nextAt=nil,{},0,0 retired=Schedule.new() en
 function M.install()
     S.changed=M.changed
     local Probe=use('Kernel/Boot')
-    Probe.tickMembership=M.tick Probe.resetMembership=M.reset
+    Probe.tickMembership=M.tick
+    if Probe.registerReset then Probe.registerReset("Membership", M.reset) end
 end
 return M

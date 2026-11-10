@@ -9,6 +9,8 @@ local actor={isDead=function() return false end,getCurrentSquare=function() retu
 function getSpecificPlayer() actors=actors+1 return actor end
 function getTimestampMs() return now end
 local Probe={ready=true,enabled=true,controlledExecution=true,hasJava=function() return true end}
+local resets={}
+function Probe.registerReset(name, fn) resets[name]=fn end
 package.loaded['EmberRoutesProbe/Kernel/Boot']=Probe
 package.loaded['EmberRoutesProbe/Kernel/Log']={write=function() end}
 package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={data=function() return root end}
@@ -30,7 +32,7 @@ EmberRoutesProbeJava={workerCount=function() return #ids end,workerIdAt=function
 local Persistence=require 'EmberRoutesProbe/Runtime/Persistence'
 local function tick(time) now=time Persistence.tick() end
 local function begin(list,results)
-    Probe.resetPersistence() Probe.restorePending=true
+    resets.Persistence() Probe.restorePending=true
     ids=list answers=results calls={} attempts={} now=0 duringRestore=nil
 end
 begin({'a','b','c'},{a={'RESTORE_TILE_UNAVAILABLE','RESTORE_TILE_UNAVAILABLE','CHECKPOINT_RESTORED'},
@@ -64,12 +66,12 @@ tick(2000) tick(4000)
 check(attempts.a==1,'world replacement revokes old deferred restores')
 
 begin({'a'},{a={'RESTORE_TILE_UNAVAILABLE'}})
-tick(0) tick(0) Probe.resetPersistence()
+tick(0) tick(0) resets.Persistence()
 tick(2000)
 check(attempts.a==1,'reset revokes delayed restore')
 
 begin({'a'},{a={'RESTORE_TILE_UNAVAILABLE'}})
-duringRestore=function() Probe.resetPersistence() end
+duringRestore=function() resets.Persistence() end
 tick(0) tick(2000)
 check(attempts.a==1,'reset inside a restore callback cannot requeue its old attempt')
 

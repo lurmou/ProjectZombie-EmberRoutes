@@ -47,6 +47,7 @@ local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 Probe.prepareTaskRecovery=function() loaded=true order[#order+1]='claims' end
 Probe.beginTasks=function() check(loaded,'claims prepared before runtime begin') order[#order+1]='begin' Runtime.begin() end
 Probe.tickTasks=Runtime.tick Probe.resetTasks=Runtime.reset
+if Probe.registerReset then Probe.registerReset("Tasks", Runtime.reset) end -- mirrors Companion: Tasks reset is registered, direct key stays for begin() admission
 Probe.beforeStockSave=stub Probe.afterStockSave=stub Probe.resetStock=stub
 local saved,legacy=0,0
 Probe.savePersistentCarrier=function() saved=saved+1 end
