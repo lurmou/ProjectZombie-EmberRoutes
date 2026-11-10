@@ -10,25 +10,10 @@ package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/
 local checks=0
 local function check(v,s) checks=checks+1 assert(v,s) end
 
--- ---- NeedsPolicy: forced-care enter thresholds are pinned unchanged ----
--- The sleep pilot must never move these: sleep wakes on choose(), it does
--- not re-threshold it. Only the enter pins are repeated here; the warn
--- band is pinned by p1-pilot-lowneeds-haul-test.lua.
-local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
-local offers={MEDICAL=true,EAT=true,DRINK=true,REST=true,SLEEP=true}
-local safe={safe=true}
-check(Policy.choose({hunger=0.24,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)==nil,
-    'hunger just below enter does not force EAT')
-check(Policy.choose({hunger=0.30,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)=='EAT',
-    'hunger enter threshold still forces EAT')
-check(Policy.choose({hunger=0.05,thirst=0.21,fatigue=0.10,endurance=0.90},nil,safe,offers)=='DRINK',
-    'thirst enter threshold untouched')
-check(Policy.choose({hunger=0.05,thirst=0.05,fatigue=0.71,endurance=0.90},nil,safe,offers)=='SLEEP',
-    'fatigue enter threshold still forces SLEEP')
-check(Policy.choose({hunger=0.05,thirst=0.05,fatigue=0.10,endurance=0.20},nil,safe,offers)=='REST',
-    'endurance enter threshold untouched')
-check(Policy.choose({hunger=0.05,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)==nil,
-    'satisfied needs choose nothing (the sleep entry condition)')
+-- NeedsPolicy enter pins live in tests/lua/p1-pilot-lowneeds-haul-test.lua
+-- (canonical home). The sleep pilot must never move these: sleep wakes on
+-- choose(), it does not re-threshold it. Only the enter pins were repeated
+-- here; the warn band is pinned by p1-pilot-lowneeds-haul-test.lua.
 
 -- ---- Dispatch fixture (minimal public-work-test shape, one worker) ----
 local root={} local serial=0 local now=0 local allowed=true local accepting=true

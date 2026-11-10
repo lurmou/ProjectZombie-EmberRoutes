@@ -7,6 +7,8 @@ local checks=0
 local function check(v,s) checks=checks+1 assert(v,s) end
 
 -- ---- NeedsPolicy: warn levels and untouched forced-care thresholds ----
+-- Canonical home for the enter pins: the two sleep pilots used to repeat
+-- the hunger-just-below-enter and satisfied-needs pins verbatim.
 local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
 local offers={EAT=true,DRINK=true,REST=true,SLEEP=true}
 local safe={safe=true}
@@ -20,6 +22,8 @@ check(Policy.warned({hunger=0.05,fatigue=0.50})==true,'fatigue at warn is warned
 check(Policy.warned({hunger=0.30,fatigue=0.10})==true,'hunger past enter is still warned')
 check(Policy.choose({hunger=0.15,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)==nil,
     'warn-level hunger alone never forces self-care')
+check(Policy.choose({hunger=0.24,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)==nil,
+    'hunger just below enter does not force EAT')
 check(Policy.choose({hunger=0.30,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)=='EAT',
     'hunger enter threshold still forces EAT')
 check(Policy.choose({hunger=0.40,thirst=0.05,fatigue=0.10,endurance=0.90},nil,working,offers)==nil,
@@ -38,6 +42,8 @@ check(Policy.choose({hunger=0.05,thirst=0.21,fatigue=0.10,endurance=0.90},nil,sa
     'thirst enter threshold untouched (no warn level for DRINK)')
 check(Policy.choose({hunger=0.05,thirst=0.05,fatigue=0.10,endurance=0.20},nil,safe,offers)=='REST',
     'endurance enter threshold untouched (no warn level for REST)')
+check(Policy.choose({hunger=0.05,thirst=0.05,fatigue=0.10,endurance=0.90},nil,safe,offers)==nil,
+    'satisfied needs choose nothing (the sleep entry condition)')
 
 -- ---- Dispatch fixture (minimal public-work-test shape, one worker) ----
 local root={} local serial=0 local now=0 local allowed=true local accepting=true

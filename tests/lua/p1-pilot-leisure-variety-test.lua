@@ -3,7 +3,8 @@
 -- in the recent history (N=3) instead of only looking at the last activity.
 -- Two equal-weight candidates {SIT, OBSERVE} expose the weight through the
 -- roll threshold: SIT wins iff roll < f/(f+1) with f = 0.15^streak.
--- Candidate set, cooldown semantics and thresholds are pinned unchanged.
+-- Candidate set and thresholds are pinned unchanged; the FITNESS cooldown
+-- and empty-candidate pins live in p35-policy-test.lua.
 -- Run from the repo root: lua tests/lua/p1-pilot-leisure-variety-test.lua
 package.path="Contents/mods/EmberRoutesProbe/42/media/lua/client/?.lua;Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;"..package.path
 local checks=0
@@ -58,11 +59,10 @@ check(picked({cooldowns={},last='SIT',recent={}},0.13)=='SIT','empty recent fall
 check(picked({cooldowns={},last='SIT',recent={'OBSERVE'}},0.4)=='SIT','a present recent history is authoritative over last')
 
 -- ---- candidate set, cooldowns and thresholds unchanged ----
+-- The FITNESS 12h cooldown pins and the empty-candidate pin live in
+-- p35-policy-test.lua (retained-cooldown home); this file keeps only the
+-- failed-attempt cooldown pins, which p35 does not cover.
 check(picked(nil,0.4)=='SIT' and picked(nil,0.6)=='OBSERVE','no memory means equal weights')
-check(P.choose({},nil,10.1,0.5)==nil,'no candidates means no choice')
-local fit=P.remember(nil,'FITNESS',10,true)
-check(P.choose({{activity='FITNESS',weight=10}},fit,11,0)==nil,'FITNESS 12h cooldown still blocks at +1h')
-check(P.choose({{activity='FITNESS',weight=10}},fit,23,0).activity=='FITNESS','FITNESS cooldown still expires at +13h')
 local failed=P.remember(nil,'SIT',10,false)
 check(failed.last=='SIT' and failed.recent[1]=='SIT','a failed attempt still records the activity')
 check(P.choose({{activity='SIT',weight=10}},failed,10.01,0)==nil,'failed cooldown (0.03h) still blocks at +0.01h')

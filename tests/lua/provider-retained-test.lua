@@ -92,13 +92,13 @@ check(ToolReturnProvider.retained('npc2') == false, 'another NPC’s live return
 liveTasks.npc1 = nil
 check(ToolReturnProvider.retained('npc1') == false, 'finished return task must not retain')
 
--- ---- Registry wiring: retained is required, and Registry.retained follows it ----
+-- ---- Registry wiring: Registry.retained follows provider retained ----
+-- Registration with retained is pinned by provider-contract-test.lua; here
+-- registration is setup for the Registry.retained checks below.
 local Registry = require 'EmberRoutesProbe/Work/PublicWorkProviders'
 Registry.reset()
-local ok, err = Registry.register(CraftingProvider)
-check(ok, 'crafting registers with retained: ' .. tostring(err))
-ok, err = Registry.register(ToolReturnProvider)
-check(ok, 'toolReturn registers with retained: ' .. tostring(err))
+Registry.register(CraftingProvider)
+Registry.register(ToolReturnProvider)
 jobsByNpc.npc1 = { craftJob('RUNNING') }
 check(Registry.retained('npc1') == true, 'registry retains while the CRAFT job is unfinished')
 jobsByNpc.npc1 = { craftJob('DONE') }
