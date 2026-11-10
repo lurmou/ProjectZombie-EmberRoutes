@@ -207,17 +207,17 @@ end
 
 function Probe.cancelAll(reason, npcId)
     npcId=npcId or (EmberRoutesProbeJava.selectedId and EmberRoutesProbeJava.selectedId())
-    if Probe.cancelWork then Probe.cancelWork(reason,npcId) end
-    if Probe.cancelCompanion then Probe.cancelCompanion(reason,npcId) end
+    callCancel("Work", reason, npcId)
+    callCancel("Companion", reason, npcId)
     callCancel("Actions", reason, npcId)
     callCancel("Haul", reason, npcId)
 end
 
 function Probe.cancelEvery(reason)
     if Probe.pauseAllWork then Probe.pauseAllWork(reason)
-    elseif Probe.cancelWork then Probe.cancelWork(reason) end
+    else callCancel("Work", reason) end
     if Probe.cancelEveryCompanion then Probe.cancelEveryCompanion(reason)
-    elseif Probe.cancelCompanion then Probe.cancelCompanion(reason) end
+    else callCancel("Companion", reason) end
     callCancel("Actions", reason)
     callCancel("Haul", reason)
 end

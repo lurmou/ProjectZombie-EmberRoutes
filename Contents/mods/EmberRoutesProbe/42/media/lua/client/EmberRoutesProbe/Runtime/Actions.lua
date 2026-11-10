@@ -266,8 +266,8 @@ local function execute(actor, command,c)
         return "CANCELLED"
     end
     if Probe.haulBusy and Probe.haulBusy() then return "BUSY" end
-    if not c and command ~= "cleanup" and Probe.cancelCompanion then Probe.cancelCompanion("ACTION_ORDER") end
-    if not c and command ~= "report" and Probe.cancelWork then Probe.cancelWork("ACTION_ORDER") end
+    if not c and command ~= "cleanup" then require('EmberRoutesProbe/Settlement/Companion').cancel("ACTION_ORDER") end
+    if not c and command ~= "report" then require('EmberRoutesProbe/Work/Work').pause("ACTION_ORDER") end
     if busy() then return "BUSY" end
     if command == "cleanup" then return cleanup(c and c.body) and "CLEANED" or "CLEANUP_BLOCKED" end
     if not Probe.ready or not Probe.hasJava() then return Probe.unavailableCode() end

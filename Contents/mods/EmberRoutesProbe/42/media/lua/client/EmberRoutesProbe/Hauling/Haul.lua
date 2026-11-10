@@ -301,8 +301,8 @@ local function execute(actor, command, object,c)
     if command == "cancel" then Haul.cancel("USER") return "CANCELLED" end
     if command == "cleanup" then return Haul.cleanup(nil,c and c.body) and "CLEANED" or "CLEANUP_BLOCKED" end
     if command == "run" then
-        if not c and Probe.cancelWork then Probe.cancelWork("HAUL_ORDER") end
-        if not c and Probe.cancelCompanion then Probe.cancelCompanion("HAUL_ORDER") end
+        if not c then require('EmberRoutesProbe/Work/Work').pause("HAUL_ORDER") end
+        if not c then require('EmberRoutesProbe/Settlement/Companion').cancel("HAUL_ORDER") end
         return start(actor,c)
     end
     if command == "untag" then

@@ -25,8 +25,8 @@ bridge.freezeBodyControl=function() return true end
 bridge.thawBodyControl=function() return key==nil end
 bridge.command=function() error('diagnostic used unowned legacy movement') end
 bridge.stopCarrier=function() error('diagnostic used unowned legacy stop') end
-Probe.cancelWork=function() error('diagnostic directly cancelled formal work') end
-Probe.cancelCompanion=function() error('diagnostic directly cancelled companion') end
+package.loaded['EmberRoutesProbe/Work/Work']={pause=function() error('diagnostic directly cancelled formal work') end}
+package.loaded['EmberRoutesProbe/Settlement/Companion']={cancel=function() error('diagnostic directly cancelled companion') end}
 local rawAdd,rawClear=ISTimedActionQueue.add,ISTimedActionQueue.clear
 local latest
 ISTimedActionQueue.add=function(action)

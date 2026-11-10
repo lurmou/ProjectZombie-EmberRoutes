@@ -73,6 +73,8 @@ function actor:isDead() return false end
 local userItem = npc.root:AddItem("UNRELATED_ITEM")
 local Probe = { ready = true, build = { version = "test", prefix = "TEST" }, hasJava = function() return true end }
 package.loaded["EmberRoutesProbe/Kernel/Boot"] = Probe
+package.loaded['EmberRoutesProbe/Work/Work'] = { pause = function() end }
+package.loaded['EmberRoutesProbe/Settlement/Companion'] = { cancel = function() end }
 EmberRoutesProbeJava = {
     actionCarrier = function() if active then return npc end end,
     carrierActive = function(expected) return active and expected == npc end,
