@@ -40,8 +40,9 @@ Probe.controlledExecution=false -- Explicit legacy lifecycle fixture; activation
 Probe.tickActions = function() jobs = jobs + 1 end
 Probe.tickHaul = Probe.tickActions
 Probe.tickTasks = Probe.tickActions
-Probe.cancelActions = function() cancelled = cancelled + 1 end
-Probe.cancelHaul, Probe.cancelCompanion = Probe.cancelActions, Probe.cancelActions
+Probe.registerCancel("Actions", function() cancelled = cancelled + 1 end)
+Probe.registerCancel("Haul", function() cancelled = cancelled + 1 end)
+Probe.cancelCompanion = function() cancelled = cancelled + 1 end
 tickPaused()
 check(paused == 0, "paused cleanup does nothing before bridge begin")
 callbacks.OnGameStart()

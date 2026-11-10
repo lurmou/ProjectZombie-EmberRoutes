@@ -16,6 +16,20 @@ local function callReset(name)
     if fn then fn() end
 end
 
+-- Cancel registry: each domain registers its cancel once. Boot.cancelAll /
+-- cancelEvery call them in the old fixed order, skipping keys that never
+-- registered, which matches the old `if Probe.cancelX then ... end` guard
+-- semantics.
+local cancels = {}
+function Probe.registerCancel(name, fn)
+    if type(name) == "string" and type(fn) == "function" then cancels[name] = fn end
+end
+local function callCancel(name, reason, npcId)
+    local fn = cancels[name]
+    if fn then fn(reason, npcId) end
+end
+end
+
 local validatedBridge,validatedMode
 local function validateJava()
     return EmberRoutesProbeJava and EmberRoutesProbeJava.begin
@@ -209,8 +223,8 @@ function Probe.cancelAll(reason, npcId)
     npcId=npcId or (EmberRoutesProbeJava.selectedId and EmberRoutesProbeJava.selectedId())
     if Probe.cancelWork then Probe.cancelWork(reason,npcId) end
     if Probe.cancelCompanion then Probe.cancelCompanion(reason,npcId) end
-    if Probe.cancelActions then Probe.cancelActions(reason,npcId) end
-    if Probe.cancelHaul then Probe.cancelHaul(reason,npcId) end
+    callCancel("Actions", reason, npcId)
+    callCancel("Haul", reason, npcId)
 end
 
 function Probe.cancelEvery(reason)
@@ -218,8 +232,8 @@ function Probe.cancelEvery(reason)
     elseif Probe.cancelWork then Probe.cancelWork(reason) end
     if Probe.cancelEveryCompanion then Probe.cancelEveryCompanion(reason)
     elseif Probe.cancelCompanion then Probe.cancelCompanion(reason) end
-    if Probe.cancelActions then Probe.cancelActions(reason) end
-    if Probe.cancelHaul then Probe.cancelHaul(reason) end
+    callCancel("Actions", reason)
+    callCancel("Haul", reason)
 end
 
 function Probe.reset()

@@ -414,6 +414,6 @@ function Actions.tick(context)
     end
 end
 
-Probe.cancelActions = Actions.cancel
+if Probe.registerCancel then Probe.registerCancel("Actions", Actions.cancel) end
 Probe.tickActions = Actions.tick
 return Actions
