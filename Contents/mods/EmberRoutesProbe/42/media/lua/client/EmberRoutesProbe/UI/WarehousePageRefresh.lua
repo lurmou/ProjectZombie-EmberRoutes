@@ -8,9 +8,11 @@
 local Metrics=require "EmberRoutesProbe/Warehouse/WarehouseMetrics"
 local Rows=require "EmberRoutesProbe/UI/WarehouseRows"
 local Text=require "EmberRoutesProbe/UI/Text"
+local Theme=require "EmberRoutesProbe/UI/Theme"
 
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 
+---@param Page EmberRoutesWarehousePage
 local function attach(Page)
     function Page:receive(snapshot)
         if not self.active then return end

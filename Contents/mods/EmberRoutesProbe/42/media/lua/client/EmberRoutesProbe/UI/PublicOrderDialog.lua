@@ -25,11 +25,43 @@ local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key
 ---@field entry table
 ---@field fontHeight number
 ---@field pad number
+---@field context table
+---@field draft table?
+---@field restoredDraft table?
+---@field page integer
+---@field rows table[]
+---@field selectedRecipe any
+---@field preferences table
 ---@field activeTab string
 ---@field presentation table
+---@field submitting boolean
 ---@field blueprintList EmberRoutesCachedList
 ---@field previewData table?
 ---@field cancelPreview function?
+---@field active boolean?
+---@field disposed boolean?
+--- -- Attached by PublicOrderDialogLayout:
+---@field createChildren fun(self: EmberRoutesPublicOrderDialog)
+---@field selectTab fun(self: EmberRoutesPublicOrderDialog, tab: string)
+--- -- Attached by PublicOrderDialogQuery:
+---@field query fun(self: EmberRoutesPublicOrderDialog)
+---@field loadRule fun(self: EmberRoutesPublicOrderDialog)
+--- -- Attached by PublicOrderDialogDescribe:
+---@field updateConversion fun(self: EmberRoutesPublicOrderDialog)
+---@field describe fun(self: EmberRoutesPublicOrderDialog)
+---@field switchPrecursor fun(self: EmberRoutesPublicOrderDialog, product: string, nextRecipeId: string)
+---@field requestPreview fun(self: EmberRoutesPublicOrderDialog)
+--- -- Attached by PublicOrderDialogBlueprint:
+---@field updateBlueprint fun(self: EmberRoutesPublicOrderDialog)
+--- -- Attached by PublicOrderDialogSubmit:
+---@field submitOrder fun(self: EmberRoutesPublicOrderDialog)
+---@field submitRule fun(self: EmberRoutesPublicOrderDialog)
+--- -- Attached by PublicOrderDialogRender:
+---@field prerender fun(self: EmberRoutesPublicOrderDialog)
+--- -- Attached by PublicOrderDialogLifecycle:
+---@field isKeyConsumed fun(self: EmberRoutesPublicOrderDialog, key: integer): boolean
+---@field onKeyPress fun(self: EmberRoutesPublicOrderDialog, key: integer): boolean
+---@field close fun(self: EmberRoutesPublicOrderDialog)
 EmberRoutesPublicOrderDialog=ISCollapsableWindow:derive('EmberRoutesPublicOrderDialog')
 
 function EmberRoutesPublicOrderDialog.open(owner,context)

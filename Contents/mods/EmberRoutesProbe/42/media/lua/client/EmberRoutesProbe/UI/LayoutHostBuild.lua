@@ -12,11 +12,11 @@ local preflight = require 'EmberRoutesProbe/UI/LayoutHostValidation'
 local owners = S.owners
 local supported = S.supported
 local finite = S.finite
-local detach = S.detach
 local release = S.release
 local register = S.register
 local resolveAutoBasis = S.resolveAutoBasis
 
+---@param Host EmberRoutesLayoutHost
 local function attach(Host)
 local handleMetatable = {
     setVisible = function(self, visible) return self.host:setItemVisible(self, visible) end,
@@ -121,7 +121,8 @@ local function stage(host,parentNode,spec,stagedLeaves,candidateHandles,stagedBo
     end
 end
 function Host:_register(node,target,props,kind)
-    assert(not self.closed and not self.closing and not self.sealed and not self._pending, 'HOST_REGISTRATION_CLOSED')
+    assert(not self.closed and not self.closing and not self.sealed and not self._pending
+        and not self._building and not self._buildPending, 'HOST_REGISTRATION_CLOSED')
     assert(node and not node.disposed and node.root==self.rootNode, 'FOREIGN_LAYOUT_NODE')
     assert(target and not owners[target], 'LEAF_ALREADY_REGISTERED')
     local wasVisible=false
@@ -151,16 +152,81 @@ end
 
 function Host:addNative(node,target,props) return self:_register(node,target,props,'native') end
 function Host:addRect(node,rect,props) return self:_register(node,rect,props,'rect') end
----Builds and mounts a declarative layout descriptor tree.
----@param spec table Layout descriptor created by UI.Row or UI.Column
----@param initialContext table? Optional initial state context for when predicates
----@return table|nil handles Named handles map or nil on failure
----@return string|nil err Error message if build failed
+-- Retain the complete candidate until every attempted side effect is undone.
+-- A failed release remains in this record for dispose() to retry.
+function Host:_rollbackBuild()
+    local pending=self._buildPending
+    if not pending then return true end
+    local failed=false
+    for i=#pending.leaves,1,-1 do
+        local entry=pending.leaves[i]
+        if entry.target then
+            if entry.touched then
+                local ok,err=pcall(release,self,entry,true)
+                if not ok then failed=err end
+            else
+                if owners[entry.target]==self then owners[entry.target]=nil end
+                entry.target=false
+            end
+        end
+    end
+    if failed then self.cleanupError=failed; return nil,failed end
+    pending.root:dispose()
+    self._buildPending=false; self.cleanupError=false
+    return true
+end
+local function initializeConditions(conditions,context)
+    for i=1,#conditions do
+        local c=conditions[i]
+        if type(c.when)=='boolean' then
+            c.handle.item.owner:setItemVisible(c.handle.item,c.when)
+        elseif context~=nil and type(c.when)=='function' then
+            c.handle.item.owner:setItemVisible(c.handle.item,c.when(context)==true)
+        end
+    end
+end
+local function commit(host,pending)
+    -- Staging predicates/getters can reenter another host: recheck before reserving.
+    for i=1,#pending.leaves do
+        local target=pending.leaves[i].target
+        assert(not target or not owners[target],'TARGET_ALREADY_REGISTERED')
+    end
+    for i=1,#pending.leaves do
+        local target=pending.leaves[i].target
+        if target then owners[target]=host end
+    end
+    for i=1,#pending.leaves do
+        local entry=pending.leaves[i]
+        if entry.kind=='native' then
+            supported(entry.target)
+            local parent=entry.target:getParent()
+            assert(not parent or parent==host,'FOREIGN_NATIVE_PARENT')
+            entry.touched=true
+            host.errorSlot=entry.item.slotIndex; host.errorSetter='addChild'
+            if entry.target:getParent()~=host then
+                entry.attached=true -- Record BEFORE AddChild: it may throw after linking.
+                host:addChild(entry.target)
+            end
+            assert(entry.target.javaObject and entry.target:getParent()==host
+                and entry.target.javaObject:getParent()==host.javaObject,'NATIVE_PARENT_MISMATCH')
+            host.errorSetter='setVisible'
+            entry.target:setVisible(false)
+        elseif entry.kind=='rect' then
+            entry.touched=true
+            host.errorSlot=entry.item.slotIndex; host.errorSetter='rect.visible'
+            entry.target.visible=false
+        end
+    end
+end
+---Builds a descriptor tree without publishing partially committed native state.
 function Host:build(spec, initialContext)
     assert(not self.closed and not self.closing, 'HOST_CLOSED')
     assert(not self.built, 'HOST_ALREADY_BUILT')
+    assert(not self.sealed and not self._pending and not self._building
+        and not self._buildPending, 'HOST_NOT_READY')
+    assert(#self._leafItems==0 and #self.rootNode.items==0,'HOST_NOT_EMPTY')
 
-    -- Accept layout item wrapping root container
+    -- Accept layout item wrapping root container.
     if spec and spec.isLayoutItemSpec and spec.child and spec.child.isLayoutSpec then
         local rootItemProps = spec.props
         spec = spec.child
@@ -168,77 +234,47 @@ function Host:build(spec, initialContext)
             spec.props.bind = rootItemProps.bind
         end
     end
+    self._building=true
+    local seenSpecs,seenKeys,seenTargets={},{},{}
+    local okPre,errPre=pcall(preflight,self,spec,seenSpecs,seenKeys,seenTargets)
+    if not okPre then self._building=false; return nil,errPre end
 
-    -- 1. Preflight: pure static validation without touching native widgets
-    local seenSpecs, seenKeys, seenTargets = {}, {}, {}
-    local okPre, errPre = pcall(preflight, self, spec, seenSpecs, seenKeys, seenTargets)
-    if not okPre then return nil, errPre end
-
-    -- 2. Stage: construct candidate LayoutNode hierarchy and leaf lists
-    local stagedLeaves = {}
-    local candidateHandles = {}
-    local stagedBoundItems = {}
-    local stagedConditionals = {}
-    local stagedAutoBasis = {}
-    local okStage, errStage = pcall(stage, self, self.rootNode, spec, stagedLeaves, candidateHandles, stagedBoundItems, stagedConditionals, stagedAutoBasis)
+    -- Stage against a separate root; the live root survives any build failure.
+    local originalRoot=self.rootNode
+    local candidateRoot=Node.new({direction=originalRoot.direction,gap=originalRoot.gap,
+        padding=originalRoot.padding,align=originalRoot.align,justify=originalRoot.justify})
+    candidateRoot:claimRoot()
+    local leaves,handles,bounds,conditions,autoBasis={},{},{},{},{}
+    local okStage,errStage=pcall(stage,self,candidateRoot,spec,leaves,handles,bounds,conditions,autoBasis)
+    if okStage then okStage,errStage=pcall(initializeConditions,conditions,initialContext) end
     if not okStage then
-        self.rootNode:dispose()
-        self.rootNode=Node.new()
-        self.rootNode:claimRoot()
-        return nil, errStage
+        candidateRoot:dispose(); self._building=false
+        return nil,errStage
     end
 
-    -- 3. Commit: native mounting with reverse rollback on failure
-    local mountedNative = {}
-    for i=1,#stagedLeaves do
-        local entry = stagedLeaves[i]
-        if entry.kind=='native' then
-            if entry.target:getParent()~=self then
-                entry.attached=true
-                local okMount, errMount = pcall(self.addChild, self, entry.target)
-                if not okMount then
-                    -- Rollback native attachments
-                    local rollbackClean = true
-                    for j=#mountedNative, 1, -1 do
-                        local okRb = pcall(detach, self, mountedNative[j])
-                        if not okRb then rollbackClean = false end
-                    end
-                    self.errorStage = rollbackClean and 'BUILD_FAILED' or 'BUILD_CLEANUP_REQUIRED'
-                    self.errorMessage = errMount
-                    return nil, self.errorStage
-                end
-                mountedNative[#mountedNative+1] = entry.target
-            end
-            entry.target:setVisible(false)
-        elseif entry.kind=='rect' then
-            entry.target.visible=false
-        end
+    -- Reserve all targets and publish cleanup responsibility before native calls.
+    local pending={root=candidateRoot,leaves=leaves}
+    self._buildPending=pending
+    local okCommit,errCommit=pcall(commit,self,pending)
+    if not okCommit then
+        local cleaned=self:_rollbackBuild()
+        self._building=false
+        self.errorStage=cleaned and 'BUILD_FAILED' or 'BUILD_CLEANUP_REQUIRED'
+        self.errorMessage=errCommit
+        return nil,self.errorStage
     end
 
-    -- 4. Publish: commit leaf entries, mark built and dirty
-    for i=1,#stagedLeaves do
-        local entry = stagedLeaves[i]
-        self._leafItems[#self._leafItems+1] = entry
-        if entry.target then owners[entry.target] = self end
-    end
-    for i=1,#stagedBoundItems do
-        self._boundSnapshots[#self._boundSnapshots+1] = stagedBoundItems[i]
-    end
-    for i=1,#stagedConditionals do
-        self._conditionals[#self._conditionals+1] = stagedConditionals[i]
-        local c = stagedConditionals[i]
-        if type(c.when) == 'boolean' then
-            self:setItemVisible(c.handle, c.when)
-        elseif initialContext ~= nil and type(c.when) == 'function' then
-            self:setItemVisible(c.handle, c.when(initialContext) == true)
-        end
-    end
-    for i=1,#stagedAutoBasis do
-        self._autoBasisItems[#self._autoBasisItems+1] = stagedAutoBasis[i]
-    end
+    -- Publish only after native mounting, hiding and initial predicates succeed.
+    self.rootNode=candidateRoot
+    self._leafItems=leaves; self._boundSnapshots=bounds
+    self._conditionals=conditions; self._autoBasisItems=autoBasis
+    self._buildPending=false; self._building=false
+    originalRoot:dispose()
     self.built=true
     self.rootNode:markDirty()
-    return candidateHandles, nil
+    self.errorStage=false; self.errorMessage=false; self.cleanupError=false
+    self.errorSlot=false; self.errorSetter=false
+    return handles,nil
 end
 
 end

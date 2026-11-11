@@ -19,6 +19,7 @@ local Cached = require 'EmberRoutesProbe/UI/CachedList'
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
 local function craftText(key,...) return getText('IGUI_EmberRoutesProbe_Crafting_'..key,...) end
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:createChildren()
     ISCollapsableWindow.createChildren(self)

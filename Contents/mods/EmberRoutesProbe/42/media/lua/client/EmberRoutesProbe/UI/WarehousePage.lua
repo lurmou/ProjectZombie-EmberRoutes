@@ -44,6 +44,7 @@ local State=require "EmberRoutesProbe/UI/State"
 ---@field unsubscribe function?
 ---@field release function?
 ---@field controls table
+---@field controlsHost EmberRoutesLayoutHost
 ---@field query table
 ---@field locator table
 ---@field focusedList EmberRoutesCachedList?
@@ -52,10 +53,59 @@ local State=require "EmberRoutesProbe/UI/State"
 ---@field pageWidth number
 ---@field syncingPage boolean?
 ---@field notice string
+---@field pinnedItems table<string,boolean>
+---@field deliveryCart table
+---@field deliveryCartCount integer
+---@field deliveryCartTotalUnits number
+---@field deliveryCartWeight number
+---@field cartDrawerOpen boolean
 ---@field owner EmberRoutesSettlementDashboard
 ---@field active boolean?
 ---@field disposed boolean?
 ---@field resume table?
+--- -- Attached by WarehousePageLayout:
+---@field createChildren fun(self: EmberRoutesWarehousePage)
+--- -- Attached by WarehousePageLifecycle:
+---@field activate fun(self: EmberRoutesWarehousePage)
+---@field deactivate fun(self: EmberRoutesWarehousePage)
+---@field dispose fun(self: EmberRoutesWarehousePage)
+---@field close fun(self: EmberRoutesWarehousePage)
+--- -- Attached by WarehousePageRefresh:
+---@field receive fun(self: EmberRoutesWarehousePage, snapshot: table)
+---@field project fun(self: EmberRoutesWarehousePage, snapshot?: table, changed?: table)
+---@field queryChanged fun(self: EmberRoutesWarehousePage)
+---@field clearSearch fun(self: EmberRoutesWarehousePage)
+--- -- Attached by WarehousePageInteraction:
+---@field togglePin fun(self: EmberRoutesWarehousePage, row: table)
+---@field focusContent fun(self: EmberRoutesWarehousePage): boolean
+---@field focusList fun(self: EmberRoutesWarehousePage, list: any)
+---@field isListFocused fun(self: EmberRoutesWarehousePage, list: any): boolean
+---@field onListActivate fun(self: EmberRoutesWarehousePage, list: any)
+---@field onListFocus fun(self: EmberRoutesWarehousePage, list: any, direction: integer)
+---@field selectSource fun(self: EmberRoutesWarehousePage, source: table)
+---@field locateSource fun(self: EmberRoutesWarehousePage)
+---@field selectItem fun(self: EmberRoutesWarehousePage, row: table)
+---@field previous fun(self: EmberRoutesWarehousePage)
+---@field nextPage fun(self: EmberRoutesWarehousePage)
+---@field onListKey fun(self: EmberRoutesWarehousePage, key: integer, list: any): boolean
+---@field isItemCraftable fun(self: EmberRoutesWarehousePage, fullType: string): boolean
+---@field onMiddleClickItem fun(self: EmberRoutesWarehousePage, row: table, shiftDown?: boolean)
+---@field onMiddleClickSource fun(self: EmberRoutesWarehousePage, source: table, shiftDown?: boolean)
+---@field openItemContextMenu fun(self: EmberRoutesWarehousePage, row: table, screenX: number, screenY: number)
+---@field onListJoypad fun(self: EmberRoutesWarehousePage, button: integer)
+---@field help fun(self: EmberRoutesWarehousePage)
+--- -- Attached by WarehousePageCart:
+---@field addToDeliveryCart fun(self: EmberRoutesWarehousePage, row: table, delta: number, preferredSource?: table)
+---@field removeFromDeliveryCart fun(self: EmberRoutesWarehousePage, cartKey: string)
+---@field clearDeliveryCart fun(self: EmberRoutesWarehousePage)
+---@field updateDeliveryCartTotals fun(self: EmberRoutesWarehousePage)
+---@field updateCartButtonVisual fun(self: EmberRoutesWarehousePage)
+---@field toggleCartDrawer fun(self: EmberRoutesWarehousePage, forceState?: boolean)
+---@field openContainerInspector fun(self: EmberRoutesWarehousePage)
+---@field dispatchDeliveryCart fun(self: EmberRoutesWarehousePage)
+--- -- Attached by WarehousePageRender:
+---@field update fun(self: EmberRoutesWarehousePage)
+---@field prerender fun(self: EmberRoutesWarehousePage)
 EmberRoutesWarehousePage=ISPanel:derive("EmberRoutesWarehousePage")
 
 ---@param owner EmberRoutesSettlementDashboard

@@ -13,6 +13,7 @@ local supported = S.supported
 local finite = S.finite
 local resolveAutoBasis = S.resolveAutoBasis
 
+---@param Host EmberRoutesLayoutHost
 local function attach(Host)
 local function apply(host)
     local pool=host.rootNode._rectPool

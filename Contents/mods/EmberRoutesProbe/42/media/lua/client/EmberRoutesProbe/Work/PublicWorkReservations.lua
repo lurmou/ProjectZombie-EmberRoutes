@@ -66,18 +66,12 @@ local function advanceReservations(now,actor)
             and personalJob.payload.kind~='LEISURE' and personalJob.payload.kind~='STUDY' then
             cancelReservation(npcId,'URGENT_SELF_CARE')
         else
-            -- The reservation predates the switch: re-check the labor it was
-            -- reserved for, so a switch flipped after reserving still holds.
-            local binding,entry=Eligibility.eligible(actor,npcId,res.selected.scopeId or res.entry.id,res.selected.category)
+            local binding,entry=Eligibility.eligible(actor,npcId,res.selected.scopeId or res.entry.id)
             local probing=Probe.careProbeWork and Probe.careProbeWork(npcId)
             if binding and not probing then
                 S.pendingReservations[npcId]=nil
                 -- The reservation's own entry, as before; the fresh one only gates eligibility.
                 claimSelected(actor,npcId,now,res.selected,res.jobId,res.entry)
-            elseif not Eligibility.laborAllowed(npcId,res.selected.category) then
-                -- Drop it now instead of holding the worker out of decide
-                -- until the 15s reservation expiry.
-                cancelReservation(npcId,'LABOR_SWITCH_OFF')
             else
                 local bind=Driver.bindId(actor,npcId)
                 local fatal=not bind or not bind.handle or Driver.suspended(bind.handle)

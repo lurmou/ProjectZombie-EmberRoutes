@@ -14,6 +14,7 @@ local Theme = require 'EmberRoutesProbe/UI/Theme'
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
 local function craftText(key,...) return getText('IGUI_EmberRoutesProbe_Crafting_'..key,...) end
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:updateBlueprint()
     self:updateConversion()

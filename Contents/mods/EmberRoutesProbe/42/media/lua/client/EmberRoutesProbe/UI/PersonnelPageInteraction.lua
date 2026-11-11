@@ -10,6 +10,7 @@ local C = require 'EmberRoutesProbe/UI/PersonnelPageConstants'
 local Layout = require 'EmberRoutesProbe/UI/Layout'
 local DossierDrawer = require 'EmberRoutesProbe/UI/PersonnelDossierDrawer'
 
+---@param Page EmberRoutesPersonnelPage
 local function attach(Page)
 function Page:onListFocus(_,direction)
     self.editCategory=direction<0 and 'crafting' or 'hauling'

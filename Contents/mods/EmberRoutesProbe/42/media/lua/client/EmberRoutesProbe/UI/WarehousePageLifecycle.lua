@@ -9,6 +9,7 @@ local Lifecycle=require "EmberRoutesProbe/UI/PageLifecycle"
 local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 local Index=require "EmberRoutesProbe/Warehouse/WarehouseIndex"
 
+---@param Page EmberRoutesWarehousePage
 local function attach(Page)
     function Page:activate()
         self.deliveryMiddleDown=type(isMouseButtonDown)=='function' and isMouseButtonDown(2) or false

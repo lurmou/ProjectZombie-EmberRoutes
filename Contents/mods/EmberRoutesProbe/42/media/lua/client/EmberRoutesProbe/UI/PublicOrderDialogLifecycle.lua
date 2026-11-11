@@ -11,6 +11,7 @@ require 'ISUI/ISCollapsableWindow'
 local Lifecycle = require 'EmberRoutesProbe/UI/PageLifecycle'
 local Tooltip = require 'EmberRoutesProbe/UI/TooltipManager'
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:isKeyConsumed(key)
     if self.disposed then return false end

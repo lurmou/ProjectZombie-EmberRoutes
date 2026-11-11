@@ -11,6 +11,7 @@ local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local release = S.release
 local detach = S.detach
 
+---@param Host EmberRoutesLayoutHost
 local function attach(Host)
 ---Controls the visibility of an item handle without re-slicing.
 ---@param handle table Handle returned by Host:build
@@ -36,7 +37,8 @@ end
 function Host:deactivate() self.scope=false end
 
 function Host:setActivation(scope)
-    assert(not self.closed and not self.closing and not self._pending, 'HOST_NOT_READY')
+    assert(not self.closed and not self.closing and not self._pending
+        and not self._building and not self._buildPending, 'HOST_NOT_READY')
     assert(scope and scope:isCurrent(), 'INVALID_ACTIVATION')
     self.scope=scope; self.sealed=true
     self.failedSolveRevision=-1; self.failedApplyRevision=-1; self.appliedRevision=-1
@@ -44,7 +46,8 @@ function Host:setActivation(scope)
 end
 
 function Host:isActivationValid()
-    return not self.closed and not self.closing and self.scope and self.scope:isCurrent()
+    return not self.closed and not self.closing and not self._building
+        and not self._buildPending and self.scope and self.scope:isCurrent()
 end
 function Host:_tickDebouncers(now)
     local ds = self._debouncers
@@ -86,8 +89,14 @@ function Host:update()
 end
 function Host:dispose()
     if self.closed then return true end
+    -- A reentrant close during native commit must not destroy the candidate mid-call.
+    if self._building then return nil,'BUILD_IN_PROGRESS' end
     self.closing=true; self.scope=false
     local failed=false
+    if self._buildPending then
+        local ok,err=self:_rollbackBuild()
+        if not ok then failed=err end
+    end
     if self._pending then
         local ok,err=pcall(release,self,self._pending,true)
         if ok then self._pending=false else failed=err end

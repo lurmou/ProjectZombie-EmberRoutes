@@ -17,6 +17,7 @@ local function getItemWeight(fullType)
     return 1.0
 end
 
+---@param Page EmberRoutesWarehousePage
 local function attach(Page)
     function Page:addToDeliveryCart(row,delta,preferredSource)
         if not row or not row.fullType then return end

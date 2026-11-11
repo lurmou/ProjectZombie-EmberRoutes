@@ -26,7 +26,11 @@ class KahluaLaborTest {
             se.krka.kahlua.stdlib.OsLib.register(platform,env);
             var thread=new KahluaThread(platform,env); thread.debugOwnerThread=Thread.currentThread();
             KahluaUtil.setWorkerThread(env,thread);
-            run(thread,env,Path.of("D:/Software/GameApp/steam/steamapps/common/ProjectZomboid/stdlib.lua"));
+            String gameRoot = System.getenv().getOrDefault("GAME_ROOT", "game-root");
+            Path stdlib = Path.of(gameRoot, "stdlib.lua");
+            if (!Files.exists(stdlib))
+                throw new IllegalStateException("EmberRoutes L2 tests need PZ stdlib.lua: set GAME_ROOT=<pz-install> or place stdlib.lua in game-root/ (looked at: " + stdlib + ")");
+            run(thread,env,stdlib);
 	    if (Arrays.asList(args).contains("--evidence-userdata")) {
 		var io=platform.newTable();io.rawset("stdout",new Object());env.rawset("io",io);
 	    }

@@ -15,6 +15,7 @@ local function isEnglish()
     return getText('IGUI_EmberRoutesProbe_Public_targetQuantity') == 'Target Product Quantity'
 end
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:updateConversion()
     local row=self.rows and self.rows[self.recipeCombo.selected]

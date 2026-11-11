@@ -8,12 +8,14 @@
 
 local Catalog = require "EmberRoutesProbe/Chatter/ChatterCatalog"
 local Clock = require 'EmberRoutesProbe/Kernel/Clock'
+local EventBus = require 'EmberRoutesProbe/Kernel/EventBus'
 
 local ChatterService = {}
 
 local cooldowns = setmetatable({}, { __mode = "k" })
 local urgentCooldowns = setmetatable({}, { __mode = "k" })
 local edgeCache = setmetatable({}, { __mode = "k" })
+local needEdge = setmetatable({}, { __mode = "k" })
 
 local function nowMs()
     if Clock.hasEngineClock() then return Clock.nowMs() end
@@ -94,17 +96,21 @@ function ChatterService.speak(actor, eventKey, opts)
     -- 原生半径：Say 30.0 / SayWhisper 10.0（javap IsoGameCharacter）
     local distance = (opts.whisper or whisper) and 10.0 or 30.0
 
-    -- 原生下发：优先调用 PZ v42 原生 7 参数带色签名，降级兼容单参数
+    -- 原生下发：7 参数带色签名失败时改用单参数签名；两者都失败必须如实上报
+    local delivered = false
     if actor.Say then
         local ok = pcall(function()
             actor:Say(line, r, g, b, font, distance, "")
         end)
-        if not ok then
-            pcall(function() actor:Say(line) end)
+        if ok then
+            delivered = true
+        else
+            delivered = pcall(function() actor:Say(line) end)
         end
     end
+    if not delivered then return false end
 
-    -- 更新冷却
+    -- 仅在成功下发后更新冷却
     local now = nowMs()
     cooldowns[actor] = now + 8000
     if isUrgent then
@@ -120,10 +126,6 @@ function ChatterService.onActionResult(actor, result)
     if not actor or not result then return false end
     if result == "INJURED" then
         return ChatterService.speak(actor, "WORK_INJURED", { urgent = true })
-    elseif result == "STORAGE_FULL" or result == "FULL" then
-        return ChatterService.speak(actor, "WORK_STORAGE_FULL")
-    elseif result == "NO_TOOL" or result == "TOOL_MISSING" then
-        return ChatterService.speak(actor, "WORK_NO_TOOL")
     end
     return false
 end
@@ -157,11 +159,43 @@ function ChatterService.observeHealth(actor, facts)
     return true
 end
 
+-- 消费自护策略的已决结果：阈值只存在于 NeedsPolicy，此处不复制数值。
+-- 纯表现层：不改 sample、不写业务状态、不参与自护派工。
+function ChatterService.observeNeeds(actor, sample)
+    if not actor or type(sample) ~= 'table' then return false end
+    -- UNKNOWN / 近期受伤 / 采样不可用都不是「可安全说话」的证据
+    if sample.safe ~= true or sample.safety ~= 'SAFE' then
+        needEdge[actor] = nil
+        return false
+    end
+    local Policy = require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
+    local need = Policy.choose(sample, nil, { safe = true }, { EAT = true, DRINK = true })
+    if need ~= 'EAT' and need ~= 'DRINK' then
+        needEdge[actor] = nil
+        return false
+    end
+    -- 边沿触发：同一需求持续期间只说一次，退回阈值以下后才重新武装
+    if needEdge[actor] == need then return false end
+    local spoke = ChatterService.speak(actor, need == 'EAT' and 'NEEDS_HUNGER' or 'NEEDS_THIRST')
+    if spoke then needEdge[actor] = need end
+    return spoke
+end
+
 function ChatterService.purge(actor)
     if not actor then return end
     cooldowns[actor] = nil
     urgentCooldowns[actor] = nil
     edgeCache[actor] = nil
+    needEdge[actor] = nil
+end
+
+-- 世界重置时清空全部派生缓存：NPC 的伤病边沿与冷却不得跨存档沿用。
+-- 走 EventBus 订阅（项目唯一订阅注册表），不在业务模块里散挂清理调用。
+function ChatterService.purgeAll()
+    for actor in pairs(cooldowns) do cooldowns[actor] = nil end
+    for actor in pairs(urgentCooldowns) do urgentCooldowns[actor] = nil end
+    for actor in pairs(edgeCache) do edgeCache[actor] = nil end
+    for actor in pairs(needEdge) do needEdge[actor] = nil end
 end
 
 -- 供单元测试检视内部状态
@@ -171,6 +205,10 @@ function ChatterService._inspect(actor)
         urgentCooldown = urgentCooldowns[actor],
         edge = edgeCache[actor],
     }
+end
+
+if Events and Events.OnPreMapLoad then
+    EventBus.subscribeOnce(Events.OnPreMapLoad, "Chatter.reset", ChatterService.purgeAll)
 end
 
 return ChatterService

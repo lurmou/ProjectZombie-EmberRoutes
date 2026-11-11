@@ -15,6 +15,7 @@ local Summary=require "EmberRoutesProbe/UI/CompactSummaryStrip"
 local Layout=require "EmberRoutesProbe/UI/Layout"
 local Theme=require "EmberRoutesProbe/UI/Theme"
 
+---@param Page EmberRoutesWarehousePage
 local function attach(Page)
     function Page:createChildren()
         ISPanel.createChildren(self)

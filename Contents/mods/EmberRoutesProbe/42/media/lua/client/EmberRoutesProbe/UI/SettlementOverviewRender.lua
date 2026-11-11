@@ -18,6 +18,7 @@ local RadialDial = require 'EmberRoutesProbe/UI/RadialDial'
 local Toast = require 'EmberRoutesProbe/UI/ToastManager'
 local C = require 'EmberRoutesProbe/UI/SettlementOverviewConstants'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     function Page:prerender()
         ISPanel.prerender(self)

@@ -40,11 +40,53 @@ local ItemPresentation = require 'EmberRoutesProbe/UI/ItemPresentation'
 ---@field entry table
 ---@field fontHeight number
 ---@field pad number
+---@field background boolean
+---@field activeFilter string
+---@field expandedOrderId string?
+---@field expandedKey string?
+---@field itemIcons table
 ---@field active boolean?
 ---@field disposed boolean?
 ---@field orderList EmberRoutesCachedList
 ---@field editAreaButton ISButton
 ---@field autoZoneButton ISButton
+---@field pageHost EmberRoutesLayoutHost
+---@field filterChips EmberRoutesFilterChips
+---@field vitalsPanel EmberRoutesCardPanel
+---@field stockpilePanel EmberRoutesCardPanel
+---@field gears table
+---@field roller table
+---@field dial table
+---@field cachedRows table[]
+--- -- Attached by SettlementOverviewLayout:
+---@field rebuildLayout fun(self: EmberRoutesSettlementOverviewPage)
+--- -- Attached by SettlementOverviewLifecycle:
+---@field activate fun(self: EmberRoutesSettlementOverviewPage)
+---@field deactivate fun(self: EmberRoutesSettlementOverviewPage)
+---@field dispose fun(self: EmberRoutesSettlementOverviewPage)
+---@field applyContext fun(self: EmberRoutesSettlementOverviewPage, context?: table): boolean
+---@field focusContent fun(self: EmberRoutesSettlementOverviewPage): boolean
+--- -- Attached by SettlementOverviewOrderRow:
+---@field formatRouteLabel fun(self: EmberRoutesSettlementOverviewPage, item: table, row: table): string
+---@field drawOrderRow fun(self: EmberRoutesSettlementOverviewPage, list: any, y: number, entry: table): number
+--- -- Attached by SettlementOverviewOrders:
+---@field update fun(self: EmberRoutesSettlementOverviewPage)
+---@field updateFilteredList fun(self: EmberRoutesSettlementOverviewPage)
+---@field getGroupedAssets fun(self: EmberRoutesSettlementOverviewPage, row: table): table[]
+---@field getDrawerHeight fun(self: EmberRoutesSettlementOverviewPage, item: table): number
+---@field applyListHeight fun(self: EmberRoutesSettlementOverviewPage)
+---@field updateOrderRowHeights fun(self: EmberRoutesSettlementOverviewPage)
+---@field onListMouseDown fun(self: EmberRoutesSettlementOverviewPage, list: any, lx: number, ly: number)
+---@field onMouseDown fun(self: EmberRoutesSettlementOverviewPage, x: number, y: number)
+--- -- Attached by SettlementOverviewPresentation:
+---@field updatePresentationCache fun(self: EmberRoutesSettlementOverviewPage)
+--- -- Attached by SettlementOverviewRefresh:
+---@field refresh fun(self: EmberRoutesSettlementOverviewPage)
+---@field refreshStockpile fun(self: EmberRoutesSettlementOverviewPage, snapshot: table)
+--- -- Attached by SettlementOverviewRender:
+---@field prerender fun(self: EmberRoutesSettlementOverviewPage)
+---@field onEditArea fun(self: EmberRoutesSettlementOverviewPage)
+---@field onAutoZone fun(self: EmberRoutesSettlementOverviewPage)
 local EmberRoutesSettlementOverviewPage = ISPanel:derive('EmberRoutesSettlementOverviewPage')
 
 ---@param arg1 any Owner dashboard or x position

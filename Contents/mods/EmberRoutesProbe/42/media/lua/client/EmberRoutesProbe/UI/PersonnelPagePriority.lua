@@ -10,6 +10,7 @@ require 'ISUI/ISContextMenu'
 local C = require 'EmberRoutesProbe/UI/PersonnelPageConstants'
 local Public = require 'EmberRoutesProbe/Work/PublicWork'
 
+---@param Page EmberRoutesPersonnelPage
 local function attach(Page)
 function Page:hasWorkCommands()
     if not self.workCommands then return false end

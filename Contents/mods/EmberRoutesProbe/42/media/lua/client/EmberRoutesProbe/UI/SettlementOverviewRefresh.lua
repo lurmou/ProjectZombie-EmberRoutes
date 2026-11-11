@@ -16,6 +16,7 @@ local CraftingService = require 'EmberRoutesProbe/Crafting/CraftingService'
 local PersonnelService = require 'EmberRoutesProbe/Settlement/PersonnelService'
 local SupplyEstimate = require 'EmberRoutesProbe/Warehouse/SupplyEstimate'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     function Page:refresh()
         if not self.active or self.disposed then return end

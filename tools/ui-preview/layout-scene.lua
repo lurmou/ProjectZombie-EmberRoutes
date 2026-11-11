@@ -1,6 +1,7 @@
 local PreviewLayoutArrow=require 'preview/layout-assets'
 require 'env'
 require 'ISUI/ISPanel'
+require 'ISUI/ISScrollBar'
 local Host=require 'EmberRoutesProbe/UI/LayoutHost'
 local Controls=require 'EmberRoutesProbe/UI/WarehouseControls'
 local Lifecycle=require 'EmberRoutesProbe/UI/PageLifecycle'
@@ -19,7 +20,14 @@ end}
 function NativePreview:queryChanged() self.changed=self.changed+1 end
 local host=Host:new(18,76,width-36,38,{direction='row',gap=6})
 host:initialise(); NativePreview:addChild(host)
+local originalBuild=host.build
+host.build=function(self,...)
+    local handles,err=originalBuild(self,...)
+    if not handles then error('BUILD_DIAGNOSTIC '..tostring(self.errorMessage)..' cleanup='..tostring(self.cleanupError)) end
+    return handles,err
+end
 local controls=Controls.new(NativePreview,host,{x=0,y=0,width=host.width,height=host.height})
+host.build=originalBuild
 assert(PreviewLayoutArrow, 'Installed UI2 ArrowDown not loaded')
 controls.category.image=PreviewLayoutArrow
 controls.sort.image=PreviewLayoutArrow
@@ -41,6 +49,55 @@ function NativePreview:render()
     if rect.visible then self:drawRect(rectHost.x+rect.x,rectHost.y+rect.y,rect.width,rect.height,.6,.2,.6,.35) end
 end
 local function near(a,b) assert(math.abs(a-b)<0.001,'geometry mismatch') end
+-- Exercise Host:build itself, not just the older addNative registration route.
+local function checkBuildRollback(page,scope)
+    local UI=require 'EmberRoutesProbe/UI/UI'
+    local h=Host:new(0,0,120,30,{direction='row'})
+    h:initialise();page:addChild(h)
+    local function button()
+        local w=ISButton:new(0,0,30,24,'test',nil,nil)
+        w:initialise();return w
+    end
+    local a,b=button(),button()
+    local function spec() return UI.Row({}, {UI.Item(a,{grow=1}),UI.Item(b,{grow=1})}) end
+    local originalRoot=h.rootNode
+    local nativeAdd=h.addChild
+    h.addChild=function(self,w)
+        nativeAdd(self,w)
+        if w==b then error('injected post-link build failure') end
+    end
+    local handles,err=h:build(spec())
+    assert(not handles and err=='BUILD_FAILED','post-link build error missing')
+    assert(not a:getParent() and not b:getParent(),'build rollback retained Lua parent')
+    assert(not a.javaObject:getParent() and not b.javaObject:getParent(),'build rollback retained Java parent')
+    assert(h.rootNode==originalRoot and #originalRoot.items==0 and not originalRoot.disposed,'failed build published candidate')
+    assert(not h._buildPending and #h._leafItems==0,'clean build rollback retained state')
+    h.addChild=nativeAdd
+    assert(h:build(spec()),'clean rollback did not permit rebuild')
+    assert(h:dispose());assert(h:dispose())
+    assert(not b.javaObject:getParent(),'rebuilt native target leaked')
+
+    local blocked=Host:new(0,0,120,30,{direction='row'})
+    blocked:initialise();page:addChild(blocked)
+    local c,d=button(),button()
+    local setter=d.setVisible
+    d.setVisible=function(self,visible)
+        if visible==false then error('injected persistent build visibility failure') end
+        return setter(self,visible)
+    end
+    local badSpec=UI.Row({}, {UI.Item(c,{grow=1}),UI.Item(d,{grow=1})})
+    local ok,result,reason=pcall(blocked.build,blocked,badSpec)
+    assert(ok and not result and reason=='BUILD_CLEANUP_REQUIRED','visibility exception escaped build')
+    assert(blocked._buildPending and not blocked.built,'build lost cleanup responsibility')
+    assert(not c.javaObject:getParent() and d.javaObject:getParent()==blocked.javaObject,'partial cleanup incorrect')
+    assert(not pcall(blocked.setActivation,blocked,scope),'incomplete build activated')
+    assert(not pcall(blocked.build,blocked,badSpec),'incomplete build restarted')
+    assert(not blocked:dispose() and not blocked.closed,'failed cleanup reported closed')
+    d.setVisible=setter
+    assert(blocked:dispose() and not blocked._buildPending,'native cleanup retry failed')
+    assert(not d:getParent() and not d.javaObject:getParent(),'cleanup retry left native parent')
+    print('PASS Host.build native post-link rollback, visibility failure isolation, rebuild and cleanup retry')
+end
 function NativePreview:smoke()
     local e=host._leafItems[1];local r=host.rootNode._rectPool[e.item.slotIndex]
     near(controls.search.x,r.x);near(controls.search.javaObject:getX(),r.x)
@@ -71,7 +128,7 @@ function NativePreview:smoke()
     controls.sort.setWidth=function(target,w) thirdCalls=thirdCalls+1;return originalThird(target,w) end
     local originalSecond=controls.category.setWidth
     controls.category.setWidth=function() error('injected apply failure') end
-    host:setWidth(host.width-20);host:update()
+    host:setWidth(host.width-20);host:onResize();host:update()
     assert(host.errorStage=='APPLY_FAILED' and host.errorSetter=='setWidth','apply failure missing')
     assert(not host.rootNode.dirty and host.solvedRevision~=host.appliedRevision,'solve/apply conflated')
     assert(thirdCalls==0,'continued after failed native setter')
@@ -117,6 +174,7 @@ function NativePreview:smoke()
     assert(reuse:addNative(reuse.rootNode,borrowed,{grow=1}));assert(reuse:setActivation(scope))
     assert(reuse:dispose())
     near(rect.x,5);near(rect.width,rectHost.width-10)
+    checkBuildRollback(self,scope)
     -- Leave the real controls and shared popup visible for visual inspection.
     host:setWidth(width-36);assert(host:resolveLayout())
     controls.category:showPopup()

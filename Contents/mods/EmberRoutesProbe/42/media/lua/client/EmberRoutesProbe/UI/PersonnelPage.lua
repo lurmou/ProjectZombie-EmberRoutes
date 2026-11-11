@@ -23,11 +23,56 @@ local State = require 'EmberRoutesProbe/UI/State'
 ---@field entry table
 ---@field fontHeight number
 ---@field pad number
+---@field background boolean
+---@field workFilter string
+---@field overview table
+---@field topInfoBounds table
+---@field matrixBounds table
+---@field detailsBounds table
+---@field headerBounds table
+---@field matrixListBounds table
+---@field infoBounds table
+---@field bottomNoticeBounds table
+---@field colHeaders table[]?
 ---@field store table
 ---@field matrixList EmberRoutesCachedList
 ---@field pageHost EmberRoutesLayoutHost
+---@field workFilters EmberRoutesFilterChips
+---@field refreshButton ISButton
+---@field dossierButton ISButton
+---@field dossierDrawer EmberRoutesPersonnelDossierDrawer
 ---@field active boolean?
 ---@field disposed boolean?
+--- -- Attached by PersonnelPageLayout:
+---@field createChildren fun(self: EmberRoutesPersonnelPage)
+---@field syncLayoutAliases fun(self: EmberRoutesPersonnelPage)
+---@field syncHeaderLayout fun(self: EmberRoutesPersonnelPage)
+---@field onResize fun(self: EmberRoutesPersonnelPage)
+--- -- Attached by PersonnelPageLifecycle:
+---@field resolveContext fun(self: EmberRoutesPersonnelPage, context?: table): (table?, string?)
+---@field applyContext fun(self: EmberRoutesPersonnelPage, context?: table): boolean
+---@field activate fun(self: EmberRoutesPersonnelPage)
+---@field deactivate fun(self: EmberRoutesPersonnelPage)
+---@field dispose fun(self: EmberRoutesPersonnelPage)
+--- -- Attached by PersonnelPagePriority:
+---@field hasWorkCommands fun(self: EmberRoutesPersonnelPage): boolean
+---@field syncCommandVisibility fun(self: EmberRoutesPersonnelPage)
+---@field setWorkerPriority fun(self: EmberRoutesPersonnelPage, worker: table, category: string, value: integer)
+---@field cycleWorkerPriority fun(self: EmberRoutesPersonnelPage, worker: table, category: string, delta: integer)
+---@field batchCycle fun(self: EmberRoutesPersonnelPage, category: string)
+--- -- Attached by PersonnelPageRefresh:
+---@field refresh fun(self: EmberRoutesPersonnelPage)
+---@field project fun(self: EmberRoutesPersonnelPage, value: table)
+--- -- Attached by PersonnelPageRender:
+---@field prerender fun(self: EmberRoutesPersonnelPage)
+---@field update fun(self: EmberRoutesPersonnelPage)
+--- -- Attached by PersonnelPageInteraction:
+---@field onListFocus fun(self: EmberRoutesPersonnelPage, list: any, direction: integer)
+---@field toggleDossierDrawer fun(self: EmberRoutesPersonnelPage, forceState?: boolean)
+---@field onListKey fun(self: EmberRoutesPersonnelPage, key: integer): boolean
+---@field onListActivate fun(self: EmberRoutesPersonnelPage)
+---@field close fun(self: EmberRoutesPersonnelPage)
+---@field focusContent fun(self: EmberRoutesPersonnelPage): boolean
 EmberRoutesPersonnelPage=ISPanel:derive('EmberRoutesPersonnelPage')
 
 function EmberRoutesPersonnelPage.floorLabel(z)

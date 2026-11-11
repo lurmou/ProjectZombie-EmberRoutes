@@ -15,6 +15,7 @@ local function submittingText()
     return getTextOrNull('IGUI_EmberRoutesProbe_Public_submitting') or 'IGUI_EmberRoutesProbe_Public_submitting'
 end
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:submitOrder()
     if self.disposed or self.submitting or not self.owner:valid() then

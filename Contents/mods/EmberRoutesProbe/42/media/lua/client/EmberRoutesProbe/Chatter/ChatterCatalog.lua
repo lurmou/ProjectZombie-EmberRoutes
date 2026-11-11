@@ -101,64 +101,6 @@ local Entries = {
             "IGUI_EmberRoutesProbe_Chatter_Health_DirtyBandage_1",
         },
     },
-    WORK_STORAGE_FULL = {
-        color = Colors.WORK,
-        urgent = false,
-        slots = {
-            openers = {
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Open_1",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Open_2",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Open_3",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Open_4",
-            },
-            cores = {
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Core_1",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Core_2",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Core_3",
-            },
-            closers = {
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Close_1",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Close_2",
-                "IGUI_EmberRoutesProbe_Chatter_Storage_Close_3",
-            },
-        },
-        variants = {
-            "IGUI_EmberRoutesProbe_Chatter_Work_StorageFull_1",
-            "IGUI_EmberRoutesProbe_Chatter_Work_StorageFull_2",
-        },
-    },
-    WORK_NO_TOOL = {
-        color = Colors.WORK,
-        urgent = false,
-        slots = {
-            openers = {
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Open_1",
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Open_2",
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Open_3",
-            },
-            cores = {
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Core_1",
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Core_2",
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Core_3",
-            },
-            closers = {
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Close_1",
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Close_2",
-                "IGUI_EmberRoutesProbe_Chatter_Tool_Close_3",
-            },
-        },
-        variants = {
-            "IGUI_EmberRoutesProbe_Chatter_Work_MissingTool_1",
-            "IGUI_EmberRoutesProbe_Chatter_Work_MissingTool_2",
-        },
-    },
-    WORK_DONE = {
-        color = Colors.WORK,
-        urgent = false,
-        variants = {
-            "IGUI_EmberRoutesProbe_Chatter_Work_Done_1",
-        },
-    },
     WORK_INJURED = {
         color = Colors.CRISIS,
         urgent = true,
@@ -197,13 +139,6 @@ local Entries = {
         urgent = false,
         variants = {
             "IGUI_EmberRoutesProbe_Chatter_Needs_Thirst_1",
-        },
-    },
-    NEEDS_SOAKED = {
-        color = Colors.WARN,
-        urgent = false,
-        variants = {
-            "IGUI_EmberRoutesProbe_Chatter_Needs_Soaked_1",
         },
     },
     CMD_FOLLOW = {

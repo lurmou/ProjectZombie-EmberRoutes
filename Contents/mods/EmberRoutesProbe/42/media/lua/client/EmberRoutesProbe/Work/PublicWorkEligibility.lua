@@ -6,16 +6,7 @@ local Work=require 'EmberRoutesProbe/Work/Work'
 local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 
--- Cheap eligibility is shared by discovery and private precheck admission.
--- P0 pilot (Dwarf Fortress labor switch): a switched-off labor is a hard
--- gate, not a weight. MembershipService owns the switch table; a service
--- without laborAllowed (older fixtures) fails open, so the gate never
--- blocks on a missing read. No category name is written here: the check
--- always runs on the provider's own category string.
-local function laborAllowed(npcId,category)
-    return not S.Members or not S.Members.laborAllowed or S.Members.laborAllowed(npcId,category)
-end
-local function eligible(actor,npcId,scope,category)
+local function eligible(actor,npcId,scope)
     if require('EmberRoutesProbe/Activity/ActivityAttendance').blocksOrdinary(npcId) then return end
     local binding=Driver.bindId(actor,npcId)
     -- A parked carrier keeps its binding but must not receive new work: its
@@ -36,10 +27,9 @@ local function eligible(actor,npcId,scope,category)
     local M=S.Members
     local eligible=M.check(npcId,'WORK',{x=npc:getX(),y=npc:getY(),z=npc:getZ(),scopeId=scope})
     if not eligible.allowed then return end
-    if category and not laborAllowed(npcId,category) then return end
     local entry=M.entry(npcId,scope)
     if not entry then return end
     return binding,entry
 end
 
-return {laborAllowed=laborAllowed, eligible=eligible}
+return {eligible=eligible}

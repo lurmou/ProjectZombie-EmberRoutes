@@ -11,6 +11,7 @@ local Text=require "EmberRoutesProbe/UI/Text"
 
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
 
+---@param Page EmberRoutesWarehousePage
 local function attach(Page)
     function Page:togglePin(row)
         if not row or not row.fullType then return end

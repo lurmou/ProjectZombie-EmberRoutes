@@ -99,10 +99,12 @@ function Transfer.item(context, item, from, to, endpoint)
         notified = true
     end
 
+    local function isCharacter(cont)
+        return Producers.isCharacterInventory(context.npc, cont)
+    end
+
     local function valid()
-        local own = context.npc:getInventory()
-        local ownTransfer = not endpoint and (from==own or from.isInCharacterInventory and from:isInCharacterInventory(context.npc))
-            and (to==own or to.isInCharacterInventory and to:isInCharacterInventory(context.npc))
+        local ownTransfer = not endpoint and isCharacter(from) and isCharacter(to)
         if not context.valid() then lastCheck='CONTEXT_INVALID'
         elseif not EmberRoutesProbeJava.carrierActive(context.npc) then lastCheck='CARRIER_INACTIVE'
         elseif not (ownTransfer or endpoint and Transfer.reachable(context.npc, endpoint)) then lastCheck='NOT_REACHABLE'
@@ -138,8 +140,9 @@ function Transfer.item(context, item, from, to, endpoint)
         -- Duration is the vanilla transfer formula (TransferDuration),
         -- replacing the old weight-banded 15..60 estimate.
         local duration = TransferDuration.forTransfer(context.npc, item, from, to)
+        local anim = (not endpoint and isCharacter(from) and isCharacter(to)) and "TransferItemOnSelf" or "Loot"
         if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
-            EmberRoutesProbeJava.nativeActionStart(context.npc, "Loot", duration, true)
+            EmberRoutesProbeJava.nativeActionStart(context.npc, anim, duration, true)
         end
         started = true
     end

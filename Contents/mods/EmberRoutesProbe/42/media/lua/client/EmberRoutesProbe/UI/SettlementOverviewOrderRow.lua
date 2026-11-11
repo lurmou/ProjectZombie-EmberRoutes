@@ -14,6 +14,7 @@ local StatMeter = require 'EmberRoutesProbe/UI/StatMeter'
 local InlineCardDrawer = require 'EmberRoutesProbe/UI/InlineCardDrawer'
 local C = require 'EmberRoutesProbe/UI/SettlementOverviewConstants'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     ---Project a world route into a user-facing named area plus a compass bearing.
     ---Raw tile coordinates are an internal identifier, never player-facing copy.

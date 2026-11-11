@@ -8,6 +8,7 @@
 local Metrics=require "EmberRoutesProbe/Warehouse/WarehouseMetrics"
 local Input=require "EmberRoutesProbe/UI/WarehouseInput"
 
+---@param Page EmberRoutesWarehousePage
 local function attach(Page)
     function Page:update()
         ISPanel.update(self)

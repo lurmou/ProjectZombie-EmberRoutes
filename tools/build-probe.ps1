@@ -17,6 +17,9 @@ $prefix = "[EmberRoutes v$probeVersion]"
 & python (Join-Path $projectRoot 'tools/check-architecture.py')
 if ($LASTEXITCODE -ne 0) { throw 'Static module architecture gate failed' }
 
+& python (Join-Path $projectRoot 'tools/check-undeclared-globals.py')
+if ($LASTEXITCODE -ne 0) { throw 'Static undeclared globals gate failed' }
+
 $gameJar = Join-Path $GameRoot 'projectzomboid.jar'
 
 $buddyJar = Join-Path $GameRoot 'ZombieBuddy.jar'

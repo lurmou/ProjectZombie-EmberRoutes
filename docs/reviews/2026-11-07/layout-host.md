@@ -1,5 +1,35 @@
 # Phase 2 LayoutHost 与仓储工具栏试点证据
 
+## 2026-11-11：main 工作区构建提交/回滚修复
+
+本节是当前修复证据，下文 11-07 状态保留为历史截点。未迁移新页面、未发版、未变更 Java Runner；不宣称其他已迁移页面已完成验收。
+
+### 缺陷与修复范围
+
+- 修前在安装版 Kahlua + 原生替身复现：AddChild 建立关系后报错，build 返回 BUILD_FAILED，随后 dispose 返回成功却仍有原生父级；另一个用例中提交的 setVisible(false) 报错直接逃出 build，已挂载目标不在正式清理表。原输出：`build/ui-audit-20261111/faults.log`。
+- 创建/认领：`LayoutHostBuild.lua:222` 的 build 对独立候选根 Stage，不修改原正式根。初始 when 条件在候选树内受控求值。`:188` 的 commit 在任何原生调用前登记 `_buildPending` 清理责任并保留全部叶子；挂载和隐藏统一捕获异常，当前失败目标也在回滚范围。条件求值可能重入其他 Host，因此原生提交前重新核对目标所有权，不能覆盖别人的声明。
+- 正常释放/回滚：`:157` 的 `_rollbackBuild` 逆序释放已经尝试的目标，未尝试项只解除本次预留，不改其可见性/父级。恢复接管前可见性，全部成功后才释放候选根；正式 rootNode、handles、登记和快照仅在完整提交成功后发布。
+- 异常打断：`LayoutHostLifecycle.lua:39` 的激活门及登记/build 门拒绝处理中或清理待完成的 Host；`:90` 的 dispose 优先继续候选清理。失败保留引用、cleanupError 和非 closed 状态；不能假装成功。提交途中重入 dispose 明确返回 BUILD_IN_PROGRESS，不在原生调用栈内销毁候选。
+- 接受边界收口：已激活、存在待清理责任、正在构建、或已有命令式登记/拓扑的 Host 不接受 build，避免覆盖原树或混合两条构建路线；正常空 Host 的 DSL 路线保留。初始化条件由提交后移至 Stage，防止条件报错遗留已挂载目标。这些是本次缺陷修复的保护与失败语义变化，不称为纯等价重构。
+
+### 本轮检查
+
+| 检查 | 实际结果 |
+|---|---|
+| 安装版 Kahlua 定向故障检查 | 41 项通过，`build/ui-repair-20261111/repair.log`；临时脚本仅放忽略的 build 目录，没有交付新 tests 脚本 |
+| 故障覆盖 | 挂载后抛错、可见性 setter 持续抛错、回滚解绑失败、失败责任保留、禁止重新激活/构建/登记、dispose 重试、初始条件抛错、干净回滚后重新 build、原有父级/隐藏状态恢复、业务对象复用、同 Host 重入和跨 Host 重入抢占 |
+| 原生 EN / CN | 均 Smoke exit 0，已回读截图；已有夹具新增直接针对 Host.build 的真实 Java 父子关系故障注入，补原版 ISScrollBar 预加载，显式触发 onResize 适配当前更新门禁；没有修改生产守卫以迎合夹具 |
+| 原生截图 | EN `build/ui-preview-native/20261111-143207-225/preview-r1.png`；CN `build/ui-preview-native/20261111-143318-911/preview-r1.png`。工具栏无相互遮挡，弹层位置正常；业务导航/查询仍为夹具，不是加载存档验证 |
+| Lua 编译 | 440 份生产 Lua 普通/Debug 均 0 failure，`build/ui-repair-20261111/compile.log` |
+| 静态门禁 | 架构 0 error、2186 对翻译键通过、440 份未声明模块/全局检查通过；日志在 `build/ui-repair-20261111/` |
+| 局部 LuaLS / 结构检查 | 8 份 Host/Node/Solver 同哈希快照，0 error / 44 warning；非全模组类型结论。Build 结构 lint 未发现问题；未声称零 warning |
+
+运行原生预览时默认 Python 缺 Pillow，使用已有 `C:/Program Files/python/python.exe` 所在目录作为本次子进程 PATH 首项；没有安装或修改全局依赖。未运行完整打包、全库回归、游戏存档实机或 GC/性能测量。其他已迁移页面的集中验收仍待后续任务。
+
+最终源 SHA256：LayoutHost.lua `8127A53234DAD2533D86EF33A6D763C6C6FC317BE53B639D5089B2A0F1FE0EC8`；LayoutHostBuild.lua `D9F076E7B15D61747E286FAD524D2C6EDA003D8E991F01B54275477BD35D9C80`；LayoutHostLifecycle.lua `9C44CAEBB471C497E6CDAB11B1C03FFDD6B8775DAE331B818484FB46359457D7`。
+
+---
+
 日期：2026-11-07。用户授权“开始吧”，范围为冻结承载契约、Host 实现及仓储工具栏试点；Phase 3、自动测量、全库迁移均未启动。
 
 ## 生产链路与责任

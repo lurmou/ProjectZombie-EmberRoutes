@@ -51,8 +51,8 @@ function A.new(npcId)
     local function knownTransfer(c,s)
         local r=c.job local a=s.attempt
         if r.activeAttempt~=a then return true end -- Repeated notifications never release a newer claim.
-        local fromAllowed=s.from==c.npc:getInventory() or Registry.revalidate(s.fromEndpoint,'take',r.scopeId)
-        local toAllowed=s.to==c.npc:getInventory() or s.toEndpoint and s.toEndpoint.playerId
+        local fromAllowed=Producers.isCharacterInventory(c.npc,s.from) or Registry.revalidate(s.fromEndpoint,'take',r.scopeId)
+        local toAllowed=Producers.isCharacterInventory(c.npc,s.to) or s.toEndpoint and s.toEndpoint.playerId
             and Delivery.endpointValid(c,s.toEndpoint) or Registry.revalidate(s.toEndpoint,'put',r.scopeId)
         local inFrom=fromAllowed and s.item:getContainer()==s.from and s.from:getItems():contains(s.item)
         local inTo=toAllowed and s.item:getContainer()==s.to and s.to:getItems():contains(s.item)
@@ -252,7 +252,10 @@ function A.new(npcId)
     end
     local function prepareTransfer(c,line,item,endpoint,kind)
         local r=c.job local own=c.npc:getInventory()
-        local from,to=kind=='TAKE' and endpoint.container or own,kind=='TAKE' and own or endpoint.container
+        local targetContainer=Producers.bestCarryContainer(c.npc,item) or own
+        local sourceContainer=item:getContainer() or own
+        local from=kind=='TAKE' and endpoint.container or sourceContainer
+        local to=kind=='TAKE' and targetContainer or endpoint.container
         r.attemptSequence=r.attemptSequence+1
         local a={attemptId=r.id..':'..r.attemptSequence,itemId=line.itemId,kind=kind,
             fromId=kind=='TAKE' and endpoint.id or npcId,toId=kind=='TAKE' and npcId or endpoint.id,
@@ -308,7 +311,7 @@ function A.new(npcId)
                 local order=isDelivery(r) and Delivery.order(r)
                 if order and order.destinationId and Delivery.takeReason(c,value,nextItem.line.sourceId) then return end
 		if r.deliveryOnly or r.returning or Producers.freeCarry(c.npc)<value:getUnequippedWeight()
-		    or not first.to:hasRoomFor(c.npc,value) or not Producers.transfer(c,value,first.from,first.to) then return end
+		    or not Producers.hasCarryRoomFor(c.npc,value) or not Producers.transfer(c,value,first.from,first.to) then return end
 	    elseif not endpoint.playerId then
 		if not Routing.accept(c,endpoint,value) or not first.to:hasRoomFor(c.npc,value)
 		    or not Producers.transfer(c,value,first.from,first.to)
@@ -357,8 +360,12 @@ function A.new(npcId)
         end
         if c.scanSourceId~=sourceId then c.scan=nil end
         if not c.scan then
-            local containers={c.npc:getInventory()} if source then containers[2]=source.container end
-            c.scan=View.scan(containers) c.scanSourceId=sourceId
+            local containers={c.npc:getInventory()}
+            local carry=Producers.getCarryContainers and Producers.getCarryContainers(c.npc) or {}
+            for i=2,#carry do containers[#containers+1]=carry[i].container end
+            local charContainersCount=#containers
+            if source then containers[#containers+1]=source.container end
+            c.scan=View.scan(containers) c.scanSourceId=sourceId c.scanCharCount=charContainersCount
         end
         local index,why=c.scan:step(32)
         if not index then if why=='INVENTORY_CHANGED' then c.scan=nil end return nil,'SCAN_PENDING' end
@@ -367,10 +374,12 @@ function A.new(npcId)
         for _,l in ipairs(r.manifest) do
             if Manifest.pending(l) then
                 local item,where,reason=View.find(index,l.itemId)
-                if item and where==1 then l.custodyState='CARRIED' held[#held+1]=item
+                local isCarried=item and where and where<=(c.scanCharCount or 1)
+                local isSource=item and where and source and where==((c.scanCharCount or 1)+1)
+                if item and isCarried then l.custodyState='CARRIED' held[#held+1]=item
                 elseif l.custodyState=='CARRIED' then return nil,'RECONCILE_REQUIRED'
-                elseif l.sourceId==sourceId then
-                    if item and where==2 then uncollected=uncollected or {line=l,item=item}
+                elseif (l.sourceId or r.source)==sourceId then
+                    if item and isSource then uncollected=uncollected or {line=l,item=item}
                     elseif reason~='ITEM_MISSING' then return nil,'RECONCILE_REQUIRED' end
                 end
             end
@@ -384,9 +393,12 @@ function A.new(npcId)
             local destId=uncollected.line.destinationId or r.destination
             local target=destId and Registry.resolve(destId,'put',r.scopeId)
             c.source=source
-            if source and target and Producers.transfer(c,uncollected.item,source.container,c.npc:getInventory())
+            local targetBag=(Producers.bestCarryContainer and Producers.bestCarryContainer(c.npc,uncollected.item)) or c.npc:getInventory()
+            local hasRoom=Producers.hasCarryRoomFor and Producers.hasCarryRoomFor(c.npc,uncollected.item)
+                or (targetBag and targetBag.hasRoomFor and targetBag:hasRoomFor(c.npc,uncollected.item))
+            if source and target and targetBag and Producers.transfer(c,uncollected.item,source.container,targetBag)
                 and Producers.freeCarry(c.npc)>=uncollected.item:getUnequippedWeight()
-                and c.npc:getInventory():hasRoomFor(c.npc,uncollected.item) then
+                and hasRoom then
                 if not Transfer.reachable(c.npc,source) then
                     c.moveEndpoint=source c.moveRule={target=target,item=uncollected.item}
                     return Transfer.move(c,source)

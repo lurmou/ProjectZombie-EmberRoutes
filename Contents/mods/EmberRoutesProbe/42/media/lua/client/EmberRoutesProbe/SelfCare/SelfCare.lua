@@ -194,7 +194,11 @@ local function observe(actor,binding,row,now)
     if now<(row.observeAt or 0) then return end
     row.observeAt=now+1000
     row.sample,row.reason=Observer.sample(binding.handle,binding.id,now)
-    if row.sample then use('SelfCare/MedicalCare').observe(binding.handle,binding.id,row.sample,now) end
+    if row.sample then
+        use('SelfCare/MedicalCare').observe(binding.handle,binding.id,row.sample,now)
+        -- callback-first: EventBus 无业务事件发布能力；沿用 MedicalCare.lua 的既有单点调用
+        require('EmberRoutesProbe/Chatter/ChatterService').observeNeeds(binding.handle,row.sample)
+    end
 end
 -- Duty guard: a claimed-but-unfinished ordinary job must block idle
 -- STUDY/LEISURE discovery and raise the working threshold. The old

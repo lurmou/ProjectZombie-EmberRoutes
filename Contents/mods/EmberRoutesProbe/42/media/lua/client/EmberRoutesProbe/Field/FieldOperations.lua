@@ -24,6 +24,20 @@ local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local ToolReq=require 'EmberRoutesProbe/Field/ToolRequirements'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
 local O={}
+local function trait(name)
+    if CharacterTrait and CharacterTrait[name] then return CharacterTrait[name] end
+    return name
+end
+local function equipTime(npc,item)
+    local hotbar=getPlayerHotbar and npc.getPlayerNum and getPlayerHotbar(npc:getPlayerNum())
+    local fromHotbar=hotbar and hotbar.isItemAttached and hotbar:isItemAttached(item)
+    local time=fromHotbar and 20 or 50
+    if npc.hasTrait and npc:hasTrait(trait('DEXTROUS')) then time=time*0.5 end
+    if (npc.hasTrait and npc:hasTrait(trait('ALL_THUMBS')))
+        or (npc.isWearingAwkwardGloves and npc:isWearingAwkwardGloves()) then time=time*2.0 end
+    if npc.isTimedActionInstant and npc:isTimedActionInstant() then time=1 end
+    return math.max(1,math.floor(time))
+end
 local function canUse(npc,item,jobId)
     if not item or (item.isBroken and item:isBroken()) then return false end
     local npcId=EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc)
@@ -75,7 +89,8 @@ local function toolNode(c,item,secondary)
     end
     local twoHands=not secondary and item.isTwoHandWeapon and item:isTwoHandWeapon() or false
     if c.job.payload.target.kind=='TREE' and c.npc:getSecondaryHandItem() then twoHands=false end
-    return Native.new(c,{kind='EQUIP',create=function() return ISEquipWeaponAction:new(c.npc,item,50,not secondary,twoHands) end,
+    local time=equipTime(c.npc,item)
+    return Native.new(c,{kind='EQUIP',create=function() return ISEquipWeaponAction:new(c.npc,item,time,not secondary,twoHands) end,
         observe=function(ok,finished)
             local hand=secondary and c.npc:getSecondaryHandItem() or c.npc:getPrimaryHandItem()
             return true,hand==item,not finished
@@ -216,7 +231,8 @@ local function corpse(c,t)
             local owner=Store.owner(id)
             local allowed=not owner or owner.taskId==c.job.id or Store.canClaimTool(c.job.npcId,id)
             if not allowed then c.reason='FIELD_HANDS_OCCUPIED' return 'Failure' end
-            c.node=Native.new(c,{kind='UNEQUIP',create=function() return ISUnequipAction:new(c.npc,item,50) end,
+            local time=equipTime(c.npc,item)
+            c.node=Native.new(c,{kind='UNEQUIP',create=function() return ISUnequipAction:new(c.npc,item,time) end,
                 observe=function(ok,finished) return true,c.npc:getPrimaryHandItem()~=item and c.npc:getSecondaryHandItem()~=item,not finished end})
             if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
             return 'Running'

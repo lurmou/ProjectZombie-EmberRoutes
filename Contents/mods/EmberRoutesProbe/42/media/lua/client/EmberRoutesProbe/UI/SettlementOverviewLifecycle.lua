@@ -11,6 +11,7 @@ local Tooltip = require 'EmberRoutesProbe/UI/TooltipManager'
 local WorkOverviewService = require 'EmberRoutesProbe/Work/WorkOverviewService'
 local WarehouseIndex = require 'EmberRoutesProbe/Warehouse/WarehouseIndex'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     function Page:activate()
         local scope = Lifecycle.createActivationScope(self)

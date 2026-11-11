@@ -436,7 +436,17 @@ local function forage(env,row)
             z=math.floor(env.npc:getZ()),identity='zone:'..tostring(zone.id)})
         return
     end
-    local radius=math.min(16,8+math.floor(env.npc:getPerkLevel(Perks.PlantScavenging)*0.8))
+    local bonus=0
+    if fs.getTraitVisionBonus then
+        local ok,val=pcall(fs.getTraitVisionBonus,env.npc)
+        if ok and type(val)=='number' then bonus=bonus+val end
+    end
+    if fs.getProfessionVisionBonus then
+        local ok,val=pcall(fs.getProfessionVisionBonus,env.npc)
+        if ok and type(val)=='number' then bonus=bonus+val end
+    end
+    local perkLevel=env.npc.getPerkLevel and Perks and Perks.PlantScavenging and env.npc:getPerkLevel(Perks.PlantScavenging) or 0
+    local radius=math.max(3,math.min(16,math.floor(8+perkLevel*0.8+bonus)))
     local n=0
     for id,icon in pairs(zone.forageIcons or {}) do
         n=n+1 if n>256 then break end

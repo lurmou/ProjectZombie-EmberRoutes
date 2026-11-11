@@ -13,6 +13,7 @@ local MechanicalRoller = require 'EmberRoutesProbe/UI/MechanicalRoller'
 local SupplyEstimate = require 'EmberRoutesProbe/Warehouse/SupplyEstimate'
 local C = require 'EmberRoutesProbe/UI/SettlementOverviewConstants'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     ---Precomputes all strings, measurements and colors in state updates to guarantee Zero-GC in render.
     function Page:updatePresentationCache()

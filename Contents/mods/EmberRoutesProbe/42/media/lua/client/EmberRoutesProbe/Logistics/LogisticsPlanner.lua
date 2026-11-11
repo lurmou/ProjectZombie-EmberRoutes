@@ -136,7 +136,8 @@ function Planner.new(entry,settings,npc,compiled)
                     local current=Registry.revalidate(target,"put","local-world")
                     if current and Registry.logistics(current)=="STORAGE" and Registry.accepts(current,item) then
                         local weight=item:getUnequippedWeight()
-                        if current.container:hasRoomFor(self.npc,item) and self.npc:getInventory():hasRoomFor(self.npc,item)
+                        local hasRoom = Producers.hasCarryRoomFor and Producers.hasCarryRoomFor(self.npc,item) or (self.npc:getInventory() and self.npc:getInventory().hasRoomFor and self.npc:getInventory():hasRoomFor(self.npc,item))
+                        if current.container:hasRoomFor(self.npc,item) and hasRoom
                             and Producers.freeCarry(self.npc)>=weight
                             and Claims.availableCapacity(current.id,current.container:getFreeCapacity(self.npc))>=weight then
                             local score=Sort.specificity(Registry.filter(current.object,current.container),self.targets.description,item)
@@ -158,7 +159,7 @@ function Planner.new(entry,settings,npc,compiled)
                                     self.best=candidate
                                 end
                             end
-                        elseif Producers.freeCarry(self.npc)<weight or not self.npc:getInventory():hasRoomFor(self.npc,item) then
+                        elseif Producers.freeCarry(self.npc)<weight or not hasRoom then
                             self.reason="NPC_INVENTORY_FULL"
                         else self.reason="DESTINATION_FULL" end
                     end

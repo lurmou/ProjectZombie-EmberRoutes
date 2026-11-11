@@ -17,6 +17,7 @@ local InlineCardDrawer = require 'EmberRoutesProbe/UI/InlineCardDrawer'
 local C = require 'EmberRoutesProbe/UI/SettlementOverviewConstants'
 local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     function Page:update()
         ISPanel.update(self)

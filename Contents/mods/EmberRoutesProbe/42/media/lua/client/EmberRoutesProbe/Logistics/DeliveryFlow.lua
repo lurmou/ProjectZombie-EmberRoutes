@@ -39,8 +39,12 @@ function F.next(c,snapshotStep,withdraw)
     end
     if c.scanSourceId~=sourceId then c.scan=nil end
     if not c.scan then
-        local containers={c.npc:getInventory()} if source then containers[2]=source.container end
-	c.scan=View.scan(containers) c.scanSourceId=sourceId
+        local containers={c.npc:getInventory()}
+        local carry=Producers.getCarryContainers and Producers.getCarryContainers(c.npc) or {}
+        for i=2,#carry do containers[#containers+1]=carry[i].container end
+        local charContainersCount=#containers
+        if source then containers[#containers+1]=source.container end
+	c.scan=View.scan(containers) c.scanSourceId=sourceId c.scanCharCount=charContainersCount
     end
     local index,why=c.scan:step(32)
     if not index then
@@ -52,10 +56,12 @@ function F.next(c,snapshotStep,withdraw)
     for _,l in ipairs(r.manifest) do
         if Manifest.pending(l) then
             local item,where,reason=View.find(index,l.itemId)
-            if item and where==1 then l.custodyState='CARRIED' held[#held+1]=item
+            local isCarried=item and where and where<=(c.scanCharCount or 1)
+            local isSource=item and where and source and where==((c.scanCharCount or 1)+1)
+            if item and isCarried then l.custodyState='CARRIED' held[#held+1]=item
 	    elseif l.custodyState=='CARRIED' or l.custodyState=='RECONCILE' then return nil,'RECONCILE_REQUIRED'
 	    elseif l.sourceId==sourceId then
-		if item and where==2 then uncollected=uncollected or {line=l,item=item}
+		if item and isSource then uncollected=uncollected or {line=l,item=item}
 		elseif reason=='ITEM_MISSING' then missing[#missing+1]={itemId=l.itemId,state='WITHDRAWN'}
 		else return nil,'RECONCILE_REQUIRED' end
 	    end
@@ -67,7 +73,8 @@ function F.next(c,snapshotStep,withdraw)
 	    local item=uncollected.item
             if order and order.destinationId then local reason=Target.takeReason(c,item,sourceId) if reason then return nil,reason end end
 	    c.source=source
-	    if Producers.freeCarry(c.npc)>=item:getUnequippedWeight() and c.npc:getInventory():hasRoomFor(c.npc,item) then
+	    local hasRoom=Producers.hasCarryRoomFor and Producers.hasCarryRoomFor(c.npc,item) or (c.npc:getInventory() and c.npc:getInventory().hasRoomFor and c.npc:getInventory():hasRoomFor(c.npc,item))
+	    if Producers.freeCarry(c.npc)>=item:getUnequippedWeight() and hasRoom then
 		if not Transfer.reachable(c.npc,source) then c.moveEndpoint=source return Transfer.move(c,source) end
 		return snapshotStep(c,uncollected.line,item,source,'TAKE',index)
 	    end

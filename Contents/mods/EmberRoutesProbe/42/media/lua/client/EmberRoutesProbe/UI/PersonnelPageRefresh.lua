@@ -12,6 +12,7 @@ local Theme = require 'EmberRoutesProbe/UI/Theme'
 local Text = require 'EmberRoutesProbe/UI/Text'
 local Crafting = require 'EmberRoutesProbe/Crafting/CraftingService'
 
+---@param Page EmberRoutesPersonnelPage
 local function attach(Page)
 function Page:refresh()
     if not self.active or self.disposed then return end

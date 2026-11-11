@@ -277,6 +277,15 @@ do
     check(warehouseWatchCalls == 1, "WarehouseIndex.watch called on activate()")
     check(warehouseReleaseCalls == 0, "No release called during activation")
 
+    -- Step 2b: Real Receive & Controls Projection (Theme.enable coverage)
+    local mockClearBtn = { enable = false, setEnable = function(self, v) self.enable = v end }
+    page.controls.clear = mockClearBtn
+    local receiveOk, receiveErr = pcall(function()
+        page:receive({ state = 'READY', rows = {}, counts = { loaded = 0, containers = 0, unloaded = 0, private = 0, missing = 0, limited = 0, items = 0 }, revision = 1 })
+    end)
+    check(receiveOk == true, "WarehousePage:receive succeeded with controls.clear: " .. tostring(receiveErr))
+    page.controls.clear = nil
+
     -- Step 3: Open CartDrawer (real DeliveryCartDrawer class)
     page:toggleCartDrawer(true)
     check(page.cartDrawer ~= nil, "CartDrawer created via toggleCartDrawer(true)")
@@ -334,6 +343,12 @@ do
     check(page.release ~= nil, "PersonnelPage has non-nil page.release")
     check(craftingWatchCalls == 1, "Crafting.watch called on activate()")
     check(craftingReleaseCalls == 0, "No release called during activation")
+
+    -- Step 2b: Real Layout & Header Resolution (Layout.axis coverage)
+    page.headerBounds.width = bounds.width
+    local layoutOk, layoutErr = pcall(function() page:syncLayoutAliases() end)
+    check(layoutOk == true, "PersonnelPage:syncLayoutAliases succeeded without error: " .. tostring(layoutErr))
+    check(page.colHeaders ~= nil, "colHeaders resolved via Layout.axis")
 
     -- Step 3: Open DossierDrawer (real PersonnelDossierDrawer class)
     page.store:setState({ selected = { id = "worker-alpha", name = "Alpha Worker" } })

@@ -11,6 +11,7 @@ local Public = require 'EmberRoutesProbe/Work/PublicWork'
 local Recipe = require 'EmberRoutesProbe/Crafting/ProductionRecipe'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:query()
     if self.releaseCatalog then self.releaseCatalog() self.releaseCatalog=nil end

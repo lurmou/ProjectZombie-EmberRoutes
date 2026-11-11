@@ -143,11 +143,12 @@ local resInjured = Service.onActionResult(actor, "INJURED")
 check(resInjured == true, "onActionResult handles INJURED")
 check(actor.sayCount == 1, "Actor:Say triggered for INJURED")
 
-local resStorage = Service.onActionResult(actor, "STORAGE_FULL")
-check(resStorage == false, "Storage full blocked by regular cooldown")
+-- Contract change (P0): STORAGE_FULL / NO_TOOL have no production producer,
+-- so onActionResult now rejects unknown result codes instead of speaking.
+local resUnknown = Service.onActionResult(actor, "STORAGE_FULL")
+check(resUnknown == false, "Result code with no production contract is rejected")
 currentTime = 50000
-local resStoragePass = Service.onActionResult(actor, "STORAGE_FULL")
-check(resStoragePass == true, "Storage full speaks after cooldown")
+check(Service.onActionResult(actor, "STORAGE_FULL") == false, "Rejection is stable after cooldown")
 
 -- Test 12: observeHealth edge detection
 currentTime = 60000

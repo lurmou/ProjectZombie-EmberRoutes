@@ -17,6 +17,7 @@ local SkeletonView = require 'EmberRoutesProbe/UI/SkeletonView'
 local EmptyState = require 'EmberRoutesProbe/UI/EmptyState'
 local C = require 'EmberRoutesProbe/UI/SettlementOverviewConstants'
 
+---@param Page EmberRoutesSettlementOverviewPage
 local function attach(Page)
     function Page:rebuildLayout()
         local w, h = self.width or 800, self.height or 600

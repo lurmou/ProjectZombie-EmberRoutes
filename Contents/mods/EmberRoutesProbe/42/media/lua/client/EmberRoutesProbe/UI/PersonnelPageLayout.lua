@@ -14,10 +14,12 @@ local Theme = require 'EmberRoutesProbe/UI/Theme'
 local Tooltip = require 'EmberRoutesProbe/UI/TooltipManager'
 local Text = require 'EmberRoutesProbe/UI/Text'
 local Public = require 'EmberRoutesProbe/Work/PublicWork'
+local Layout = require 'EmberRoutesProbe/UI/Layout'
 local LayoutHost = require 'EmberRoutesProbe/UI/LayoutHost'
 local UI = require 'EmberRoutesProbe/UI/UI'
 local FilterChips = require 'EmberRoutesProbe/UI/FilterChips'
 
+---@param Page EmberRoutesPersonnelPage
 local function attach(Page)
 function Page:createChildren()
     ISPanel.createChildren(self)

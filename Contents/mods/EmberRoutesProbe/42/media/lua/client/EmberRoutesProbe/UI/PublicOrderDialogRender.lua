@@ -11,6 +11,7 @@ local Text = require 'EmberRoutesProbe/UI/Text'
 
 local function text(key,...) return getText('IGUI_EmberRoutesProbe_Public_'..key,...) end
 
+---@param Page EmberRoutesPublicOrderDialog
 local function attach(Page)
 function Page:prerender()
     ISCollapsableWindow.prerender(self)

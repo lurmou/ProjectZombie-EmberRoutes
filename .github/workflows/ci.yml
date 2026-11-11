@@ -24,8 +24,13 @@
 #   before the run. Locally the same steps run via tools/build-probe.ps1
 #   (Windows) or tools/run-bridge-surface.sh (Linux/macOS).
 #
-# Java 25 is required everywhere: the probe targets --release 25 and the
-# Kahlua compile test runs under the installed (PZ 42) compiler.
+# The probe's Java is compiled with `javac --release 17` (see tools/build-probe.ps1:105+);
+# its JAR bytecode is Java 17 (class major version 61). Run CI Java steps with JDK 17.
+# NOTE: the Kahlua compile / bridge-surface / labor tests still link against the
+# proprietary game jars in game-root/ and are skipped on GitHub-hosted runners
+# (see the jar-checks job). The labor tests additionally load the game's
+# stdlib.lua from a local install path (see tests/java/KahluaLaborTest.java:29),
+# so L2 (Lua logic) verification is currently local / self-hosted only.
 # GitHub Actions execution itself is UNVERIFIED on this machine (no `act`,
 # no runner here); the workflow was validated by YAML parsing plus running
 # every step's commands locally in order — see the commit message / brief.
@@ -60,6 +65,9 @@ jobs:
       - name: I18N gate
         run: python3 tools/check-i18n.py
 
+      - name: Undeclared globals gate
+        run: python3 tools/check-undeclared-globals.py
+
   jar-checks:
     name: jar checks (Kahlua compile + bridge surface)
     runs-on: ubuntu-latest
@@ -67,11 +75,11 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
-      - name: Set up Java 25 (Temurin)
+      - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: "17"
 
       - name: Look for game jars
         id: jars

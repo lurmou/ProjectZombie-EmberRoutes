@@ -9,6 +9,7 @@ local C = require 'EmberRoutesProbe/UI/PersonnelPageConstants'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
 local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
+---@param Page EmberRoutesPersonnelPage
 local function attach(Page)
 function Page:prerender()
     ISPanel.prerender(self)

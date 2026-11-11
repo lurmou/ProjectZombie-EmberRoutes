@@ -93,22 +93,6 @@ local function decide(actor,npcId,now,binding,entry)
     local member=S.Members and S.Members.view and S.Members.view(npcId)
     local stamp=entry.id..':'..tostring(entry.revision)..':'..tostring(member and member.revision)
         ..':'..tostring(member and member.postingRevision)..':'..tostring(priorities.revision)..':'..tostring(S.catalogEpoch[entry.id] or 0)
-    -- P0 pilot (cross-game RimWorld matrix): per-NPC HAUL/COOKING levels
-    -- stored on the member record override the OrderStore priorities for
-    -- this decision only. Only explicitly stored keys override; an unset
-    -- key leaves the OrderStore value standing, and the stored table is
-    -- never written here. Blank (0) means "never do this trade".
-    local overrides=S.Members and S.Members.workPriorityOverrides and S.Members.workPriorityOverrides(npcId)
-    if overrides and next(overrides) then
-        local overlaid=nil
-        for cat,v in pairs(overrides) do
-            if v~=nil then
-                if not overlaid then overlaid={} for k,x in pairs(priorities) do overlaid[k]=x end end
-                overlaid[cat]=v
-            end
-        end
-        if overlaid then priorities=overlaid end
-    end
     if not Providers.hasPending(npcId) and not S.idle:due(npcId,now,stamp,Wake.revision and Wake.revision() or 0,Providers.discoveryChanged) then
 
         for _,provider in ipairs(Providers.all()) do
@@ -120,17 +104,6 @@ local function decide(actor,npcId,now,binding,entry)
     end
     if S.retryWake[npcId] and S.retryWake[npcId]<=now then S.retryWake[npcId]=nil end
 
-    -- P0 pilot (cross-game Sims: low needs degrade first, forced self-care
-    -- second). A warn-band NPC keeps working, but HAUL drops one dispatch
-    -- tier for this decision only: the stored priorities are untouched
-    -- (demoted is a copy), other providers keep their tiers, and HAUL
-    -- still runs when nothing else competes (no starvation, no block).
-    -- Choice: dispatch deprioritization, NOT output discount -- HAUL
-    -- output is physical item movement settled by LaborCommitKernel, so
-    -- discounting it would change settlement accounting per trip; tier
-    -- demotion is a pure ordering change at the dispatch gate. A missing
-    -- or unreadable sample fails open: no demotion, no block. Forced
-    -- self-care still runs on its own NeedsPolicy thresholds.
     local sample=NeedsObserver.sample(npc,npcId,now)
     -- NPC sleep (P0 pilot, cross-game Factorio §1.3): the 1Hz light
     -- recheck. A sleeper wakes when the world changed since it fell asleep
@@ -172,35 +145,15 @@ local function decide(actor,npcId,now,binding,entry)
     if NeedsPolicy.medicalEmergency(medical) then return end
     if NeedsPolicy.extremeNeed(sample) then return end
     if NeedsPolicy.severeInjury(medical) then return end
-    if sample and NeedsPolicy.warned(sample) then
-        local haul=priorities.hauling
-        if haul and haul>=1 and haul<4 then
-            local demoted={} for k,v in pairs(priorities) do demoted[k]=v end
-            demoted.hauling=haul+1
-            priorities=demoted
-        end
-    end
 
     local envDiscover=newDiscoverEnv(actor,npc,npcId,entry,priorities,now,candidates,function(t) studyTarget=t end)
-    -- P0 pilot (cross-game RimWorld matrix): one discovery pass over all
-    -- eligible providers, ordered by effective priority ascending, then
-    -- provider registration order; selection is a single global utility
-    -- choose over that pool. This replaces the tier-by-tier loop (discover
-    -- tier 1, stop at the first tier holding a candidate), the RimWorld
-    -- "finish this priority before the next" shape: a tier-1 HAUL candidate
-    -- no longer keeps lower-tier providers from being discovered at all,
-    -- and same-tier candidates compete on score in one pool. One decide
-    -- still dispatches at most one job; the queue is never drained here.
-    -- env.priority is now each provider's own effective priority (the tier
-    -- loop set it to the tier index, which was the same value per provider).
+    -- Discovery pass over all eligible providers (ordered by priority ascending, then provider registration order).
     local regIndex={}
     for i,cat in ipairs(Providers.categories()) do regIndex[cat]=i end
     local orderedProviders={}
     for _,provider in ipairs(Providers.all()) do
         local p=priorities[provider.category] or 0
-        -- Labor switch (hard gate): a switched-off provider never discovers
-        -- for this NPC, whatever its priority or score.
-        if p>=1 and p<=4 and provider.discover and Eligibility.laborAllowed(npcId,provider.category) then orderedProviders[#orderedProviders+1]=provider end
+        if p>=1 and p<=4 and provider.discover then orderedProviders[#orderedProviders+1]=provider end
     end
     table.sort(orderedProviders,function(a,b)
         local pa,pb=priorities[a.category] or 0,priorities[b.category] or 0

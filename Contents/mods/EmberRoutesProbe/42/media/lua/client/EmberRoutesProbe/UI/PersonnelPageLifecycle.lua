@@ -10,6 +10,7 @@ local Lifecycle = require 'EmberRoutesProbe/UI/PageLifecycle'
 local Tooltip = require 'EmberRoutesProbe/UI/TooltipManager'
 local Crafting = require 'EmberRoutesProbe/Crafting/CraftingService'
 
+---@param Page EmberRoutesPersonnelPage
 local function attach(Page)
 function Page:resolveContext(context)
     if not context.npcId then return nil,"CONTEXT_UNSUPPORTED" end
