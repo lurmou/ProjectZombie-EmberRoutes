@@ -1,0 +1,18 @@
+--- A clean walk through doorway gap (1.5,3.5)->(6.5,3.5) ---
+moveTo -> MOVE_REQUESTED
+frame 0 t=0.00s motion=MOVING pos=(1.50,3.50)
+frame 116 t=1.93s motion=REACHED pos=(6.10,3.50)
+terminal motion=REACHED after 1.93s (116 frames), final pos=(6.10,3.50) target=(6.5,3.5)
+--- B MODEL root-motion clip: path ends 0.5 short (expect PATH_ENDED) ---
+moveTo -> MOVE_REQUESTED
+frame 0 t=0.00s motion=MOVING pos=(1.50,3.50)
+frame 113 t=1.88s motion=PATH_ENDED pos=(6.00,3.50)
+terminal motion=PATH_ENDED after 1.88s (113 frames), final pos=(6.00,3.50) target=(6.5,3.5)
+--- C MODEL doorway WAIT 2.5s mid-path then clear (expect REACHED, late) ---
+moveTo -> MOVE_REQUESTED
+frame 0 t=0.00s motion=MOVING pos=(1.50,3.50)
+frame 266 t=4.43s motion=REACHED pos=(6.10,3.50)
+terminal motion=REACHED after 4.43s (266 frames), final pos=(6.10,3.50) target=(6.5,3.5)
+--- D sealed wall: moveTo must refuse ---
+moveTo -> BLOCKED (expect BLOCKED)
+SPIKE4 PASS
