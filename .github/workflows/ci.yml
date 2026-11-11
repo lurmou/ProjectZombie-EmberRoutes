@@ -1,0 +1,118 @@
+# Ember Routes — minimal CI.
+#
+# Runs on every push to main and every pull request:
+#   job "static-checks"  — no game files needed, always runs:
+#     * tools/check-architecture.py (module boundaries, retained contract,
+#       compat ratchet, callback-first ratchet, long-file tripwire)
+#     * tools/check-i18n.py (CN/EN key symmetry, 2211 keys as of 2026-11-11)
+#   job "jar-checks"     — needs the game jars, skipped when they are absent:
+#     * Kahlua full-tree compile of all production Lua (405 files, 0 failures)
+#     * ProbeBridgeSurfaceTest (114-method public bridge whitelist)
+#
+# GAME JARS — why jar-checks can skip, and how to enable it:
+#   Kahlua and the bridge test link against projectzomboid.jar and
+#   ZombieBuddy.jar. Those are proprietary game files (~76 MB combined):
+#   they are NEVER committed to this repo (see /game-root/ in .gitignore),
+#   there is no public download URL for them, and no credential or token
+#   for fetching them may ever be added to this workflow. GitHub-hosted
+#   runners therefore cannot run jar-checks, and a skip there is the
+#   intended, non-failing outcome — it is reported explicitly in the job
+#   summary, not hidden.
+#   To run jar-checks in CI, use a self-hosted runner (or a manual
+#   workflow_dispatch run) with a game install, and place the two jars at
+#   <repo>/game-root/projectzomboid.jar and <repo>/game-root/ZombieBuddy.jar
+#   before the run. Locally the same steps run via tools/build-probe.ps1
+#   (Windows) or tools/run-bridge-surface.sh (Linux/macOS).
+#
+# Java 25 is required everywhere: the probe targets --release 25 and the
+# Kahlua compile test runs under the installed (PZ 42) compiler.
+# GitHub Actions execution itself is UNVERIFIED on this machine (no `act`,
+# no runner here); the workflow was validated by YAML parsing plus running
+# every step's commands locally in order — see the commit message / brief.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    name: static checks (no game jars)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Architecture gate
+        run: python3 tools/check-architecture.py
+
+      - name: I18N gate
+        run: python3 tools/check-i18n.py
+
+  jar-checks:
+    name: jar checks (Kahlua compile + bridge surface)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Look for game jars
+        id: jars
+        shell: bash
+        run: |
+          if [ -f game-root/projectzomboid.jar ] && [ -f game-root/ZombieBuddy.jar ]; then
+            echo "has_jars=true" >> "$GITHUB_OUTPUT"
+            echo "Game jars found in game-root/."
+          else
+            echo "has_jars=false" >> "$GITHUB_OUTPUT"
+            echo "Game jars NOT found in game-root/ — jar checks will be skipped (see workflow header)."
+          fi
+
+      - name: Kahlua full-tree compile
+        if: steps.jars.outputs.has_jars == 'true'
+        shell: bash
+        run: |
+          java -cp "game-root/*" tests/java/KahluaCompileTest.java \
+            Contents/mods/EmberRoutesProbe/42/media/lua
+
+      - name: Bridge surface test (114-method whitelist)
+        if: steps.jars.outputs.has_jars == 'true'
+        shell: bash
+        env:
+          GAME_ROOT: ${{ github.workspace }}/game-root
+          JDK_BIN: ${{ env.JAVA_HOME }}/bin
+        run: sh tools/run-bridge-surface.sh
+
+      - name: Report jar-check skip
+        if: steps.jars.outputs.has_jars != 'true'
+        shell: bash
+        run: |
+          {
+            echo "## jar-checks skipped"
+            echo ""
+            echo "No game jars in \`game-root/\` on this runner, so the Kahlua"
+            echo "full-tree compile and the bridge surface test did not run."
+            echo "This is expected on GitHub-hosted runners: the jars are"
+            echo "proprietary game files and are never committed or downloaded"
+            echo "by CI. Run them locally via \`tools/build-probe.ps1\`"
+            echo "(Windows) or \`tools/run-bridge-surface.sh\` (Linux/macOS),"
+            echo "or on a self-hosted runner with the jars in \`game-root/\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "SKIPPED: jar checks need game-root/projectzomboid.jar + ZombieBuddy.jar (see job summary)."
