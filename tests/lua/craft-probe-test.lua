@@ -250,7 +250,17 @@ local bridge={selectedId=function() return npc.id end,carrierFor=function() retu
     workerCount=function() return 1 end,workerIdAt=function() return npc.id end,
     recipeHasCallbacks=function(value) return value.callbacks==true end,
     recipeHasSpecialOutputs=function(value) return value.specialOutput==true end,
-    recipeKey=function(r) return r.key end}
+    recipeKey=function(r) return r.key end,
+    -- TEST ONLY Lua host model of the Java kernel entry productionYieldIds:
+    -- same pure filter+sort contract as ProductionYieldScan.yieldIds, so the
+    -- yield-scan tests exercise the bridge path without the real bridge.
+    productionYieldIds=function(crafts)
+        local Yield=require 'EmberRoutesProbe/Crafting/ProductionYield'
+        local ids={}
+        for id,r in pairs(crafts) do if Yield.assetFree(r) then ids[#ids+1]=id end end
+        table.sort(ids)
+        return ids
+    end}
 for k,v in pairs(bridge) do EmberRoutesProbeJava[k]=v end
 local function dequeue(action) if queued==action then queued=nil npc.actions[1]=nil end end
 ISBaseTimedAction={}
