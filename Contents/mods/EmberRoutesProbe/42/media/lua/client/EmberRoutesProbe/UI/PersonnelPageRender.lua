@@ -7,6 +7,7 @@
 
 local C = require 'EmberRoutesProbe/UI/PersonnelPageConstants'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local function attach(Page)
 function Page:prerender()
@@ -28,7 +29,7 @@ end
 function Page:update()
     ISPanel.update(self)
     if not self.active or self.disposed then return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if not self.nextSyncCheck or now>self.nextSyncCheck then
         self.nextSyncCheck=now+5000
         self:refresh()

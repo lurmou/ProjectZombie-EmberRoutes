@@ -1,6 +1,7 @@
 -- Furniture sleep follows the verified NPCFW furniture branch: native seating
 -- establishes the anchor, owned sleep clips return to it before native get-up.
 -- This module never computes GetOnBed approach offsets or overrides its turns.
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local B={}
 function B.move(c)
     return require('EmberRoutesProbe/SelfCare/SelfCareFurniture').seat(c,c.payload.site,nil,true)
@@ -11,8 +12,8 @@ function B.posture(c,bed)
     local function owned() return c.sameAttempt() and c.body.retained() end
     return {object=bed,enter=function()
         if not owned() or not c.valid() then return 'Failure' end
-        deadline=deadline or getTimestampMs()+20000
-        if getTimestampMs()>deadline then c.reason='SLEEP_POSE_TIMEOUT' return 'Failure' end
+        deadline=deadline or Clock.nowMs()+20000
+        if Clock.nowMs()>deadline then c.reason='SLEEP_POSE_TIMEOUT' return 'Failure' end
         if not started then
             local state=seat.enter()
             if state~='Success' then return state end

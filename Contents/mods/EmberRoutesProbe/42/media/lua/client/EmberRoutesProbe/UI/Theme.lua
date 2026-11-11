@@ -1,3 +1,4 @@
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Theme={
     -- Avatar palette is registered once; moving it out of drawing preserves its appearance.
     avatarSurface={r=.04,g=.06,b=.08,a=.95},avatarHead={r=.28,g=.35,b=.42,a=.85},
@@ -234,7 +235,7 @@ local function hookTactileButton(button)
 
         -- Loading State: kinetic pulse / submitting indicator
         if self.loading then
-            local t = (getTimestampMs and getTimestampMs()) or (os.time() * 1000)
+            local t = Clock.nowMs()
             local dotCount = (math.floor(t / 350) % 3) + 1
             local dots = (dotCount == 1 and '.') or (dotCount == 2 and '..') or '...'
             local lText = (self.loadingText or (self.origTitle or self.title or '')) .. dots

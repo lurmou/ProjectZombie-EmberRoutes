@@ -5,6 +5,7 @@ local Policy=require 'EmberRoutesProbe/SelfCare/NeedsPolicy'
 local Observer=require 'EmberRoutesProbe/SelfCare/NeedsObserver'
 local Resources=require 'EmberRoutesProbe/SelfCare/SelfCareResources'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Relief={}
 function Relief.new(c)
     local child,context,request,requestKind,floorScan
@@ -38,8 +39,8 @@ function Relief.new(c)
             or previous.medical and previous.medical.effects~='KNOWN') then
             c.effects='UNKNOWN' c.persist() return 'Failure'
         end
-        local sample=Observer.sample(c.npc,c.job.npcId,getTimestampMs())
-        if sample then require('EmberRoutesProbe/SelfCare/MedicalCare').observe(c.npc,c.job.npcId,sample,getTimestampMs()) end
+        local sample=Observer.sample(c.npc,c.job.npcId,Clock.nowMs())
+        if sample then require('EmberRoutesProbe/SelfCare/MedicalCare').observe(c.npc,c.job.npcId,sample,Clock.nowMs()) end
         local study=c.payload.kind=='STUDY'
         -- Optional emergency care must not become a new prerequisite for
         -- returning an unrelated original. The enclosing Session owns safety.

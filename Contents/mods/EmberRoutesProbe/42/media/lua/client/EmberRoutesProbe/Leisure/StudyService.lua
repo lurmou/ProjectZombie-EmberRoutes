@@ -2,6 +2,7 @@
 -- module has no tick handler, body owner, separate Job store or asset ledger.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Library=require 'EmberRoutesProbe/Leisure/LibraryIndex'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Study={}
 local world,offers,versions=nil,{},{}
 local function load()
@@ -22,13 +23,13 @@ function Study.offer(npcId,entry,target)
     if not prior or prior.entry.id~=entry.id or (prior.target and prior.target.orderId)~=(target and target.orderId) then
         prior={entry=entry,target=target,offset=1} offers[npcId]=prior
     end
-    prior.untilTime=getTimestampMs()+15000 prior.version=versions[entry.id] or 0 prior.membershipRevision=member.revision
+    prior.untilTime=Clock.nowMs()+15000 prior.version=versions[entry.id] or 0 prior.membershipRevision=member.revision
     prior.entryRevision=entry.revision
 end
 function Study.candidate(actor,npc,id,budget,memory)
     load()
     local offer=offers[id]
-    if not offer or getTimestampMs()>offer.untilTime or offer.version~=(versions[offer.entry.id] or 0) then
+    if not offer or Clock.nowMs()>offer.untilTime or offer.version~=(versions[offer.entry.id] or 0) then
         return nil,true,'STUDY_WAIT_WORK'
     end
     local M=require 'EmberRoutesProbe/Settlement/MembershipService'

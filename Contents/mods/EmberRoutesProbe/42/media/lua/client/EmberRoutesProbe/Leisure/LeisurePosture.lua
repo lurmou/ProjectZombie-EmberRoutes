@@ -1,6 +1,7 @@
 -- Native timed action inside the existing body Session. The engine, rather
 -- than the paced business tick, advances turning and the pre-sit delay.
 require 'TimedActions/ISRestAction'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local P={}
 function P.new(c,object)
     local action,deadline,leaving,cancelled,begun
@@ -8,8 +9,8 @@ function P.new(c,object)
     return {
         enter=function()
             if not owned() or leaving then return 'Failure' end
-            deadline=deadline or getTimestampMs()+8000
-            if getTimestampMs()>deadline then c.reason='SIT_POSE_TIMEOUT' return 'Failure' end
+            deadline=deadline or Clock.nowMs()+8000
+            if Clock.nowMs()>deadline then c.reason='SIT_POSE_TIMEOUT' return 'Failure' end
             if not action then
                 if c.npc:getCurrentActionContextStateName()~='idle' or c.npc:isSittingOnFurniture()
                     or c.npc:isSitOnGround() or c.npc:getSitOnFurnitureObject()~=nil then return 'Running' end

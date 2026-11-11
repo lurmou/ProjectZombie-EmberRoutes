@@ -4,6 +4,7 @@ local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Index={CHUNK_SIZE=8,LIMIT=2048}
 function Index.describe(object)
     if not object.getProperties or not object.getSprite or not object:getSprite() then return nil,0 end
@@ -51,7 +52,7 @@ function Index.watch(entry,classify)
         nextTick=0
         Log.write('FACILITIES','Watch initialized for settlement='..tostring(entry.id)..' revision='..tostring(entry.revision))
     end
-    row.lastUsed=getTimestampMs()
+    row.lastUsed=Clock.nowMs()
     return row
 end
 local function commit(row,frame,unloaded,limited)
@@ -95,7 +96,7 @@ local function nextChunk(row)
         return value
     end
     if row.complete then
-        if getTimestampMs()<row.nextSweep then return end
+        if Clock.nowMs()<row.nextSweep then return end
         resetSweep(row)
     end
     local area=row.entry.areas[row.area]
@@ -107,7 +108,7 @@ local function nextChunk(row)
             end
             Log.write('FACILITIES','Sweep complete for settlement='..tostring(row.entry.id)..' totalSlots='..tostring(#row.slots)..' seats='..tostring(seatCount))
         end
-        row.complete=true row.nextSweep=getTimestampMs()+60000 return
+        row.complete=true row.nextSweep=Clock.nowMs()+60000 return
     end
     local size=Index.CHUNK_SIZE
     row.cx=row.cx or math.floor(area.x/size) row.cy=row.cy or math.floor(area.y/size)
@@ -192,14 +193,14 @@ end
 function Index.due(now) return #ordered>0 and now>=nextTick end
 function Index.tick(budget,now)
     if #ordered==0 then return end
-    now=now or getTimestampMs()
+    now=now or Clock.nowMs()
     if now<nextTick then return end
     load()
     if #ordered==0 then return end
     nextTick=now+Config.facilitiesMs
     local idle=0
     local maxBudget=math.min(budget or 8,8)
-    local startMs=getTimestampMs and getTimestampMs() or 0
+    local startMs=Clock.nowMs()
     for _=1,maxBudget do
         cursor=cursor%#ordered+1
         local row=rows[ordered[cursor]]
@@ -213,7 +214,7 @@ function Index.tick(budget,now)
             pump(row)
             idle=0
         else idle=idle+1 if idle>=#ordered then break end end
-        if startMs>0 and (getTimestampMs()-startMs)>=0.8 then break end
+        if startMs>0 and (Clock.nowMs()-startMs)>=0.8 then break end
     end
 end
 function Index.pending(row)
@@ -265,9 +266,9 @@ local function squareChanged(square)
     -- Index.invalidate already de-duplicates per chunk, so suppress the
     -- repeated rows/areas walk during that burst. Without a host clock we
     -- keep the original behaviour rather than risk dropping a later change.
-    if not _G.getTimestampMs then Index.invalidate(x,y) return end
+    if not Clock.hasEngineClock() then Index.invalidate(x,y) return end
     local id=math.floor(x/Index.CHUNK_SIZE)..':'..math.floor(y/Index.CHUNK_SIZE)
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if lastChunk==id and now-lastChunkAt<50 then return end
     lastChunk,lastChunkAt=id,now
     Index.invalidate(x,y)

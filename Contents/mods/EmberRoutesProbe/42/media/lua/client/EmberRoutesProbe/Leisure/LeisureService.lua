@@ -15,6 +15,7 @@ local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local LifeZones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service={}
 -- Optional local policy; absence of a configured zone preserves old selection.
 local function zoneRule(entry,point,activity,id)
@@ -37,8 +38,8 @@ local preferred={}
 -- standing NPC explains itself without flooding the console.
 local idleLogged={}
 local function noteIdle(id,reason)
-    statuses[id]={reason=reason,at=getTimestampMs()}
-    local now=getTimestampMs()
+    statuses[id]={reason=reason,at=Clock.nowMs()}
+    local now=Clock.nowMs()
     local row=idleLogged[id]
     if not row or row.reason~=reason or now-row.at>=10000 then
         idleLogged[id]={reason=reason,at=now}
@@ -183,7 +184,7 @@ function Service.seatedSocial(c)
     offer.stateData=offer.stateData or {}
     offer.stateData.SOCIAL=offer.stateData.SOCIAL or {}
     local candidate=seekSocial({actor=c.actor,npc=c.npc,id=id,entry=offer.entry,point=seat,
-        hours=getGameTime():getWorldAgeHours(),now=getTimestampMs(),cooling=memory.cooldowns or {},
+        hours=getGameTime():getWorldAgeHours(),now=Clock.nowMs(),cooling=memory.cooldowns or {},
         budget=c.budget,state=offer.stateData.SOCIAL})
     return candidate and candidate.leisure.socialId
 end
@@ -221,7 +222,7 @@ local function seekSit(env,preview,nearby)
         return {leisure={format=1,activity='SIT',hours=env.hours},entry=env.entry,site=proof,
             claims=Sites.keys(proof,'REST')},true
     end
-    env.state.blocked[ad.payload.found.key]=getTimestampMs()+5000
+    env.state.blocked[ad.payload.found.key]=Clock.nowMs()+5000
     env.state.retryAt=env.now+Config.seatRetryMs
     return nil,true
 end
@@ -259,7 +260,7 @@ function Service.review(c,elapsed)
     local currentPoint={x=c.npc:getX(),y=c.npc:getY(),z=math.floor(c.npc:getZ())}
     local incumbentRule=zoneRule(offer.entry,currentPoint,kind,id)
     if not incumbentRule or incumbentRule==0 then return true end
-    local hours,now=getGameTime():getWorldAgeHours(),getTimestampMs()
+    local hours,now=getGameTime():getWorldAgeHours(),Clock.nowMs()
     local memory=c.payload.leisureMemory or {} local cooling=memory.cooldowns or {}
     local budget={scan=math.min(4,c.budget and c.budget.scan or 0),paths=0,
         containers=math.min(1,c.budget and c.budget.containers or 0)}
@@ -327,7 +328,7 @@ end
 -- Job/Session. A decision pause keeps its original deadline and memory.
 local function ambient(entry,point,id,eligible,hours,untilHours)
     if (zoneRule(entry,point,'OBSERVE',id) or 0)==0 then return end
-    statuses[id]={activity='OBSERVE',reason='AMBIENT_IDLE',at=getTimestampMs()}
+    statuses[id]={activity='OBSERVE',reason='AMBIENT_IDLE',at=Clock.nowMs()}
     return {leisure={format=1,activity='OBSERVE',hours=hours,ambient=true,
         untilHours=untilHours or hours+Config.observeMinutes/60},entry=entry,pure=true,
         membershipRevision=eligible.revision,settlementRevision=eligible.entryRevision}
@@ -392,7 +393,7 @@ function Service.candidate(actor,binding,sample,budget,memory)
         Service.consumeResume(id,memory)
         Social.withdraw(id) noteIdle(id,'NOT_ELIGIBLE') return nil,true
     end
-    local now,hours=getTimestampMs(),getGameTime():getWorldAgeHours()
+    local now,hours=Clock.nowMs(),getGameTime():getWorldAgeHours()
     local point={x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())}
 
     local Activities=require 'EmberRoutesProbe/Activity/ActivityService'
@@ -636,7 +637,7 @@ function Service.pause(memory)
 end
 function Service.started(id,activity,brief,zoneVisit)
     load() statuses[id]={activity=activity,reason=zoneVisit and (zoneVisit.eventId and 'ACTIVITY_APPROACH' or 'LIFE_ZONE_APPROACH')
-        or brief and 'WORK_OBSERVING' or 'ACTIVE',at=getTimestampMs()}
+        or brief and 'WORK_OBSERVING' or 'ACTIVE',at=Clock.nowMs()}
     require('EmberRoutesProbe/Kernel/Log').write('LEISURE','ACTIVE npc='..id..' activity='..activity)
 end
 function Service.failed(id,key,reason)
@@ -644,8 +645,8 @@ function Service.failed(id,key,reason)
     load() local offer=offers[id]
     if offer and key then
         offer.blocked=offer.blocked or {} local count=0
-        for k,t in pairs(offer.blocked) do if t<=getTimestampMs() then offer.blocked[k]=nil else count=count+1 end end
-        if count<32 then offer.blocked[key]=getTimestampMs()+Config.failedTargetMs end
+        for k,t in pairs(offer.blocked) do if t<=Clock.nowMs() then offer.blocked[k]=nil else count=count+1 end end
+        if count<32 then offer.blocked[key]=Clock.nowMs()+Config.failedTargetMs end
     end
     noteIdle(id,reason or 'START_FAILED')
 end
@@ -674,7 +675,7 @@ function Service.finished(c,stopped)
     end
     if l.moving then p.leisureMemory.moveAfter=getGameTime():getWorldAgeHours()+Config.movementIntervalHours end
     if l.finished and not l.brief and not l.zoneVisit and not preferred[c.job.npcId] then p.leisureMemory=Service.pause(p.leisureMemory) end
-    if l.finished then statuses[c.job.npcId]={reason='CHOOSING',at=getTimestampMs()} end
+    if l.finished then statuses[c.job.npcId]={reason='CHOOSING',at=Clock.nowMs()} end
     if l.socialId then
         if not l.finished then Social.cancel(l.socialId,c.job.npcId,p.attemptId) end
         Social.release(l.socialId,c.job.npcId,p.attemptId,stopped)

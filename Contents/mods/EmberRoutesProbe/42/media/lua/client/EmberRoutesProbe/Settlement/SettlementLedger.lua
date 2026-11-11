@@ -2,6 +2,7 @@ local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 local Gate=require "EmberRoutesProbe/Kernel/RuntimeGate"
 local Templates=require "EmberRoutesProbe/Kernel/ModDataTemplates"
+local Clock = require "EmberRoutesProbe/Kernel/Clock"
 local Ledger={listeners={},validators={}}
 ---@class EmberRoutesSettlement
 ---@field format integer
@@ -108,7 +109,7 @@ function Ledger.ensureReturnPoint(actor,id)
     if not scan or scan.revision~=entry.revision then
         scan={revision=entry.revision,area=0,offsets={},nextAt=0} returnSearches[id]=scan
     end
-    local now=type(getTimestampMs)=='function' and getTimestampMs() or 0
+    local now=Clock.nowMs()
     if now<scan.nextAt then return false,'RETURN_POINT_INITIALIZING' end
     scan.nextAt=now+1000
     local cell=type(getCell)=='function' and getCell()

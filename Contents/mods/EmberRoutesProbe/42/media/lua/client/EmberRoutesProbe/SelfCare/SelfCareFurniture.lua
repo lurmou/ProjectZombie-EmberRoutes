@@ -1,5 +1,6 @@
 local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Furniture={}
 local function near(npc,object)
     local s=object:getSquare() local current=npc:getCurrentSquare()
@@ -19,18 +20,18 @@ function Furniture.seat(c,proof,maxPathLength,sleep)
                 return 'Success'
             end
             if require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc) then
-                deadline=getTimestampMs()+180000
+                deadline=Clock.nowMs()+180000
                 return 'Running'
             end
-            if result~='MOVING' or getTimestampMs()>deadline then c.reason='SITE_PATH_FAILED' return 'Failure' end
+            if result~='MOVING' or Clock.nowMs()>deadline then c.reason='SITE_PATH_FAILED' return 'Failure' end
         elseif c.budget.paths>0 then
             c.budget.paths=c.budget.paths-1
             local ok,result=c.body.move(c.actor,{furniture=site.object,maxPathLength=maxPathLength,sleep=sleep})
             if result=='MOVE_REQUESTED_SEAT' then
-                moving=true deadline=getTimestampMs()+180000
+                moving=true deadline=Clock.nowMs()+180000
             elseif result=='NATIVE_ACTION_BUSY' then
-                busyUntil=busyUntil or (getTimestampMs()+3000)
-                if getTimestampMs()>busyUntil then c.reason='NATIVE_ACTION_BUSY' return 'Failure' end
+                busyUntil=busyUntil or (Clock.nowMs()+3000)
+                if Clock.nowMs()>busyUntil then c.reason='NATIVE_ACTION_BUSY' return 'Failure' end
             else
                 c.reason='SITE_PATH_FAILED'
                 return 'Failure'
@@ -58,10 +59,10 @@ function Furniture.move(c,seatKind)
             local result=EmberRoutesProbeJava.motionResult(c.npc)
             if result=='REACHED' then c.reason='SITE_PATH_FAILED' return 'Failure' end
             if require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc) then
-                deadline=getTimestampMs()+180000
+                deadline=Clock.nowMs()+180000
                 return 'Running'
             end
-            if result~='MOVING' or getTimestampMs()>deadline then c.reason='SITE_PATH_FAILED' return 'Failure' end
+            if result~='MOVING' or Clock.nowMs()>deadline then c.reason='SITE_PATH_FAILED' return 'Failure' end
             return 'Running'
         end
         if c.budget.paths<1 then return 'Running' end
@@ -78,7 +79,7 @@ function Furniture.move(c,seatKind)
         if not chosen then c.reason='SITE_PATH_FAILED' return 'Failure' end
         local ok,result=c.body.move(c.actor,{x=chosen:getX()+0.5,y=chosen:getY()+0.5,z=chosen:getZ()})
         if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then c.reason='SITE_PATH_FAILED' return 'Failure' end
-        moving=true deadline=getTimestampMs()+Constants.Timeout.MOVE_MS
+        moving=true deadline=Clock.nowMs()+Constants.Timeout.MOVE_MS
         return 'Running'
     end}
 end

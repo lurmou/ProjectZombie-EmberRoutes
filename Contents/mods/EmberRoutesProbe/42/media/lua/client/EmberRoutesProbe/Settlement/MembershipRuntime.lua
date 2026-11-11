@@ -4,6 +4,7 @@ local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Policy=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
 local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Schedule=require 'EmberRoutesProbe/Work/LaborSchedule'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local cached={}
 local function use(name)
     if not cached[name] then cached[name]=require('EmberRoutesProbe/'..name) end
@@ -162,7 +163,7 @@ local function advance(id,actor,runtime,now)
     S.note(id,why)
 end
 function M.tick()
-    local now=getTimestampMs() if now<nextAt then return end nextAt=now+200
+    local now=Clock.nowMs() if now<nextAt then return end nextAt=now+200
     local root=Registry.data()
     if world~=root then
         world,rows,cursor,nextAt=root,{},0,now+200 retired=Schedule.new()

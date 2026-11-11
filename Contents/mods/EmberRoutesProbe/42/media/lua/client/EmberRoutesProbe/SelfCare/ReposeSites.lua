@@ -6,6 +6,7 @@ local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Sites={}
 local Seating=_G.SeatingManager
 local function hasSeatData(object)
@@ -223,7 +224,7 @@ end
 function Sites.new(actor,npc,npcId,kind,blocked,options)
     -- Freeze exclusions for this scan: budgeted discovery may outlive the
     -- cooldown and must still try an alternative to the failed approach.
-    local excluded={} local started=getTimestampMs()
+    local excluded={} local started=Clock.nowMs()
     for key,untilTime in pairs(blocked or {}) do if untilTime>started then excluded[key]=true end end
     local M=require 'EmberRoutesProbe/Settlement/MembershipService'
     if M.reconcileBed then M.reconcileBed(npcId) end

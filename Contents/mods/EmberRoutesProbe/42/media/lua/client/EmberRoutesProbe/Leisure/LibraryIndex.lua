@@ -5,6 +5,7 @@ local Membership=require 'EmberRoutesProbe/Settlement/SettlementMembership'
 local Supply=require 'EmberRoutesProbe/Crafting/CraftSupply'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Library={}
 local world,scopes=nil,{}
 function Library.eligible(item)
@@ -56,7 +57,7 @@ local function view(entry)
     local root=Registry.data()
     if root~=world then world,scopes=root,{} end
     local row=scopes[entry.id]
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if not row or row.revision~=entry.revision or now>=row.expires or Wake.changed(row.watch) then
         row={revision=entry.revision,watch=Wake.capture(entry),expires=math.huge,
             ids=Membership.query(entry),position=1,books={}}
@@ -94,7 +95,7 @@ function Library.choose(actor,npc,entry,target,budget,offset,leisure,itemId)
         end
     end
     if not row.complete then return nil,false,'LIBRARY_OBSERVING' end
-    if row.expires==math.huge then row.expires=getTimestampMs()+10000 end
+    if row.expires==math.huge then row.expires=Clock.nowMs()+10000 end
     -- Each caller has a selection cursor, but shares all container observation.
     local start=offset or 1 local finish=math.min(#row.books,start+7)
     for i=start,finish do

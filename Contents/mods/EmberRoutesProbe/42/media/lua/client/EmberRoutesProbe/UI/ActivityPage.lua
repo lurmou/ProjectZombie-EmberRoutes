@@ -19,6 +19,7 @@ local AtmosphereBoard=require 'EmberRoutesProbe/UI/ActivityAtmosphereBoard'
 local Cached=require 'EmberRoutesProbe/UI/CachedList'
 local SemanticBadge=require 'EmberRoutesProbe/UI/SemanticBadge'
 local StatusVisual=require 'EmberRoutesProbe/UI/StatusVisual'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 ---@class EmberRoutesActivityPage:ISPanel
 ---@field owner EmberRoutesSettlementDashboard
@@ -623,7 +624,7 @@ end
 function Page:update()
     if ISPanel.update then ISPanel.update(self) end
     if not self.owner:valid() then return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if self.mode=='LIST' and now>=(self.nextRefresh or 0) then
         self.nextRefresh=now+1000
         local revision,why,version=Service.revision(self.actor,self.scope,self.selection and self.selection.kind=='SCENE' and self.selection.id or nil)

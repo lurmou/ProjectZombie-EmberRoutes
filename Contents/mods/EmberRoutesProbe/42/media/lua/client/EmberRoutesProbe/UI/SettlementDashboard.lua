@@ -6,6 +6,7 @@ local Theme=require "EmberRoutesProbe/UI/Theme"
 local Tooltip=require "EmberRoutesProbe/UI/TooltipManager"
 local Metrics=require "EmberRoutesProbe/Warehouse/WarehouseMetrics"
 local Registry=require "EmberRoutesProbe/UI/PageRegistry"
+local Clock = require "EmberRoutesProbe/Kernel/Clock"
 
 local opened
 local function text(key) return getText("IGUI_EmberRoutesProbe_Settlement_"..key) end
@@ -397,7 +398,7 @@ end
 function EmberRoutesSettlementDashboard:update()
     ISCollapsableWindow.update(self)
     if self.disposed then return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now<self.nextCheck then return end
     self.nextCheck=now+1000
     if not self.nextOverview or now>=self.nextOverview then

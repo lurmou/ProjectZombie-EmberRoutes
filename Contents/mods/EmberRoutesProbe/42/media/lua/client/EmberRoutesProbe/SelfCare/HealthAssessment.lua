@@ -1,5 +1,6 @@
 -- Observable body facts, bounded to one native body-part list. No healing or asset writes.
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local H={}
 function H.read(npc)
     if not npc or not npc.isDead or npc:isDead() or not npc.getBodyDamage then return nil,'HEALTH_UNAVAILABLE' end
@@ -32,7 +33,7 @@ function H.canWork(npc)
     if not npc then return false,'HEALTH_UNAVAILABLE' end
     local root=require('EmberRoutesProbe/Warehouse/ContainerRegistry').data()
     if world~=root then cache,world={},root end
-    local now=getTimestampMs() local saved=cache[npc]
+    local now=Clock.nowMs() local saved=cache[npc]
     if not saved or now-saved.at>=Constants.Health.CACHE_MS or now<saved.at then
         local facts,why=H.read(npc) saved={at=now,facts=facts,reason=why} cache[npc]=saved
     end

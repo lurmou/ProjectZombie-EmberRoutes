@@ -7,6 +7,7 @@ local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Tree=require 'EmberRoutesProbe/Activity/BehaviorTree'
 local Actions=require 'EmberRoutesProbe/SelfCare/SelfCareActions'
 local Custody=require 'EmberRoutesProbe/SelfCare/SelfCareCustody'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Execution={}
 -- Cold classification operates on a detached Job. No body capability, native
 -- action construction or persist callback is available to replay an effect.
@@ -61,7 +62,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         obligations=job.obligations,items=items or {},origin=candidate and candidate.container,
         leisureTarget=candidate and candidate.leisureTarget,leisureKey=candidate and candidate.targetKey}
     if candidate and candidate.id then c.items[candidate.id]=candidate.item end
-    function c.sample() return require('EmberRoutesProbe/SelfCare/NeedsObserver').sample(c.npc,job.npcId,getTimestampMs()) end
+    function c.sample() return require('EmberRoutesProbe/SelfCare/NeedsObserver').sample(c.npc,job.npcId,Clock.nowMs()) end
     function c.sameAttempt()
         if Registry.data()~=world then return false end
         -- peek is the live read view; detached get() stays the fallback for
@@ -89,7 +90,7 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
     local safeAt,safeValue
     local function safeRecent()
         if not safe then return true end
-        local now=getTimestampMs()
+        local now=Clock.nowMs()
         if safeValue and now-safeAt<200 then return true end
         local value=safe()
         if value then safeValue,safeAt=true,now end

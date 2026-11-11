@@ -15,6 +15,7 @@ local Tooltip=require 'EmberRoutesProbe/UI/TooltipManager'
 local Presentation=require 'EmberRoutesProbe/UI/SquadPresentation'
 local Menus=require 'EmberRoutesProbe/UI/SquadHUDMenus'
 local Viewport=require 'EmberRoutesProbe/UI/Viewport'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local HUD=ISPanel:derive('EmberRoutesSquadHUD')
 local function label(key) return getText('IGUI_EmberRoutesProbe_Squad_'..key) end
 function HUD:new(actor,commands,hidden)
@@ -124,7 +125,7 @@ end
 function HUD:update()
     if not self.active then return end
     if not self.session:valid() then self:close() return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now>=(self.nextLayoutAt or 0) then
         self.nextLayoutAt=now+500
         local core=getCore()

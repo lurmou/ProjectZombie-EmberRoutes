@@ -4,6 +4,7 @@
 local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
 local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local S={}
 function S.new(c)
     local l=c.payload.leisure local untilHours,posture,leaving
@@ -13,7 +14,7 @@ function S.new(c)
     if l.seatedSocial then l.seatedSocial=nil end
     local id,attempt=c.job.npcId,c.payload.attemptId
     local function current()
-        return conversation and Social.view(conversation.socialId,id,attempt,getTimestampMs())
+        return conversation and Social.view(conversation.socialId,id,attempt,Clock.nowMs())
     end
     local function endSocial(success)
         if not conversation then return end
@@ -39,7 +40,7 @@ function S.new(c)
         end
         if not conversation then
             local key=require('EmberRoutesProbe/Leisure/LeisureService').seatedSocial(c)
-            if key and Social.accept(key,id,attempt,getTimestampMs()) then
+            if key and Social.accept(key,id,attempt,Clock.nowMs()) then
                 conversation={socialId=key} l.seatedSocial=conversation
                 hooks=require('EmberRoutesProbe/Activity/SocialActions').conversation(c,conversation,current)
                 if not c.persist() then error('SIT_SOCIAL_PERSIST_FAILED') end

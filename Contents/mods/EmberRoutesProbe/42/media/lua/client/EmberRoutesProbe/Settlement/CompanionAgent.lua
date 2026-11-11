@@ -1,6 +1,7 @@
 local Probe = require "EmberRoutesProbe/Kernel/Boot"
 local Log = require "EmberRoutesProbe/Kernel/Log"
 local Driver = require "EmberRoutesProbe/Runtime/Driver"
+local Clock = require "EmberRoutesProbe/Kernel/Clock"
 local liveMotion={FOLLOW_ACTIVE=true,FOLLOW_WAITING=true,FOLLOW_WAIT_VEHICLE=true,
     FOLLOW_TRAVERSAL=true,FOLLOW_QUEUED=true,FOLLOW_YIELD_SIDE=true,FOLLOW_YIELD_BACK=true,
     FOLLOW_TIMEOUT=true,FOLLOW_PATH_FAILED=true}
@@ -170,7 +171,7 @@ end
 
 function Companion.tick()
     if Companion.body and not Companion.body.current() then return end
-    local time = getTimestampMs()
+    local time = Clock.nowMs()
     if Companion.mode ~= "FOLLOW" and Companion.mode ~= "RETURNING" then
         if time >= Companion.nextMaintenance then
             Companion.nextMaintenance = time + 1000

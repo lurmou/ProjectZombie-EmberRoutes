@@ -9,6 +9,7 @@
 ]]
 
 local Theme = require 'EmberRoutesProbe/UI/Theme'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local SkeletonView = {}
 
@@ -25,7 +26,7 @@ local MAX_ALPHA = 0.17
 ---Calculates dynamic pulse alpha using smooth sine wave.
 ---@return number
 local function getPulseAlpha()
-    local t = (getTimestampMs and getTimestampMs() or (os.time() * 1000)) / 1000.0
+    local t = (Clock.nowMs()) / 1000.0
     local sineVal = (math.sin(t * PULSE_SPEED) + 1.0) / 2.0 -- 0.0 to 1.0
     return MIN_ALPHA + sineVal * (MAX_ALPHA - MIN_ALPHA)
 end

@@ -3,6 +3,7 @@ require 'TimedActions/ISBaseTimedAction'
 -- Perf measures the engine-driven per-frame callbacks (isValid/update): they
 -- run outside every service bucket, called straight from ISTimedActionQueue.
 local Perf=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local T={}
 function T.new(c,hooks)
     local action,ended
@@ -12,7 +13,7 @@ function T.new(c,hooks)
     local lastActiveCheck, cachedActive = nil, true
     local function active()
         if ended then return false end
-        local now = (type(getTimestampMs) == 'function' and getTimestampMs() or 0)
+        local now = Clock.nowMs()
         if lastActiveCheck and (now - lastActiveCheck) < 200 and (now >= lastActiveCheck) then
             return cachedActive
         end
@@ -39,7 +40,7 @@ function T.new(c,hooks)
             end
             local lastUpdate = nil
             action.update=function(self)
-                local now = (type(getTimestampMs) == 'function' and getTimestampMs() or 0)
+                local now = Clock.nowMs()
                 if lastUpdate and (now - lastUpdate) < 50 and (now >= lastUpdate) then return end
                 lastUpdate = now
                 continuity.tick()
