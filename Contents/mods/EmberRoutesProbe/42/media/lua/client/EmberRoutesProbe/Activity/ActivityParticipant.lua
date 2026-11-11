@@ -12,6 +12,7 @@ local Record=require 'EmberRoutesProbe/Activity/ActivityRecord'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Assets=require 'EmberRoutesProbe/Work/LaborStore'
 local Tile=require 'EmberRoutesProbe/Leisure/LeisureRecord'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local P={}
 local world,handles,samples,ready,assessments=nil,{},{},{},{}
 local function load()
@@ -26,7 +27,7 @@ local associatedPending=Responsibilities.personalPending
 local function current(id) local rt=Runtime.current() return rt,rt and rt:status(id) end
 local function safe(binding)
     if binding.handle:isDead() then return false,'ACTIVITY_CARRIER_UNAVAILABLE' end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     local sample=require('EmberRoutesProbe/SelfCare/NeedsObserver').sample(binding.handle,binding.id,now)
     if not sample or not sample.safe or now-sample.observedAt>2000 then return false,'ACTIVITY_UNSAFE' end
     local need=require('EmberRoutesProbe/SelfCare/NeedsPolicy').choose(sample,nil,{safe=true},{EAT=true,DRINK=true,REST=true,SLEEP=true})
@@ -182,7 +183,7 @@ local function waitingEvidence(event,id)
         or not status or status.jobId~=job.id or status.state~='ACTIVE'
         or not status.started or status.pending then return false end
     local evidence=ready[job.id]
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if not evidence or now<evidence.at or now-evidence.at>2000 then return false end
     local ref=require('EmberRoutesProbe/Activity/ActivityService').context(id)
     local handle=handles[job.id]
@@ -265,7 +266,7 @@ local function submit(actor,binding,event,member)
         if not update(live,p,'RUNNING') then return false,'ACTIVITY_CHANGED','UNCHANGED' end
         member.state='ACCEPTED' member.attendanceState='READY' member.reason=nil
         member.readyJobId=key member.readyAt=getGameTime():getWorldAgeHours()
-        ready[key]={at=getTimestampMs(),binding=binding} Store.touch(event)
+        ready[key]={at=Clock.nowMs(),binding=binding} Store.touch(event)
         return true
     end
     function spec.tick()
@@ -274,7 +275,7 @@ local function submit(actor,binding,event,member)
         if not live or not ok then Service.leave(binding.id,why or 'ACTIVITY_CHANGED') stopping=true return end
         if event.state=='RUNNING' and member.joined then free=true return end
         if not spec.validate() then Service.leave(binding.id,'ACTIVITY_SITE_CHANGED') stopping=true
-        else ready[key]={at=getTimestampMs(),binding=binding} end
+        else ready[key]={at=Clock.nowMs(),binding=binding} end
     end
     function spec.finished() return stopping or free end
     function spec.stopAdapter(controller,ticket)
@@ -325,7 +326,7 @@ function P.advance(actor,event,id)
         require('EmberRoutesProbe/Activity/ActivityService').leave(id,'ACTIVITY_CARRIER_UNAVAILABLE') return
     end
     if event.state=='GATHERING' and job.payload.step=='INVITED' then
-        local now=getTimestampMs() local previous=assessments[id]
+        local now=Clock.nowMs() local previous=assessments[id]
         if not previous or previous.event~=event.id or now<previous.at or now-previous.at>=1000 then
             local care=personal(id)
             local ref=require('EmberRoutesProbe/Activity/ActivityService').context(id)
@@ -353,7 +354,7 @@ function P.advance(actor,event,id)
     local inside=require('EmberRoutesProbe/Activity/ActivityService').allowsPoint(event.settlementId,id,
         {x=npc:getX(),y=npc:getY(),z=math.floor(npc:getZ())})
     local active=inside and Responsibilities.activeParticipation(p,event,status)
-    local now,hours=getTimestampMs(),getGameTime():getWorldAgeHours()
+    local now,hours=Clock.nowMs(),getGameTime():getWorldAgeHours()
     if event.scriptProfile and event.stage.sharedEnd then hours=math.min(hours,event.stage.sharedEnd) end
     local old=samples[id]
     if active and old and old.event==event.id and old.job==p.id and old.attempt==p.payload.attemptId

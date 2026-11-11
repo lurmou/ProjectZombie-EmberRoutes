@@ -2,6 +2,7 @@
 -- Providers reconcile their offers, then DONE/CANCELLED orders whose
 -- exact Job is closed are retired and their receipts restored.
 local S=require 'EmberRoutesProbe/Work/PublicWorkState'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service=S.Service
 local Providers=require 'EmberRoutesProbe/Work/PublicWorkProviders'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
@@ -51,7 +52,7 @@ function Service.retireSettled(limit)
                 S.directory:release('craft:'..id,o.jobId,{effects='KNOWN',obligationsCleared=true})
                 S.directory:withdraw('craft:'..id)
                 for _,r in pairs(S.data.rules) do if r.activeOrder==id then
-                    r.activeOrder=nil r.nextCheck=getTimestampMs()+2000
+                    r.activeOrder=nil r.nextCheck=Clock.nowMs()+2000
                     require('EmberRoutesProbe/Warehouse/WarehouseIndex').refresh(r.settlementId,false)
                 end end
                 Providers.orderRetired(id,S.readyWorkers)

@@ -11,6 +11,7 @@ local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
 local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local function cancelReservation(npcId,reason)
     local res=S.pendingReservations[npcId]
@@ -20,7 +21,7 @@ local function cancelReservation(npcId,reason)
             S.directory:release(res.selected.key,res.jobId,{effects='KNOWN',obligationsCleared=true})
         end
         if reason then
-            S.cool({id=res.selected.key},npcId,{watch=Wake.capture(res.entry)},reason,getTimestampMs())
+            S.cool({id=res.selected.key},npcId,{watch=Wake.capture(res.entry)},reason,Clock.nowMs())
         end
     end
 end

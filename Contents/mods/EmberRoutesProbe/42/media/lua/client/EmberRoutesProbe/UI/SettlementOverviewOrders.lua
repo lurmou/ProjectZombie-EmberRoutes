@@ -15,13 +15,14 @@ local EmptyState = require 'EmberRoutesProbe/UI/EmptyState'
 local WorkCommandAdapter = require 'EmberRoutesProbe/Work/WorkCommandAdapter'
 local InlineCardDrawer = require 'EmberRoutesProbe/UI/InlineCardDrawer'
 local C = require 'EmberRoutesProbe/UI/SettlementOverviewConstants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local function attach(Page)
     function Page:update()
         ISPanel.update(self)
         if not self.active or self.disposed then return end
         -- Low-frequency 1.0s viewport heartbeat for intermediate native action polling
-        local now = getTimestampMs and getTimestampMs() or (os.time() * 1000)
+        local now = Clock.nowMs()
         if not self._lastCadencePulse or (now - self._lastCadencePulse) >= 1000 then
             self._lastCadencePulse = now
             self:refresh()

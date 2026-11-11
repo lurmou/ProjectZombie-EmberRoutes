@@ -4,6 +4,7 @@ require 'TimedActions/ISReadABook'
 -- Perf measures the engine-driven per-frame isValid/update callbacks; they
 -- run outside every service bucket.
 local Perf=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Actions={}
 local function observe(c,item,fact,located)
     if not fact or fact.attemptId~=c.payload.attemptId or fact.itemId~=c.payload.itemId
@@ -94,7 +95,7 @@ function Actions.read(c,item)
                         if started then Perf.measureSpan('EngineActions',started) end
                         return
                     end
-                    local now=getTimestampMs()
+                    local now=Clock.nowMs()
                     if fact.total>0 and now>=(nextSample or 0) then
                         nextSample=now+1000
                         if fact.pages~=c.npc:getAlreadyReadPages(fact.fullType) then record() end

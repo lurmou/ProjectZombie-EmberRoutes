@@ -4,6 +4,7 @@ local Sites=require 'EmberRoutesProbe/SelfCare/ReposeSites'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local S={}
 function S.release(c)
     local proof=c.payload.readingSite
@@ -44,7 +45,7 @@ function S.new(c,item)
         local key=proof and proof.key
         retrySeat=key~=nil and retries<Config.readingSeatRetries
         if key then failedSeats[key]=math.huge end
-        phase='FALLBACK' exitDeadline=getTimestampMs()+8000
+        phase='FALLBACK' exitDeadline=Clock.nowMs()+8000
         -- Movement may still be active; request a stop before starting reading.
         c.body.stop()
         return 'Running'
@@ -52,7 +53,7 @@ function S.new(c,item)
     return {kind='Action',run=function()
         if not c.valid() then return 'Failure' end
         if phase=='RETRY' then
-            if getTimestampMs()<retryAt then return 'Running' end
+            if Clock.nowMs()<retryAt then return 'Running' end
             phase='SEEK'
         end
         if phase=='SEEK' then
@@ -133,20 +134,20 @@ function S.new(c,item)
             end
             local state=read.run()
             if state~='Success' then return state end
-            phase='LEAVE' exitDeadline=getTimestampMs()+8000
+            phase='LEAVE' exitDeadline=Clock.nowMs()+8000
         end
         if phase=='LEAVE' or phase=='FALLBACK' then
             if clearSeat() then
                 if phase=='LEAVE' then return 'Success' end
                 if retrySeat then
-                    retries=retries+1 retryAt=getTimestampMs()+Config.readingSeatRetryMs
+                    retries=retries+1 retryAt=Clock.nowMs()+Config.readingSeatRetryMs
                     scan,move,posture,site=nil,nil,nil,nil
                     phase='RETRY'
                     require('EmberRoutesProbe/Leisure/LeisureService').note(c.job.npcId,'READ_SEAT_RETRY')
                 else phase='READ' end
                 return 'Running'
             end
-            if getTimestampMs()>exitDeadline then c.reason='SIT_EXIT_TIMEOUT' return 'Failure' end
+            if Clock.nowMs()>exitDeadline then c.reason='SIT_EXIT_TIMEOUT' return 'Failure' end
         end
         return 'Running'
     end,halt=function()
@@ -166,14 +167,14 @@ function S.exit(c)
         kind='Action',
         run=function()
             if not c.payload.readingSite then return 'Success' end
-            deadline=deadline or (getTimestampMs()+8000)
+            deadline=deadline or (Clock.nowMs()+8000)
             local seated=c.npc:isSittingOnFurniture() or c.npc:getSitOnFurnitureObject()~=nil
             if seated then
                 if not requested then
                     c.npc:setVariable('forceGetUp',true)
                     requested=true
                 end
-                if getTimestampMs()>deadline then
+                if Clock.nowMs()>deadline then
                     c.reason='SIT_EXIT_TIMEOUT'
                     return 'Failure'
                 end

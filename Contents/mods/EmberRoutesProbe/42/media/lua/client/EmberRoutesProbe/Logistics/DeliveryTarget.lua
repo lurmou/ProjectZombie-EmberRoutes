@@ -5,6 +5,7 @@ local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local D={}
 local function service() return require 'EmberRoutesProbe/Logistics/DeliveryService' end
 function D.order(r) return service().order(r.orderId) end
@@ -46,7 +47,7 @@ function D.observe(c)
         if c.moveEndpoint and c.moveEndpoint.id==o.destinationId and not D.endpointValid(c,c.moveEndpoint) then return false,'DESTINATION_UNREGISTERED' end
         return true
     end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     local p=target and {x=c.actor:getX(),y=c.actor:getY(),z=c.actor:getZ()} or nil
     local old=c.playerPosition
     if not p or not old or p.x~=old.x or p.y~=old.y or p.z~=old.z
@@ -73,7 +74,7 @@ function D.still(c)
     local p=c.playerPosition local actor=c.actor
     return p and not actor:isDead() and p.x==actor:getX() and p.y==actor:getY() and p.z==actor:getZ()
         and not (actor.isPlayerMoving and actor:isPlayerMoving())
-        and c.playerStoppedAt and getTimestampMs()-c.playerStoppedAt>=500
+        and c.playerStoppedAt and Clock.nowMs()-c.playerStoppedAt>=500
 end
 function D.room(c,item)
     local e=D.endpoint(c) if not e then return false end
@@ -131,15 +132,15 @@ function D.move(c)
         c.moveEndpoint=target return Transfer.move(c,target)
     end
     local point,lastRequest
-    local progressBase=getTimestampMs()
+    local progressBase=Clock.nowMs()
     local function poll()
         if c.job.returning or not D.endpoint(c) then return 'FAILED','DELIVERY_TARGET_CHANGED' end
         -- Parked carrier: hold the step clock so unloading cannot time the leg out.
         if require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc) then
-            progressBase=getTimestampMs()
+            progressBase=Clock.nowMs()
             return 'WAIT'
         end
-        local e=D.endpoint(c) local actor=c.actor local now=getTimestampMs()
+        local e=D.endpoint(c) local actor=c.actor local now=Clock.nowMs()
         if Transfer.reachable(c.npc,e) then
             if not c.body.stop() then return 'FAILED','CONTROL_REQUIRED' end
             local snapshot=c.body.snapshot()

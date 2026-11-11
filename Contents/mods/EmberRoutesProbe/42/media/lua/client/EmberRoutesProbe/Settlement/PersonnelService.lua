@@ -3,6 +3,7 @@
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service={}
 local world,cache=nil,{}
 local portraits,portraitListeners={},{}
@@ -235,7 +236,7 @@ local function static(npc)
     return value
 end
 local function readPortrait(binding,id,owner)
-    local now=getTimestampMs and getTimestampMs() or 0
+    local now=Clock.nowMs()
     local row=portraits[id]
     if row and row.character~=binding.handle then portraits[id]=nil row=nil end
     if not row then

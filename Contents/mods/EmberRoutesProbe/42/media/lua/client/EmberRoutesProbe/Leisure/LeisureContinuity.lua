@@ -1,6 +1,7 @@
 -- A boundary is a review opportunity, not an instruction to leave a posture.
 -- Only explicitly continuous activities renew; unknown definitions are finite.
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 -- Installed vanilla Lua uses this global; probe it explicitly for hosts whose
 -- global declarations do not include it (including the small test host).
 local gamePaused=_G.isGamePaused
@@ -12,9 +13,9 @@ function C.new(c)
     local policy=def and def.lifecycle or Config.lifecycle and Config.lifecycle[kind] or {mode='finite'}
     local elapsed,last,nextReview=0,nil,0
     local api={}
-    function api.start() elapsed,last,nextReview=0,getTimestampMs(),0 end
+    function api.start() elapsed,last,nextReview=0,Clock.nowMs(),0 end
     function api.tick()
-        local now=getTimestampMs()
+        local now=Clock.nowMs()
         if last then
             local dt=now-last
             -- Pauses/suspended simulation cannot satisfy a dwell on resume.

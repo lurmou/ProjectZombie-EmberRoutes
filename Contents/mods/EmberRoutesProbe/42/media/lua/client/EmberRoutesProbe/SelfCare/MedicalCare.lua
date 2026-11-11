@@ -1,6 +1,7 @@
 -- The existing personal service owns observation cadence and execution.
 local Health=require 'EmberRoutesProbe/SelfCare/HealthAssessment'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local M={}
 local world,observed={}
 function M.observe(npc,id,sample,now)
@@ -46,7 +47,7 @@ end
 function M.demands(scope)
     local root=Registry.data() if world~=root then world,observed=root,{} end
     local rows={} local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     for id,o in pairs(observed) do if o.scope==scope then
         local s=o.facts local job=jobs.peekPersonal and jobs:peekPersonal(id)
         local member=require('EmberRoutesProbe/Settlement/MembershipService').view(id)

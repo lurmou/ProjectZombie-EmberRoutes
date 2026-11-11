@@ -7,11 +7,12 @@ local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local TransferDuration=require 'EmberRoutesProbe/Work/TransferDuration'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local Haul = { endpoints = {}, fixtures = {}, batch = nil }
 local controlled
 local function log(message) Log.write("HAUL", message) end
-local function now() return getTimestampMs() end
+local function now() return Clock.nowMs() end
 local function newID()
     -- Verified in current vanilla Foraging; older lint inventories omit this global.
     local create = _G.getRandomUUID

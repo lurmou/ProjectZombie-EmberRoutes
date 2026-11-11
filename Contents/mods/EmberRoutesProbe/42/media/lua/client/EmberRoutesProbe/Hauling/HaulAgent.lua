@@ -13,6 +13,7 @@ local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
 local Delivery=require 'EmberRoutesProbe/Logistics/DeliveryTarget'
 local DeliveryFlow=require 'EmberRoutesProbe/Logistics/DeliveryFlow'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local A={}
 local JobExecution=require 'EmberRoutesProbe/Hauling/HaulJobs'
 function A.new(npcId)
@@ -188,7 +189,7 @@ function A.new(npcId)
         local token,reason=Store.claim(r) if not token then return reason end
         local c={actor=actor,npc=npc,job=r,body=body,token=token,generation=r.generation,backoff={},nextTick=0}
         for id,deadline in pairs(r.pathBackoff or {}) do
-            if getTimestampMs()<deadline then c.backoff[id]=deadline end
+            if Clock.nowMs()<deadline then c.backoff[id]=deadline end
         end
         r.pathBackoff=c.backoff
         c.valid=function() return valid(c) end
@@ -228,7 +229,7 @@ function A.new(npcId)
         local r=record() if not r then return 'NO_TASK' end if r.state=='DONE' then return 'DONE' end
         if nonPreemptive==false then r.manualPaused=nil end
         if not isDelivery(r) and r.routingWait and r.routingWait.reason=='PATH_BACKOFF' and r.pathBackoff
-            and getTimestampMs()<(r.pathBackoff[r.source] or 0) then return 'ROUTING_WAIT' end
+            and Clock.nowMs()<(r.pathBackoff[r.source] or 0) then return 'ROUTING_WAIT' end
         return launch(actor,r,nil,nonPreemptive)
     end
     function api.hasCargo(actor)
@@ -323,7 +324,7 @@ function A.new(npcId)
     end
     local function setBackoff(c,endpointId,durationMs,reason,now)
         if not endpointId then return end
-        now=now or getTimestampMs()
+        now=now or Clock.nowMs()
         local count,oldest,earliest=0,nil,math.huge
         for id,deadline in pairs(c.backoff) do
             if deadline<=now then c.backoff[id]=nil
@@ -376,7 +377,7 @@ function A.new(npcId)
         end
         if r.deliveryOnly then withdraw(c) end
         if not r.deliveryOnly and uncollected then
-            if source and getTimestampMs()<(c.backoff[source.id] or 0) then
+            if source and Clock.nowMs()<(c.backoff[source.id] or 0) then
                 r.routingWait={reason='PATH_BACKOFF'}
                 return nil,'ROUTING_WAIT'
             end
@@ -407,12 +408,12 @@ function A.new(npcId)
         end
         local selected,target
         local old=c.destination or Registry.resolve(r.destination,'put',r.scopeId)
-        for _,item in ipairs(held) do if Routing.accept(c,old,item) and getTimestampMs()>=(c.backoff[old.id] or 0) then selected,target=item,old break end end
+        for _,item in ipairs(held) do if Routing.accept(c,old,item) and Clock.nowMs()>=(c.backoff[old.id] or 0) then selected,target=item,old break end end
         if not target then
             for _,item in ipairs(held) do
                 local line=Manifest.line(r,item:getID())
                 local destId=line and line.destinationId
-                if destId and destId~=(old and old.id) and getTimestampMs()>=(c.backoff[destId] or 0) then
+                if destId and destId~=(old and old.id) and Clock.nowMs()>=(c.backoff[destId] or 0) then
                     local candidate=Registry.resolve(destId,'put',r.scopeId)
                     if candidate and Routing.accept(c,candidate,item) then
                         selected,target=item,candidate
@@ -442,7 +443,7 @@ function A.new(npcId)
         local ok=Store.capacity(c.token,selected:getID(),target.id,selected:getUnequippedWeight(),target.container:getFreeCapacity(c.npc))
         if not ok then
             c.destination=nil
-            setBackoff(c,target.id,18000,'CAPACITY_FULL',getTimestampMs())
+            setBackoff(c,target.id,18000,'CAPACITY_FULL',Clock.nowMs())
             return nil,'SCAN_PENDING'
         end
         if not Transfer.reachable(c.npc,target) then c.moveEndpoint=target c.moveRule={target=target,item=selected} return Transfer.move(c,target) end
@@ -479,7 +480,7 @@ function A.new(npcId)
     end
     local function tick()
         local c=current if not c then return end
-        local now=getTimestampMs() if now<c.nextTick then return end c.nextTick=now+100
+        local now=Clock.nowMs() if now<c.nextTick then return end c.nextTick=now+100
         local usable,unavailable=valid(c)
         if not usable then api.pause(unavailable) return end
         if isDelivery(c.job) then

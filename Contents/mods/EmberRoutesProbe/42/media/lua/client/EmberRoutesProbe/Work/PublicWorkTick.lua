@@ -3,6 +3,7 @@
 -- Service.tick entry. Discovery cadence, decision window and backoff
 -- ladder are unchanged from the single-file version.
 local S=require 'EmberRoutesProbe/Work/PublicWorkState'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service=S.Service
 local Eligibility=require 'EmberRoutesProbe/Work/PublicWorkEligibility'
 local Reservations=require 'EmberRoutesProbe/Work/PublicWorkReservations'
@@ -115,7 +116,7 @@ local function advance(now,discover,providerDue,precheckDue)
 end
 
 function Service.tick()
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now>=S.nextWakePoll then
         S.nextWakePoll=now+Config.wakeMs
         local revision=Wake.revision and Wake.revision()
@@ -147,7 +148,7 @@ function Service.tick()
     if S.faultUntil and now<S.faultUntil then return end
     S.tickOps,S.tickSlices=0,0
     local ok,reason=pcall(advance,now,discover,S.providerDue,precheckDue)
-    S.metrics:record(getTimestampMs()-now,S.tickOps,S.tickSlices)
+    S.metrics:record(Clock.nowMs()-now,S.tickOps,S.tickSlices)
     if ok then
         S.faultCount=0 S.faultUntil=nil
     else

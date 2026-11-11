@@ -3,6 +3,7 @@ local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Supply=require 'EmberRoutesProbe/Crafting/CraftSupply'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Custody={}
 local function returnable(item,endpoint)
     if not instanceof(item,'Food') or not require('EmberRoutesProbe/Cooking/CookingProfiles').meal(item:getFullType())
@@ -21,11 +22,11 @@ local function move(c,endpoint,prepared)
         if not operation then
             if c.budget.paths<1 then return 'Running' end
             c.budget.paths=c.budget.paths-1
-            operation=Transfer.move(c,endpoint,prepared) deadline=getTimestampMs()+operation.timeout
+            operation=Transfer.move(c,endpoint,prepared) deadline=Clock.nowMs()+operation.timeout
             local state,why=operation.start()
             if state=='FAILED' then c.reason=why return 'Failure' end
         end
-        if getTimestampMs()>deadline then c.reason='PATH_TIMEOUT' return 'Failure' end
+        if Clock.nowMs()>deadline then c.reason='PATH_TIMEOUT' return 'Failure' end
         local state,why=operation.poll()
         if state=='FAILED' then c.reason=why return 'Failure' end
         return state=='PASSED' and 'Success' or 'Running'
@@ -37,7 +38,7 @@ function Custody.prepareReturn(c)
     local id=c.payload.itemId
     local item=id and c.items[id]
     if not c.payload.sourceId or not item or item:getContainer()~=c.npc:getInventory() then return end
-    local now=getTimestampMs() local p=c.returnPreview
+    local now=Clock.nowMs() local p=c.returnPreview
     if p and now<(p.nextAt or 0) then return end
     if c.budget.scan<1 then return end c.budget.scan=c.budget.scan-1
     if not p or p.item~=item then p={item=item} c.returnPreview=p end

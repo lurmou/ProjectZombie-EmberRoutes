@@ -4,6 +4,7 @@ local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Definitions=require 'EmberRoutesProbe/Activity/ActivityRegistry'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local M={}
 function M.new(env)
     local C={}
@@ -39,7 +40,7 @@ function M.new(env)
             end
         end
         local issued=tokens[token]
-        if not issued or issued.owner~=owner or issued.scope~=args.settlementId or issued.untilTime<getTimestampMs() then return nil,'ACTIVITY_REQUEST_EXPIRED' end
+        if not issued or issued.owner~=owner or issued.scope~=args.settlementId or issued.untilTime<Clock.nowMs() then return nil,'ACTIVITY_REQUEST_EXPIRED' end
         local row={format=1,id=Registry.id(),owner=owner,requestId=token,key=key,enabled=true,
             firstAt=firstAt,intervalHours=interval,count=count,lastIndex=-1,args=proposalArgs(preview),revision=1}
         if not Calendar.valid(row) or not Store.scalar(row) or firstAt<clock() then return nil,'ACTIVITY_SCHEDULE_INVALID' end
@@ -64,7 +65,7 @@ function M.new(env)
             return nil,'ACTIVITY_REQUEST_CONFLICT'
         end
         local issued=tokens[token]
-        if not issued or issued.owner~=owner or issued.scope~=old.args.settlementId or issued.untilTime<getTimestampMs() then
+        if not issued or issued.owner~=owner or issued.scope~=old.args.settlementId or issued.untilTime<Clock.nowMs() then
             return nil,'ACTIVITY_REQUEST_EXPIRED'
         end
         if old.revision~=expected then return nil,'ACTIVITY_CHANGED' end

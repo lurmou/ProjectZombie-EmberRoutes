@@ -17,6 +17,7 @@ local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Facilities=require 'EmberRoutesProbe/Settlement/SettlementFacilities'
 local Performance=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local cached={}
 -- NPC sleep wake offers (P0 pilot): every need kind counts, at its
 -- unchanged NeedsPolicy enter threshold (choose() never reads warn).
@@ -81,7 +82,7 @@ function Service.force(id,kind)
         or not EmberRoutesProbeJava.reposeAtWithControl then return false,'REPOSE_UNAVAILABLE' end
     load()
     local row=rows[id] or {} rows[id]=row
-    row.forced={kind='SLEEP',untilTime=getTimestampMs()+300000}
+    row.forced={kind='SLEEP',untilTime=Clock.nowMs()+300000}
     return true
 end
 function Service.prepareRemoval(id)
@@ -100,7 +101,7 @@ local function submit(actor,binding,job,candidate,row,settle,items,reliefOnly,in
         return row.sample and (row.sample.safe or row.sample.externalSafe and (job.payload.kind=='MEDICAL'
             or settle and row.sample.medical and row.sample.medical.needsCare
             or job.payload.relief and job.payload.relief.kind=='MEDICAL' and not job.payload.relief.finished))
-            and getTimestampMs()-row.sample.observedAt<=2000
+            and Clock.nowMs()-row.sample.observedAt<=2000
             and not binding.handle:isOnFire() and binding.handle:getSurroundingAttackingZombies(false)==0
     end,reliefOnly,interruptCompanion)
     local handle,reason=runtime:submit(spec)
@@ -149,7 +150,7 @@ local function settle(actor,binding,job,row)
     local reliefOnly=p.kind=='STUDY' and member and member.context=='FOLLOW' and not member.pending
     if reliefOnly then
         local need=Policy.choose(row.sample,nil,{safe=true},{MEDICAL=true,EAT=true,DRINK=true,REST=true})
-        if not need or getTimestampMs()<(row.reliefRetryAt or 0) then return end
+        if not need or Clock.nowMs()<(row.reliefRetryAt or 0) then return end
     end
     row.recovery=row.recovery or {index=1,items={}}
     local recovery=row.recovery local ids={}
@@ -166,7 +167,7 @@ local function settle(actor,binding,job,row)
             if not accepted then row.reason=reason return end
             job=Jobs.current():get(job.id)
         end
-        if reliefOnly then row.reliefRetryAt=getTimestampMs()+5000 end
+        if reliefOnly then row.reliefRetryAt=Clock.nowMs()+5000 end
         submit(actor,binding,job,nil,row,true,recovery.items,reliefOnly,interruptCompanion)
         return
     end
@@ -184,7 +185,7 @@ local function settle(actor,binding,job,row)
             recovery.request=Resources.new(actor,binding.handle,'CUSTODY',false,id,p.sourceId,job.id)
             recovery.triedSource=true return
         end
-        row.reason=reason row.recovery=nil row.retryAt=getTimestampMs()+5000
+        row.reason=reason row.recovery=nil row.retryAt=Clock.nowMs()+5000
         return
     end
     recovery.index=recovery.index+1 recovery.request=nil recovery.triedSource=nil
@@ -542,7 +543,7 @@ end
 function Service.tick()
     -- One clock read feeds both the facilities pump and the 200ms gate; the
     -- pump accepts it so its idle path costs no extra bridge.
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     budget.nodes,budget.scan,budget.paths,budget.containers=16,32,1,4
     if not Facilities.due or Facilities.due(now) then
         if Performance.active() then Performance.measure('Facilities',function() Facilities.tick(64,now) end)
@@ -636,7 +637,7 @@ function Service.install()
         use('Leisure/LeisureService').offer(id,entry)
         -- First link of the leisure diagnostics chain (OFFER -> IDLE -> ACTIVE):
         -- no OFFER lines at all means upstream gate blocked the offer itself.
-        local now=getTimestampMs()
+        local now=Clock.nowMs()
         local row=Service.offerLogged and Service.offerLogged[id]
         if not row or row.entry~=entry.id or now-row.at>=10000 then
             Service.offerLogged=Service.offerLogged or {}

@@ -10,6 +10,7 @@ local Actions=require 'EmberRoutesProbe/Cooking/CookingActions'
 local Tree=require 'EmberRoutesProbe/Activity/BehaviorTree'
 local Facilities=require 'EmberRoutesProbe/Cooking/CookingFacilities'
 local Capacity=require 'EmberRoutesProbe/Cooking/CookingCapacity'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local M={}
 local function failure(c,why) c.reason=why return 'Failure' end
 -- The base vessel is also a borrowed original, with the same provenance rules.
@@ -88,10 +89,10 @@ function M.move(c,endpoint,valid)
         end
         if not operation then
             if c.budget.paths<1 then return 'Running' end c.budget.paths=c.budget.paths-1
-            operation=Transfer.move(c,endpoint) deadline=getTimestampMs()+operation.timeout
+            operation=Transfer.move(c,endpoint) deadline=Clock.nowMs()+operation.timeout
             local state,why=operation.start() if state=='FAILED' then return failure(c,why) end
         end
-        if getTimestampMs()>deadline then return failure(c,'PATH_TIMEOUT') end
+        if Clock.nowMs()>deadline then return failure(c,'PATH_TIMEOUT') end
         local state,why=operation.poll()
         if state=='FAILED' then return failure(c,why) end
         if state=='PASSED' then return stopped() end

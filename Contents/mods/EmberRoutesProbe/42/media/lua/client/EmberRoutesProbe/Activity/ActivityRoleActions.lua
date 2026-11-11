@@ -1,5 +1,6 @@
 -- Existing native emote/chat primitives, inside the original personal Session.
 -- No quality/mood/resource effects; valid elapsed role time is the only result.
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local A={}
 function A.new(c)
     local l=c.payload.leisure local ref=c.payload.activityRef
@@ -14,10 +15,10 @@ function A.new(c)
         end
     end
     return require('EmberRoutesProbe/Leisure/LeisureTimed').new(c,{
-        start=function() lastHours=getGameTime():getWorldAgeHours() lastReal=getTimestampMs() end,
+        start=function() lastHours=getGameTime():getWorldAgeHours() lastReal=Clock.nowMs() end,
         update=function()
             local event=Scripted.current(c.job.npcId,ref) if not event then return 'Failure' end
-            local now,hours=getTimestampMs(),getGameTime():getWorldAgeHours()
+            local now,hours=Clock.nowMs(),getGameTime():getWorldAgeHours()
             if lastReal and now<lastReal then checkedAt=0 end
             if now>=checkedAt then cached=Scripted.view(c.actor,c.job.npcId,ref) checkedAt=now+500 end
             if not cached or not cached.target then return 'Failure' end

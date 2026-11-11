@@ -4,6 +4,7 @@ local Batch = require "EmberRoutesProbe/Runtime/Batch"
 local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
 local View=require 'EmberRoutesProbe/Warehouse/InventoryView'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 require "TimedActions/ISTimedActionQueue"
 require "TimedActions/ISEatFoodAction"
 require "TimedActions/ISDrinkFluidAction"
@@ -12,7 +13,7 @@ require "TimedActions/ISInventoryTransferAction"
 local Actions = { fixtures = nil, batch = nil, actor = nil, lastState = nil }
 local controlled
 local function log(message) Log.write("ACTION", message) end
-local function now() return getTimestampMs() end
+local function now() return Clock.nowMs() end
 
 local function busy()
     return Actions.batch and Actions.batch.state == "RUNNING"

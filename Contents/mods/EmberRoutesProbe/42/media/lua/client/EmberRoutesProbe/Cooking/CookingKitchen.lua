@@ -2,6 +2,7 @@
 local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Policy=require 'EmberRoutesProbe/Work/JobPolicyService'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local K={}
 function K.leaf(c)
     local id,revision,zone,point,requested,deadline
@@ -24,10 +25,10 @@ function K.leaf(c)
         end
         if requested then
             local status=EmberRoutesProbeJava.motionResult(c.npc)
-            if status=='MOVING' and getTimestampMs()<deadline then return 'Running' end
+            if status=='MOVING' and Clock.nowMs()<deadline then return 'Running' end
             -- Parked carrier: keep waiting and do not burn a retry.
             if require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc) then
-                deadline=getTimestampMs()+30000
+                deadline=Clock.nowMs()+30000
                 return 'Running'
             end
             requested,point=false,nil attempts=attempts+1
@@ -55,7 +56,7 @@ function K.leaf(c)
         if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then
             c.reason=result or 'KITCHEN_MOVE_FAILED' return 'Failure'
         end
-        requested=true deadline=getTimestampMs()+Constants.Timeout.MOVE_MS return 'Running'
+        requested=true deadline=Clock.nowMs()+Constants.Timeout.MOVE_MS return 'Running'
     end}
 end
 return K

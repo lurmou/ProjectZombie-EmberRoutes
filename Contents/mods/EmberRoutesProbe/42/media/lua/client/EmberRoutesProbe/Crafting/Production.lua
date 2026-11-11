@@ -16,6 +16,7 @@ local Log=require "EmberRoutesProbe/Kernel/Log"
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Reasons=TaskResume.Reasons
 local Production={}
 local JobExecution=require "EmberRoutesProbe/Crafting/ProductionJobs"
@@ -544,7 +545,7 @@ end
 local function tick(c)
     if not c.valid() then return "CARRIER_OR_OWNER_CHANGED" end
     if not c.returnOnly and not fits(c) then return "CAPACITY_UNAVAILABLE" end
-    local now=getTimestampMs() if now<(c.nextTick or 0) then return end c.nextTick=now+100
+    local now=Clock.nowMs() if now<(c.nextTick or 0) then return end c.nextTick=now+100
     if c.planning then local _,reason=prepare(c) return reason end
     if c.moving and c.record.station and not c.returnOnly and not c.record.unitMade
         and not c.record.uncertain and not Stations.resolve(c.record.station) then
@@ -752,7 +753,7 @@ function Production.tickPending()
         end
         inventoryDirty=false
     end
-    local root=Registry.data() local now=getTimestampMs()
+    local root=Registry.data() local now=Clock.nowMs()
     if root~=yieldWorld then yieldWorld,yieldIds,yieldCursor,yieldScan,yieldRetry=root,{},0,0,{} end
     if now>=yieldScan then
         yieldScan=now+1000 yieldIds={}

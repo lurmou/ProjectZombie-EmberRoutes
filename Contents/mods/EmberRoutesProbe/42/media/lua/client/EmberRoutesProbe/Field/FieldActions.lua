@@ -1,4 +1,5 @@
 -- Per-instance native adapter, patterned after CookingActions. No private queue.
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local A={}
 function A.new(c,h)
     local action,stopped,performed,committing,effectDeadline
@@ -107,10 +108,10 @@ function A.new(c,h)
         -- Some native actions request an animation effect in start(); their
         -- queue completion precedes the physical result. Keep this same attempt.
         if h.waitForEffectMs and not stopped and state()~='APPLIED' then
-            effectDeadline=effectDeadline or getTimestampMs()+h.waitForEffectMs
+            effectDeadline=effectDeadline or Clock.nowMs()+h.waitForEffectMs
             if not classify(true,false) then return 'Failure' end
             if state()=='PREPARED' then
-                if getTimestampMs()<effectDeadline then return 'Running' end
+                if Clock.nowMs()<effectDeadline then return 'Running' end
                 c.unknown('FIELD_CORPSE_RELEASE_UNCONFIRMED') return 'Failure'
             end
         end

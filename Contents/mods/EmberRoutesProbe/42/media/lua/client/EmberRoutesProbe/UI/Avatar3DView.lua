@@ -14,6 +14,7 @@
 
 require "ISUI/ISPanel"
 local Theme = require "EmberRoutesProbe/UI/Theme"
+local Clock = require "EmberRoutesProbe/Kernel/Clock"
 
 ---@class EmberRoutesAvatar3DView:ISPanel
 ---@field fontHeight number
@@ -115,7 +116,7 @@ function Avatar3DView:fetchPortrait()
         self.portraitRefreshAt = 0
         return
     end
-    local now = getTimestampMs and getTimestampMs() or 0
+    local now = Clock.nowMs()
     if now < self.portraitRefreshAt then return end
     local ok, tex = pcall(function()
         if EmberRoutesProbeJava and EmberRoutesProbeJava.getPortraitTexture then

@@ -1,5 +1,6 @@
 -- Movement remains outside native timed actions: moving clears native queues.
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local A={}
 -- Action mapping stays data-driven alongside the candidate registry: adding an
 -- activity means one builder here and one LeisureRegistry def in LeisureService.
@@ -28,15 +29,15 @@ function A.move(c,point,arrived,reached)
         if moving then
             -- A parked carrier is not a failed path: hold the step and its clock.
             if require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc) then
-                deadline=getTimestampMs()+35000
+                deadline=Clock.nowMs()+35000
                 return 'Running'
             end
-            if getTimestampMs()>deadline or EmberRoutesProbeJava.motionResult(c.npc)~='MOVING' then return 'Failure' end
+            if Clock.nowMs()>deadline or EmberRoutesProbeJava.motionResult(c.npc)~='MOVING' then return 'Failure' end
         elseif c.budget.paths>0 then
             c.budget.paths=c.budget.paths-1
             local ok,result=c.body.move(c.actor,target)
             if not ok or not string.find(result or '','^MOVE_REQUESTED') then return 'Failure' end
-            moving=true deadline=getTimestampMs()+35000
+            moving=true deadline=Clock.nowMs()+35000
         end
         return 'Running'
     end,halt=function() return c.body.stop() end}
@@ -98,7 +99,7 @@ function A.new(c)
                 -- Target-existence check throttled: it costs a square lookup plus
                 -- a container scan per frame otherwise. 500ms staleness only
                 -- delays the 'Failure' transition by the same window.
-                local now=getTimestampMs()
+                local now=Clock.nowMs()
                 if now>=(checkedAt or 0) then
                     checkedAt=now+500
                     local sq=c.leisureTarget:getSquare()

@@ -3,6 +3,7 @@
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 -- Posting filter for decide, loaded here so decide never loads it mid-tick.
 -- MembershipPosting only loads SettlementZones and ContainerRegistry, so
 -- this adds no load cycle with PublicWork.
@@ -72,7 +73,7 @@ function Service.available()
     if S.faultWorld==Registry.data() then return false,'DISPATCH_BLOCKED' end
     -- During the cooldown the dispatcher is isolated too, so public mutation
     -- stays blocked even though the world has not been locked permanently.
-    if S.faultUntil and getTimestampMs()<S.faultUntil then return false,'DISPATCH_BLOCKED' end
+    if S.faultUntil and Clock.nowMs()<S.faultUntil then return false,'DISPATCH_BLOCKED' end
     if not Probe.ready or not Probe.runtimeReady then return false,Probe.failureCode or 'ADMISSION_CLOSED' end
     return true
 end

@@ -4,6 +4,7 @@ local Driver = require "EmberRoutesProbe/Runtime/Driver"
 local Producers = require "EmberRoutesProbe/Work/LaborProducers"
 local Constants = require 'EmberRoutesProbe/Kernel/Constants'
 local TransferDuration = require "EmberRoutesProbe/Work/TransferDuration"
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Transfer = {}
 
 function Transfer.reachable(npc, endpoint)
@@ -20,7 +21,7 @@ function Transfer.prepareMove(context,endpoint,excluded)
     if EmberRoutesProbeJava and EmberRoutesProbeJava.resolveInteractionTile then
         local fast=EmberRoutesProbeJava.resolveInteractionTile(square,context.npc,excluded)
         if fast and fast.square then
-            return {object=endpoint.object,square=fast.square,x=fast.x,y=fast.y,z=fast.z,at=getTimestampMs()}
+            return {object=endpoint.object,square=fast.square,x=fast.x,y=fast.y,z=fast.z,at=Clock.nowMs()}
         end
     end
     for _=1,8 do
@@ -31,7 +32,7 @@ function Transfer.prepareMove(context,endpoint,excluded)
         if cell and cell:getGridSquare(candidate:getX(),candidate:getY(),candidate:getZ())==candidate
             and candidate:TreatAsSolidFloor() and not candidate:isSolid() and not candidate:isSolidTrans() then
             return {object=endpoint.object,square=candidate,x=candidate:getX()+0.5,y=candidate:getY()+0.5,
-                z=candidate:getZ(),at=getTimestampMs()}
+                z=candidate:getZ(),at=Clock.nowMs()}
         end
         excluded[#excluded+1]=candidate
     end
@@ -39,7 +40,7 @@ function Transfer.prepareMove(context,endpoint,excluded)
 end
 
 local function preparedValid(endpoint,p)
-    if not p or p.object~=endpoint.object or getTimestampMs()-p.at>2000 then return false end
+    if not p or p.object~=endpoint.object or Clock.nowMs()-p.at>2000 then return false end
     local s=p.square local cell=getCell()
     return cell and cell:getGridSquare(s:getX(),s:getY(),s:getZ())==s
         and s:TreatAsSolidFloor() and not s:isSolid() and not s:isSolidTrans()
@@ -91,7 +92,7 @@ end
 
 function Transfer.item(context, item, from, to, endpoint)
     local started, performed, stopped, notified, lastCheck, diagnosed
-    local progressAt = getTimestampMs()
+    local progressAt = Clock.nowMs()
     local function notify()
         local registry = require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
         registry.inventoryChanged(from) registry.inventoryChanged(to)
@@ -194,7 +195,7 @@ function Transfer.item(context, item, from, to, endpoint)
             end
 
             performed = true
-            progressAt = getTimestampMs()
+            progressAt = Clock.nowMs()
 
             local acknowledged = not context.transferred or context.transferred(item, from, to)
             if acknowledged == false then error('TRANSFER_RECEIPT_FAILED') end

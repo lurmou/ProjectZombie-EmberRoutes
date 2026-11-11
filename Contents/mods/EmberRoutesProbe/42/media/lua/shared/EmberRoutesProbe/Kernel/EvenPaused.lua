@@ -3,14 +3,15 @@
 -- Wall time avoids making read throughput depend on rendering FPS or speed.
 local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Performance=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local M={handlers={}}
 local installed,fireCount,lastAt
 local function runHandlers()
     for _,fn in ipairs(M.handlers) do fn() end
 end
 local function dispatch()
-    if getTimestampMs then
-        local now=getTimestampMs()
+    if Clock.hasEngineClock() then
+        local now=Clock.nowMs()
         if lastAt and now>=lastAt and now-lastAt<Config.readMs then return end
         lastAt=now
     else

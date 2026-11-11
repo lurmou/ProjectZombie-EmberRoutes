@@ -3,6 +3,7 @@ require 'ISUI/PlayerData/ISPlayerData'
 local Binding=require 'EmberRoutesProbe/Settlement/SquadKeys'
 local HUD=require 'EmberRoutesProbe/UI/SquadHUD'
 local T=require 'EmberRoutesProbe/Settlement/MembershipText'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local UI={}
 local hud,wheel,pendingShow,installed
 local function label(key) return getText('IGUI_EmberRoutesProbe_Squad_'..key) end
@@ -25,7 +26,7 @@ end
 function UI.openWheel(panel,byKey)
     closeWheel()
     if not panel.active or not panel.session:valid() or vanillaVisible() or not inputAvailable() then return end
-    panel.session:refresh(getTimestampMs()) panel:project()
+    panel.session:refresh(Clock.nowMs()) panel:project()
     local targets=panel.session:targets(panel.selected)
     if #targets==0 then return end
     local h=panel.h
@@ -41,7 +42,7 @@ function UI.openWheel(panel,byKey)
             closeWheel()
             if not panel.session:valid() or vanillaVisible() or not inputAvailable() then return end
             panel.session:command(targets,kind,slot)
-            panel.session:refresh(getTimestampMs()) panel:project()
+            panel.session:refresh(Clock.nowMs()) panel:project()
         end)
     end
     add('FOLLOW',nil,T.reason('FOLLOW')..' ('..tostring(#targets)..')')

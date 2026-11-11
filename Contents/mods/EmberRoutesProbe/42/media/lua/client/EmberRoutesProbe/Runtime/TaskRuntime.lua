@@ -3,6 +3,7 @@ local Controller=require 'EmberRoutesProbe/Runtime/TaskController'
 local Schedule=require 'EmberRoutesProbe/Work/LaborSchedule'
 local Driver=require 'EmberRoutesProbe/Runtime/Driver'
 local Tick=require 'EmberRoutesProbe/Kernel/TickConfig'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Runtime={}
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local function luaStopped(binding)
@@ -230,7 +231,7 @@ function Runtime.new(options)
         -- fixtures) get a synthetic per-step clock that never gates the pace.
         local now=0
         if pace>0 then
-            if type(getTimestampMs)=='function' then now=getTimestampMs()
+            if Clock.hasEngineClock() then now=Clock.nowMs()
             else now=(stepClock or 0)+pace stepClock=now end
         end
         controller:step()
@@ -351,7 +352,7 @@ function Runtime.tick()
     local active=Runtime.current()
     if not active then return end
     if active:count()==0 then
-        local now=getTimestampMs()
+        local now=Clock.nowMs()
         if now<nextIdleTick then return end
         nextIdleTick=now+Tick.businessIdleMs
     end

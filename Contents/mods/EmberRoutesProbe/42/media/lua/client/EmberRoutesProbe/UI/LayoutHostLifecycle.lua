@@ -7,6 +7,7 @@
 -- back to the host module). Moved verbatim from the pre-split
 -- LayoutHost.lua (P1 split); behaviour unchanged.
 local S = require 'EmberRoutesProbe/UI/LayoutHostShared'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local release = S.release
 local detach = S.detach
 
@@ -48,7 +49,7 @@ end
 function Host:_tickDebouncers(now)
     local ds = self._debouncers
     if not ds or #ds == 0 then return end
-    now = now or (getTimestampMs and getTimestampMs() or (os.time() * 1000))
+    now = now or (Clock.nowMs())
     for i = 1, #ds do
         ds[i]:tick(now)
     end

@@ -17,6 +17,7 @@ local Theme = require "EmberRoutesProbe/UI/Theme"
 local GhostLens = require "EmberRoutesProbe/UI/GhostLens"
 local NearbyContainers = require "EmberRoutesProbe/Warehouse/NearbyContainers"
 local Dropdown = require "EmberRoutesProbe/UI/Dropdown"
+local Clock = require "EmberRoutesProbe/Kernel/Clock"
 
 ---@class EmberRoutesFilterList: ISScrollingListBox
 ---@field owner EmberRoutesStorageFilterPanel
@@ -400,9 +401,9 @@ function EmberRoutesStorageFilterPanel:switchToContainer(target)
     local pos = self:getCurrentTargetPosition()
     if pos and Events and Events.OnRenderTick and type(_G.addAreaHighlightForPlayer) == "function" then
         local actorIdx = self.actor and self.actor.getIndex and self.actor:getIndex() or 0
-        local started = type(_G.getTimestampMs) == "function" and _G.getTimestampMs() or 0
+        local started = Clock.nowMs()
         local function haloTick()
-            local now = type(_G.getTimestampMs) == "function" and _G.getTimestampMs() or 0
+            local now = Clock.nowMs()
             if now - started > 800 then
                 Events.OnRenderTick.Remove(haloTick)
                 return

@@ -1,5 +1,6 @@
 -- Declarative layout DSL facade producing side-effect-free layout descriptors.
 local UI = {}
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local function copyShallow(t)
     if not t then return {} end
@@ -334,7 +335,7 @@ local debouncerMeta = {
         self.nArgs = n
         for i = 1, n do self.args[i] = select(i, ...) end
         for i = n + 1, #self.args do self.args[i] = nil end
-        local now = getTimestampMs and getTimestampMs() or (os.time() * 1000)
+        local now = Clock.nowMs()
         self.targetTime = now + self.delayMs
         self.pending = true
     end,
@@ -344,7 +345,7 @@ local debouncerMeta = {
             self:cancel()
             return false
         end
-        now = now or (getTimestampMs and getTimestampMs() or (os.time() * 1000))
+        now = now or (Clock.nowMs())
         if now >= self.targetTime then
             self:flush()
             return true

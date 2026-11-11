@@ -2,6 +2,7 @@
 local Membership=require 'EmberRoutesProbe/Settlement/MembershipService'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local F={}
 function F.key(p) return 'repose:floor:'..p.x..':'..p.y..':'..p.z end
 function F.scan(npc,id)
@@ -64,8 +65,8 @@ function F.posture(c)
     local deadline,started
     return {enter=function()
         if not c.valid() or not F.valid(c) then c.reason='FLOOR_SITE_CHANGED' return 'Failure' end
-        deadline=deadline or getTimestampMs()+12000
-        if getTimestampMs()>deadline then c.reason='FLOOR_POSE_TIMEOUT' return 'Failure' end
+        deadline=deadline or Clock.nowMs()+12000
+        if Clock.nowMs()>deadline then c.reason='FLOOR_POSE_TIMEOUT' return 'Failure' end
         if not started then
             if not c.body.furniture(nil,'FLOOR') then return 'Running' end
             started=true

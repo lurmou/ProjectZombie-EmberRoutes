@@ -7,6 +7,7 @@ local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
 local Target=require 'EmberRoutesProbe/Logistics/DeliveryTarget'
 local Routing=require 'EmberRoutesProbe/Hauling/HaulRouting'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local F={}
 local function nextSource(r)
     for _,line in ipairs(r.manifest) do if line.custodyState=='UNCOLLECTED' then return line.sourceId end end
@@ -102,8 +103,8 @@ function F.next(c,snapshotStep,withdraw)
         if not Target.still(c) then r.reason='PLAYER_MOVING' return nil,'SCAN_PENDING' end
         if not Target.room(c,item) then
             r.reason='PLAYER_CAPACITY_WAIT'
-            if getTimestampMs()>=(c.nextCapacityNote or 0) then
-                c.nextCapacityNote=getTimestampMs()+10000
+            if Clock.nowMs()>=(c.nextCapacityNote or 0) then
+                c.nextCapacityNote=Clock.nowMs()+10000
                 if c.npc.Say then c.npc:Say(getText('IGUI_EmberRoutesProbe_Warehouse_courierCapacityWait')) end
             end
             return nil,'SCAN_PENDING'
@@ -114,7 +115,7 @@ function F.next(c,snapshotStep,withdraw)
     end
     r.phase='RETURN' r.reason='RETURNING'
     local target=Target.returnTarget(c,item)
-    if target and getTimestampMs()<(c.backoff[target.id] or 0) then target=nil end
+    if target and Clock.nowMs()<(c.backoff[target.id] or 0) then target=nil end
     if not target then
         c.search=c.search or Routing.new(c,held)
         if not c.search then return nil,'ROUTING_WAIT' end
@@ -128,7 +129,7 @@ function F.next(c,snapshotStep,withdraw)
     local ok=Store.capacity(c.token,item:getID(),target.id,item:getUnequippedWeight(),target.container:getFreeCapacity(c.npc))
     if not ok then
         c.destination=nil
-        if c.backoff then c.backoff[target.id]=getTimestampMs()+18000 end
+        if c.backoff then c.backoff[target.id]=Clock.nowMs()+18000 end
         return nil,'ROUTING_WAIT'
     end
     c.destination=target

@@ -4,6 +4,7 @@ local Companion = require "EmberRoutesProbe/Settlement/Companion"
 local Actions = require "EmberRoutesProbe/Runtime/Actions"
 local Samples = require "EmberRoutesProbe/Runtime/PersistenceSamples"
 local Diagnostic=require 'EmberRoutesProbe/Runtime/TaskDiagnostic'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Persistence = {}
 local restoreQueue
 local RESTORE_RETRY_MS,RESTORE_ATTEMPTS=2000,3
@@ -70,7 +71,7 @@ local function tickWork()
         local request=worldSaveRequest
         if request.world~=require('EmberRoutesProbe/Warehouse/ContainerRegistry').data() then worldSaveRequest=nil return end
         local ready,reason=managed().ready()
-        if reason or getTimestampMs()>request.deadline then
+        if reason or Clock.nowMs()>request.deadline then
             worldSaveRequest=nil
             managed().failed(reason or 'SAVE_PREPARE_TIMEOUT')
             actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparationFailed'))
@@ -105,7 +106,7 @@ local function tickWork()
     if not restoreQueue then return end
     local queue=restoreQueue
     if queue.world~=require('EmberRoutesProbe/Warehouse/ContainerRegistry').data() then restoreQueue=nil return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now<queue.nextAt then return end
     local id=queue.ids[queue.position]
     if not id then
@@ -217,7 +218,7 @@ function Persistence.requestExit(exit)
         return true
     end
     worldSaveRequest={world=require('EmberRoutesProbe/Warehouse/ContainerRegistry').data(),
-        exit=exit,deadline=getTimestampMs()+15000}
+        exit=exit,deadline=Clock.nowMs()+15000}
     actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparing'))
     return true
 end
@@ -275,7 +276,7 @@ function Persistence.execute(actor, command)
             if not ok then result=reason
             elseif Probe.controlledExecution==true then
                 worldSaveRequest={world=require('EmberRoutesProbe/Warehouse/ContainerRegistry').data(),
-                    save=nativeSave,deadline=getTimestampMs()+15000}
+                    save=nativeSave,deadline=Clock.nowMs()+15000}
                 actor:Say(getText('IGUI_EmberRoutesProbe_SavePreparing'))
                 return 'WORLD_SAVE_PREPARING'
             else

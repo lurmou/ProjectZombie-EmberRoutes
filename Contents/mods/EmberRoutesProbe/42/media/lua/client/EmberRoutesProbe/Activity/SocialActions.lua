@@ -1,5 +1,6 @@
 local Social=require 'EmberRoutesProbe/Activity/SocialCoordinator'
 local Record=require 'EmberRoutesProbe/Activity/ActivityReliefRecord'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local A={}
 function A.conversation(c,l,current)
     local id=c.job.npcId local attempt=c.payload.attemptId
@@ -19,7 +20,7 @@ function A.conversation(c,l,current)
             if not other or other.handle:isDead() then return 'Failure' end
             if not EmberRoutesProbeJava.socialVisible(c.npc,other.handle) then return 'Failure' end
             if not seated then c.npc:faceLocationF(other.handle:getX(),other.handle:getY()) end
-            local now=getTimestampMs()
+            local now=Clock.nowMs()
             if gestureAt and now-gestureAt>=3000 then clear() gestureAt=nil end
             if now>=nextGesture then
                 clear()
@@ -47,11 +48,11 @@ function A.conversation(c,l,current)
 end
 function A.new(c)
     local l=c.payload.leisure local id=c.job.npcId local attempt=c.payload.attemptId
-    local function current() return Social.view(l.socialId,id,attempt,getTimestampMs()) end
+    local function current() return Social.view(l.socialId,id,attempt,Clock.nowMs()) end
     local converse=require('EmberRoutesProbe/Leisure/LeisureTimed').new(c,A.conversation(c,l,current))
     local accepted=false
     local move=require('EmberRoutesProbe/Leisure/LeisureActions').move(c,function()
-        if not accepted then accepted=Social.accept(l.socialId,id,attempt,getTimestampMs()) end
+        if not accepted then accepted=Social.accept(l.socialId,id,attempt,Clock.nowMs()) end
         local row=accepted and current()
         return row and row.ready and row.point or nil
     end,function()
@@ -63,7 +64,7 @@ function A.new(c)
         row=current() return row and row.phase=='CONVERSE' or false
     end)
     local approach={kind='Action',run=function()
-        if not accepted then accepted=Social.accept(l.socialId,id,attempt,getTimestampMs()) end
+        if not accepted then accepted=Social.accept(l.socialId,id,attempt,Clock.nowMs()) end
         local row=accepted and current() if not row then return 'Failure' end
         if not row.ready then return 'Running' end
         return move.run()

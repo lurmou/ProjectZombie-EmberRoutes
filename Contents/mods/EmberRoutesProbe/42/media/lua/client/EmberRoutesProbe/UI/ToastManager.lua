@@ -14,6 +14,7 @@ require 'ISUI/ISUIElement'
 local Theme = require 'EmberRoutesProbe/UI/Theme'
 local StatusVisual = require 'EmberRoutesProbe/UI/StatusVisual'
 local Text = require 'EmberRoutesProbe/UI/Text'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 ---@class EmberRoutesToastManager:ISUIElement
 local ToastManager = ISUIElement:derive('EmberRoutesToastManager')
@@ -84,7 +85,7 @@ function ToastManager:onRightMouseUp(x, y) return false end
 ---@param durationMs number?
 local function pushToast(pType, message, durationMs)
     ToastManager.getInstance()
-    local now = (getTimestampMs and getTimestampMs()) or (os.time() * 1000)
+    local now = Clock.nowMs()
     local dur = durationMs or 3000
 
     -- Discard oldest toast if queue full
@@ -113,7 +114,7 @@ end
 function ToastManager:prerender()
     if #toastQueue == 0 then return end
 
-    local now = (getTimestampMs and getTimestampMs()) or (os.time() * 1000)
+    local now = Clock.nowMs()
     local sw = self.width
     local toastX = math.floor((sw - TOAST_WIDTH) / 2)
     local baseY = 24

@@ -1,6 +1,7 @@
 require 'TimedActions/ISFitnessAction'
 require 'Definitions/FitnessExercises'
 local Config=require 'EmberRoutesProbe/Leisure/LeisureConfig'
+local Clock = require "EmberRoutesProbe/Kernel/Clock"
 local F={}
 local types={'squats','pushups','situp'}
 function F.new(c)
@@ -18,7 +19,7 @@ function F.new(c)
         require "EmberRoutesProbe/Kernel/Log".write("LEISURE","FITNESS_STOP npc="..tostring(c.job and c.job.npcId or "?")
             .." cause="..tostring(why or cause or 'EXTERNAL_STOP')
             .." reps="..tostring(l.repetitions or 0)
-            .." elapsedMs="..tostring(startedAt and getTimestampMs()-startedAt or -1))
+            .." elapsedMs="..tostring(startedAt and Clock.nowMs()-startedAt or -1))
         cause=nil
     end
     local function stop(self,finished,why)
@@ -65,16 +66,16 @@ function F.new(c)
             end
             action.isValid=function() return active() and c.npc:getVehicle()==nil end
             action.waitToStart=function(self)
-                waitAt=waitAt or getTimestampMs()
+                waitAt=waitAt or Clock.nowMs()
                 if not nativeWait(self) then return false end
-                if getTimestampMs()-waitAt>=3000 then cause='WAIT_TIMEOUT' self:forceStop() return false end
+                if Clock.nowMs()-waitAt>=3000 then cause='WAIT_TIMEOUT' self:forceStop() return false end
                 return true
             end
             action.start=function(self)
                 if not active() or l.started then return end
                 l.started=true l.repetitions=0
                 l.untilHours=getGameTime():getWorldAgeHours()+Config.fitnessMinutes/60
-                startedAt=getTimestampMs()
+                startedAt=Clock.nowMs()
                 if not c.persist() then error('FITNESS_PERSIST_FAILED') end
                 require "EmberRoutesProbe/Kernel/Log".write("LEISURE","FITNESS_START npc="
                     ..tostring(c.job and c.job.npcId or "?").." exercise="..tostring(exercise))

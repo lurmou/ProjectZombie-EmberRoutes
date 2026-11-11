@@ -5,6 +5,7 @@ local Claims=require "EmberRoutesProbe/Kernel/LaborClaims"
 local CraftRetirement=require "EmberRoutesProbe/Crafting/CraftLegacyRecovery"
 local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Evidence=require 'EmberRoutesProbe/Warehouse/QuarantineEvidence'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Store={}
 local root,claims,tokens
 local domainState={}
@@ -271,7 +272,7 @@ function Store.data()
                 current.quarantineResources[key] = {
                     reason = "BOOT_CONFLICT",
                     evidence = { claimants = claimantIds },
-                    at = (os and os.time and os.time() or 0)
+                    at = Clock.wallSeconds()
                 }
 		local q=current.quarantineResources[key]
 		q.evidence,q.evidenceReport=Evidence.snapshot(q.evidence)
@@ -501,7 +502,7 @@ function Store.quarantineResource(key,reason,evidence)
 	    evidence=evidenceFacts,
 	    evidenceReport=evidenceReport,
 	    evidenceEvents=evidenceEvents,
-            at=(os and os.time and os.time() or 0),
+            at=Clock.wallSeconds(),
             originalTaskId=owner and owner.originalTaskId,
             originalClaimId=owner and owner.originalClaimId,
             originalGeneration=owner and owner.originalGeneration,
@@ -577,7 +578,7 @@ function Store.unquarantineResource(key,resolution,evidence)
 	qRec.resolution = resolutionFacts
 	qRec.resolvingEvidence = evidenceFacts
 	qRec.resolvingEvidenceReport = evidenceReport
-        qRec.resolvingAt = (os and os.time and os.time() or 0)
+        qRec.resolvingAt = Clock.wallSeconds()
     end
 
     local ok, err = claims:unquarantine(key, resObj)
@@ -594,7 +595,7 @@ function Store.unquarantineResource(key,resolution,evidence)
     end
 
     if root and root.quarantineResources and root.quarantineResources[key] then
-        local now = (os and os.time and os.time() or 0)
+        local now = Clock.wallSeconds()
         root.quarantineAudit = root.quarantineAudit or {}
         root.quarantineAudit[key] = {
             action = "UNQUARANTINE",

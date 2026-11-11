@@ -7,6 +7,7 @@ local ToolDiscovery=require 'EmberRoutesProbe/Field/ToolDiscovery'
 local ToolReq=require 'EmberRoutesProbe/Field/ToolRequirements'
 local RuntimeMetrics=require 'EmberRoutesProbe/Kernel/RuntimeMetrics'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local function tick() return RuntimeMetrics.active() and RuntimeMetrics.now() or nil end
 local function span(name,started) if started then RuntimeMetrics.measureSpan(name,started) end end
 local M={}
@@ -199,7 +200,7 @@ function M.get(category)
         local entry=require('EmberRoutesProbe/Settlement/SettlementLedger').get(c.job.scopeId)
         if not entry or not policyReady({entry=entry,npc=c.npc},category) then return false end
         local previous=c.job.payload.target
-        local env={entry=entry,npc=c.npc,npcId=c.job.npcId,actor=c.actor,now=getTimestampMs()}
+        local env={entry=entry,npc=c.npc,npcId=c.job.npcId,actor=c.actor,now=Clock.nowMs()}
         for _,t in ipairs(Discovery.targets(env,category)) do
 	    if math.abs(t.x-previous.x)<=5 and math.abs(t.y-previous.y)<=5 and t.z==previous.z then
                 local target,keys=claim(category,{point=t},c.npc,entry,c.job.id)
