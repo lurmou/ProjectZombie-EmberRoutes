@@ -55,9 +55,16 @@ check(Contracts.get('CRAFT').errorCodes.CRAFT_TRANSITION_INVALID~=nil
     'CRAFT declares its transition and scope codes')
 check(Contracts.get('HAUL').errorCodes.HAUL_TRANSITION_INVALID~=nil,
     'HAUL declares its transition code')
-check(next(Contracts.get('FIELD_WORK').errorCodes)==nil
-    and next(Contracts.get('ACTIVITY').errorCodes)==nil
-    and next(Contracts.get('SELF_CARE').errorCodes)==nil,
+-- Empty-check through pairs: the Kahlua runtime exposes no global `next`
+-- (KahluaLaborTest mirrors PZ by clearing it), same idiom as the production
+-- validErrorCodes / ModDataTemplates.empty.
+local function noCodes(codes)
+    for _ in pairs(codes) do return false end
+    return true
+end
+check(noCodes(Contracts.get('FIELD_WORK').errorCodes)
+    and noCodes(Contracts.get('ACTIVITY').errorCodes)
+    and noCodes(Contracts.get('SELF_CARE').errorCodes),
     'boolean-only builtins declare empty errorCodes')
 
 -- LaborRecovery requires the contract to carry errorCodes as well.

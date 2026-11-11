@@ -20,7 +20,16 @@ local function validErrorCodes(contract)
         if type(code)~='string' or code=='' or type(meaning)~='string' or meaning=='' then return false end
     end
     if contract.transferReason~=nil and codes[contract.transferReason]==nil then return false end
-    if contract.transition~=nil and next(codes)==nil then return false end
+    -- Empty-check through pairs. The Kahlua BaseLib this game ships registers
+    -- 18 globals and `next` is not one of them: `next(codes)` evaluated to a
+    -- nil callee, aborted this module's load and took JobStore with it (every
+    -- later Registry.data() then failed on a nil Jobs module). Same idiom and
+    -- same semantics as JobStore.empty / ModDataTemplates.empty.
+    if contract.transition~=nil then
+        local declared=false
+        for _ in pairs(codes) do declared=true break end
+        if not declared then return false end
+    end
     return true
 end
 function C.register(kind,contract)
