@@ -10,6 +10,7 @@ local Sort=require "EmberRoutesProbe/Warehouse/SortPolicy"
 local Planner=require "EmberRoutesProbe/Logistics/LogisticsPlanner"
 local Log=require "EmberRoutesProbe/Kernel/Log"
 local Signals=require "EmberRoutesProbe/Work/LaborSignals"
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service={BUDGET=64}
 local contexts={}
 local watchers,dirty={},{}
@@ -153,7 +154,7 @@ function Service.publicOffer(actor,entry,npc)
     local ctx=Service.preparePublic(actor,entry) if not ctx then return nil end
     local settings=Store.get(entry.id)
     local id=EmberRoutesProbeJava.carrierId(npc)
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now<(ctx.publicWait[id] or 0) then return nil end
     local plan=ctx.publicPlans[id]
     if not plan then plan=Planner.new(entry,settings,npc,ctx.compiled) ctx.publicPlans[id]=plan end
@@ -172,7 +173,7 @@ local recoveryWorld,recoveryIds,recoveryCursor,recoveryAt,recoveryRefresh=nil,{}
 local recoveryWait={}
 function Service.recover()
     if not Probe.ready or Probe.enabled==false or not Probe.hasJava() or isClient() or isServer() then return end
-    local now=getTimestampMs() if now<recoveryAt then return end recoveryAt=now+100
+    local now=Clock.nowMs() if now<recoveryAt then return end recoveryAt=now+100
     local world=Registry.data()
     if world~=recoveryWorld then recoveryWorld=world recoveryWait={} recoveryRefresh=0 end
     local rt=require('EmberRoutesProbe/Runtime/TaskRuntime').current()

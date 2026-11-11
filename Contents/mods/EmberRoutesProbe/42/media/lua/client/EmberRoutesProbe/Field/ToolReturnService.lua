@@ -10,6 +10,7 @@ local Record=require 'EmberRoutesProbe/Field/ToolReturnRecord'
 local CraftSupply=require 'EmberRoutesProbe/Crafting/CraftSupply'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Stop=require 'EmberRoutesProbe/Runtime/TaskBusinessStop'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 require 'TimedActions/ISInventoryTransferAction'
 
 local Service={}
@@ -283,7 +284,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
                     -- the native presentation asks TransferDuration for it.
                     if EmberRoutesProbeJava and EmberRoutesProbeJava.nativeActionStart then
                         task.action='NATIVE'
-                        task.startedAt=getTimestampMs()
+                        task.startedAt=Clock.nowMs()
                         EmberRoutesProbeJava.nativeActionStart(npc,"Loot",TransferDuration.forTransfer(npc,task.item,inv,task.endpoint.container),true)
                     else
                         task.action=ISInventoryTransferAction:new(npc,task.item,inv,task.endpoint.container)

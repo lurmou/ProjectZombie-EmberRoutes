@@ -17,6 +17,7 @@ local Work=require 'EmberRoutesProbe/Work/Work'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Orders=require 'EmberRoutesProbe/Cooking/CookingOrders'
 local Wake=require 'EmberRoutesProbe/Runtime/PlanningWake'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local S={}
 local world,plans,order,cursor,retained,jobCursor,offers,samples,nextPump,budget,frame,retryJobs,sites
 local crewScan,nextCrew=nil,0
@@ -42,7 +43,7 @@ local function autoBlocked(entry,now)
     return true,failed.reason
 end
 local function budgets()
-    load() local now=math.floor(getTimestampMs()/50)
+    load() local now=math.floor(Clock.nowMs()/50)
     if now~=frame then frame=now budget={nodes=96,scan=64,paths=2} end
     return budget
 end
@@ -65,7 +66,7 @@ local function idle(actor,id,careId)
             or #care.payload.claims>0 then return end
         for _ in pairs(care.obligations) do return end
     end
-    if safe(binding,getTimestampMs()) then return binding end
+    if safe(binding,Clock.nowMs()) then return binding end
 end
 -- E-08: no invalidateCare here, deliberately (doc-only; see verify-probe-E08-cooking-field.md).
 -- The COOKING spec hardcodes nonPreemptive=true (CookingAgent.lua), so a new
@@ -98,7 +99,7 @@ local function submit(actor,binding,job,settle)
         end
     end
     local spec,why=require('EmberRoutesProbe/Cooking/CookingAgent').new(actor,binding,job,object,budgets,
-        function() return safe(binding,getTimestampMs()) end,{settleOnly=settle})
+        function() return safe(binding,Clock.nowMs()) end,{settleOnly=settle})
     if not spec then return nil,why end
     return Runtime.current():submit(spec)
 end
@@ -120,7 +121,7 @@ local function recover(actor,job)
         or not (job.payload.evolved or job.payload.fixed or job.payload.raw) then return end
     local runtime=Runtime.current()
     if runtime:status(job.npcId,job.id) then return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now<(retryJobs[job.id] or 0) then return end
     retryJobs[job.id]=now+(job.payload.duty and 250 or 2000)
     local binding=idle(actor,job.npcId)
@@ -159,10 +160,10 @@ local function requestPlan(row,o,entry,binding,b,actor)
     end
     row.cold.budget=b
     local cold=row.gate.run()
-    if cold=='Failure' then row.reason=row.cold.reason row.retry=getTimestampMs()+2000 row.gate=nil return end
+    if cold=='Failure' then row.reason=row.cold.reason row.retry=Clock.nowMs()+2000 row.gate=nil return end
     if cold~='Success' then return end
     local spec=Orders.describe(o.recipeId)
-    if not spec then row.reason='RECIPE_MECHANISM_UNSUPPORTED' row.retry=getTimestampMs()+2000 return end
+    if not spec then row.reason='RECIPE_MECHANISM_UNSUPPORTED' row.retry=Clock.nowMs()+2000 return end
     row.descriptor=spec row.studyTarget=nil
     if spec.kind=='CRAFT' then
         if not binding.handle:isRecipeKnown(spec.recipe,true) then
@@ -181,12 +182,12 @@ local function requestPlan(row,o,entry,binding,b,actor)
             local allowance=math.min(32,b.scan) if allowance<1 then return end b.scan=b.scan-allowance
             local plan,err=row.bomScan:step(allowance)
             if plan then
-                row.bomScan=nil row.fixedScan=nil row.retry=getTimestampMs()+2000
+                row.bomScan=nil row.fixedScan=nil row.retry=Clock.nowMs()+2000
                 if #plan.nodes>1 then
                     local result=require('EmberRoutesProbe/Work/PublicWork').createPrerequisite(actor,o.id,plan.nodes[1])
                     row.reason=result=='ORDER_CREATED' and 'COOKING_PREREQUISITE_WAIT' or result
                 else row.reason='INPUT_CHANGED' end
-            elseif err then row.bomScan=nil row.reason=err row.retry=getTimestampMs()+2000 end
+            elseif err then row.bomScan=nil row.reason=err row.retry=Clock.nowMs()+2000 end
             return
         end
         if not row.fixedScan then
@@ -197,7 +198,7 @@ local function requestPlan(row,o,entry,binding,b,actor)
         local selection,err=row.fixedScan:step(allowance)
         if selection then row.selection=selection row.ready=true row.reason=nil
         elseif err then
-            row.reason=err row.fixedScan=nil row.retry=getTimestampMs()+2000
+            row.reason=err row.fixedScan=nil row.retry=Clock.nowMs()+2000
             if err=='MATERIALS_UNAVAILABLE' or err=='TOOLS_UNAVAILABLE' then
                 row.bomScan,row.reason=require('EmberRoutesProbe/Cooking/CookingSupply').chain(actor,entry,binding.handle,
                     spec.recipeId,row.station,o.id,o.preferences)
@@ -210,8 +211,8 @@ local function requestPlan(row,o,entry,binding,b,actor)
         local allowance=math.min(32,b.scan) if allowance<1 then return end b.scan=b.scan-allowance
         local done,why=row.menu:step(allowance)
         if done then row.selection,row.reason=row.menu:result() row.ready=row.selection~=nil
-            if not row.ready then row.menu=nil row.retry=getTimestampMs()+2000 end
-        elseif done==nil then row.menu=nil row.reason=why row.retry=getTimestampMs()+500 end
+            if not row.ready then row.menu=nil row.retry=Clock.nowMs()+2000 end
+        elseif done==nil then row.menu=nil row.reason=why row.retry=Clock.nowMs()+500 end
     end
 end
 function S.advance(env)
@@ -342,7 +343,7 @@ function S.discover(env)
         if not exists then order[#order+1]=id end
     end
     if row.entry.id~=env.entry.id then plans[id]=nil return end
-    if not row.orderId and autoBlocked(env.entry,env.now or getTimestampMs()) then return end
+    if not row.orderId and autoBlocked(env.entry,env.now or Clock.nowMs()) then return end
     if not row.ready then
         if row.studyTarget and env.setStudyTarget then env.setStudyTarget(row.studyTarget) end
         if (row.orderId and not row.reason) or row.menu then env.pending=true end
@@ -462,7 +463,7 @@ function S.reconcile()
                 if j.state=='CANCELLED' and j.payload.source=='AUTO' and j.payload.heat and j.payload.heat.aborted
                     and not j.payload.cancelRequested and not j.payload.pauseRequested then
                     local entry=Members.entry(j.npcId,j.scopeId)
-                    if entry then failedAuto[entry.id]={watch=Wake.capture(entry),untilWall=getTimestampMs()+30000,
+                    if entry then failedAuto[entry.id]={watch=Wake.capture(entry),untilWall=Clock.nowMs()+30000,
                         reason=j.payload.reason or j.payload.heat.reason or 'HEAT_STOPPED_BEFORE_COOKED'} end
                 end
                 require('EmberRoutesProbe/Kernel/Log').write('COOKING','SETTLED job='..j.id..' npc='..j.npcId
@@ -511,7 +512,7 @@ function S.status(id) load() local row=plans[id] return row and row.reason end
 function S.stock(actor,rule)
     local entry=require('EmberRoutesProbe/Settlement/SettlementLedger').view(actor,rule.settlementId)
     if not entry then return nil,'ACCESS_DENIED' end
-    local snapshot,why=Supply.observe(entry,getTimestampMs(),getGameTime():getWorldAgeHours(),budgets())
+    local snapshot,why=Supply.observe(entry,Clock.nowMs(),getGameTime():getWorldAgeHours(),budgets())
     if not snapshot then return nil,why end
     return {state='READY',complete=true,knownCount=(snapshot.readyByType or {})[rule.product] or 0}
 end

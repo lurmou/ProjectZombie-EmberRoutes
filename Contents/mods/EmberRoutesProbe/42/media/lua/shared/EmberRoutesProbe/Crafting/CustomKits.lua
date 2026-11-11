@@ -2,6 +2,7 @@
 -- Allows players to snapshot container contents or item sets as high-priority custom categories.
 local Filter = require "EmberRoutesProbe/Warehouse/StorageFilter"
 local Templates = require "EmberRoutesProbe/Kernel/ModDataTemplates"
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local CustomKits = {
     LIMIT = 64,
@@ -71,7 +72,7 @@ function CustomKits.create(name, typesArray)
         return nil, "KIT_LIMIT_EXCEEDED"
     end
 
-    local timestamp = getTimestampMs and getTimestampMs() or os.time()
+    local timestamp = Clock.nowMs()
     local kitId = "kit.custom." .. cleanId(name) .. "_" .. tostring(timestamp % 1000000)
 
     local typesMap = {}

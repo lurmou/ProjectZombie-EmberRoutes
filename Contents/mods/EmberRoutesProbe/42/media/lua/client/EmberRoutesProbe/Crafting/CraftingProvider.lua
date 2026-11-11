@@ -12,6 +12,7 @@ local CookingOrders = require 'EmberRoutesProbe/Cooking/CookingOrders'
 local Probe = require 'EmberRoutesProbe/Kernel/Boot'
 local Jobs = require 'EmberRoutesProbe/Runtime/TaskJobs'
 local JobState = require 'EmberRoutesProbe/Kernel/JobState'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local evaluations = Queue.new(4)
 local decisionScans = {}
@@ -348,7 +349,7 @@ function CraftingProvider.step(env)
             if env.signal then env.signal(e.order, reason) end
             evaluations:remove(id)
         end
-    end, getTimestampMs)
+    end, Clock.nowMs)
     return ops, slices
 end
 

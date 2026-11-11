@@ -13,6 +13,7 @@ local Supply=require 'EmberRoutesProbe/Crafting/CraftSupply'
 local Geometry=require 'EmberRoutesProbe/Settlement/SettlementGeometry'
 local Carry=require 'EmberRoutesProbe/Crafting/ProductionCarry'
 local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local H={}
 local function admissible(item)
     local fact=Food.read(item)
@@ -143,7 +144,7 @@ function H.new(c,ids,endpoint,cleanupOnly)
             local ok,why=Duty.reserve(c,endpoint) if not ok then return fail(why) end
             return 'Running'
         end
-        local wall=getTimestampMs()
+        local wall=Clock.nowMs()
         local game=getGameTime and getGameTime():getWorldAgeHours() or 0
         if nextWall and wall<nextWall and game<(nextGame or 0) then return 'Running' end
         nextWall=wall+250 nextGame=game+1/3600

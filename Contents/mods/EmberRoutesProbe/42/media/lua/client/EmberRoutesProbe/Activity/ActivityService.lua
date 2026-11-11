@@ -8,6 +8,7 @@ local Zones=require 'EmberRoutesProbe/Settlement/SettlementZones'
 local Resume=require 'EmberRoutesProbe/Runtime/TaskResume'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local Gate=require 'EmberRoutesProbe/Kernel/RuntimeGate'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local S={}
 local world,opened,tokens,sites
 local function clock() return getGameTime():getWorldAgeHours() end
@@ -114,7 +115,7 @@ function S.issue(actor,scope)
     local entry,why=Ledger.view(actor,scope) if not entry then return nil,why end
     local saved,reason=load() if not saved then return nil,reason end
     local owner=Members.character(actor) if not owner then return nil,'ACTOR_UNAVAILABLE' end
-    local now=getTimestampMs() local count=0
+    local now=Clock.nowMs() local count=0
     for id,t in pairs(tokens) do if t.untilTime<now then tokens[id]=nil else count=count+1 end end
     if count>=128 then return nil,'ACTIVITY_LIMIT' end
     local id=Registry.id() tokens[id]={owner=owner,scope=scope,untilTime=now+120000}
@@ -161,7 +162,7 @@ function S.start(actor,args,token)
         end
     end
     local issued=tokens[token]
-    if not issued or issued.owner~=owner or issued.scope~=scope or issued.untilTime<getTimestampMs() then
+    if not issued or issued.owner~=owner or issued.scope~=scope or issued.untilTime<Clock.nowMs() then
         return nil,'ACTIVITY_REQUEST_EXPIRED'
     end
     invalidateRequested(args)
@@ -194,7 +195,7 @@ function S.update(actor,id,expected,args,token)
         return nil,'ACTIVITY_REQUEST_CONFLICT'
     end
     local issued=tokens[token]
-    if not issued or issued.owner~=owner or issued.scope~=event.settlementId or issued.untilTime<getTimestampMs() then
+    if not issued or issued.owner~=owner or issued.scope~=event.settlementId or issued.untilTime<Clock.nowMs() then
         return nil,'ACTIVITY_REQUEST_EXPIRED'
     end
     if event.revision~=expected then return nil,'ACTIVITY_CHANGED' end
@@ -332,7 +333,7 @@ local pump=require('EmberRoutesProbe/Activity/ActivityPump').new({site=site,memb
 local nextTick=0
 local Boot
 function S.tick()
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now<nextTick then return end
     nextTick=now+100
     Boot=Boot or require 'EmberRoutesProbe/Kernel/Boot'

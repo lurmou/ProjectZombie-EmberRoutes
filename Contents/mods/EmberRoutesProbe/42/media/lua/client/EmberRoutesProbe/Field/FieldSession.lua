@@ -2,6 +2,7 @@
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Workflow=require 'EmberRoutesProbe/Field/FieldWorkflow'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local S={}
 function S.spec(c,def,cooldowns)
     local job,binding=c.job,c.binding
@@ -18,7 +19,7 @@ function S.spec(c,def,cooldowns)
     end
     function spec.tick()
         if not c.valid() then c.reason='FIELD_CONTEXT_CHANGED' c.done=true return end
-        if getTimestampMs()<c.nextTick then return end c.nextTick=getTimestampMs()+100
+        if Clock.nowMs()<c.nextTick then return end c.nextTick=Clock.nowMs()+100
         local result=Workflow.step(c,def)
         if result=='Success' then
             c.completed=true c.done=true
@@ -116,7 +117,7 @@ function S.spec(c,def,cooldowns)
                         local fails=(cooldowns[failsKey] or 0)+1
                         cooldowns[failsKey]=fails
                         local duration=(fails>=3 or (c.job.payload.approachFails or 0)>=3) and 600000 or (fails*10000)
-                        cooldowns[c.job.payload.offerKey]=getTimestampMs()+duration
+                        cooldowns[c.job.payload.offerKey]=Clock.nowMs()+duration
                     else
                         cooldowns[c.job.payload.offerKey..':fails']=nil
                     end

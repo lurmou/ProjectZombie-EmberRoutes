@@ -7,6 +7,7 @@
 ]]
 
 local Catalog = require "EmberRoutesProbe/Chatter/ChatterCatalog"
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local ChatterService = {}
 
@@ -15,9 +16,9 @@ local urgentCooldowns = setmetatable({}, { __mode = "k" })
 local edgeCache = setmetatable({}, { __mode = "k" })
 
 local function nowMs()
-    if getTimestampMs then return getTimestampMs() end
+    if Clock.hasEngineClock() then return Clock.nowMs() end
     if getTimeInMillis then return getTimeInMillis() end
-    if os and os.time then return os.time() * 1000 end
+    if os and os.time then return Clock.wallSeconds() * 1000 end
     return 0
 end
 

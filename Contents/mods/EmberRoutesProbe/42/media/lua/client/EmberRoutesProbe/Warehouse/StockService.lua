@@ -15,6 +15,7 @@ local Signals=require "EmberRoutesProbe/Work/LaborSignals"
 local Membership=require "EmberRoutesProbe/Settlement/SettlementMembership"
 local Log=require "EmberRoutesProbe/Kernel/Log"
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 
 local StockService={}
 
@@ -33,8 +34,8 @@ local function gameSeconds()
     if getGameTime and getGameTime() then
         return getGameTime():getWorldAgeHours()*3600
     end
-    if getTimestampMs then
-        return getTimestampMs()/1000
+    if Clock.hasEngineClock() then
+        return Clock.nowMs()/1000
     end
     return 0
 end

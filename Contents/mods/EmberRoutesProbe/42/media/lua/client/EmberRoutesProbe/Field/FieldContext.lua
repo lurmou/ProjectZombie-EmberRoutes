@@ -4,6 +4,7 @@ local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
 local Constants=require 'EmberRoutesProbe/Kernel/Constants'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local C={}
 function C.new(actor,job,binding,def,root)
     local c={actor=actor,npc=binding.handle,binding=binding,job=job,reason=nil,nextTick=0}
@@ -61,7 +62,7 @@ function C.new(actor,job,binding,def,root)
         local ledger=require('EmberRoutesProbe/Settlement/SettlementLedger').data()
         local policyRevision=ledger.jobPolicies and ledger.jobPolicies.revision or 0
         local zoneRevision=require('EmberRoutesProbe/Settlement/SettlementZones').revision()
-        local cached=c.validity local now=getTimestampMs()
+        local cached=c.validity local now=Clock.nowMs()
         if cached and cached.target==c.job.payload.target and cached.recovery==recovery
             and cached.member==memberRevision and cached.entry==entry.revision
             and cached.policy==policyRevision and cached.zones==zoneRevision and now<cached.untilAt then return cached.allowed end
@@ -89,15 +90,15 @@ function C.new(actor,job,binding,def,root)
             if not ok or type(result)~='string' or not string.find(result,'^MOVE_REQUESTED') then
                 c.reason=tostring(result) return 'Failure'
             end
-            c.path={key=key,at=getTimestampMs()} return 'Running'
+            c.path={key=key,at=Clock.nowMs()} return 'Running'
         end
         -- Parked: hold the leg's clock so a long unload never times it out.
         if require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc) then
-            c.path.at=getTimestampMs()
+            c.path.at=Clock.nowMs()
             return 'Running'
         end
         local result=EmberRoutesProbeJava.motionResult(c.npc)
-        if result=='MOVING' and getTimestampMs()-c.path.at<Constants.Timeout.MOVE_MS then return 'Running' end
+        if result=='MOVING' and Clock.nowMs()-c.path.at<Constants.Timeout.MOVE_MS then return 'Running' end
         if result=='REACHED' and math.abs(c.npc:getZ()-square:getZ())<=0.2
             and (c.npc:getX()-(square:getX()+0.5))^2+(c.npc:getY()-(square:getY()+0.5))^2<=0.25 then
             c.path=nil return 'Success'

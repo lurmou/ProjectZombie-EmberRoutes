@@ -2,6 +2,7 @@
 local Recipe=require "EmberRoutesProbe/Crafting/ProductionRecipe"
 local Facts=require "EmberRoutesProbe/Crafting/CraftRecipeFacts"
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Catalog={}
 local root,source,rows,byId,position,revision,done=nil,nil,{},{},0,0,false
 local queryState
@@ -24,9 +25,8 @@ local function ensure()
 end
 function Catalog.step()
     ensure() if done or not source then return end
-    local clock=_G.getTimestampMs
-    if type(clock)=="function" then
-        local now=clock() if lastSlice and now-lastSlice<8 then return end lastSlice=now
+    if Clock.hasEngineClock() then
+        local now=Clock.nowMs() if lastSlice and now-lastSlice<8 then return end lastSlice=now
     end
     if evolvedSource and evolvedSource:size()<=2048 then
         for _=1,2 do

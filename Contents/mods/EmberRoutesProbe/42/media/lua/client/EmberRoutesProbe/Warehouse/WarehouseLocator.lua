@@ -1,6 +1,7 @@
 local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
 local Geometry=require "EmberRoutesProbe/Settlement/SettlementGeometry"
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Locator={}
 local methods={}
 local active
@@ -27,7 +28,7 @@ end
 function methods:render()
     local saved,p=self.endpoint,self.position
     if not saved or not p then return end
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now>=self.expires or now<self.started or self.cell~=getCell() then self:clear() return end
     if now>=self.nextCheck then
         local endpoint,position=self:validate(saved.id)
@@ -42,7 +43,7 @@ end
 function methods:locate(sourceId)
     if active and active~=self then active:clear() end
     self:clear()
-    if type(_G.getTimestampMs)~="function" or type(_G.addAreaHighlightForPlayer)~="function"
+    if not Clock.hasEngineClock() or type(_G.addAreaHighlightForPlayer)~="function"
             or not Events.OnRenderTick then return nil,"LOCATOR_UNAVAILABLE" end
     local endpoint,position=self:validate(sourceId)
     if not endpoint or type(position)~="table" then
@@ -50,7 +51,7 @@ function methods:locate(sourceId)
     end
     self.endpoint,self.position=endpoint,position
     active=self
-    self.started=getTimestampMs() self.expires=self.started+5000 self.nextCheck=self.started+500
+    self.started=Clock.nowMs() self.expires=self.started+5000 self.nextCheck=self.started+500
     self.callback=function() self:render() end
     Events.OnRenderTick.Add(self.callback)
     return {x=position.x,y=position.y,z=position.z},"SOURCE_MARKED"

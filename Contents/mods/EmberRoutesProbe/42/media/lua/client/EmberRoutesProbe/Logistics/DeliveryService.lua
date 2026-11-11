@@ -5,6 +5,7 @@ local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service={}
 local nextRecovery=0
 local scanWorld,scans,discoveryCursor,recoveryCursor=nil,{},{},0
@@ -163,7 +164,7 @@ function Service.createOrder(actor,scope,items,requestId,destinationId)
     end
     local id=Registry.id()
     data().orders[id]={id=id,format=1,revision=1,settlementId=scope,requesterId=requester,
-        requestId=requestId,destinationId=destinationId,overlapSequence=require('EmberRoutesProbe/Work/PublicWork').nextDemandSequence(),items=requests,state='WAITING',reason='WAITING_WORKER',createdAt=getTimestampMs()}
+        requestId=requestId,destinationId=destinationId,overlapSequence=require('EmberRoutesProbe/Work/PublicWork').nextDemandSequence(),items=requests,state='WAITING',reason='WAITING_WORKER',createdAt=Clock.nowMs()}
     Signals.changed()
     return 'ORDER_CREATED',id
 end

@@ -5,6 +5,7 @@ local Probe=require 'EmberRoutesProbe/Kernel/Boot'
 local Signals=require 'EmberRoutesProbe/Work/LaborSignals'
 local Config=require 'EmberRoutesProbe/Kernel/TickConfig'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local Service={}
 local world,nextTick,nextSweep,fault,dirty=nil,0,0,nil,true
 local Public,Jobs
@@ -17,7 +18,7 @@ local function retire()
 end
 if Signals.watch then Signals.watch(function() dirty=true end) end
 function Service.tick()
-    local now=getTimestampMs() if now<nextTick then return end
+    local now=Clock.nowMs() if now<nextTick then return end
     local root=Registry.data()
     if root~=world then world,nextSweep,fault,dirty=root,0,nil,true end
     if not dirty and now<nextSweep then return end

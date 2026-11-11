@@ -5,10 +5,11 @@ local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Sort=require 'EmberRoutesProbe/Warehouse/SortPolicy'
 local Filter=require 'EmberRoutesProbe/Warehouse/StorageFilter'
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local R={}
 local window,left=-1,0
 function R.allowance()
-    local now=getTimestampMs()
+    local now=Clock.nowMs()
     if now-window>=50 or now<window then window,left=now,32 end
     local n=math.min(8,left) left=left-n return n
 end
@@ -55,13 +56,13 @@ function R.new(c,items)
                 local id=target.id
                 local deadline=c.backoff[id] or 0
                 if Registry.accepts(target,item) then
-                    if getTimestampMs()<deadline then self.blocked=true
+                    if Clock.nowMs()<deadline then self.blocked=true
                     elseif not target.container:hasRoomFor(c.npc,item)
                         or Store.availableFor(c.token,id,item:getID(),target.container:getFreeCapacity(c.npc))<item:getUnequippedWeight() then
                         self.capacity=true
                     end
                 end
-                if getTimestampMs()>=deadline and R.accept(c,target,item) then
+                if Clock.nowMs()>=deadline and R.accept(c,target,item) then
                     local s=target.object:getSquare()
                     local pFilter=Registry.filter(target.object,target.container)
                     local score=Sort.specificity(pFilter,self.cursor.description,item)

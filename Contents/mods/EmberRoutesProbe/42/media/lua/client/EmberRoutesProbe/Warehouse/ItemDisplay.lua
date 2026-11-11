@@ -1,5 +1,6 @@
 -- Bounded read-only discovery for old jobs without display metadata.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
+local Clock = require 'EmberRoutesProbe/Kernel/Clock'
 local M={} local world,cache
 function M.types(record,npc,budget)
     local root=Registry.data()
@@ -17,8 +18,8 @@ function M.types(record,npc,budget)
     end
     if npc and npc.getInventory then containers[#containers+1]=npc:getInventory() end
     if c.container>#containers then
-        if getTimestampMs()<(c.retryAt or 0) then return c.types end
-        c.container,c.position=1,0 c.retryAt=getTimestampMs()+5000
+        if Clock.nowMs()<(c.retryAt or 0) then return c.types end
+        c.container,c.position=1,0 c.retryAt=Clock.nowMs()+5000
     end
     local wanted={} for _,id in ipairs(record.items or {}) do wanted[id]=true end
     while budget.remaining>0 and c.container<=#containers do
