@@ -12,11 +12,30 @@ local source={id='source',container=sourceInventory} local destination={id='dest
 function root:hasRoomFor() return true end function destInventory:getFreeCapacity() return 20 end
 local item={getID=function() return 1 end,getUnequippedWeight=function() return 1 end}
 local record={id='haul',npcId='npc',format=3,producer='LOGISTICS',scopeId='local-world',settlementId='base',
-    source='source',destination='dest',generation=1,state='PAUSED',reason='LOAD_RECOVERY',manifest={{itemId=1,custodyState='UNCOLLECTED'}}}
+    source='source',destination='dest',generation=1,state='PAUSED',reason='LOAD_RECOVERY',manifest={{itemId=1,sourceId='source',custodyState='UNCOLLECTED'}}}
 local token={}
 local Store={record=function() return record end,valid=function() return true end,
     claim=function() claims=claims+1 return token end,publish=function() return true end,
-    pause=function() return token end,releaseCapacity=function() return true end,capacity=function() return true end}
+    pause=function() return token end,releaseCapacity=function() return true end,capacity=function() return true end,
+    -- Mirrors HaulJobs.settle (LaborStore.settleHaulLines -> HaulJobs.settle): validate the
+    -- settlement, apply custody states, refresh delivered/withdrawn tallies, commit.
+    settleHaulLines=function(r,tok,gen,changes)
+        if r~=record or tok~=token or gen~=record.generation then return false,'HAUL_JOB_CHANGED' end
+        for _,ch in ipairs(changes) do
+            local line
+            for _,l in ipairs(r.manifest) do if l.itemId==ch.itemId then line=l break end end
+            if not line or (ch.state~='DELIVERED' and ch.state~='WITHDRAWN') then return false,'SETTLEMENT_INVALID' end
+            if ch.state=='WITHDRAWN' and line.custodyState~='UNCOLLECTED' then return false,'SETTLEMENT_INVALID' end
+            if ch.state=='DELIVERED' and (not ch.receipt or not ch.receipt.attemptId or not ch.receipt.destinationId) then return false,'SETTLEMENT_INVALID' end
+        end
+        for _,ch in ipairs(changes) do
+            for _,l in ipairs(r.manifest) do if l.itemId==ch.itemId then l.custodyState=ch.state l.deliveryReceipt=ch.receipt end end
+        end
+        local d,w=0,0
+        for _,l in ipairs(r.manifest) do if l.custodyState=='DELIVERED' then d=d+1 elseif l.custodyState=='WITHDRAWN' then w=w+1 end end
+        r.delivered,r.withdrawn=d,w
+        return package.loaded['EmberRoutesProbe/Hauling/HaulJobs'].commit(r)
+    end}
 package.loaded['EmberRoutesProbe/Work/LaborStore']=Store
 package.loaded['EmberRoutesProbe/Warehouse/ContainerRegistry']={resolve=function(id) return id=='source' and source or destination end,
     revalidate=function(ep) return ep end}
