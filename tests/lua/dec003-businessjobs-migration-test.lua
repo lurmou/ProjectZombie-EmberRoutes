@@ -19,14 +19,14 @@ local function alloc(r,id) r.nextClaimSeq=(r.nextClaimSeq or 0)+1 return id..':c
 local function identity(r,j,id) if not j.claimId then j.claimId=alloc(r,id) end return j.claimId end
 local function clean(id) st.tokens[id]=nil st.personalTokens[id]=nil st.claims.tokensByTaskId[id]=nil end
 local function stub(name,value) package.loaded['EmberRoutesProbe/'..name]=value end
-stub('ContainerRegistry',{data=function() return root end})
-stub('TaskJobs',{current=function() return jobs end})
-stub('LaborStore',S)
-stub('TaskRuntime',{current=function() return {
+stub('Warehouse/ContainerRegistry',{data=function() return root end})
+stub('Runtime/TaskJobs',{current=function() return jobs end})
+stub('Work/LaborStore',S)
+stub('Runtime/TaskRuntime',{current=function() return {
     accepting=function() return true end,status=function() return nil end} end})
 stub('Hauling/HaulManifest',{valid=function() return true end,claimItemIds=function() return {} end})
-stub('TaskResume',{pending=function() return true end})
-for _,name in ipairs({'SelfCareCommit','BusinessJobs'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
+stub('Runtime/TaskResume',{pending=function() return true end})
+for _,name in ipairs({'SelfCare/SelfCareCommit','Work/BusinessJobs'}) do package.loaded['EmberRoutesProbe/'..name]=nil end
 require 'EmberRoutesProbe/Work/LaborDomainAdapters'.install(S,st,identity,clean,function() return true end)
 local host=dofile('tests/lua/fixtures/dec003-activity-kernel-host.lua')
 host.install(st,alloc,clean)
