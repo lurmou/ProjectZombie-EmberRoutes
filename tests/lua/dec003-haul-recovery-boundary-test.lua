@@ -26,7 +26,7 @@ local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local seen={}
 EmberRoutesProbeJava={laborCreate=function() error('unexpected create') end,laborCancel=function() error('unexpected cancel') end,
     laborMutate=function(ledger,owner,claims,contracts,cleanup,id,revision,payload,mutation)
-        assert(Store.data()==root and Store.claimsInstanceForTests()==claims,'published Store before commit')
+        assert(Store.data()==root and Store.claimsInstanceIdForTests()==tostring(claims),'published Store before commit')
         assert(root.taskJobs.byId[id].effects=='KNOWN','no raw recovery publication')
         assert(mutation.state=='RECONCILE_REQUIRED' and mutation.effects=='UNKNOWN')
         seen[#seen+1]=id

@@ -643,7 +643,7 @@ local function execute(actor,command,object,id,options,body,validateOnly)
     local entry,reason=Supply.entry(actor,npc,object,r.settlementId,true) if not entry then return reason end
     if validateOnly then return true end
     if not npc:getCharacterActions():isEmpty() then return "NATIVE_ACTION_BUSY" end
-    if freed then Store.data() end -- Rebuild against the still-valid asset-free snapshot first.
+    if freed then Store.ensureLoaded() end -- Rebuild against the still-valid asset-free snapshot first.
     r.generation=r.generation+1 r.state="RUNNING" r.reason=nil
     local marker=r.activityYield
     if freed and command=='resume' then r.activityYield=nil end

@@ -19,11 +19,11 @@ local function create(id,first)
     check(Store.createClaimedJob(job),'Create claimed HAUL') return job
 end
 local a=create('rollback',100)
-local token=Store.getToken(a.id) local claims=Store.claimsInstanceForTests()
+local token=Store.getToken(a.id)
 local p=Jobs.current():get(a.id).payload p.reservation.key='other'
 local ok,why=Store.mutateJob(a.id,1,p,{capacity={key='other',items=p.reservation.items,free=0}})
 check(not ok and why=='CAPACITY_FAILURE','Rejected target switch reports Phase 1 capacity failure')
-check(token.capacityKey=='dest-rollback' and claims.capacity['dest-rollback'].total==4 and not claims.capacity.other,'Failed switch restores sole capacity responsibility')
+check(token.capacityKey=='dest-rollback' and Store.capacityTotalForTests('dest-rollback')==4 and Store.capacityTotalForTests('other')==nil,'Failed switch restores sole capacity responsibility')
 check(Jobs.current():get(a.id).revision==1,'Rejected capacity change never submits Job')
 p=Jobs.current():get(a.id).payload
 local ledger=Jobs.current() local original=ledger.update local injected=false
@@ -34,7 +34,7 @@ end
 ok,why=Store.mutateJob(a.id,1,p,{capacity={key=p.reservation.key,items=p.reservation.items,free=100}})
 ledger.update=original
 check(not ok and why=='TASK_WRITE_FAILURE','Explicit CAS refusal remains observable')
-check(token.capacityKey=='dest-rollback' and claims.capacity['dest-rollback'].total==4,'CAS failure restores prior capacity')
+check(token.capacityKey=='dest-rollback' and Store.capacityTotalForTests('dest-rollback')==4,'CAS failure restores prior capacity')
 check(Jobs.current():get(a.id).effects=='KNOWN' and Jobs.current():get(a.id).revision==1 and Store.owner(100),
     'Phase 1 explicit rejection restores resources and preserves the unmodified Job')
 local b=create('shrink',200)
@@ -44,8 +44,8 @@ local changed=false local shrinkBeforeCas=false
 ledger.update=function(self,id,rev,patch)
     local accepted,value=original(self,id,rev,patch)
     if accepted and not changed then
-        changed=true shrinkBeforeCas=claims.owners['item:200']==nil
-        claims.owners['item:200']={taskId='unexpected',resources={'item:200'}}
+        changed=true shrinkBeforeCas=Store.resourceOwner('item:200')==nil
+        Store.setOwnerForTests('item:200',{taskId='unexpected',resources={'item:200'}})
     end
     return accepted,value
 end
@@ -53,8 +53,8 @@ ok,why=Store.mutateJob(b.id,1,p,{removeKeys={'item:200'},capacity={releaseItemId
 ledger.update=original
 check(ok and why==2 and shrinkBeforeCas,'Phase 1 shrinks before CAS; a later callback does not rerun the transaction')
 check(ledger:get(b.id).state=='PREPARING' and ledger:get(b.id).effects=='KNOWN','Successful ordinary change preserves requested state and effects')
-check(claims.owners['item:200'].taskId=='unexpected','No post-CAS shrink overwrites a later owner')
-check(Store.owner(201) and claims.capacity['dest-shrink'].total==3,'Other originals and promises remain owned')
+check(Store.resourceOwner('item:200').taskId=='unexpected','No post-CAS shrink overwrites a later owner')
+check(Store.owner(201) and Store.capacityTotalForTests('dest-shrink')==3,'Other originals and promises remain owned')
 local c=create('settle',300)
 p=ledger:get(c.id).payload
 check(Store.mutateJob(c.id,1,p,{state='SETTLING'}),'Enter settlement through ordinary Lua path')
@@ -67,6 +67,6 @@ end)
 ok,why=Store.mutateJob(c.id,2,p,{state='DONE',removeKeys=removed,capacity=false})
 unwatch()
 check(ok and why==3 and observed,'Native commit publishes through Lua observer and supports nested reads')
-check(not Store.getToken(c.id) and not Store.owner(300) and not claims.capacity['dest-settle'],'Verified terminal clears token, originals and capacity')
+check(not Store.getToken(c.id) and not Store.owner(300) and Store.capacityTotalForTests('dest-settle')==nil,'Verified terminal clears token, originals and capacity')
 if ERLaborTestBridge then check(nativeCalls==5,'All mutations, including SETTLING, exercise the single Java entry') end
 print('PASS '..n..' capacity commit/rollback/CAS/post-CAS checks; game/disk NOT RUN')

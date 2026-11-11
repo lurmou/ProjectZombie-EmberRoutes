@@ -22,6 +22,12 @@ Also enforced here (P1-8 architecture-gate extension):
   rules and the known over-matches.
 - Long-file tripwire: a production Lua file over LUA_LONG_FILE_LIMIT lines or
   a Java file over JAVA_LONG_FILE_LIMIT lines fails; split the file first.
+- LaborStore boundary (zero-tolerance): production code outside LaborStore /
+  its Work/ implementation files and ModDataTemplates must not index the
+  persisted quarantine/custody maps, the module-level domainState, the raw
+  claims instance (claimsInstanceForTests), or call Store.data() outside
+  Work/; use LaborStore's named entries (ensureLoaded, custodyEntries,
+  hasCustody, quarantineRecord, ...ForTests) instead.
 - Callback-first ratchet (P0 pilot 4, Fabric-inspired): a new cross-domain
   call must go through a registry/event first. A new `Probe.<name> =` mount
   or a new raw `ISTimedActionQueue.add(` call fails unless the line (or the
@@ -877,6 +883,99 @@ def check_long_files(lua_root, java_root, errors, repo_root=None):
                     f'{limit}-line limit; split the file before adding more')
 
 
+# LaborStore-owned tables: only LaborStore.lua (plus the template definition
+# in ModDataTemplates.lua and LaborStore's own split-out implementation in
+# LaborDomainAdapters.lua) may touch the persisted quarantine/custody maps,
+# the module-level domainState, or the raw claims instance. Every other
+# production caller must use LaborStore's named entries (owner/resourceOwner/
+# capacityEntries/claimOwners/custodyForNpc/custodyByItem/custodyEntries/
+# hasCustody/quarantineRecord/quarantineAuditRecord/ensureLoaded/...ForTests).
+# Store.data() returns the raw root, so outside Work/ even calling it is
+# banned: bare load triggers use Store.ensureLoaded() instead. A file that
+# defines its own `function Store.data()` (e.g. LogisticsStore) calls its own
+# store, not LaborStore's, so the bare-Store rule skips those files; the
+# require('.../LaborStore').data() form is still banned everywhere.
+# Tests keep their own fixture roots (they build the input world), so the quarantine/
+# custody/domainState rules cover production code only; claimsInstanceForTests
+# must not exist anywhere in the repo.
+LABORSTORE_TOOL_CUSTODY_ALLOWED = {
+    'client/EmberRoutesProbe/Work/LaborStore.lua',
+    'client/EmberRoutesProbe/Work/LaborDomainAdapters.lua',
+    'shared/EmberRoutesProbe/Kernel/ModDataTemplates.lua',
+}
+LABORSTORE_QUARANTINE_ALLOWED = {
+    'client/EmberRoutesProbe/Work/LaborStore.lua',
+    'shared/EmberRoutesProbe/Kernel/ModDataTemplates.lua',
+}
+LABORSTORE_DOMAIN_STATE_ALLOWED = {
+    'client/EmberRoutesProbe/Work/LaborStore.lua',
+}
+
+
+def check_laborstore_boundary(lua_root, errors, repo_root=None):
+    """Zero-tolerance: no direct LaborStore-internal access outside the allowlist."""
+    repo_root = Path(repo_root) if repo_root is not None else ROOT
+    lua_root = Path(lua_root)
+    for path in sorted(lua_root.rglob('*.lua')):
+        rel = path.relative_to(lua_root).as_posix()
+        rel_repo = path.relative_to(repo_root).as_posix()
+        try:
+            ts = tokens(path.read_text(encoding='utf-8-sig', errors='replace'))
+        except OSError:
+            continue
+        in_work = rel.startswith('client/EmberRoutesProbe/Work/')
+        # A file that defines its own `function Store.data()` owns a different
+        # Store (e.g. LogisticsStore); its bare Store.data() calls are its own.
+        defines_own_store_data = any(
+            ts[j][1] == 'function' and ts[j + 1][1] == 'Store'
+            and ts[j + 2][1] == '.' and ts[j + 3][1] == 'data'
+            for j in range(len(ts) - 3)
+        )
+        for i, (kind, value, line) in enumerate(ts):
+            if kind == 'id' and value == 'claimsInstanceForTests':
+                errors.append(f'{rel_repo}:{line}: claimsInstanceForTests is removed; '
+                              'use LaborStore capacityTotal/acquire/release/canShrink/'
+                              'shrink/dropOwner/claimsInstanceId/restoreQuarantine/'
+                              'setQuarantineOriginalTask/quarantineKeys *ForTests entries')
+            if kind == 'id' and value == 'domainState' \
+                    and rel not in LABORSTORE_DOMAIN_STATE_ALLOWED:
+                errors.append(f'{rel_repo}:{line}: domainState is LaborStore-internal; '
+                              'use a named LaborStore entry')
+            if kind == 'id' and value in ('toolCustody', 'quarantineResources', 'quarantineAudit'):
+                allowed = LABORSTORE_TOOL_CUSTODY_ALLOWED if value == 'toolCustody' \
+                    else LABORSTORE_QUARANTINE_ALLOWED
+                # Bare table keys (template/fixture literals) are definitions,
+                # not reads; only `.field` accesses count.
+                if i and ts[i - 1][1] == '.' and rel not in allowed:
+                    errors.append(f'{rel_repo}:{line}: direct .{value} read is '
+                                  'LaborStore-internal; use a named LaborStore entry')
+            if kind == 'id' and value == 'data' and not in_work:
+                if not defines_own_store_data and i >= 2 \
+                        and ts[i - 2][1] == 'Store' and ts[i - 1][1] == '.' \
+                        and ts[i - 3][1] != 'function':
+                    errors.append(f'{rel_repo}:{line}: Store.data() outside Work/ returns '
+                                  'the raw root; use Store.ensureLoaded() or another '
+                                  'named LaborStore entry')
+                if i >= 3 and ts[i - 3][0] == 'string' \
+                        and ts[i - 3][1] == 'EmberRoutesProbe/Work/LaborStore' \
+                        and ts[i - 2][1] == ')' and ts[i - 1][1] == '.':
+                    errors.append(f'{rel_repo}:{line}: LaborStore.data() outside Work/ returns '
+                                  'the raw root; use Store.ensureLoaded() or another '
+                                  'named LaborStore entry')
+    tests_root = repo_root / 'tests'
+    if tests_root.is_dir():
+        for path in sorted(tests_root.rglob('*.lua')):
+            rel_repo = path.relative_to(repo_root).as_posix()
+            try:
+                ts = tokens(path.read_text(encoding='utf-8-sig', errors='replace'))
+            except OSError:
+                continue
+            for kind, value, line in ts:
+                if kind == 'id' and value == 'claimsInstanceForTests':
+                    errors.append(f'{rel_repo}:{line}: claimsInstanceForTests is removed; '
+                                  'use the LaborStore *ForTests entries')
+
+
 def main():
     if not LUA_ROOT.is_dir():
         raise SystemExit(f'ERROR: missing Lua root: {LUA_ROOT}')
@@ -890,6 +989,7 @@ def main():
     check_compat(LUA_ROOT, JAVA_ROOT, errors)
     check_direct_calls(LUA_ROOT, errors)
     check_long_files(LUA_ROOT, JAVA_ROOT, errors)
+    check_laborstore_boundary(LUA_ROOT, errors)
     for error in errors:
         print('ERROR:', error)
     print(f'Static module boundary checks: {len(errors)} error(s). Dynamic loads/aliased writes NOT proven.')

@@ -51,7 +51,7 @@ function Save.load()
     -- BEFORE the runtime may admit any observation or recovery candidate.
     assert(require('EmberRoutesProbe/Hauling/HaulJobs').prepareRecovery(), 'HAUL_RECOVERY_FAILED')
     Craft.prepareRecovery()
-    Store.data()
+    Store.ensureLoaded()
     require('EmberRoutesProbe/Field/FieldWork').prepareRecovery()
     if Probe.isPublicDispatch() then require('EmberRoutesProbe/Work/PublicWork').prepareRecovery() end
     if not validReceipt(root.executionSave) then error('SAVE_RECOVERY_FORMAT_INVALID') end
@@ -186,7 +186,7 @@ function Save.tick(actor)
         active=nil return -- An old world cannot block/thaw/publish into its successor.
     end
     if not EmberRoutesProbeJava.verifySaveReceipt() then Save.failed('SAVED_RECORDS_NOT_CONFIRMED') return end
-    Store.data() -- Recheck claims; resume executors additionally re-index physical originals.
+    Store.ensureLoaded() -- Recheck claims; resume executors additionally re-index physical originals.
     local ok,why=s.runtime:finishSave(true)
     if not ok then Save.failed(why) return end
     s.opened=true

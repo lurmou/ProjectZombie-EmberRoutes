@@ -8,10 +8,10 @@ local Provider={category='toolReturn',defaultPriority=4,idleThreshold=30000}
 local idleSince={}
 local idleItems={}
 local world,owned,nextRecovery=nil,{},0
-local iterator,scanState,scanKey
+local scanList,scanIndex
 local function resetWorld()
     local root=Registry.data()
-    if root~=world then world,owned,idleSince,idleItems,nextRecovery,iterator=root,{},{},{},0,nil end
+    if root~=world then world,owned,idleSince,idleItems,nextRecovery,scanList,scanIndex=root,{},{},{},0,nil,nil end
     return root
 end
 
@@ -78,7 +78,7 @@ function Provider.reconcile()
 end
 
 function Provider.advance(env)
-    local root=resetWorld()
+    resetWorld()
     Provider.reconcile()
     for jobId,row in pairs(owned) do
         local result=ToolReturnService.returnResult(jobId)
@@ -91,12 +91,12 @@ function Provider.advance(env)
     end
     if env.now<nextRecovery then return end
     nextRecovery=env.now+5000
-    local custodies=root.toolCustody and root.toolCustody.byId
-    if not custodies then return end
-    if not iterator or scanState~=custodies then iterator,scanState,scanKey=pairs(custodies) end
+    -- Incremental scan over a snapshot list (sorted by custody id), resuming
+    -- by index; the list is refreshed once exhausted or when the world changes.
+    if not scanList then scanList=Store.custodyEntries() scanIndex=1 end
     for _=1,4 do
-        local key,c=iterator(scanState,scanKey) scanKey=key
-        if not key then iterator=nil break end
+        local c=scanList[scanIndex] scanIndex=scanIndex+1
+        if not c then scanList=nil break end
         if c.state=='PENDING_RETURN' and not ToolReturnService.liveTask(c.npcId) then
             ToolReturnService.startFor(env.actor,tostring(c.npcId),c.id,c.returnJobId,nil)
         end
@@ -104,10 +104,9 @@ function Provider.advance(env)
 end
 
 function Provider.hasWork()
-    local root=resetWorld()
+    resetWorld()
     for _ in pairs(owned) do return true end
-    for _ in pairs(root.toolCustody and root.toolCustody.byId or {}) do return true end
-    return false
+    return Store.hasCustody()
 end
 
 -- P4 (provider-lifecycle): an NPC mid-return still holds an unfinished

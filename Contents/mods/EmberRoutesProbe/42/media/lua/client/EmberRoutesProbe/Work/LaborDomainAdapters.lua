@@ -1,5 +1,10 @@
 -- Domain-specific execution adapters over the existing owner's tables.
 -- No world loop, authority, token cache or persistent root is created here.
+-- Boundary note: this file IS LaborStore's implementation, split out only to
+-- keep LaborStore.lua under the engine's local-name limit; it is installed
+-- with LaborStore's own domainState (state.root/state.claims/state.tokens),
+-- so its direct state access is in-domain, not a cross-domain read.
+-- Callers outside Work/ must use LaborStore's named entries instead.
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local A={}
 function A.install(Store,state,ensureEntityClaimId,cleanToken,scopeAllowed)

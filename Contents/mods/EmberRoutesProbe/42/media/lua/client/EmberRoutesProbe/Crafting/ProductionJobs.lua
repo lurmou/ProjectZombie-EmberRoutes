@@ -172,7 +172,7 @@ end
 function M.reset() entries,byNpc={},{} end
 function M.prepareRecovery()
     -- Rebuild and publish claims/token caches before entering the kernel.
-    Store.data()
+    Store.ensureLoaded()
     local root=currentWorld()
     if recoveredWorld==root then return true end
     local jobs=Jobs.current()

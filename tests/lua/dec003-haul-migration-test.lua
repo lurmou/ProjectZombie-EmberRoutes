@@ -15,7 +15,7 @@ local function setup(old)
     EmberRoutesProbeJava=nil
     local root={nextClaimSeq=0} local jobs=assert(Jobs.open(root))
     local state={root=root,claims=Claims.new(),tokens={}}
-    local Store={data=function() return root end,claimsInstanceForTests=function() return state.claims end}
+    local Store={data=function() return root end,ensureLoaded=function() return root end,claimsInstanceIdForTests=function() return tostring(state.claims) end}
     -- Test double for the production Store.capacityEntries contract (HaulJobs
     -- releaseItemId path reads through it); mirrors LaborStore over state.claims.
     function Store.capacityEntries(key, jobId)

@@ -12,10 +12,10 @@ end
 function Craft.prepareRecovery()
     local retirement=require('EmberRoutesProbe/Crafting/CraftLegacyRecovery')
     for _ in pairs(retirement.records(require('EmberRoutesProbe/Warehouse/ContainerRegistry').data())) do
-        require('EmberRoutesProbe/Work/LaborStore').data() break
+        require('EmberRoutesProbe/Work/LaborStore').ensureLoaded() break
     end
     require('EmberRoutesProbe/Crafting/ProductionJobs').prepareRecovery()
-    require('EmberRoutesProbe/Work/LaborStore').data()
+    require('EmberRoutesProbe/Work/LaborStore').ensureLoaded()
 end
 function Craft.restoreCandidate(actor,id,jobId)
     local r=Craft.record(id)

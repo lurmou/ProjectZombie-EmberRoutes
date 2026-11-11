@@ -349,7 +349,7 @@ for _,fault in ipairs({'CLAIM','CAS'}) do
 	    fired=true attemptId=id failedDraft=draft
 	    if fault=='CLAIM' then
 		local keys={} for _,asset in ipairs(draft.outputs) do keys[#keys+1]='item:'..asset.id end
-		assert(f.Store.claimsInstanceForTests():acquire('result-rival',1,keys))
+		assert(f.Store.acquireForTests('result-rival',1,keys))
 	    else
 		local saved=JobStore.current():get(draft.id)
 		assert(JobStore.current():update(saved.id,saved.revision,{state='STOPPING'}))

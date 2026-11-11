@@ -92,7 +92,7 @@ function isClient() return false end function isServer() return false end
 function getTimestampMs() return now end function getSpecificPlayer() return actor end
 EmberRoutesProbeJava={workerCount=function() return #workers end,workerIdAt=function(i) return workers[i+1] end}
 package.loaded['EmberRoutesProbe/Settlement/SettlementMembership']={query=function() return {'crate'} end}
-package.loaded['EmberRoutesProbe/Work/LaborStore']={custodyForNpc=function() return {} end}
+package.loaded['EmberRoutesProbe/Work/LaborStore']={custodyForNpc=function() return {} end,custodyEntries=function() return {} end,hasCustody=function() return false end}
 package.loaded['EmberRoutesProbe/Field/ToolReturnService']={canInterrupt=function() return false end,
  reconcile=function() end,returnResult=function() end,liveTask=function() end,
  forgetResult=function() error('no tracked tool return in dispatch-only fixture') end,

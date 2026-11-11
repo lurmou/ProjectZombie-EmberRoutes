@@ -401,6 +401,11 @@ function Store.data()
     end
     return root
 end
+-- Load/rebuild trigger for callers that need LaborStore published but do not
+-- need the root table itself. Store.data() still returns the raw root for the
+-- load entry's own use; cross-domain callers must use this or another named
+-- entry instead of indexing the returned table.
+function Store.ensureLoaded() Store.data() end
 function Store.haulRecoveryDiagnosis() return domainState.haulRecoveryFailures end
 function Store.record(npcId)
     Store.data()
@@ -448,10 +453,106 @@ end
 -- Java (deliverySelectSlice) reads only; Lua side must never write through
 -- it. Use Store.owner(itemId)/Store.resourceOwner(key) for Lua-side reads.
 function Store.claimOwners() Store.data() return claims.owners end
--- Test-only entry point: returns the live claims instance so tests can assert
--- on capacity totals, write owners, compare instance identity and drive
--- :acquire/:release. Production code must use the narrow entries above.
-function Store.claimsInstanceForTests() Store.data() return claims end
+-- Production read for custody displays and providers: detached shallow
+-- copies of every custody record, sorted by id. Callers get copies, never
+-- the live toolCustody.byId map.
+function Store.custodyEntries()
+    Store.data()
+    local result={}
+    local custodyStore=root.toolCustody
+    if custodyStore and custodyStore.byId then
+        for _,entry in pairs(custodyStore.byId) do
+            local copy={} for key,value in pairs(entry) do copy[key]=value end
+            result[#result+1]=copy
+        end
+    end
+    table.sort(result,function(a,b) return a.id<b.id end)
+    return result
+end
+-- Production read for providers that only need to know whether any custody
+-- exists at all (no allocation, no record exposure).
+function Store.hasCustody()
+    Store.data()
+    local custodyStore=root.toolCustody
+    return custodyStore~=nil and custodyStore.byId~=nil and next(custodyStore.byId)~=nil or false
+end
+-- Test-only narrow entries. The raw claims instance used to be exposed here
+-- (claimsInstanceForTests); tests now use these instead, so no caller outside
+-- LaborStore can read or write the live owners/capacity tables, acquire or
+-- release tokens, or compare instance identity directly.
+function Store.capacityTotalForTests(key)
+    Store.data()
+    local bucket=key and claims.capacity and claims.capacity[key]
+    return bucket and bucket.total or nil
+end
+function Store.nextClaimSeqForTests()
+    Store.data()
+    return root.nextClaimSeq
+end
+function Store.acquireForTests(taskId,generation,keys)
+    Store.data()
+    return claims:acquire(taskId,generation,keys)
+end
+function Store.acquireNewForTests(taskId,generation,keys)
+    Store.data()
+    return claims:acquireNew(taskId,generation,keys)
+end
+function Store.releaseTokenForTests(token)
+    Store.data()
+    claims:release(token)
+    return true
+end
+function Store.canShrinkForTests(token,keys)
+    Store.data()
+    return claims:canShrink(token,keys)
+end
+function Store.shrinkForTests(token,keys)
+    Store.data()
+    return claims:shrink(token,keys)
+end
+-- Memory-only fault injection: drops one owner from claims memory without
+-- touching the persisted quarantine record, to simulate the inconsistency a
+-- failed release must survive.
+function Store.dropOwnerForTests(key)
+    Store.data()
+    claims.owners[key]=nil
+    return true
+end
+-- Memory-only fault injection: installs a caller-supplied owner record for
+-- one key, to simulate a later owner arriving between a CAS check and a
+-- shrink. The table is stored as given; production code never sees it.
+function Store.setOwnerForTests(key,owner)
+    Store.data()
+    claims.owners[key]=owner
+    return true
+end
+-- Identity probe without exposing the object: the live claims table's address
+-- string is unique among live objects, so a cold boot that builds a fresh
+-- instance yields a different id while the old instance is still referenced.
+function Store.claimsInstanceIdForTests() Store.data() return tostring(claims) end
+function Store.restoreQuarantineForTests(key,record)
+    Store.data()
+    return claims:restoreQuarantine(key,record or (root.quarantineResources and root.quarantineResources[key]))
+end
+-- Deliberate malformed-world fixture: rewrites the persisted record's
+-- original participant so the next cold boot must detect the collision.
+-- Not an application mutation API.
+function Store.setQuarantineOriginalTaskForTests(key,originalTaskId)
+    Store.data()
+    local q=root.quarantineResources and root.quarantineResources[key]
+    if not q then return false end
+    q.originalTaskId=originalTaskId
+    return true
+end
+function Store.quarantineKeysForTests()
+    Store.data()
+    local result={}
+    if root.quarantineResources then
+        for key in pairs(root.quarantineResources) do result[#result+1]=key end
+    end
+    table.sort(result)
+    return result
+end
 local function cleanToken(jobId)
     if not jobId then return end
     if tokens then tokens[jobId] = nil end

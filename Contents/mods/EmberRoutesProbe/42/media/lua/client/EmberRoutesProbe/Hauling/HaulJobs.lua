@@ -196,7 +196,7 @@ function M.cancel(r)
 end
 function M.prepareRecovery()
     -- Forces publication and the existing ordered cold-recovery drain first.
-    Store.data()
+    Store.ensureLoaded()
     local root=currentWorld() if recovered==root then return true end
     local jobs=Jobs.current()
     for id,j in pairs(root.taskJobs.byId) do

@@ -30,7 +30,7 @@ function Q.prepare(actor)
     local root=Registry.data() local jobs=Jobs.current()
     need(root[KEY]==nil,'B5_FIXTURE_ALREADY_EXISTS')
     for _ in pairs(root.taskJobs.byId) do error('B5_EMPTY_JOB_LEDGER_REQUIRED') end
-    for _ in pairs(root.quarantineResources or {}) do error('B5_EMPTY_QUARANTINE_REQUIRED') end
+    need(#Store.quarantineKeysForTests()==0,'B5_EMPTY_QUARANTINE_REQUIRED')
     local f={format=1,id=Registry.id(),items={},coldBoots=0,lastSession=session(),ready=false}
     root[KEY]=f -- Partial preparation stays diagnosable; never erase unknown responsibility.
     for _,role in ipairs({'collision','capacity','ordinary','invalid'}) do
@@ -45,19 +45,18 @@ function Q.prepare(actor)
     end
     -- Deliberate malformed-world fixture, not an application mutation API:
     -- a different participant cites the same persistent claim identity.
-    local q=root.quarantineResources[key(f.items.collision)]
-    q.originalTaskId='b5-other:'..f.id
+    need(Store.setQuarantineOriginalTaskForTests(key(f.items.collision),'b5-other:'..f.id),'B5_QUARANTINE_PATCH_FAILED')
     local capacity=create(f.capacityJobId,{f.items.capacity,f.items.ordinary},
 	{key=f.bucket,items={[f.items.capacity]=3,[f.items.ordinary]=4},free=100})
     need(Store.quarantineResource(key(f.items.capacity),'B5_PARTIAL_CAPACITY',{fixtureId=f.id}),'B5_CAPACITY_QUARANTINE_FAILED')
     local p=capacity.payload p.materials={{id=f.items.capacity}} p.claims={key(f.items.capacity)}
     p.reservation.items={[f.items.capacity]=3}
     need(jobs:update(capacity.id,capacity.revision,{payload=p,state='RECONCILE_REQUIRED',effects='UNKNOWN'}),'B5_CAPACITY_JOB_UPDATE_FAILED')
-    Store.claimsInstanceForTests():release(Store.getToken(capacity.id))
+    Store.releaseTokenForTests(Store.getToken(capacity.id))
     need(Store.availableCapacity(f.bucket,100)==97,'B5_QUARANTINE_CAPACITY_LOST')
     need(Store.quarantineResource(key(f.items.invalid),'B5_INVALID_EVIDENCE',
 	{fixtureId=f.id,bad=function() end}),'B5_INVALID_CREATION_MUST_PROTECT')
-    need(not root.quarantineResources[key(f.items.invalid)].evidenceReport.complete,'B5_INVALID_EVIDENCE_UNMARKED')
+    need(not Store.quarantineRecord(key(f.items.invalid)).evidenceReport.complete,'B5_INVALID_EVIDENCE_UNMARKED')
     f.ready=true
     return 'PREPARED_SAVE_QUIT_AND_RELOAD fixture='..f.id..' job='..f.jobId..' originalClaimId='..f.originalClaimId
 end
@@ -66,7 +65,7 @@ function Q.verify(actor)
     local root=Registry.data() local f=need(root[KEY],'B5_FIXTURE_ABSENT')
     need(f.format==1 and f.ready,'B5_FIXTURE_INCOMPLETE')
     need(f.lastSession~=session(),'B5_SAME_LUA_SESSION_NOT_A_COLD_BOOT')
-    Store.data() -- Read/rebuild the real current Claims instance; never clear runtime caches here.
+    Store.ensureLoaded() -- Read/rebuild the real current Claims instance; never clear runtime caches here.
     need(require('EmberRoutesProbe/Kernel/JobStore').open(root),'B5_JOBSTORE_REOPEN_FAILED')
     local inventory=actor:getInventory():getItems() local found={}
     for i=0,inventory:size()-1 do
@@ -84,23 +83,23 @@ function Q.verify(actor)
 	local owner=Store.resourceOwner(key(f.items[role]))
 	need(owner and owner.kind=='SYSTEM_QUARANTINE','B5_ORIGINAL_NOT_PROTECTED:'..role)
     end
-    local q=root.quarantineResources[key(f.items.collision)]
+    local q=Store.quarantineRecord(key(f.items.collision))
     need(q.originalClaimId==f.originalClaimId and q.evidence.identityCollisions
 	and q.evidence.identityCollisions[f.jobId],'B5_COLLISION_EVIDENCE_LOST')
     need(q.evidenceReport.complete and #q.evidenceEvents.events==20,'B5_REPEAT_EVIDENCE_CHANGED')
-    local c=Store.claimsInstanceForTests() local revision=c.revision local capKey=key(f.items.capacity)
-    need(c:restoreQuarantine(capKey,root.quarantineResources[capKey]),'B5_REPEAT_RESTORE_REJECTED')
-    need(c:restoreQuarantine(capKey,root.quarantineResources[capKey]),'B5_SECOND_RESTORE_REJECTED')
-    need(c.revision==revision and Store.availableCapacity(f.bucket,100)==97,'B5_RESTORE_DOUBLE_COUNTED')
-    local changed={} for k,v in pairs(root.quarantineResources[capKey]) do changed[k]=v end
+    local revision=Store.claimsVersion() local capKey=key(f.items.capacity)
+    need(Store.restoreQuarantineForTests(capKey),'B5_REPEAT_RESTORE_REJECTED')
+    need(Store.restoreQuarantineForTests(capKey),'B5_SECOND_RESTORE_REJECTED')
+    need(Store.claimsVersion()==revision and Store.availableCapacity(f.bucket,100)==97,'B5_RESTORE_DOUBLE_COUNTED')
+    local changed=Store.quarantineRecord(capKey)
     changed.capacityAmount=changed.capacityAmount+1
-    need(not c:restoreQuarantine(capKey,changed),'B5_CONFLICTING_RESTORE_ACCEPTED')
-    need(c.revision==revision and Store.availableCapacity(f.bucket,100)==97,'B5_CONFLICTING_RESTORE_CHANGED_STATE')
+    need(not Store.restoreQuarantineForTests(capKey,changed),'B5_CONFLICTING_RESTORE_ACCEPTED')
+    need(Store.claimsVersion()==revision and Store.availableCapacity(f.bucket,100)==97,'B5_CONFLICTING_RESTORE_CHANGED_STATE')
     local savedJob=Jobs.current():get(f.capacityJobId)
     local ok=Store.unquarantineResource(capKey,{reason='B5_INVALID_RELEASE'},{bad=function() end})
-    need(not ok and c.revision==revision and Store.availableCapacity(f.bucket,100)==97,'B5_INVALID_RELEASE_CHANGED_OWNERSHIP')
+    need(not ok and Store.claimsVersion()==revision and Store.availableCapacity(f.bucket,100)==97,'B5_INVALID_RELEASE_CHANGED_OWNERSHIP')
     need(Jobs.current():get(f.capacityJobId).revision==savedJob.revision,'B5_INVALID_RELEASE_CHANGED_JOB')
-    need(not root.quarantineResources[key(f.items.invalid)].evidenceReport.complete,'B5_INCOMPLETE_MARKER_LOST')
+    need(not Store.quarantineRecord(key(f.items.invalid)).evidenceReport.complete,'B5_INCOMPLETE_MARKER_LOST')
     f.acceptedClaimId=job.claimId f.lastSession=session() f.coldBoots=f.coldBoots+1
     return 'COLD_BOOT_PASS '..f.coldBoots..' capacity=3 originals=protected fixture='..f.id..' job='..f.jobId
 	..' claimId='..job.claimId..' originalClaimId='..f.originalClaimId..' events=20'
