@@ -2,13 +2,6 @@ package emberroutes.probe.navharness;
 
 import java.util.ArrayList;
 import java.util.List;
-import zombie.iso.IsoCell;
-import zombie.iso.IsoChunk;
-import zombie.iso.IsoChunkMap;
-import zombie.iso.IsoGridSquare;
-import zombie.iso.IsoWorld;
-import zombie.iso.SliceY;
-import zombie.iso.SpriteDetails.IsoFlagType;
 import emberroutes.probe.ProbeMovement;
 import emberroutes.probe.nav.EmberPathfinder;
 import emberroutes.probe.nav.NavRaycast;
@@ -37,7 +30,9 @@ import emberroutes.probe.nav.NavRaycast;
  * (clip the final segment / freeze frames) and labels them as such. The
  * motion strings themselves come from real {@link ProbeMovement} logic.
  *
- * <p>Run standalone (production classes on the classpath):
+ * <p>Run via the harness entry point (tests/navharness/run.sh), which
+ * compiles production code + harness together and runs every section.
+ * Standalone, with the production classes already compiled:
  * {@code java -cp "<classes>:<game-root>/*" emberroutes.probe.navharness.MotionDriver}
  * Exits non-zero when any scenario misses its expected outcome or time
  * (tolerance +/-0.15s, frame-quantised).
@@ -65,57 +60,23 @@ public final class MotionDriver {
                     false, 0, "BLOCKED", 0.0));
 
     // ---- Synthetic world -------------------------------------------------
-    // vendored from Spike1c, consolidate into SyntheticWorld in harness-entry.
-    // Builds a headless IsoWorld + one 30x30 IsoCell + one chunk, then lays an
-    // 8x8 floored room with a solid wall at x=4 and a doorway gap at y=3.
-    // Traps carried over from the spike: IsoCell is final, getGridSquare
-    // subtracts worldXMinTiles (-48), chunk.refs must include the map.
+    // The shared SyntheticWorld (harness item 1). This file previously
+    // vendored its own copy of the Spike1c builder; harness-entry converged
+    // it onto SyntheticWorld — one builder only. The room is an 8x8 floor
+    // with a solid wall at x=4 and a doorway gap at y=3.
     static final class Room {
-        final IsoCell cell;
-        final IsoChunkMap chunkMap;
-        final SliceY slice;
+        final SyntheticWorld world;
 
         Room() {
-            IsoWorld world = new IsoWorld();
-            IsoWorld.instance = world;
-            cell = new IsoCell(30, 30);
-            world.currentCell = cell;
-            chunkMap = cell.getChunkMap(0);
-            chunkMap.setInitialPos(0, 0);
-            IsoChunk chunk = new IsoChunk(cell);
-            chunk.wx = 0;
-            chunk.wy = 0;
-            chunk.refs.add(chunkMap);
-            chunkMap.setChunkDirect(chunk, false);
-            slice = new SliceY();
-            for (int x = 0; x < 8; x++) {
-                for (int y = 0; y < 8; y++) {
-                    floor(x, y);
-                }
-            }
-            for (int y = 0; y < 8; y++) {
-                if (y != 3) {
-                    solidWall(4, y);
-                }
-            }
-        }
-
-        void floor(int x, int y) {
-            IsoGridSquare sq = new IsoGridSquare(cell, slice, x, y, 0);
-            sq.getProperties().set(IsoFlagType.solidfloor);
-            chunkMap.setGridSquare(sq, x, y, 0);
-        }
-
-        void solidWall(int x, int y) {
-            IsoGridSquare sq = new IsoGridSquare(cell, slice, x, y, 0);
-            sq.getProperties().set(IsoFlagType.solid);
-            sq.getProperties().set(IsoFlagType.solidfloor);
-            chunkMap.setGridSquare(sq, x, y, 0);
+            world = SyntheticWorld.create();
+            world.room(8, 8);
+            world.wallSegment(4, 0, 4, 2);
+            world.wallSegment(4, 4, 4, 7);
         }
 
         /** Seal the doorway gap: scenario D runs after A-C on the same room. */
         void sealDoorway() {
-            solidWall(4, 3);
+            world.wall(4, 3);
         }
     }
 

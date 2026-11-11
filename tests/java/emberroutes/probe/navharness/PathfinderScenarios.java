@@ -2,12 +2,7 @@ package emberroutes.probe.navharness;
 
 import java.util.ArrayList;
 import java.util.List;
-import zombie.iso.IsoCell;
-import zombie.iso.IsoChunk;
-import zombie.iso.IsoChunkMap;
 import zombie.iso.IsoGridSquare;
-import zombie.iso.IsoWorld;
-import zombie.iso.SliceY;
 import zombie.iso.SpriteDetails.IsoFlagType;
 import emberroutes.probe.nav.EmberNavGrid;
 import emberroutes.probe.nav.EmberPathfinder;
@@ -24,12 +19,11 @@ import emberroutes.probe.nav.NavRaycast;
  * classes (EmberPathfinder, EmberNavGrid, NavCost) and prints the waypoint
  * list of every route it finds.
  *
- * Run (from the repo root, JDK 25, game jars on the classpath only):
- *   javac -cp "$GAME_ROOT/*" -d /tmp/navharness-classes \
- *       java/src/main/java/emberroutes/probe/nav/*.java
- *   javac -ea -cp "/tmp/navharness-classes:$GAME_ROOT/*" -d /tmp/navharness-classes \
- *       tests/java/emberroutes/probe/navharness/PathfinderScenarios.java
- *   java -ea -cp "/tmp/navharness-classes:$GAME_ROOT/*" \
+ * Run via the harness entry point (tests/navharness/run.sh), which
+ * compiles production code + harness together and runs every section:
+ *   tests/navharness/run.sh
+ * Or standalone, with the production classes already compiled:
+ *   java -ea -cp "<classes>:<game-root>/*" \
  *       emberroutes.probe.navharness.PathfinderScenarios
  *
  * Scenarios that cannot run headless are recorded with skip() + the verified
@@ -39,60 +33,36 @@ import emberroutes.probe.nav.NavRaycast;
 public final class PathfinderScenarios {
 
     // ------------------------------------------------------------------
-    // World builder.
-    // vendored from Spike1c, consolidate into SyntheticWorld in harness-entry.
-    // (Copied here so this scenario set does not block on item 1; the
-    // harness entry point, item 7, will converge on one shared builder.)
+    // World builder: the shared SyntheticWorld (harness item 1).
+    // This file previously vendored its own copy of the Spike1c builder;
+    // harness-entry converged it onto SyntheticWorld — one builder only.
     // ------------------------------------------------------------------
-    static IsoCell cell;
-    static IsoChunkMap cm;
-    static SliceY slice;
+    static SyntheticWorld world;
 
     static void buildWorld() {
-        IsoWorld world = new IsoWorld();
-        IsoWorld.instance = world;
-        cell = new IsoCell(30, 30);
-        world.currentCell = cell;
-        cm = cell.getChunkMap(0);
-        cm.setInitialPos(0, 0);
-        IsoChunk chunk = new IsoChunk(cell);
-        chunk.wx = 0;
-        chunk.wy = 0;
-        chunk.refs.add(cm);
-        cm.setChunkDirect(chunk, false);
-        slice = new SliceY();
+        world = SyntheticWorld.create();
     }
 
     static IsoGridSquare floor(int x, int y) {
-        return floor(x, y, 0);
+        return world.floor(x, y, 0);
     }
 
     static IsoGridSquare floor(int x, int y, int z) {
-        IsoGridSquare sq = new IsoGridSquare(cell, slice, x, y, z);
-        sq.getProperties().set(IsoFlagType.solidfloor);
-        cm.setGridSquare(sq, x, y, z);
-        return sq;
+        return world.floor(x, y, z);
     }
 
     static void room(int size) {
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) floor(x, y);
-        }
+        world.room(size, size);
     }
 
     static IsoGridSquare solidWall(int x, int y) {
-        IsoGridSquare sq = new IsoGridSquare(cell, slice, x, y, 0);
-        sq.getProperties().set(IsoFlagType.solid);
-        sq.getProperties().set(IsoFlagType.solidfloor);
-        cm.setGridSquare(sq, x, y, 0);
-        return sq;
+        return world.wall(x, y);
     }
 
+    /** A walkable floor square carrying one extra flag (e.g. WallW, HoppableW). */
     static IsoGridSquare flagWall(int x, int y, IsoFlagType flag) {
-        IsoGridSquare sq = new IsoGridSquare(cell, slice, x, y, 0);
-        sq.getProperties().set(IsoFlagType.solidfloor);
+        IsoGridSquare sq = world.floor(x, y, 0);
         sq.getProperties().set(flag);
-        cm.setGridSquare(sq, x, y, 0);
         return sq;
     }
 
@@ -215,7 +185,7 @@ public final class PathfinderScenarios {
         }
         check(crossings == 1, "flag-wall path must cross the flagged column exactly once, crossed " + crossings + " times");
         // Diagonal steps pay no fence cost: fenceEdgeKind() is NONE off-axis.
-        check(EmberNavGrid.fenceEdgeKind(cm.getGridSquare(3, 3, 0), cm.getGridSquare(4, 4, 0)) == EmberNavGrid.FenceKind.NONE,
+        check(EmberNavGrid.fenceEdgeKind(world.getSquare(3, 3, 0), world.getSquare(4, 4, 0)) == EmberNavGrid.FenceKind.NONE,
                 "diagonal step across a WallW column must be NONE fence kind (no fence cost)");
 
         // Spike2b matrix: a flag-only square is no wall in any direction.
@@ -265,7 +235,7 @@ public final class PathfinderScenarios {
     static void scenarioBrokenGlass() {
         buildWorld();
         room(8);
-        IsoGridSquare clean = cm.getGridSquare(2, 2, 0);
+        IsoGridSquare clean = world.getSquare(2, 2, 0);
         check(NavCost.groundHazardCost(null, clean) == NavCost.CLEAR,
                 "clean square must cost CLEAR, got " + NavCost.groundHazardCost(null, clean));
         check(NavCost.BROKEN_GLASS_SHOD_PENALTY == 50, "shod glass penalty constant changed, check NavCost");
@@ -308,10 +278,10 @@ public final class PathfinderScenarios {
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 8; y++) floor(x, y, 1);
         }
-        IsoGridSquare ground = cm.getGridSquare(1, 1, 0);
-        check(cm.getGridSquare(1, 1, 1) != null, "z=1 floor square must exist (multi-level world built)");
+        IsoGridSquare ground = world.getSquare(1, 1, 0);
+        check(world.getSquare(1, 1, 1) != null, "z=1 floor square must exist (multi-level world built)");
         check(EmberNavGrid.stairLandingAbove(ground) == null, "plain floor must have no stair landing above");
-        check(EmberNavGrid.stairApproachBelow(cm.getGridSquare(1, 1, 1)) == null, "plain upper floor must have no stair approach below");
+        check(EmberNavGrid.stairApproachBelow(world.getSquare(1, 1, 1)) == null, "plain upper floor must have no stair approach below");
         check(EmberNavGrid.stairBottomApproach(ground) == null, "plain floor must have no stair bottom approach");
         check(EmberNavGrid.stairUpperLanding(ground) == null, "plain floor must have no stair upper landing");
         List<NavRaycast.Waypoint> up = EmberPathfinder.findPath(null, 1, 1, 0, 6, 6, 1, 2000);
