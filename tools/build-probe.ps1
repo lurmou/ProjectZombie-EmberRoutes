@@ -258,6 +258,18 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix WarehouseFastIndex test compilation fa
 
 if ($LASTEXITCODE -ne 0) { throw "$prefix WarehouseFastIndex tests failed" }
 
+& $javacCommand '-J-Duser.language=en' '--release' '17' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/ProductionYieldScanTest.java') 2>&1 |
+
+    Tee-Object -FilePath (Join-Path $logsRoot 'production-yield-scan-compile.txt')
+
+if ($LASTEXITCODE -ne 0) { throw "$prefix ProductionYieldScan test compilation failed" }
+
+& $javaCommand '--enable-native-access=ALL-UNNAMED' '-Duser.language=en' '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.ProductionYieldScanTest' 2>&1 |
+
+    Tee-Object -FilePath (Join-Path $logsRoot 'production-yield-scan-tests.txt')
+
+if ($LASTEXITCODE -ne 0) { throw "$prefix ProductionYieldScan tests failed" }
+
 & $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/JobDataTest.java')
 
 if ($LASTEXITCODE -ne 0) { throw "$prefix JobData test compilation failed" }
