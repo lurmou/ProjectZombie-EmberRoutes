@@ -168,12 +168,17 @@ def inspect(lua_root):
 KERNEL_CATEGORY_BASELINE = {'cooking'}
 # Exact count of quoted manifest category names in PublicWork.lua code (comments
 # excluded). Only-shrink ratchet: more fails; fewer fails until this is lowered.
-# Was 10 before P4 (crafting 3, hauling 3, cooking 4).
-KERNEL_CATEGORY_LITERAL_COUNT = 2
+# Was 10 before P4 (crafting 3, hauling 3, cooking 4). The opt-split-publicwork
+# split moved the two order-creation 'cooking' literals out of PublicWork.lua
+# into PublicWorkOrders.lua (same baseline, checked below as PUBWORK_ORDERS_REL);
+# PublicWork.lua itself now names no category.
+KERNEL_CATEGORY_LITERAL_COUNT = 0
 MANIFEST_REL = 'client/EmberRoutesProbe/Work/LaborManifest.lua'
 
 # PublicWork.lua kernel file (relative to LUA_ROOT)
 PUBWORK_REL = 'client/EmberRoutesProbe/Work/PublicWork.lua'
+PUBWORK_ORDERS_REL = 'client/EmberRoutesProbe/Work/PublicWorkOrders.lua'
+PUBWORK_ORDERS_LITERAL_COUNT = 2
 PROVIDERS_REL = 'client/EmberRoutesProbe/Work/PublicWorkProviders.lua'
 
 
@@ -341,7 +346,9 @@ def check_global_writes(lua_root, errors):
 def check_kernel_categories(lua_root, errors):
     """Fail if a kernel file hard-codes a category name not in its baseline.
 
-    PublicWork.lua keeps KERNEL_CATEGORY_BASELINE / KERNEL_CATEGORY_LITERAL_COUNT;
+    PublicWork.lua keeps KERNEL_CATEGORY_BASELINE / KERNEL_CATEGORY_LITERAL_COUNT
+    (0 since the split: its order-creation 'cooking' literals live in
+    PublicWorkOrders.lua, checked here with PUBWORK_ORDERS_LITERAL_COUNT);
     the provider registry PublicWorkProviders.lua must name no category at all.
 
     The baseline list is KERNEL_CATEGORY_BASELINE above.  Removing a name from
@@ -352,6 +359,7 @@ def check_kernel_categories(lua_root, errors):
     false positives from type names and other short strings.
     """
     for rel, allowed, expected in ((PUBWORK_REL, KERNEL_CATEGORY_BASELINE, KERNEL_CATEGORY_LITERAL_COUNT),
+                                   (PUBWORK_ORDERS_REL, KERNEL_CATEGORY_BASELINE, PUBWORK_ORDERS_LITERAL_COUNT),
                                    (PROVIDERS_REL, set(), 0)):
         check_kernel_file(lua_root, rel, allowed, expected, errors)
 
