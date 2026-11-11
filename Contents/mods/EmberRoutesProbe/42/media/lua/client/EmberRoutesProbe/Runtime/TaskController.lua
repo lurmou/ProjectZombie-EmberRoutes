@@ -1,6 +1,8 @@
 -- Runtime service factory. No event registration, native calls or asset authority.
 local Sessions=require 'EmberRoutesProbe/Kernel/ExecutionSessions'
 local Evidence=require 'EmberRoutesProbe/Runtime/TaskStopEvidence'
+local Clock=require 'EmberRoutesProbe/Kernel/Clock'
+local Log=require 'EmberRoutesProbe/Kernel/Log'
 local Controller={}
 function Controller.new()
     local sessions=Sessions.new()
@@ -75,6 +77,17 @@ function Controller.new()
     function api:move(ticket,actor,point)
         local r=live(ticket)
         if not r or not r.control then return false,'CONTROL_REQUIRED' end
+        -- The native MOVE_TARGET line carries coordinates only. Log the caller
+        -- identity here, once per second per ticket, so a body that is re-aimed
+        -- between two points names the job that did it.
+        local nowMove=Clock.nowMs()
+        if not r.moveLogAt or nowMove-r.moveLogAt>=1000 then
+            r.moveLogAt=nowMove
+            local where=point.x~=nil and (point.x..','..point.y..','..point.z)
+                or point.corpse and 'CORPSE' or point.bed and 'BED'
+                or point.furniture and 'FURNITURE' or 'UNKNOWN'
+            Log.write('MOVE_REQUEST','job='..tostring(r.jobId)..' kind='..tostring(r.kind)..' target='..where)
+        end
         return self:dispatch(ticket,function() return driver().moveControlled(r.control,actor,point) end)
     end
     function api:stopBody(ticket)

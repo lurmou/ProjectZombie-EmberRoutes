@@ -49,6 +49,9 @@ public final class ProbeNpc extends IsoPlayer {
     private String pathResult = "IDLE";
     private String moveResult = "IDLE";
     private long nextProgressLog;
+    /** Throttle for MOVE_NOROOT: at most one line per second while the body
+     *  reports active movement but no root-motion source consumes it. */
+    private long nextNoRootLog;
     private float moveStartX, moveStartY;
     // Path failures are not free: every failed or timed-out request re-runs the
     // engine pathfinder. Back off exponentially so a stuck carrier cannot spin.
@@ -925,19 +928,51 @@ public final class ProbeNpc extends IsoPlayer {
             }
             ProbeMovement.Outcome outcome = movement.tick(this::advancePath,
                     getX(), getY(), getZ(), System.nanoTime());
+            boolean consumedRootMotion=false;
             if (outcome==ProbeMovement.Outcome.MOVING && getPath2()!=null) {
                 PathFindBehavior2 path=getPathFindBehavior2();
                 if ((path.pathNextIsSet && (path.shouldBeMoving() || path.stopping)) || nativeTraversal()) {
                     consumePathRootMotion();
+                    consumedRootMotion=true;
+                }
+            }
+            // Active movement that consumes no root motion leaves the body in
+            // place while every upper layer believes it is walking. Name the
+            // exact missing condition once per second instead of staying silent.
+            if (outcome==ProbeMovement.Outcome.MOVING && !consumedRootMotion) {
+                long nowNoRoot=System.nanoTime();
+                if (nowNoRoot>=nextNoRootLog) {
+                    nextNoRootLog=nowNoRoot+1_000_000_000L;
+                    Path stalled=getPath2();
+                    ProbeRuntime.log("MOVE_NOROOT reason="
+                            + (stalled==null ? "NO_PATH"
+                                : (!getPathFindBehavior2().pathNextIsSet ? "NEXT_UNSET" : "STATE_NOT_MOVING"))
+                            + " pathNodes=" + (stalled==null ? -1 : stalled.size())
+                            + " " + motionStatus());
                 }
             }
             if (outcome != ProbeMovement.Outcome.IDLE && outcome != ProbeMovement.Outcome.MOVING) {
+                // Capture the path before stopProbe() clears it: the terminal
+                // line must show how far the finished path actually reached.
+                Path ended=getPath2();
+                int endedNodes=ended==null ? -1 : ended.size();
+                String endedAt="none";
+                if (endedNodes>0) {
+                    zombie.pathfind.PathNode node=ended.getNode(endedNodes-1);
+                    endedAt=node.x+","+node.y+","+node.z;
+                }
                 if (companionNavigation!=null) {
                     // A completed segment hands off to the next one without
                     // clearing velocity; only a failed segment is held.
                     if (companionNavigation.ended(outcome,System.nanoTime())) holdFollowMovement();
                 } else stopProbe();
                 moveResult = outcome.name();
+                ProbeRuntime.log("MOVE_END outcome=" + outcome.name()
+                        + " target=" + movement.targetX() + "," + movement.targetY() + "," + movement.targetZ()
+                        + " pos=" + getX() + "," + getY() + "," + getZ()
+                        + " remaining=" + movement.distance(getX(), getY(), getZ())
+                        + " pathNodes=" + endedNodes + " pathEnd=" + endedAt
+                        + " nextSet=" + getPathFindBehavior2().pathNextIsSet);
                 if (outcome == ProbeMovement.Outcome.FAILED || outcome == ProbeMovement.Outcome.TIMEOUT) {
                     registerMoveFailure(System.nanoTime());
                 } else {
