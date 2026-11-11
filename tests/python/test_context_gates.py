@@ -116,7 +116,11 @@ return require('EmberRoutesProbe/UI/' .. name)
 
     def test_kernel_category_names_cover_the_provider_registry(self):
         self.put('client', 'Work/LaborManifest', "return {{category='cooking'},{category='crafting'}}")
-        self.put('client', 'Work/PublicWork', "local a,b='cooking','cooking'")
+        # Since the opt-split-publicwork split, PublicWork.lua itself names no
+        # category; the two order-creation 'cooking' literals live in
+        # PublicWorkOrders.lua, checked under the same baseline.
+        self.put('client', 'Work/PublicWork', "return {}")
+        self.put('client', 'Work/PublicWorkOrders', "local a,b='cooking','cooking'")
         providers = self.put('client', 'Work/PublicWorkProviders', "-- 'crafting' in a comment is fine\nreturn {}")
         errors = []
         arch.check_kernel_categories(self.root, errors)
