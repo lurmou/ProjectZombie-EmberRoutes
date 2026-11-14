@@ -280,8 +280,10 @@ function R.valid(job)
         if string.sub(key,1,14)=='craft-surface:' and (not station or station.siteKey~=key) then return false end
     end
     local duty=p.duty
+    if p.dutySequence~=nil and (not integer(p.dutySequence) or p.dutySequence<0 or p.dutySequence>1e12) then return false end
     if duty~=nil then
         if type(duty)~='table' or not id(duty.id) or not id(duty.siteKey) or not keys[duty.siteKey]
+            or not p.dutySequence or p.dutySequence<1 or duty.id~=job.id..':furnace:'..tostring(p.dutySequence)
             or string.sub(duty.siteKey,1,8)~='cooking:' or duty.ownerId~=job.npcId
             or not integer(duty.revision) or duty.revision<1
             or type(duty.originalActive)~='boolean' or type(duty.openedByJob)~='boolean'
@@ -290,14 +292,14 @@ function R.valid(job)
             or duty.originalActive and duty.openedByJob
             or (duty.state~='RESERVED' and duty.state~='HEATING' and duty.state~='TRANSFER_PENDING'
                 and duty.state~='STOP_REQUIRED' and duty.state~='OBSERVATION_REQUIRED') then return false end
-        if not job.obligations.furnace then return false end
         if duty.endpointId~=nil or duty.position~=nil then
             if not id(duty.endpointId) or duty.siteKey~='cooking:'..duty.endpointId or type(duty.position)~='table' then return false end
             for _,axis in ipairs({'x','y','z'}) do
                 if not integer(duty.position[axis]) or math.abs(duty.position[axis])>10000000 then return false end
             end
         end
-    elseif job.obligations.furnace then return false end
+    end
+    if job.obligations.furnace~=nil then return false end
     local heat=p.heat
     if heat then
         if type(heat)~='table' or heat.format~=1 or not dense(heat.itemIds,16) or #heat.itemIds==0
@@ -406,6 +408,10 @@ function R.transition(before,after)
     if not R.valid(before) or not R.valid(after) then return false end
     for _,key in ipairs({'id','npcId','scopeId','providerType'}) do if before[key]~=after[key] then return false end end
     local a,b=before.payload,after.payload
+    local previousDutySequence,nextDutySequence=a.dutySequence or 0,b.dutySequence or 0
+    if not a.duty and b.duty then
+        if nextDutySequence~=previousDutySequence+1 then return false end
+    elseif nextDutySequence~=previousDutySequence then return false end
     local previousLiquids,nextLiquids=a.liquidInputs or {},b.liquidInputs or {}
     if #nextLiquids<#previousLiquids or #nextLiquids>#previousLiquids+1 then return false end
     for i,row in ipairs(previousLiquids) do if not equal(row,nextLiquids[i],0) then return false end end

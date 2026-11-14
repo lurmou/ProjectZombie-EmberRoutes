@@ -3,6 +3,7 @@ local Sessions=require 'EmberRoutesProbe/Kernel/ExecutionSessions'
 local Evidence=require 'EmberRoutesProbe/Runtime/TaskStopEvidence'
 local Clock=require 'EmberRoutesProbe/Kernel/Clock'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local Fence=require 'EmberRoutesProbe/Kernel/CommitFence'
 local Controller={}
 function Controller.new()
     local sessions=Sessions.new()
@@ -27,9 +28,14 @@ function Controller.new()
         records[r.ticket]=nil
         r.ticket.result={state=state,reason=r.reason,effects=r.stopEffects or 'KNOWN'}
     end
+    -- Diagnostic observation only: elapsed time never authorizes release.
+    local function waitAt(r,phase)
+        if r.stopPhase~=phase then r.stopPhase=phase r.stopPhaseSince=Clock.nowMs() end
+    end
     function api:inspect(ticket)
         local r=live(ticket)
-        if r then return {state=r.state,reason=r.reason,error=r.error,npcId=r.npcId,jobId=r.jobId,kind=r.kind} end
+        if r then return {state=r.state,reason=r.reason,error=r.error,npcId=r.npcId,jobId=r.jobId,kind=r.kind,
+            stopPhase=r.stopPhase,stopPhaseSince=r.stopPhaseSince} end
         local result=type(ticket)=='table' and ticket.result
         if result then return {state=result.state,reason=result.reason,effects=result.effects} end
     end
@@ -40,7 +46,7 @@ function Controller.new()
         return result and result.state or nil
     end
     function api:request(npcId,jobId,kind,adapter)
-        if retired or frozen then return nil,'ADMISSION_CLOSED' end
+        if retired or frozen or Fence.status() then return nil,'ADMISSION_CLOSED' end
         if calling or stepping then return nil,'REENTRANT_REQUEST' end
         if type(npcId)~='string' or npcId=='' or type(jobId)~='string' or jobId==''
             or type(kind)~='string' or kind=='' then return nil,'IDENTITY_REQUIRED' end
@@ -62,6 +68,7 @@ function Controller.new()
         r.reason=r.reason or reason
         if r.state=='QUEUED' then close(r,'CANCELLED') return true end
         r.state='STOPPING'
+        if not r.stopPhase then waitAt(r,'REQUEST_STOP') end
         return sessions:requestStop(r.token,r.reason)
     end
     function api:attachDriver(ticket,binding)
@@ -102,7 +109,7 @@ function Controller.new()
     end
     function api:dispatch(ticket,callback)
         local r=live(ticket)
-        if retired or frozen or calling or stepping or not r or r.state~='ACTIVE' then
+        if retired or frozen or Fence.status() or calling or stepping or not r or r.state~='ACTIVE' then
             return false,'NOT_AUTHORIZED'
         end
         calling=true
@@ -119,7 +126,7 @@ function Controller.new()
         if r.body then return r.body end
         local body={}
         function body.current()
-            return not retired and not frozen and live(ticket)==r and r.state=='ACTIVE' and r.control~=nil
+            return not retired and not frozen and not Fence.status() and live(ticket)==r and r.state=='ACTIVE' and r.control~=nil
         end
         function body.retained()
             return live(ticket)==r and r.control~=nil and driver().stopEvidence(r.control).available or false
@@ -218,10 +225,25 @@ function Controller.new()
         r.body=body
         return body
     end
+    local function retryStanding(r)
+        if live(r.ticket)~=r or r.state~='STOPPING' or not r.control then return end
+        local evidence=driver().stopEvidence(r.control)
+        local queues=ISTimedActionQueue and ISTimedActionQueue.queues
+        local queue=type(queues)=='table' and queues[r.control.binding.handle]
+        local empty=type(queues)=='table' and (not queue or type(queue.queue)=='table' and #queue.queue==0 and not queue.current)
+        if not evidence.available or evidence.nativeMask~=2048 or not empty then r.standWaitSince=nil return end
+        local now=Clock.nowMs()
+        if not r.standWaitSince then r.standWaitSince=now return end
+        if now-r.standWaitSince<1000 then return end -- retry cadence, not completion evidence
+        r.standWaitSince=now calling=true
+        local ok,why=pcall(driver().retryStandExit,r.control)
+        calling=false
+        if not ok then r.error=tostring(why) end
+    end
     local function stopOnce(r)
         if not r.stopRequested then
             local ok,err=pcall(r.adapter.requestStop,r.reason)
-            if ok and err~=false then r.stopRequested=true else r.error=tostring(err) end
+            if ok and err~=false then r.stopRequested=true else r.error=tostring(err) waitAt(r,'REQUEST_STOP') end
         end
         if r.stopRequested then
             local ok,value=pcall(r.adapter.observeStop)
@@ -237,7 +259,7 @@ function Controller.new()
                     local released,releaseResult=true,true
                     if r.control then released,releaseResult=pcall(driver().releaseControl,r.control) end
                     if not released or releaseResult~=true then
-                        r.error='NATIVE_CONTROL_RETAINED'
+                        r.error='NATIVE_CONTROL_RETAINED' waitAt(r,'RELEASE_CONTROL')
                     else
                         r.control=nil
                         local receipt,err=sessions:confirmStopped(r.token,evidence)
@@ -248,15 +270,29 @@ function Controller.new()
                                     effects=evidence.effects,persisted=true,reason=r.reason}
                             end
                             close(r,'CLOSED')
-                        else r.error=err end
+                        else r.error=err waitAt(r,'CONFIRM_STOPPED') end
                     end
-                else r.error=why end
-            elseif not ok then r.error=tostring(value) end
+                else r.error=why waitAt(r,'PERSIST_EFFECTS') end
+            else
+                if not ok then r.error=tostring(value) end
+                waitAt(r,'OBSERVE_STOP') retryStanding(r)
+            end
         end
     end
     function api:step()
         if stepping or calling then return false,'CALL_IN_FLIGHT' end
         stepping=true
+        if Fence.status() then
+            for _,r in ipairs(queue) do
+                if live(r.ticket) then
+                    if r.state=='QUEUED' then close(r,'CANCELLED')
+                    elseif r.state=='ACTIVE' then
+                        r.reason=r.reason or 'COMMIT_FAULT' r.state='STOPPING'
+                        sessions:requestStop(r.token,r.reason)
+                    end
+                end
+            end
+        end
         local remaining=math.min(4,#queue)
         for _=1,remaining do
             if cursor>=#queue then cursor=0 end
@@ -268,6 +304,15 @@ function Controller.new()
                 local token,why=sessions:acquire(r.npcId,r.jobId,r.kind)
                 if token then r.token=token r.state='ACTIVE' else r.error=why end
             elseif r.state=='STOPPING' then
+                if Fence.status() and r.control then
+                    -- The normal business pause may require a now-blocked
+                    -- commit. Revoke only this owner's queued actions and ask
+                    -- its native body to stop; neither action proves effects
+                    -- persisted or authorizes release.
+                    local body=self:body(r.ticket)
+                    if body then body.clear() end
+                    self:stopBody(r.ticket)
+                end
                 stopOnce(r)
             end
         end
@@ -291,6 +336,7 @@ function Controller.new()
             else
                 saveFacts[r.npcId]={npcId=r.npcId,jobId=r.jobId,kind=r.kind,bodyStopped=false,effects='UNKNOWN',persisted=false,reason=r.reason}
                 r.state='STOPPING'
+                if not r.stopPhase then waitAt(r,'REQUEST_STOP') end
             end
             end
         end

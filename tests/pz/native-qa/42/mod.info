@@ -1,0 +1,6 @@
+name=EmberRoutes Native QA
+id=EmberRoutesNativeQA
+author=MuMu
+description=Isolated native QA scenarios. Requires the explicit QA launcher.
+versionMin=42.21.0
+require=\EmberRoutesProbe

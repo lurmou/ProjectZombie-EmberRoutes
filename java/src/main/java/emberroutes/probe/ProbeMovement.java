@@ -9,6 +9,33 @@ public final class ProbeMovement {
     private static final double ARRIVAL_DISTANCE = 0.4;
     public enum PathResult { WORKING, SUCCEEDED, FAILED }
     public enum Outcome { IDLE, MOVING, REACHED, FAILED, PATH_ENDED, TIMEOUT }
+    /** Carrier observation, distinct from a single movement tick's outcome. */
+    enum MoveStatus {
+        IDLE, MOVING, REACHED, FAILED, PATH_ENDED, TIMEOUT, BLOCKED, STOPPED;
+
+        static MoveStatus from(Outcome outcome) {
+            return switch (outcome) {
+                case IDLE -> IDLE;
+                case MOVING -> MOVING;
+                case REACHED -> REACHED;
+                case FAILED -> FAILED;
+                case PATH_ENDED -> PATH_ENDED;
+                case TIMEOUT -> TIMEOUT;
+            };
+        }
+    }
+
+    /** Diagnostic only; native result spelling is preserved in existing logs. */
+    enum PathStatus {
+        IDLE, FOUND, NO_PATH, SUSPENDED, COOLDOWN, REQUESTED,
+        WORKING("Working"), FAILED("Failed"), SUCCEEDED("Succeeded");
+
+        private final String diagnostic;
+        PathStatus() { diagnostic = name(); }
+        PathStatus(String diagnostic) { this.diagnostic = diagnostic; }
+        @Override public String toString() { return diagnostic; }
+    }
+
     private boolean active;
     private double targetX, targetY, targetZ;
     private long startedAt;

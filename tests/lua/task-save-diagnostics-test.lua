@@ -4,6 +4,9 @@ local npc,actor=f.f.npc,f.f.actor
 local Probe=f.f.ctx.Probe
 local Actions,Haul=f.f.ctx.Actions,f.f.Haul
 local root=f.root
+root.format=2 root.nextClaimSeq=0
+root.obligations=require('EmberRoutesProbe/Kernel/ObligationLedger').fresh()
+Probe.isPublicDispatch=function() return false end
 function getSpecificPlayer() return actor end
 local checks,captures,nonce=0,0,nil
 local function check(v,m) checks=checks+1 assert(v,m) end
@@ -36,6 +39,17 @@ check(property:getContainer()==npc:getInventory() and property:getModData().Pers
 check(not Actions.isBusy() and frozen,'no diagnostic restart from save callback')
 Save.tick(actor) f.tick(4)
 check(not frozen and not Actions.fixtures and property:getContainer()==npc:getInventory(),'later live recovery opens admission without recreating diagnostic assets')
+check(Haul.execute(actor,'run')=='QUEUED','actual haul diagnostic queues through controlled runtime') f.tick(3)
+check(Haul.busy(),'haul diagnostic is active before save')
+local oldBatch=Haul.batch
+check(string.find(Save.capture(),'^CHECKPOINT_SAVED'),'mid-haul capture follows controlled stop and cleanup')
+check(not Haul.busy() and #Haul.fixtures==0 and property:getContainer()==npc:getInventory(),
+    'mid-haul save removes only diagnostic fixtures and preserves unrelated original')
+Save.tick(actor) f.tick(4)
+check(Haul.execute(actor,'run')=='QUEUED','new haul may be requested after verified save') f.tick(3)
+check(Haul.busy() and Haul.batch~=oldBatch,'successor haul owns a new batch after save')
+check(Haul.execute(actor,'cancel')=='STOP_REQUESTED','successor cancellation requests controlled stop') f.drain()
+check(Haul.execute(actor,'cleanup')=='QUEUED','successor cleanup uses body admission') f.drain()
 check(Actions.execute(actor,'prepare')=='QUEUED','second actual diagnostic fixture requested') f.drain()
 local cargo=Actions.fixtures.cargo
 npc:getInventory():Remove(cargo)

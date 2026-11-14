@@ -18,12 +18,12 @@ local A={}
 local JobExecution=require 'EmberRoutesProbe/Hauling/HaulJobs'
 function A.new(npcId)
     local api={} local current,pending
-    local function record() return Store.record(npcId) end
+    local function record() return JobExecution.record(npcId) end
     -- Sole DELIVERY producer check; every dispatch branch below routes through here.
     local function isDelivery(jobOrRecord) return jobOrRecord and jobOrRecord.producer=='DELIVERY' end
-    local function changed(r)
+    local function changed(r,obligationOps)
 	if r.format==3 then
-	    local ok=JobExecution.commit(r)
+	    local ok=JobExecution.commit(r,nil,obligationOps)
 	    if not ok and current and current.job==r then current.stopping=true current.commitFailure=true end
 	    if not ok then return false end
 	end
@@ -41,7 +41,7 @@ function A.new(npcId)
     end
     local function valid(c)
         local authorized=current==c and not c.stopping and not isClient() and not isServer() and Probe.ready
-            and Store.valid(c.job,c.generation,c.token) and (not c.body or c.body.current())
+            and JobExecution.executionValid(c.job,c.generation,c.token) and (not c.body or c.body.current())
             and (isDelivery(c.job) or not c.actor:isDead())
             and (EmberRoutesProbeJava.carrierPresent(c.npc)
                 or require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc))
@@ -58,9 +58,14 @@ function A.new(npcId)
         local inTo=toAllowed and s.item:getContainer()==s.to and s.to:getItems():contains(s.item)
         if inTo and fromAllowed and not s.from:getItems():contains(s.item) then
             local line=Manifest.line(r,a.itemId)
-            if a.kind=='TAKE' then line.custodyState='CARRIED'
+            if a.kind=='TAKE' then
+                local owed=line.obligationId and Registry.data().obligations.byId[line.obligationId]
+                if not owed then return false end
+                line.custodyState='CARRIED' r.activeAttempt=nil c.attempt=nil
+                return changed(r,{{action='CONFIRM',id=owed.id,expectedRevision=owed.revision,
+                    evidence={effects='KNOWN',itemId=line.itemId,originalPresent=true}}})
             else
-                local ok=Store.settleHaulLines(r,c.token,c.generation,{{itemId=a.itemId,state='DELIVERED',
+                local ok=JobExecution.settle(r,c.token,c.generation,{{itemId=a.itemId,state='DELIVERED',
                     receipt={destinationId=a.toId,attemptId=a.attemptId}}})
                 if not ok then return false end
             end
@@ -70,7 +75,15 @@ function A.new(npcId)
         if inFrom and (not toAllowed or not s.to:getItems():contains(s.item)) then
             local line=Manifest.line(r,a.itemId)
             line.custodyState=a.kind=='PUT' and 'CARRIED' or 'UNCOLLECTED'
-	    r.activeAttempt=nil c.attempt=nil return changed(r)
+	    r.activeAttempt=nil c.attempt=nil
+            if a.kind=='TAKE' then
+                local owed=line.obligationId and Registry.data().obligations.byId[line.obligationId]
+                if not owed then return false end
+                return changed(r,{{action='SETTLE',id=owed.id,expectedRevision=owed.revision,
+                    evidence={kind='UNCHANGED',effects='KNOWN',itemId=line.itemId,destinationId=a.fromId,
+                        attemptId=a.attemptId,originalPresent=true}}})
+            end
+            return changed(r)
         end
         return false
     end
@@ -101,12 +114,12 @@ function A.new(npcId)
             if not known then c.job.controlUncertain=true end
             if known and #Manifest.claimItemIds(c.job)==0 and not c.job.returnForNextBatch then
                 c.job.state='DONE' c.job.settlementOutcome=(c.job.withdrawn or 0)>0 and 'PARTIAL_WITHDRAWN' or 'DELIVERED'
-		local settled=Store.finish(c.job)
+		local settled=JobExecution.finish(c.job)
 		if not settled then c.commitFailure=true c.job.controlUncertain=true return false end
 		c.completed=true c.closedGeneration=c.job.generation
                 if current==c then current=nil end changed(c.job) return true
             end
-            c.pauseToken=Store.pause(c.job)
+            c.pauseToken=JobExecution.claim(c.job)
             c.job.state='PAUSED' c.job.reason=known and (reason or 'USER') or 'RECONCILE_REQUIRED'
             if reason=='USER' or reason=='MOVE' or reason=='STOP' or reason=='COMPANION_ORDER' then c.job.manualPaused=true end
             c.stopped=true c.stoppedGeneration=c.job.generation
@@ -157,7 +170,7 @@ function A.new(npcId)
         local ok,why=upgrade(r,npc) if not ok then return why end
         if not npc:getCharacterActions():isEmpty() then return 'NATIVE_ACTION_BUSY' end
         if #Manifest.claimItemIds(r)==0 and not r.returnForNextBatch and not body then
-            r.state='DONE' Store.finish(r) changed(r) return 'DONE'
+            r.state='DONE' JobExecution.finish(r) changed(r) return 'DONE'
         end
         if Probe.controlledExecution and not body then
             local rt=Runtime.current() if not rt then return 'ADMISSION_CLOSED' end
@@ -186,7 +199,7 @@ function A.new(npcId)
             if h then pending=r.id end return h and 'QUEUED' or reason
         end
         if not npc:getCharacterActions():isEmpty() then return 'NATIVE_ACTION_BUSY' end
-        local token,reason=Store.claim(r) if not token then return reason end
+        local token,reason=JobExecution.claim(r) if not token then return reason end
         local c={actor=actor,npc=npc,job=r,body=body,token=token,generation=r.generation,backoff={},nextTick=0}
         for id,deadline in pairs(r.pathBackoff or {}) do
             if Clock.nowMs()<deadline then c.backoff[id]=deadline end
@@ -195,7 +208,7 @@ function A.new(npcId)
         c.valid=function() return valid(c) end
         current=c r.state='RUNNING' r.reason='EXECUTING'
         r.workerName=require('EmberRoutesProbe/Warehouse/DisplayNames').name(npcId,npc)
-        local published,err=Store.publish(r) if not published then current=nil Store.finish(r) return err end
+        local published,err=JobExecution.commit(r) if not published then current=nil JobExecution.finish(r) return err end
         changed(r) return 'STARTED'
     end
     function api.assign(actor,intent)
@@ -215,9 +228,9 @@ function A.new(npcId)
             -- Queued admission must already own a durable Job and its originals.
             -- Saving before the body grant can then safely recover the same segment.
             if not Probe.controlledExecution or not Manifest.valid(r) then return 'CONTROL_REQUIRED' end
-            local token,why=Store.claim(r) if not token then return why end
-            local ok,reason=Store.publish(r)
-            if not ok then Store.finish(r) return reason end
+            local token,why=JobExecution.claim(r) if not token then return why end
+            local ok,reason=JobExecution.commit(r)
+            if not ok then JobExecution.finish(r) return reason end
             local result=launch(actor,r,nil,true)
             if result~='QUEUED' and result~='STARTED' then r.reason=result changed(r) return 'QUEUED' end
             return result
@@ -235,7 +248,7 @@ function A.new(npcId)
     function api.hasCargo(actor)
         local r=record() if not r then return false end
         if r.controlUncertain or r.activeAttempt then return true end
-	if r.format~=2 and r.format~=3 then return true end
+	if r.format~=3 then return true end
         for _,l in ipairs(r.manifest) do if l.custodyState=='CARRIED' or l.custodyState=='RECONCILE' then return true end end
         local b=binding(actor) if not b then return #Manifest.claimItemIds(r)>0 end
         local index=View.index({b.handle:getInventory()}) if not index then return true end
@@ -247,7 +260,7 @@ function A.new(npcId)
         for _,l in ipairs(c.job.manifest) do
             if l.custodyState=='UNCOLLECTED' then changes[#changes+1]={itemId=l.itemId,state='WITHDRAWN'} end
         end
-        if #changes>0 then assert(Store.settleHaulLines(c.job,c.token,c.generation,changes)) end
+        if #changes>0 then assert(JobExecution.settle(c.job,c.token,c.generation,changes)) end
         c.job.deliveryOnly=true c.job.phase='DELIVER'
     end
     local function prepareTransfer(c,line,item,endpoint,kind)
@@ -275,7 +288,13 @@ function A.new(npcId)
         r.itemTypes=r.itemTypes or {} r.itemTypes[tostring(line.itemId)]=item:getFullType()
         r.activeAttempt=a c.attempt=s
 	if r.format==3 then
-	    local committed,why=JobExecution.commit(r)
+	    local ops
+	    if kind=='TAKE' then
+	        local why
+	        ops,why=JobExecution.preparePickup(r,line)
+	        if not ops then c.commitFailure=true return nil,why end
+	    end
+	    local committed,why=JobExecution.commit(r,nil,ops)
 	    if not committed then c.commitFailure=true return nil,why end
 	end
 	return {context=frozen,item=item,from=from,to=to,endpoint=endpoint}
@@ -354,7 +373,7 @@ function A.new(npcId)
                     changes[#changes+1]={itemId=line.itemId,state='WITHDRAWN'}
                 end
             end
-            if #changes>0 then assert(Store.settleHaulLines(r,c.token,c.generation,changes)) end
+            if #changes>0 then assert(JobExecution.settle(r,c.token,c.generation,changes)) end
             c.scan=nil
             return nil,'SCAN_PENDING'
         end
@@ -376,7 +395,9 @@ function A.new(npcId)
                 local item,where,reason=View.find(index,l.itemId)
                 local isCarried=item and where and where<=(c.scanCharCount or 1)
                 local isSource=item and where and source and where==((c.scanCharCount or 1)+1)
-                if item and isCarried then l.custodyState='CARRIED' held[#held+1]=item
+                if item and isCarried then
+                    if not JobExecution.observeHeld(r,l) then return nil,'RECONCILE_REQUIRED' end
+                    held[#held+1]=item
                 elseif l.custodyState=='CARRIED' then return nil,'RECONCILE_REQUIRED'
                 elseif (l.sourceId or r.source)==sourceId then
                     if item and isSource then uncollected=uncollected or {line=l,item=item}
@@ -506,7 +527,7 @@ function A.new(npcId)
             if not step then
                 if why=='DONE' then
                     c.job.state='DONE' c.job.settlementOutcome=(c.job.withdrawn or 0)>0 and 'PARTIAL_WITHDRAWN' or 'DELIVERED'
-		    local settled=Store.finish(c.job)
+		    local settled=JobExecution.finish(c.job)
 		    if not settled then c.commitFailure=true api.pause('RECONCILE_REQUIRED') return end
 		    c.completed=true c.closedGeneration=c.job.generation current=nil changed(c.job)
                 elseif why~='SCAN_PENDING' then

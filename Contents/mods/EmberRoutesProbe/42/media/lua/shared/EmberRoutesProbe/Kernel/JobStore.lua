@@ -17,6 +17,29 @@ local transitions={
 local function id(v) return type(v)=='string' and v~='' and #v<=256 end
 local function integer(v) return type(v)=='number' and v==v and v>=0 and v<math.huge and v==math.floor(v) end
 local function empty(t) for _ in pairs(t) do return false end return true end
+local function obligationGuard(job,ledger)
+    if ledger==nil then return false,'OBLIGATION_FORMAT_UNSUPPORTED' end
+    local Ledger=require 'EmberRoutesProbe/Kernel/ObligationLedger'
+    local count,why=Ledger.outstanding(ledger,job.id)
+    if not count then return false,why end
+    if JobState.isTerminal(job.state) and count>0 then return false,'JOB_OBLIGATION_RETAINED' end
+    local claims={} for _,claim in ipairs(job.payload.claims or {}) do claims[claim]=true end
+    for _,obligation in pairs(ledger.byId) do
+        if obligation.jobId==job.id and obligation.state~='SETTLED' then
+            if obligation.npcId~=job.npcId then return false,'OBLIGATION_NPC_MISMATCH' end
+            local check=contract(job.providerType).obligationRecord
+            if check then
+                local allowed,reason=check(job,obligation,claims)
+                if not allowed then return false,reason end
+            end
+            local claim=Ledger.claimKey(obligation)
+            if claim and not claims[claim] then return false,'OBLIGATION_CLAIM_RETAINED' end
+        end
+    end
+    local check=contract(job.providerType).obligationGuard
+    if check then return check(job,ledger) end
+    return true
+end
 -- Copy only bounded serializable facts. Reject cycles/functions/userdata, never
 -- persist native handles or behavior closures. Reject before publishing writes.
 local function copy(value,seen,budget,depth)
@@ -93,6 +116,18 @@ local function prepare(root)
         end
         byNpc[job.npcId]=byNpc[job.npcId] or {} byNpc[job.npcId][key]=true
     end
+    local Ledger=require 'EmberRoutesProbe/Kernel/ObligationLedger'
+    local ok,why=Ledger.check(root.obligations)
+    if not ok then return nil,why end
+    for _,record in pairs(root.obligations.byId) do
+        if record.state~='SETTLED' and record.jobId and not data.byId[record.jobId] then
+            return nil,'OBLIGATION_JOB_MISSING'
+        end
+    end
+    for _,job in pairs(data.byId) do
+        local allowed,reason=obligationGuard(job,root.obligations)
+        if not allowed then return nil,reason end
+    end
     return {data=data,byNpc=byNpc,count=count,personal=personal,personalByNpc=personalByNpc}
 end
 -- Same acceptance contract as open, with no root publication or API creation.
@@ -135,7 +170,9 @@ function Store.open(root)
     end
     for _,job in pairs(data.byId) do indexAttempt(job) end
     function api:scopeBlocked(scopeId,exceptId)
-	for key in pairs(unresolvedScopes[scopeId] or {}) do if key~=exceptId then return true end end
+	for key in pairs(unresolvedScopes[scopeId] or {}) do
+            if key~=exceptId then return true,contract(data.byId[key].providerType).scopeBlockedReason end
+        end
 	return false
     end
     -- Scalar post-commit notifications. Observers only invalidate read models;
@@ -185,6 +222,8 @@ function Store.open(root)
         candidate.revision=old.revision+1
         if not valid(candidate) then return false,'JOB_RECORD_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
+        local allowed,why=obligationGuard(value,root.obligations)
+        if not allowed then return false,why end
         indexAttempt(old,true)
         data.byId[key]=value
         mirror(key,value)
@@ -215,24 +254,53 @@ function Store.open(root)
         table.sort(result,function(a,b) return a.id<b.id end)
         return result
     end
-    function api:create(job)
+    function api:create(job,obligationOps)
         if not valid(job) or job.revision~=1 or job.state~='PREPARING' or job.effects~='KNOWN' then return false,'JOB_RECORD_INVALID' end
         if data.byId[job.id] then return false,'JOB_EXISTS' end
-	if self:scopeBlocked(job.scopeId) then return false,require('EmberRoutesProbe/Kernel/BuiltinJobContracts').scopeBlockedReason end
+	local blocked,reason=self:scopeBlocked(job.scopeId)
+        if blocked then return false,reason end
 	if personalJob(job) then
             if personalByNpc[job.npcId] then return false,'PERSONAL_JOB_EXISTS' end
             if personal>=Store.PERSONAL_LIMIT then return false,'PERSONAL_JOB_LIMIT' end
         elseif count>=Store.LIMIT then return false,'JOB_LIMIT' end
         local ok,value=pcall(detached,job) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
+        local ledger,carrierValue
+        if obligationOps~=nil then
+            local Ledger=require 'EmberRoutesProbe/Kernel/ObligationLedger'
+            if not require('EmberRoutesProbe/Kernel/Validate').dense(obligationOps,Ledger.LIMIT) then return false,'OBLIGATION_INTENT_INVALID' end
+            for _,op in ipairs(obligationOps) do
+                if type(op)~='table' or op.action~='CREATE' or type(op.record)~='table'
+                    or op.record.jobId~=job.id or op.record.npcId~=job.npcId then return false,'OBLIGATION_JOB_MISMATCH' end
+            end
+            local why
+            ledger,why=Ledger.propose(root.obligations,obligationOps)
+            if not ledger then return false,why end
+            local claims={} for _,key in ipairs(value.payload.claims or {}) do claims[key]=true end
+            for _,obligation in pairs(ledger.byId) do
+                if obligation.jobId==job.id and obligation.state~='SETTLED' then
+                    local key=Ledger.claimKey(obligation)
+                    if key and not claims[key] then return false,'OBLIGATION_CLAIM_RETAINED' end
+                end
+            end
+        end
         local expectedCid = tostring(job.id) .. ':c' .. tostring(root.nextClaimSeq or 0)
+        local newSequence
         if not job.claimId or job.claimId ~= expectedCid then
-            root.nextClaimSeq = (root.nextClaimSeq or 0) + 1
-            value.claimId = tostring(job.id) .. ':c' .. tostring(root.nextClaimSeq)
+            newSequence = (root.nextClaimSeq or 0) + 1
+            value.claimId = tostring(job.id) .. ':c' .. tostring(newSequence)
         else
             value.claimId = job.claimId
         end
+        local allowed,why=obligationGuard(value,ledger or root.obligations)
+        if not allowed then return false,why end
+        if ledger then
+            local copied,detachedValue=pcall(detached,value)
+            if not copied then return false,'JOB_DATA_UNSERIALIZABLE' end
+            carrierValue=detachedValue
+        end
+        if newSequence then root.nextClaimSeq=newSequence end
         data.byId[value.id]=value
-	mirror(value.id,value)
+	if ledger then carrier.byId[value.id]=carrierValue root.obligations=ledger else mirror(value.id,value) end
 	indexAttempt(value)
 	if personalJob(value) then
             personal=personal+1 personalByNpc[value.npcId]=value.id
@@ -241,7 +309,7 @@ function Store.open(root)
         notify(value)
         return true
     end
-    local function update(key,revision,patch,cancelling)
+    local function update(key,revision,patch,cancelling,obligationOps)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
         if JobState.isTerminal(old.state) then return false,'JOB_TERMINAL' end
@@ -260,17 +328,50 @@ function Store.open(root)
         end
         if not cancelling and candidate.state~=old.state and not transitions[old.state][candidate.state] then return false,'JOB_TRANSITION_INVALID' end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
+	local ledger,carrierValue
+	if obligationOps~=nil then
+	    local Ledger=require 'EmberRoutesProbe/Kernel/ObligationLedger'
+	    if not require('EmberRoutesProbe/Kernel/Validate').dense(obligationOps,Ledger.LIMIT) then return false,'OBLIGATION_INTENT_INVALID' end
+	    local validLedger,ledgerWhy=Ledger.check(root.obligations)
+	    if not validLedger then return false,ledgerWhy end
+	    for _,op in ipairs(obligationOps) do
+	        if type(op)~='table' then return false,'OBLIGATION_INTENT_INVALID' end
+	        local existing=root.obligations.byId[op.id]
+	        local owner=op.action=='CREATE' and op.record and op.record.jobId or existing and existing.jobId
+	        if owner~=key then return false,'OBLIGATION_JOB_MISMATCH' end
+	        local worker=op.action=='CREATE' and op.record and op.record.npcId or existing and existing.npcId
+	        if worker~=value.npcId then return false,'OBLIGATION_NPC_MISMATCH' end
+            local allowed,reason=Contracts.validateObligationOperation(old,value,op,existing)
+            if not allowed then return false,reason end
+	    end
+	    local why
+            local function retireObligation(record)
+                return rule.retireObligation and rule.retireObligation(old,value,record,obligationOps) or false
+            end
+	    ledger,why=Ledger.propose(root.obligations,obligationOps,retireObligation)
+	    if not ledger then return false,why end
+	    local copied,detachedValue=pcall(detached,value)
+	    if not copied then return false,'JOB_DATA_UNSERIALIZABLE' end
+	    carrierValue=detachedValue
+	end
+	local allowed,why=obligationGuard(value,ledger or root.obligations)
+	if not allowed then return false,why end
 	indexAttempt(old,true)
         data.byId[key]=value
-	mirror(key,value)
+	if ledger then
+	    -- All candidate copies exist before the first write; no callback runs
+	    -- between these publications. The caller owns the reentrancy fence.
+	    carrier.byId[key]=carrierValue
+	    root.obligations=ledger
+	else mirror(key,value) end
 	indexAttempt(value)
         notify(value)
         return true,value.revision
     end
-    function api:update(key,revision,patch) return update(key,revision,patch,false) end
+    function api:update(key,revision,patch,obligationOps) return update(key,revision,patch,false,obligationOps) end
     -- Kernel cancel is distinct from ordinary transitions. Validity and domain
     -- record validation still apply; no obligations/claims may be discarded.
-    function api:cancel(key,revision,patch)
+    function api:cancel(key,revision,patch,obligationOps)
         if type(patch)~='table' or patch.state~='CANCELLED' then return false,'CANCEL_PATCH_INVALID' end
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
@@ -280,11 +381,11 @@ function Store.open(root)
         if effects~='KNOWN' then return false,'CANCEL_BLOCKED_EFFECTS_UNKNOWN' end
         if not empty(obligations) then return false,'CANCEL_BLOCKED_OBLIGATIONS' end
         if #(payload.claims or {})>0 then return false,'CANCEL_BLOCKED_CLAIMS' end
-        return update(key,revision,patch,true)
+        return update(key,revision,patch,true,obligationOps)
     end
     -- Only LaborStore's verified physical handoff uses this narrow operation.
     -- Ordinary update cannot rewrite stable ownership or the indexed NPC.
-    function api:transferOwner(key,revision,candidate)
+    function api:transferOwner(key,revision,candidate,obligationOps)
         local old=data.byId[key]
 	local rule=old and contract(old.providerType) or {}
         if not old or old.revision~=revision or not valid(candidate)
@@ -297,20 +398,66 @@ function Store.open(root)
             end
         end
         local ok,value=pcall(detached,candidate) if not ok then return false,'JOB_DATA_UNSERIALIZABLE' end
-        data.byId[key]=value mirror(key,value) byNpc[old.npcId][key]=nil
+        local ledger,carrierValue
+        do
+            local Ledger=require 'EmberRoutesProbe/Kernel/ObligationLedger'
+            local count,why=Ledger.outstanding(root.obligations,key)
+            if not count then return false,why end
+            if count>0 then
+                if not require('EmberRoutesProbe/Kernel/Validate').dense(obligationOps,Ledger.LIMIT) then return false,'OBLIGATION_TRANSFER_REQUIRED' end
+                local moved={}
+                for _,op in ipairs(obligationOps) do
+                    local record=type(op)=='table' and root.obligations.byId[op.id]
+                    if not record or record.jobId~=key or record.npcId~=old.npcId or op.action~='TRANSFER'
+                        or op.npcId~=candidate.npcId then return false,'OBLIGATION_TRANSFER_INVALID' end
+                    moved[op.id]=true
+                end
+                for id,record in pairs(root.obligations.byId) do
+                    if record.jobId==key and record.state~='SETTLED' and not moved[id] then return false,'OBLIGATION_TRANSFER_REQUIRED' end
+                end
+                ledger,why=Ledger.propose(root.obligations,obligationOps)
+                if not ledger then return false,why end
+                local copied,detachedValue=pcall(detached,value)
+                if not copied then return false,'JOB_DATA_UNSERIALIZABLE' end
+                carrierValue=detachedValue
+            elseif obligationOps~=nil and #obligationOps>0 then return false,'OBLIGATION_TRANSFER_INVALID' end
+        end
+        local allowed,why=obligationGuard(value,ledger or root.obligations)
+        if not allowed then return false,why end
+        data.byId[key]=value
+        if ledger then carrier.byId[key]=carrierValue root.obligations=ledger else mirror(key,value) end
+        byNpc[old.npcId][key]=nil
         if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end
         byNpc[value.npcId]=byNpc[value.npcId] or {} byNpc[value.npcId][key]=true
         notify(value)
         return true
     end
-    api.transferCooking=api.transferOwner -- Call-sign alias for the existing domain call.
     function api:removeSettled(key,revision)
         local old=data.byId[key]
         if not old or old.revision~=revision then return false,'JOB_CHANGED' end
 	if personalJob(old) or not JobState.isTerminal(old.state)
             or old.effects~='KNOWN' or not empty(old.obligations) then return false,'JOB_NOT_SETTLED' end
+	local allowed,why=obligationGuard(old,root.obligations)
+	if not allowed then return false,why end
+	local retiredLedger
+	do
+	    local operations={}
+	    for id,record in pairs(root.obligations.byId) do
+	        if record.jobId==key and record.state=='SETTLED' then
+	            operations[#operations+1]={action='RETIRE',id=id,expectedRevision=record.revision}
+	        end
+	    end
+	    if #operations>0 then
+	        retiredLedger,why=require('EmberRoutesProbe/Kernel/ObligationLedger').propose(root.obligations,operations,function(record)
+	            return record.jobId==key and record.state=='SETTLED' and old.effects=='KNOWN'
+	                and JobState.isTerminal(old.state) and #(old.payload.claims or {})==0
+	        end)
+	        if not retiredLedger then return false,why end
+	    end
+	end
 	indexAttempt(old,true)
         data.byId[key]=nil mirror(key,nil)
+	if retiredLedger then root.obligations=retiredLedger end
         byNpc[old.npcId][key]=nil
         if empty(byNpc[old.npcId]) then byNpc[old.npcId]=nil end
         count=count-1

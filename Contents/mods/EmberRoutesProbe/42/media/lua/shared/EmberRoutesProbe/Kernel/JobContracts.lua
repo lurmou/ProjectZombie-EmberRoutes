@@ -13,6 +13,7 @@
 -- (JOB_CONTRACT_SCHEMA_VERSION), never silently running an old table.
 local C={SCHEMA_VERSION=1}
 local definitions={}
+local obligationPolicies={}
 local function validErrorCodes(contract)
     local codes=contract.errorCodes
     if type(codes)~='table' then return false end
@@ -20,6 +21,7 @@ local function validErrorCodes(contract)
         if type(code)~='string' or code=='' or type(meaning)~='string' or meaning=='' then return false end
     end
     if contract.transferReason~=nil and codes[contract.transferReason]==nil then return false end
+    if contract.scopeBlockedReason~=nil and codes[contract.scopeBlockedReason]==nil then return false end
     -- Empty-check through pairs. The Kahlua BaseLib this game ships registers
     -- 18 globals and `next` is not one of them: `next(codes)` evaluated to a
     -- nil callee, aborted this module's load and took JobStore with it (every
@@ -36,9 +38,32 @@ function C.register(kind,contract)
     if type(kind)~='string' or kind=='' or type(contract)~='table' then return false,'JOB_CONTRACT_INVALID' end
     if contract.schemaVersion~=C.SCHEMA_VERSION then return false,'JOB_CONTRACT_SCHEMA_VERSION' end
     if definitions[kind] then return false,'JOB_CONTRACT_EXISTS' end
+    for _,name in ipairs({'obligationRecord','obligationGuard','validateObligationOperation','retireObligation'}) do
+        if contract[name]~=nil and type(contract[name])~='function' then return false,'JOB_CONTRACT_INVALID' end
+    end
+    if contract.blocksScope and (type(contract.scopeBlockedReason)~='string' or contract.scopeBlockedReason=='') then
+        return false,'JOB_CONTRACT_ERROR_CODES_REQUIRED'
+    end
     if not validErrorCodes(contract) then return false,'JOB_CONTRACT_ERROR_CODES_REQUIRED' end
     definitions[kind]=contract
+    if contract.validateObligationOperation then obligationPolicies[#obligationPolicies+1]=contract.validateObligationOperation end
     return true
 end
 function C.get(kind) return definitions[kind] end
+-- Settlement evidence is selected by the obligation's semantics, including a
+-- mismatched Job provider. Such mismatches must still be rejected, not skipped.
+function C.validateObligationOperation(old,value,operation,existing)
+    for _,check in ipairs(obligationPolicies) do
+        local ok,reason=check(old,value,operation,existing)
+        if not ok then return false,reason end
+    end
+    return true
+end
+function C.isScopeBlockedReason(reason)
+    if reason==nil then return false end
+    for _,definition in pairs(definitions) do
+        if definition.scopeBlockedReason==reason then return true end
+    end
+    return false
+end
 return C

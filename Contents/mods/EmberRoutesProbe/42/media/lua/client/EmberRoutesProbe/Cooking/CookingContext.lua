@@ -16,8 +16,8 @@ function C.active(c,attemptId)
         and (EmberRoutesProbeJava.carrierPresent(c.npc)
             or require('EmberRoutesProbe/Runtime/Driver').suspended(c.npc)) or false
 end
-function C.publish(c,proposed)
-    local ok,job,token=Store.replaceCooking(c.job,c.token,proposed)
+function C.publish(c,proposed,obligationOps)
+    local ok,job,token=Store.replaceCooking(c.job,c.token,proposed,obligationOps)
     if not ok then c.reason=job return false end
     c.job,c.token,c.effects=job,token,job.effects
     return true

@@ -5,6 +5,7 @@
 -- menus; it is not a supported work path.
 local Store=require "EmberRoutesProbe/Work/LaborStore"
 local HaulAgent=require 'EmberRoutesProbe/Hauling/HaulAgent'
+local HaulJobs=require 'EmberRoutesProbe/Hauling/HaulJobs'
 local Factory={}
 function Factory.new(npcId)
     local routed=HaulAgent.new(npcId)
@@ -23,10 +24,10 @@ function Factory.new(npcId)
     function Work.tick() return routed.tick() end
     function Work.reset() return routed.reset() end
     function Work.prepareRemoval(actor)
-        if not Store.record(npcId) then return true end
+        if not HaulJobs.record(npcId) then return true end
         if routed.hasCargo(actor) then return false end
         routed.pause("REMOVE")
-        return Store.clear(npcId)
+        return HaulJobs.clear(npcId)
     end
     function Work.execute(actor,command)
         if command=='resume' then return routed.resume(actor,false) end
@@ -34,7 +35,7 @@ function Factory.new(npcId)
         if command=='clear' then
             routed.pause("CLEAR")
             if routed.hasCargo(actor) then return "CARGO_RETAINED_RESUME_FIRST" end
-            local ok,why=Store.clear(npcId)
+            local ok,why=HaulJobs.clear(npcId)
             return ok and "TASK_CLEARED" or why
         end
         return "TASK_FORMAT_UNSUPPORTED"

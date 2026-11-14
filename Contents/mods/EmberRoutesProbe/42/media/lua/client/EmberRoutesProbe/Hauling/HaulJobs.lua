@@ -8,9 +8,10 @@ local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Record=require 'EmberRoutesProbe/Hauling/HaulJobRecord'
 local M={}
 local world,entries,byNpc,recovered=nil,{},{},nil
+local recent={}
 local function currentWorld()
     local root=Registry.data()
-    if root~=world then world,entries,byNpc=root,{},{} end
+    if root~=world then world,entries,byNpc,recent=root,{},{},{} end
     return root
 end
 local function entry(r) currentWorld() local e=r and entries[r.id] return e and e.record==r and e or nil end
@@ -18,6 +19,7 @@ local function adopt(job,r)
     local e={job=job,record=r or Jobs.current():get(job.id).payload} entries[job.id]=e byNpc[job.npcId]=e return e.record
 end
 function M.record(npcId)
+    Store.data()
     currentWorld() local jobs=Jobs.current() local e=byNpc[npcId]
     if e then
 	local live=jobs:peek(e.job.id)
@@ -70,7 +72,38 @@ local function validCapacity(r,capacity,token)
     end
     return true
 end
-function M.commit(r,capacity)
+local function obligation(r,line,state)
+    local id='haul-obligation:'..Registry.id()
+    line.obligationId=id
+    return {id=id,type=r.producer=='DELIVERY' and 'DELIVERY_RETURN' or 'CARRIED_ITEM',
+        npcId=r.npcId,jobId=r.id,revision=1,state=state,data={itemId=line.itemId,sourceId=line.sourceId}}
+end
+function M.preparePickup(r,line)
+    if not r.activeAttempt or r.activeAttempt.kind~='TAKE' or r.activeAttempt.itemId~=line.itemId then return nil,'HAUL_ATTEMPT_REQUIRED' end
+    local value=obligation(r,line,'RECONCILE_REQUIRED')
+    return {{action='CREATE',id=value.id,record=value}}
+end
+function M.observeHeld(r,line)
+    if r.activeAttempt or r.controlUncertain then return false,'HAUL_RECONCILE_REQUIRED' end
+    local previous=line.obligationId and Registry.data().obligations.byId[line.obligationId]
+    if line.obligationId and not previous then return false,'HAUL_OBLIGATION_MISSING' end
+    if previous and previous.state~='SETTLED' then
+        if previous.jobId~=r.id or previous.data.itemId~=line.itemId then return false,'HAUL_OBLIGATION_MISMATCH' end
+        if previous.state=='RECONCILE_REQUIRED' then
+            line.custodyState='CARRIED'
+            return M.commit(r,nil,{{action='CONFIRM',id=previous.id,expectedRevision=previous.revision,
+                evidence={effects='KNOWN',itemId=line.itemId,originalPresent=true}}})
+        end
+        if line.custodyState=='CARRIED' then return true end
+        if line.custodyState~='UNCOLLECTED' then return false,'HAUL_RECONCILE_REQUIRED' end
+        line.custodyState='CARRIED' return M.commit(r)
+    end
+    if line.custodyState~='UNCOLLECTED' then return false,'HAUL_OBLIGATION_MISSING' end
+    local value=obligation(r,line,'ACTIVE') line.custodyState='CARRIED'
+    return M.commit(r,nil,{{action='CREATE',id=value.id,record=value}})
+end
+function M.commit(r,capacity,obligationOps)
+    if r.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
     local e=entry(r)
     if not e or e.failed then return false,'HAUL_DRAFT_STALE' end
     if JobState.isTerminal(e.job.state) then return r.state==e.job.payload.state and r.generation==e.job.payload.generation,'JOB_TERMINAL' end
@@ -94,19 +127,20 @@ function M.commit(r,capacity)
 	for _,key in ipairs(r.claims) do want[key]=true if not have[key] then add[#add+1]=key end end
 	for _,key in ipairs(token.resources) do if not want[key] then remove[#remove+1]=key end end
 	local ok,why,evidence=Store.mutateJob(r.id,e.job.revision,r,{addKeys=add,removeKeys=remove,capacity=capacity,
-	    state=state,effects=effects,obligations=cleared and {} or {business=true}})
+	    state=state,effects=effects,obligations=cleared and {} or {business=true},obligationOps=obligationOps})
 	if not ok then
 	    local current=Jobs.current():peek(r.id)
 	    e.failed=not current or current.revision~=e.job.revision
 	    return false,why,evidence
 	end
-	capacity=nil e.job=Jobs.current():peek(r.id)
+	capacity=nil obligationOps=nil e.job=Jobs.current():peek(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'HAUL_POST_COMMIT_CHANGED' end
 	if e.job.state==target then return true end
     end
     e.failed=true return false,'HAUL_TRANSITION_UNRESOLVED'
 end
 function M.claim(r)
+    if r.format~=3 then return nil,'TASK_FORMAT_UNSUPPORTED' end
     currentWorld() local e=entry(r)
     if not e then
 	for _,job in ipairs(Jobs.current():forNpc(r.npcId)) do
@@ -114,8 +148,16 @@ function M.claim(r)
 		and not require('EmberRoutesProbe/Crafting/ProductionYield').assetFree(job.payload) then return nil,'OTHER_TASK_RETAINED' end
 	end
 	r.generation=(r.generation or 0)+1 r.sequence=r.generation r.claims=Record.activeClaims(r)
+	if r.activeAttempt then return nil,'HAUL_ATTEMPT_RECONCILE_REQUIRED' end
+	local obligationOps={}
+	for _,line in ipairs(r.manifest) do
+	    if line.custodyState=='CARRIED' or line.custodyState=='RECONCILE' then
+	        local value=obligation(r,line,line.custodyState=='CARRIED' and 'ACTIVE' or 'RECONCILE_REQUIRED')
+	        obligationOps[#obligationOps+1]={action='CREATE',id=value.id,record=value}
+	    end
+	end
 	local ok,why=Store.createClaimedJob({id=r.id,npcId=r.npcId,providerType='HAUL',scopeId=r.settlementId or r.scopeId,
-	    orderId=r.orderId,revision=1,state='PREPARING',effects='KNOWN',obligations={business=true},payload=r})
+	    orderId=r.orderId,revision=1,state='PREPARING',effects='KNOWN',obligations={business=true},payload=r},obligationOps)
 	if not ok then return nil,why end
 	adopt(Jobs.current():get(r.id),r)
     else
@@ -132,6 +174,12 @@ function M.valid(r,generation,token)
     local e=entry(r)
     return e and not e.failed and r.state=='RUNNING' and r.generation==generation
 	and Store.validHaulJob(e.job,token) or false
+end
+function M.executionValid(r,generation,token)
+    local jobs=Jobs.current()
+    local job=jobs:peek(r.id)
+    if jobs:scopeBlocked(job and job.scopeId or r.settlementId or 'local-world',r.id) then return false end
+    return r.format==3 and M.valid(r,generation,token) or false
 end
 function M.capacity(r,key,weights,free)
     local before=r.reservation local amounts={}
@@ -153,6 +201,7 @@ function M.releaseCapacity(r,itemId)
     if not ok then r.reservation=before end return ok,why
 end
 function M.settle(r,token,generation,changes)
+    if r.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
     if not M.valid(r,generation,token) then return false,'HAUL_JOB_CHANGED' end
     for _,change in ipairs(changes) do
 	local line=Manifest.line(r,change.itemId)
@@ -160,19 +209,60 @@ function M.settle(r,token,generation,changes)
 	if Manifest.pending(line) then
 	    if change.state=='WITHDRAWN' and (line.custodyState~='UNCOLLECTED' or r.activeAttempt and r.activeAttempt.itemId==change.itemId)
 		or change.state=='DELIVERED' and (not change.receipt or not change.receipt.attemptId or not change.receipt.destinationId) then return false,'SETTLEMENT_INVALID' end
+	    if change.state=='WITHDRAWN' and line.obligationId then
+	        local owed=Registry.data().obligations.byId[line.obligationId]
+	        if not owed or owed.state~='SETTLED' then return false,'HAUL_OBLIGATION_RETAINED' end
+	    end
 	elseif line.custodyState~=change.state then return false,'SETTLEMENT_CHANGED' end
+    end
+    local obligationOps={}
+    local ledger=Registry.data().obligations
+    for _,change in ipairs(changes) do
+	local line=Manifest.line(r,change.itemId)
+	if change.state=='DELIVERED' then
+	    local owed=line.obligationId and ledger.byId[line.obligationId]
+	    if not owed then return false,'HAUL_OBLIGATION_MISSING' end
+	    if owed.state=='SETTLED' then
+	        local receipt=owed.settlement
+	        if not receipt or receipt.attemptId~=change.receipt.attemptId or receipt.destinationId~=change.receipt.destinationId then return false,'SETTLEMENT_CHANGED' end
+	    else
+	        obligationOps[#obligationOps+1]={action='SETTLE',id=owed.id,expectedRevision=owed.revision,
+	            evidence={effects='KNOWN',itemId=line.itemId,destinationId=change.receipt.destinationId,
+	                attemptId=change.receipt.attemptId,originalPresent=true}}
+	    end
+	end
     end
     for _,change in ipairs(changes) do
 	local line=Manifest.line(r,change.itemId) line.custodyState=change.state line.deliveryReceipt=change.receipt
 	if r.reservation then r.reservation.items[change.itemId]=nil end
     end
     r.delivered,r.withdrawn=Manifest.count(r)
-    return M.commit(r)
+    return M.commit(r,nil,#obligationOps>0 and obligationOps or nil)
 end
 function M.finish(r)
+    if r.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
     if r.controlUncertain or r.activeAttempt or #Manifest.claimItemIds(r)>0 then return false,'HAUL_OBLIGATION_RETAINED' end
     r.reservation=nil r.state='DONE' r.generation=r.generation+1
-    return M.commit(r,false)
+    local ok,why=M.commit(r,false)
+    if ok and r.producer=='LOGISTICS' and r.delivered==#r.items then
+        recent[r.npcId]={id=r.id,settlementId=r.settlementId,sourceMode=r.sourceMode,delivered=r.delivered,total=#r.items}
+    end
+    return ok,why
+end
+function M.recent(npcId)
+    Store.data()
+    currentWorld()
+    local saved=recent[npcId]
+    if not saved then return nil end
+    local copy={} for key,value in pairs(saved) do copy[key]=value end return copy
+end
+function M.clear(npcId)
+    local r=M.record(npcId) if not r then return true end
+    if r.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
+    if r.activeAttempt or r.controlUncertain or #Manifest.claimItemIds(r)>0 then return false,'HAUL_OBLIGATION_RETAINED' end
+    local ok,why=M.finish(r)
+    if not ok then return false,why end
+    recent[npcId]=nil return true
 end
 -- Cancellation is a terminal kernel intent, distinct from normal DONE.
 -- Body/order cancellation may pause with originals retained; it cannot call

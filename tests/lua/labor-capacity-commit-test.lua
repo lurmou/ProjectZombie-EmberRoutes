@@ -1,6 +1,7 @@
 -- Actual Job/Labor authority; no engine effects or disk codec.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
-local root={format=1,taskJobs={format=1,byId={}},containers={},quarantineResources={}}
+local root={format=2,taskJobs={format=1,byId={}},containers={},quarantineResources={},
+    obligations=require('EmberRoutesProbe/Kernel/ObligationLedger').fresh()}
 Registry.data=function() return root end
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'

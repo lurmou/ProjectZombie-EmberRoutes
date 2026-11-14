@@ -6,7 +6,7 @@ local Gate = require "EmberRoutesProbe/Kernel/RuntimeGate"
 local Jobs = require "EmberRoutesProbe/Kernel/JobStore"
 local Templates = require "EmberRoutesProbe/Kernel/ModDataTemplates"
 local Registry = {}
-local admittedRoot, admittedJobs
+local admittedRoot, admittedJobs, admittedObligations
 Registry.tags = Policy.order
 Registry.listeners = {}
 Registry.inventoryListeners = {}
@@ -73,16 +73,27 @@ function Registry.data(freshRoot)
     -- Version gate only: a refused root is returned untouched, so a failed
     -- admission never stamps or fills a table it will not use. The template
     -- is applied below, only after the job ledger check passes.
-    local ok,why=Templates.checkVersion(data,'WORK_FORMAT_UNSUPPORTED')
-    if not ok then error(why) end
+    if type(data)~='table' then error('WORK_FORMAT_UNSUPPORTED') end
+    local fresh=Templates.empty(data)
+    if not fresh and data.format~=2 then error('WORK_FORMAT_UNSUPPORTED') end
+    if data.toolCustody~=nil then error('TOOL_CUSTODY_FORMAT_UNSUPPORTED') end
     if data.containers~=nil and type(data.containers)~='table' then error('CONTAINER_FORMAT_UNSUPPORTED') end
-    if data~=admittedRoot or data.taskJobs~=admittedJobs then
-	local okJobs,reason=Jobs.check(data)
+    if data~=admittedRoot or data.taskJobs~=admittedJobs or data.obligations~=admittedObligations then
+	local ledger=require 'EmberRoutesProbe/Kernel/ObligationLedger'
+	if not fresh then
+	    local accepted,reason=ledger.check(data.obligations)
+	    if not accepted then error(reason) end
+	end
+        -- Validate a detached empty candidate; the actual fresh root remains
+        -- untouched until the Job and liability gates both accept it.
+        local freshLedger=fresh and ledger.fresh() or nil
+        local candidate=fresh and {obligations=freshLedger} or data
+	local okJobs,reason=Jobs.check(candidate)
 	if not okJobs then error(reason) end
 	-- No defaults, normalization or record publication before acceptance.
-	local opened,openWhy=Templates.open(data,Templates.templates.work,'WORK_FORMAT_UNSUPPORTED')
-	if not opened then error(openWhy) end
-	admittedRoot,admittedJobs=data,data.taskJobs
+	if fresh then data.obligations=freshLedger end
+	Templates.fill(data,Templates.templates.work)
+	admittedRoot,admittedJobs,admittedObligations=data,data.taskJobs,data.obligations
     end
     return data
 end

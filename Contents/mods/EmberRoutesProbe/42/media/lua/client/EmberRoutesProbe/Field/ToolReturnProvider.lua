@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 -- Tool return provider: dispatches independent tool return jobs via PublicWork.
 -- When a tool is held idle with no active job for 30 seconds, it offers a tool return order.
 local Store=require 'EmberRoutesProbe/Work/LaborStore'
@@ -8,7 +9,7 @@ local Provider={category='toolReturn',defaultPriority=4,idleThreshold=30000}
 local idleSince={}
 local idleItems={}
 local world,owned,nextRecovery=nil,{},0
-local iterator,scanState,scanKey
+local iterator,scanState,scanKey,scanDoc
 local function resetWorld()
     local root=Registry.data()
     if root~=world then world,owned,idleSince,idleItems,nextRecovery,iterator=root,{},{},{},0,nil end
@@ -17,7 +18,7 @@ end
 
 function Provider.discover(env)
     resetWorld()
-    local custodies=Store.custodyForNpc(env.npcId)
+    local custodies=Custody.forNpc(env.npcId)
     local now=env.now or 0
     for _,c in ipairs(custodies) do
         if c.state=='HELD' and not c.activeJobId and not c.returnJobId then
@@ -54,13 +55,13 @@ function Provider.claim(selected,npcId,jobId,env)
     resetWorld()
     local actor=env and env.actor
     local scopeId=env and env.entry and env.entry.id
-    local ok,err=ToolReturnService.startFor(actor,npcId,selected.custodyId,jobId,scopeId,{trackResult=true})
+    local ok,err,rolledBack=ToolReturnService.startFor(actor,npcId,selected.custodyId,jobId,scopeId,{trackResult=true})
     if ok then
         idleSince[selected.custodyId]=nil idleItems[selected.custodyId]=nil
         owned[jobId]={key=selected.key,directory=env.directory}
         return 'STARTED'
     end
-    -- startFor aborts its own return intent before refusing after assignment.
+    if rolledBack==false or require('EmberRoutesProbe/Kernel/CommitFence').status() then return err or 'TOOL_RETURN_FAILED' end
     return err or 'TOOL_RETURN_FAILED','ROLLED_BACK'
 end
 
@@ -69,7 +70,7 @@ function Provider.reconcile()
     ToolReturnService.reconcile()
     local deadKeys={}
     for cid,_ in pairs(idleSince) do
-        local c=Store.custodyByItem and Store.custodyByItem(idleItems[cid])
+        local c=Custody.byItem and Custody.byItem(idleItems[cid])
         if not c or c.id~=cid or c.state~='HELD' or c.activeJobId or c.returnJobId then
             deadKeys[#deadKeys+1]=cid
         end
@@ -91,9 +92,9 @@ function Provider.advance(env)
     end
     if env.now<nextRecovery then return end
     nextRecovery=env.now+5000
-    local custodies=root.toolCustody and root.toolCustody.byId
-    if not custodies then return end
-    if not iterator or scanState~=custodies then iterator,scanState,scanKey=pairs(custodies) end
+    if not iterator or scanDoc~=root.obligations then
+        iterator,scanState,scanKey=ipairs(Custody.all()) scanDoc=root.obligations
+    end
     for _=1,4 do
         local key,c=iterator(scanState,scanKey) scanKey=key
         if not key then iterator=nil break end
@@ -104,10 +105,9 @@ function Provider.advance(env)
 end
 
 function Provider.hasWork()
-    local root=resetWorld()
+    resetWorld()
     for _ in pairs(owned) do return true end
-    for _ in pairs(root.toolCustody and root.toolCustody.byId or {}) do return true end
-    return false
+    return #Custody.all()>0
 end
 
 -- P4 (provider-lifecycle): an NPC mid-return still holds an unfinished

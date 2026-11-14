@@ -143,7 +143,9 @@ final class PreviewSession implements AutoCloseable {
         Map.entry('并', '併'), Map.entry('点', '點'), Map.entry('击', '擊'), Map.entry('觉', '覺'),
         Map.entry('资', '資'), Map.entry('备', '備'), Map.entry('条', '條'), Map.entry('认', '認'),
         Map.entry('军', '軍'), Map.entry('枪', '槍'), Map.entry('战', '戰'), Map.entry('疗', '療'),
-        Map.entry('业', '業')
+        Map.entry('业', '業'), Map.entry('烬', '燼'), Map.entry('测', '測'),
+        Map.entry('试', '試'), Map.entry('发', '發'), Map.entry('启', '啟'),
+        Map.entry('败', '敗'), Map.entry('请', '請'), Map.entry('志', '誌')
     );
 
     private static String s2t(String input) {

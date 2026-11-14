@@ -35,17 +35,17 @@ function M.run(binding,job,row,budget,runtime)
             if not declared[key] then return false,'PERSONAL_CLAIM_SET_UNCONFIRMED' end
         end
     end
-    -- Existing returns handles one primary original plus consumption outputs.
-    -- Never invent a route for an obligation outside that contract.
-    for name,owed in pairs(job.obligations) do
-        if name~='RETURN_ORIGINALS' or type(owed)~='table' or owed.itemId~=p.itemId
-            or owed.sourceId~=p.sourceId then return false,'PERSONAL_OBLIGATION_UNSUPPORTED' end
-    end
+    local outstanding=require('EmberRoutesProbe/SelfCare/SelfCareObligations').outstanding(job)
+    if outstanding==nil then return false,'PERSONAL_OBLIGATION_MISSING' end
     local scan=row.reconcile
     if not scan or scan.revision~=job.revision then
         scan={revision=job.revision,ids={},seen={},items={},index=1}
         local function add(id)
             if id==p.itemId and require('EmberRoutesProbe/SelfCare/MedicalRecord').consumed(p) then return end
+            local fact=p.consumption
+            if id==p.itemId and fact and fact.effects=='KNOWN' and fact.started and (fact.completed or fact.stopped)
+                and type(fact.after)=='number' and fact.after<=0.0001 and type(fact.consumed)=='number'
+                and fact.consumed>0 then return end
             if p.relief and p.relief.medical and id==p.relief.itemId
                 and require('EmberRoutesProbe/SelfCare/MedicalRecord').consumed({medical=p.relief.medical}) then return end
             if id and not scan.seen[id] then scan.seen[id]=true scan.ids[#scan.ids+1]=id end
@@ -78,11 +78,9 @@ function M.run(binding,job,row,budget,runtime)
     row.reconcile=nil
     if not ok then return false,reason end
     p.readingSite=nil -- the posture gate above proved physical exit
-    local obligations={}
-    if p.sourceId and p.itemId then obligations.RETURN_ORIGINALS={sourceId=p.sourceId,itemId=p.itemId} end
-    p.step=obligations.RETURN_ORIGINALS and 'SETTLING' or 'IDLE'
+    p.step=outstanding and 'SETTLING' or 'IDLE'
     p.lastKind=p.kind p.reason='PERSONAL_RECONCILED'
-    job.effects='KNOWN' job.obligations=obligations
+    job.effects='KNOWN'
     assert(Record.valid(job),'PERSONAL_RECORD_INVALID')
     -- Claim conflicts cannot be cured by classifying physical custody. Keep
     -- UNKNOWN if the authority cannot restore this attempt's declared claims.
@@ -90,7 +88,7 @@ function M.run(binding,job,row,budget,runtime)
     if not live or live.revision~=job.revision then return false,'PERSONAL_JOB_CHANGED' end
     local token=Store.claimPersonal(live)
     if not token then return false,'PERSONAL_CLAIM_CONFLICT' end
-    if not Commit.update(job.id,job.revision,{payload=p,obligations=obligations,effects='KNOWN',state='SUSPENDED'}) then
+    if not Commit.update(job.id,job.revision,{payload=p,effects='KNOWN',state='SUSPENDED'}) then
         return false,'PERSONAL_JOB_CHANGED'
     end
     if p.step=='IDLE' and not Store.finishPersonal(Jobs.current():get(job.id),token) then return false,'PERSONAL_RELEASE_FAILED' end

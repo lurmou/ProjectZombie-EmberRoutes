@@ -60,6 +60,9 @@ function M.commit(r)
     r.sequence=r.generation r.claims=Record.activeClaims(r)
     local target,effects,cleared=desired(r)
     local obligations=cleared and {} or {business=true}
+    local obligationOps,obligationWhy=require('EmberRoutesProbe/Crafting/ProductionObligations').prepare(
+        {id=r.id,npcId=r.npcId,effects=effects,payload=r},e.job)
+    if obligationWhy then return false,obligationWhy end
     for _=1,3 do
 	local state=nextState(e.job.state,target)
 	local token=Store.getToken(r.id)
@@ -69,12 +72,13 @@ function M.commit(r)
 	for _,key in ipairs(r.claims) do want[key]=true if not have[key] then add[#add+1]=key end end
 	for _,key in ipairs(token.resources) do if not want[key] then remove[#remove+1]=key end end
 	local ok,why=Store.mutateJob(r.id,e.job.revision,r,
-	    {addKeys=add,removeKeys=remove,state=state,effects=effects,obligations=obligations})
+	    {addKeys=add,removeKeys=remove,state=state,effects=effects,obligations=obligations,obligationOps=obligationOps})
 	if not ok then
 	    local current=Jobs.current():peek(r.id)
 	    e.failed=not current or current.revision~=e.job.revision
 	    return false,why
 	end
+	obligationOps=nil
 	e.job=Jobs.current():peek(r.id)
 	if not e.job or e.job.revision~=why then e.failed=true return false,'PRODUCTION_POST_COMMIT_CHANGED' end
 	if e.job.state==target then return true end
@@ -90,7 +94,9 @@ function M.create(r)
     r.claims=Record.activeClaims(r)
     local job={id=r.id,npcId=r.npcId,providerType='CRAFT',scopeId=r.settlementId,
 	orderId=r.orderId,revision=1,state='PREPARING',effects='KNOWN',obligations={business=true},payload=r}
-    local ok,why=Store.createClaimedJob(job)
+    local ops,reason=require('EmberRoutesProbe/Crafting/ProductionObligations').prepare(job)
+    if reason then return nil,reason end
+    local ok,why=Store.createClaimedJob(job,ops)
     if not ok then return nil,why end
     adopt(Jobs.current():get(r.id),r)
     local token=Store.getToken(r.id)

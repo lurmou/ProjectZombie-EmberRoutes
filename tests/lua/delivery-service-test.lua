@@ -96,7 +96,7 @@ check(Work.resumeFor(actor,npc.id)=='QUEUED','rejected queued grant can recover 
 check(Store.owner(item1:getID()) and Store.owner(item2:getID()),'queued Job already durably claims originals before body grant')
 check(not offer(o,f.b),'second NPC cannot claim allocated order')
 local conflict={id=Registry.id(),npcId=f.b.id,generation=0,items={item1:getID()},format=1}
-check(not Store.claim(conflict),'other work cannot claim same original')
+check(not require('EmberRoutesProbe/Hauling/HaulJobs').claim(conflict),'other work cannot claim same original')
 actor.moving=true actor.x=45.5
 for _=1,150 do step(1,true) if item1:getContainer()==npc.root and item2:getContainer()==npc.root then break end end
 step(20,true)
@@ -159,7 +159,7 @@ local function clone(v)
 end
 local loaded=clone(Registry.data())
 Registry.data=function() return loaded end
-savedJob=Store.record(npc.id) savedOrder=Delivery.order(savedId)
+savedJob=require('EmberRoutesProbe/Hauling/HaulJobs').record(npc.id) savedOrder=Delivery.order(savedId)
 check(Store.owner(savedItem:getID()) and savedJob.reason=='SAVE','fresh root rebuild restores the same original claim')
 late:perform()
 check(savedItem:getContainer()==npc.root and #playerInventory.items==2,'old callback cannot operate after world/Session rebuild')

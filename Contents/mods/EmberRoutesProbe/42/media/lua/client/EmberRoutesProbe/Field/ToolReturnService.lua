@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 -- Tool return service: executes independent tool return jobs under TaskRuntime.
 -- Ensures that tools held in worker inventory are safely returned to warehouse storage.
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
@@ -55,7 +56,7 @@ function Service.interrupt(npcId,reason)
     local ok,why=runtime:stopJob(npcId,task.returnJobId,reason or 'TOOL_RETURN_INTERRUPTED')
     -- A cancelled pending request never received a body or dispatched an action.
     if ok and before and before.pending and not task.body then
-        if not Store.abortToolReturn(task.custodyId,task.returnJobId) then return false,'CUSTODY_CHANGED' end
+        if not Custody.abortReturn(task.custodyId,task.returnJobId,task.npc,task.item) then return false,'CUSTODY_CHANGED' end
         task.record.state='CANCELLED' task.stopPersisted=true
         task.knownStopped=true
         stoppedResult(task)
@@ -100,14 +101,14 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
     Service.reconcile()
     if live[npcId] then return false,'ALREADY_RETURNING' end
     local custody=nil
-    local list=Store.custodyForNpc(npcId)
+    local list=Custody.forNpc(npcId)
     for _,c in ipairs(list) do
         if c.id==custodyId then custody=c break end
     end
     if not custody then return false,'CUSTODY_NOT_FOUND' end
     local recovering=custody.state=='PENDING_RETURN' or custody.state=='RECONCILE_REQUIRED' and custody.returnIntent~=nil
     if recovering and (custody.returnJobId~=returnJobId or not custody.returnIntent) then
-        custody.state='RECONCILE_REQUIRED'
+        Custody.reconcile(custody.id,'RETURN_INTENT_REQUIRED')
         return false,'RETURN_INTENT_REQUIRED'
     end
 
@@ -126,7 +127,6 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         endpoint=Registry.resolve(destinationId,'put','local-world')
         if item and item:getContainer()==inv and (not endpoint or not endpoint.container
             or not Registry.revalidate(endpoint,'put','local-world')) then
-            custody.reason='DESTINATION_NOT_AVAILABLE'
             return false,'DESTINATION_NOT_AVAILABLE'
         end
         if endpoint and endpoint.container and not item then
@@ -142,9 +142,9 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         endpoint=findDestination(actor,npc,scopeId or 'local-world',item,custody.sourceContainerId)
         if not endpoint or not endpoint.container then return false,'DESTINATION_NOT_AVAILABLE' end
         destinationId=endpoint.id
-        local ok,err=Store.assignToolReturn(custodyId,returnJobId,
-            {format=1,jobId=returnJobId,destinationId=endpoint.id,scopeId=scopeId or 'local-world'})
-        if not ok then return false,err end
+        local ok,err=Custody.assignReturn(custodyId,returnJobId,
+            {format=1,jobId=returnJobId,destinationId=endpoint.id,scopeId=scopeId or 'local-world'},npc,item)
+        if not ok then return false,err,not require('EmberRoutesProbe/Kernel/CommitFence').status() end
     end
 
     local record={
@@ -160,7 +160,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         sequence=1
     }
     if not Record.valid(record) then
-        if not recovering then Store.abortToolReturn(custodyId,returnJobId) end
+        if not recovering and not Custody.abortReturn(custodyId,returnJobId,npc,item) then return false,'TOOL_RETURN_ROLLBACK_UNCONFIRMED',false end
         return false,'TOOL_RETURN_RECORD_INVALID'
     end
 
@@ -188,7 +188,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
 
     local runtime=Runtime.current()
     if not runtime or not runtime:accepting() then
-        if not recovering then Store.abortToolReturn(custodyId,returnJobId) end
+        if not recovering and not Custody.abortReturn(custodyId,returnJobId,npc,item) then return false,'TOOL_RETURN_ROLLBACK_UNCONFIRMED',false end
         return false,'RUNTIME_NOT_ACCEPTING'
     end
 
@@ -203,7 +203,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
     end
     local function transferAllowed()
         local owner=Store.resourceOwner('item:'..task.itemId)
-        local c=Store.custodyByItem(task.itemId)
+        local c=Custody.byItem(task.itemId)
         return task.world==Registry.data() and not task.stopping and retained()
             and c and c.id==task.custodyId and c.returnJobId==task.returnJobId and c.state=='PENDING_RETURN'
             and owner and owner.taskId==task.custodyId
@@ -215,16 +215,16 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         if task.stopPersisted then return true end
         if not fact or fact.bodyStopped~=true then return false end
         if task.world~=Registry.data() then return false end
-        local custodyNow=Store.custodyByItem(task.itemId)
+        local custodyNow=Custody.byItem(task.itemId)
         if arrived() then
-            if not Store.completeCustodyReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item) then return false end
+            if not Custody.completeReturn(task.custodyId,task.returnJobId,task.endpoint.id,task.item) then return false end
             task.finished=true task.record.state='DONE' task.record.phase='SETTLED'
             task.knownStopped=true
         elseif retained() and task.stopReason=='SAVE' then
             -- Save is a pause, not evidence that the return obligation ended.
             task.record.state='PAUSED'
         elseif retained() then
-            if not Store.abortToolReturn(task.custodyId,task.returnJobId) then return false end
+            if not Custody.abortReturn(task.custodyId,task.returnJobId,task.npc,task.item) then return false end
             task.record.state='CANCELLED'
             task.knownStopped=true
         else
@@ -254,7 +254,10 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
             if task.recoveryOnly then task.finished=true return end -- Observation only; never repeat the transfer.
             if npc:isDead() or (actor and actor:isDead()) then
                 task.failed=true
-                if npc:isDead() then Store.settleNpcDeath(npcId) end
+                if npc:isDead() then
+                    local _,reason=Custody.retainOnDeath(npcId)
+                    task.record.reason=reason
+                end
                 return
             end
 
@@ -351,7 +354,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
         end,
         validate=function()
             if npc:isDead() or (actor and actor:isDead()) then return false end
-            local c=Store.custodyByItem(custody.itemId)
+            local c=Custody.byItem(custody.itemId)
             return c and c.id==custodyId and c.returnJobId==returnJobId
                 and (c.state=='PENDING_RETURN' or task.recoveryOnly and c.state=='RECONCILE_REQUIRED')
         end,
@@ -377,7 +380,7 @@ function Service.startFor(actor,npcId,custodyId,returnJobId,scopeId,options)
 
     local handle=runtime:submit(spec)
     if not handle then
-        if not recovering then Store.abortToolReturn(custodyId,returnJobId) end
+        if not recovering and not Custody.abortReturn(custodyId,returnJobId,npc,item) then return false,'TOOL_RETURN_ROLLBACK_UNCONFIRMED',false end
         return false,'SUBMIT_FAILED'
     end
 
@@ -402,7 +405,7 @@ function Service.reconcile()
         elseif not task.body and runtime then
             local result=runtime:inspect(task.handle)
             if result and (result.state=='CANCELLED' or result.state=='REJECTED')
-                and (task.recoveryOnly or Store.abortToolReturn(task.custodyId,task.returnJobId)) then
+                and (task.recoveryOnly or Custody.abortReturn(task.custodyId,task.returnJobId,task.npc,task.item)) then
                 task.record.state='CANCELLED' task.stopPersisted=true
                 task.knownStopped=not task.recoveryOnly
                 stoppedResult(task)
@@ -416,7 +419,7 @@ function Service.recoverFor(actor,npcId)
     Service.reconcile()
     npcId=tostring(npcId)
     if live[npcId] then return false,'ALREADY_RETURNING' end
-    local list=Store.custodyForNpc(npcId)
+    local list=Custody.forNpc(npcId)
     for _,c in ipairs(list) do
         if (c.state=='PENDING_RETURN' or c.state=='RECONCILE_REQUIRED') and c.returnJobId then
             return Service.startFor(actor,npcId,c.id,c.returnJobId,nil)

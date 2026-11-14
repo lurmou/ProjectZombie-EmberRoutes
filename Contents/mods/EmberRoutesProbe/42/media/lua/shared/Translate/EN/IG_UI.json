@@ -2184,5 +2184,8 @@
   "IGUI_EmberRoutesProbe_Chatter_Hold_Core_3": "covering this angle,",
   "IGUI_EmberRoutesProbe_Chatter_Hold_Close_1": "call if you need me.",
   "IGUI_EmberRoutesProbe_Chatter_Hold_Close_2": "watch your step out there.",
-  "IGUI_EmberRoutesProbe_Chatter_Hold_Close_3": "I'll keep eyes open."
+  "IGUI_EmberRoutesProbe_Chatter_Hold_Close_3": "I'll keep eyes open.",
+  "IGUI_EmberRoutesProbe_QA_Launch": "Ember Routes: Development Tests",
+  "IGUI_EmberRoutesProbe_QA_Starting": "Starting test world...",
+  "IGUI_EmberRoutesProbe_QA_StartFailed": "Start failed - check test log"
 }

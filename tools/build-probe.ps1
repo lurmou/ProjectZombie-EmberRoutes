@@ -287,6 +287,11 @@ if ($LASTEXITCODE -ne 0) { throw "$prefix Phase 1 Java kernel contract tests fai
 
 $manifestPath = Join-Path $staging 'MANIFEST.MF'
 
+& $javacCommand '--release' '17' '-encoding' 'UTF-8' '-cp' "$classes;$GameRoot/*" '-d' $tests (Join-Path $projectRoot 'tests/java/emberroutes/probe/QaFileProtocolTest.java')
+if ($LASTEXITCODE -ne 0) { throw "$prefix QA protocol test compilation failed" }
+& $javaCommand '-ea' '-cp' "$classes;$tests;$GameRoot/*" 'emberroutes.probe.QaFileProtocolTest'
+if ($LASTEXITCODE -ne 0) { throw "$prefix QA protocol tests failed" }
+
 [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 
 $builtJar = Join-Path $staging 'EmberRoutesProbe.jar'

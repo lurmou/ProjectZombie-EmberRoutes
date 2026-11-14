@@ -57,13 +57,13 @@ package.loaded['EmberRoutesProbe/Activity/SocialCoordinator']={withdraw=function
 -- The HAUL sections below go through the production path: the real
 -- HaulingProvider.retained (via Providers.retained), not a test double.
 -- Its only Work dependency is record(), stubbed here onto the real
--- LaborStore.record (production Work.record resolves the same way for a
+-- HaulJobs.record (production Work.record resolves the same way for a
 -- non-nil npcId); DeliveryService/LogisticsService are stubbed because
 -- retained never touches them.
 package.loaded['EmberRoutesProbe/Logistics/DeliveryService']={discover=function() end,
     claim=function() return 'QUEUED' end,hasWork=function() return false end,advance=function() end}
 package.loaded['EmberRoutesProbe/Logistics/LogisticsService']={}
-package.loaded['EmberRoutesProbe/Work/Work']={record=function(id) return Store.record(id) end}
+package.loaded['EmberRoutesProbe/Work/Work']={record=function(id) return require('EmberRoutesProbe/Hauling/HaulJobs').record(id) end}
 EmberRoutesProbeJava={workerCount=function() return 1 end,workerIdAt=function() return 'a' end}
 if ERLaborTestBridge then for name,method in pairs(ERLaborTestBridge) do EmberRoutesProbeJava[name]=method end end
 local Service=require 'EmberRoutesProbe/SelfCare/SelfCare'

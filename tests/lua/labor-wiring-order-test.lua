@@ -78,8 +78,8 @@ for _,e in ipairs(Manifest.jobKinds) do
     assert(Contracts.get(e.kind) and Contracts.get(e.kind).restoreClaims,'manifest kind lacks contract or recovery: '..e.kind)
     if e.monitor then assert(e.monitor().providerType==e.kind,'monitor providerType differs from its kind: '..e.kind) end
 end
-for _,e in ipairs(Manifest.categories) do
-    assert(e.provider().category==e.category,'provider category differs from manifest: '..e.category)
+for _,e in ipairs(require('EmberRoutesProbe/Kernel/DomainRegistry').providerEntries()) do
+    assert(require(e.module).category==e.category,'provider category differs from metadata: '..e.category)
     assert(e.providerType==nil or kinds[e.providerType],'category providerType is not a manifest kind: '..e.category)
 end
 
@@ -99,12 +99,12 @@ local expected={
     'category 6 lumberjack defaultPriority=3 hooks=advance,claim,discover,hasWork,reconcile,retained',
     'category 7 forager defaultPriority=3 hooks=advance,claim,discover,hasWork,reconcile,retained',
     'category 8 toolReturn defaultPriority=4 hooks=advance,beforeClaim,claim,discover,hasWork,reconcile,retained',
-    'contract 1 COOKING fields=capacityMutable,errorCodes,restoreClaims,schemaVersion,tokenBucket,transferReason,transferValid,transition,validate',
-    'contract 2 FIELD_WORK fields=capacityMutable,errorCodes,restoreClaims,schemaVersion,tokenBucket,validate',
+    'contract 1 COOKING fields=capacityMutable,errorCodes,obligationGuard,obligationRecord,restoreClaims,schemaVersion,tokenBucket,transferReason,transferValid,transition,validate,validateObligationOperation',
+    'contract 2 FIELD_WORK fields=capacityMutable,errorCodes,obligationGuard,obligationRecord,restoreClaims,schemaVersion,tokenBucket,validate',
     'contract 3 ACTIVITY fields=errorCodes,restoreClaims,schemaVersion,tokenBucket,validate',
-    'contract 4 SELF_CARE fields=errorCodes,persistentPersonal,restoreClaims,schemaVersion,tokenBucket',
-    'contract 5 CRAFT fields=blocksScope,errorCodes,identityCollision,restoreClaims,schemaVersion,transition,validate',
-    'contract 6 HAUL fields=capacityMutable,errorCodes,identityCollision,restoreClaims,schemaVersion,transition,validate',
+    'contract 4 SELF_CARE fields=errorCodes,obligationGuard,obligationRecord,persistentPersonal,restoreClaims,retireObligation,schemaVersion,tokenBucket,validate,validateObligationOperation',
+    'contract 5 CRAFT fields=blocksScope,errorCodes,identityCollision,obligationGuard,obligationRecord,restoreClaims,retireObligation,schemaVersion,scopeBlockedReason,transition,validate,validateObligationOperation',
+    'contract 6 HAUL fields=capacityMutable,errorCodes,identityCollision,obligationGuard,obligationRecord,restoreClaims,schemaVersion,transition,validate',
     'recovery 1 SELF_CARE SelfCare/SelfCareJobRecovery',
     'recovery 2 COOKING Cooking/CookingJobRecovery',
     'recovery 3 ACTIVITY Activity/ActivityJobRecovery',

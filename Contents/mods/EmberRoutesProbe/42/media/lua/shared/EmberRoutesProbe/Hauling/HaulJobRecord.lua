@@ -80,15 +80,9 @@ function R.valid(job)
     if p.reservation ~= nil then
         if type(p.reservation) ~= 'table' then return false end
         local res = p.reservation
-        if res.format ~= 1 and res.format ~= 2 then return false end
-        if not Validate.stringId(res.key) then return false end
-        if res.format == 2 then
-            if type(res.items) ~= 'table' then return false end
-            for itemId, amt in pairs(res.items) do
-                if not Validate.itemId(itemId) or type(amt) ~= 'number' or amt < 0 then return false end
-            end
-        else
-            if not Validate.itemId(res.itemId) or type(res.amount) ~= 'number' or res.amount < 0 then return false end
+        if res.format ~= 2 or not Validate.stringId(res.key) or type(res.items) ~= 'table' then return false end
+        for itemId, amt in pairs(res.items) do
+            if not Validate.itemId(itemId) or type(amt) ~= 'number' or amt < 0 then return false end
         end
     end
 

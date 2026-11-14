@@ -76,6 +76,9 @@ local data=Store.data()
 check(Store.validToolUse(1,'job-2',201),'after reload, custody claim rebuilt and valid for job-2')
 check(Store.validToolUse(1,'job-2',202),'after reload, fluid custody claim rebuilt and valid for job-2')
 check(not Store.canClaimTool(2,201),'after reload, other NPC still cannot steal claimed tool')
+local released,reason=Store.settleNpcDeath(1)
+check(released==0 and reason=='DEAD_CARRIER_OBLIGATION_RETAINED','death alone is not return evidence')
+check(Store.custodyByItem(201)~=nil and not Store.canClaimTool(2,201),'death keeps custody and claim')
 
 -- 5. Release Custody
 check(Store.releaseCustody(custody.id),'custody released')

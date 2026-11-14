@@ -16,7 +16,7 @@ ProbeNpc.doDeferredMovement 原先用 PathFindBehavior2.update 代替原版动�
 - 仅在同步 path.update 范围拦截 moveUnmodded；异常必须 finally 解除。原版朝向、倒退拖尸、开门和翻越分支保留。
 - 根运动只缩短至当前路点的剩余距离，不改变方向；原生停止减速继续消费，完成后不额外位移。
 - 未找到路径、取消、失败和空闲清掉残留根运动；已有家具姿态及床姿锚定保留。
-- 创建端仍为 moveTo/moveToFurniture/moveToBed/moveToCorpse；正常终止仍由 ProbeMovement.tick → stopProbe；异常仍为 update.catch → freeze → stopProbe。stopMask、Session、原件责任与保存格式不变。
+- 创建端为 NpcLocomotion.moveTo/moveToFurniture/moveToBed/moveToCorpse，由现有授权桥调用；正常终止由 ProbeMovement.tick → NpcLocomotion.tick → ProbeNpc.stopProbe（跟随分段仍走局部停止）；异常仍为 ProbeNpc.update.catch → freeze → stopProbe。stopMask、Session、原件责任与保存格式不变。
 - 不调转身速度、不新增导航器、不改已有联机适配。
 
 ## 验证边界
@@ -24,3 +24,5 @@ ProbeNpc.doDeferredMovement 原先用 PathFindBehavior2.update 代替原版动�
 构建、现有移动生命周期回归、根运动缩放的转角/倒退/末端边界回归，以及实际编译产物的调用检查。实机须集中观察直角转弯、精确接近家具、拖尸倒退、障碍翻越及停止后重进；未运行前不认定视觉和玩法验收完成。
 
 在线唯一需求已读取；其较旧联机与兼容条目由用户当前 AGENTS 决定覆盖。本轮不修改需求。
+
+2026-11-12 等价拆分：路径与跟随推进、退避、移动观察及卸载恢复目标归入每身体的 NpcLocomotion；床姿/家具退出状态与门禁归入每身体的 NpcPosture；ProbeNpc 保留引擎覆写/super、原生路径根运动临时摘除与 finally 恢复、停稳聚合和全身停止次序。该段仅更新实现位置，不改变上述位移契约；验证结果见 BACKLOG 与[试点记录](../plans/2026-11-12-movement-state-pilot.md)。

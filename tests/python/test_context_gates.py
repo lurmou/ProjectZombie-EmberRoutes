@@ -115,7 +115,7 @@ return require('EmberRoutesProbe/UI/' .. name)
         self.assertIn("'removedGlobal' is gone", errors[0])
 
     def test_kernel_category_names_cover_the_provider_registry(self):
-        self.put('client', 'Work/LaborManifest', "return {{category='cooking'},{category='crafting'}}")
+        self.put('shared', 'Kernel/BuiltinJobContracts', "return {{category='cooking'},{category='crafting'}}")
         # Since the opt-split-publicwork split, PublicWork.lua itself names no
         # category; the two order-creation 'cooking' literals live in
         # PublicWorkOrders.lua, checked under the same baseline.
@@ -131,11 +131,85 @@ return require('EmberRoutesProbe/UI/' .. name)
         self.assertIn('PublicWorkProviders.lua: 1 quoted category', errors[0])
 
 
+class DependencyGraphTests(unittest.TestCase):
+    """Counterexamples for the frozen same-area dependency graph.
+
+    The gate records what the source does today; it is not an acyclic-layer
+    proof. A new edge must be deliberate, a removed edge must lower the
+    baseline, and Kernel never gets an outgoing same-area edge.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        saved = set(arch.DOMAIN_EDGE_BASELINE)
+        self.addCleanup(lambda: (arch.DOMAIN_EDGE_BASELINE.clear(),
+                                 arch.DOMAIN_EDGE_BASELINE.update(saved)))
+        arch.DOMAIN_EDGE_BASELINE.clear()
+
+    def put(self, area, module, source='return {}'):
+        p = self.root/area/('EmberRoutesProbe/'+module+'.lua')
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding='utf-8')
+        return p
+
+    def errors(self):
+        errors = []
+        arch.check_dependency_graph(self.root, errors)
+        return errors
+
+    def test_new_same_area_edge_fails(self):
+        self.put('client', 'Cooking/Service')
+        self.put('client', 'Work/Service',
+                 'return require "EmberRoutesProbe/Cooking/Service"')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('client/Work|client/Cooking', errors[0])
+        self.assertIn('new same-area cross-domain dependency', errors[0])
+        self.put('shared', 'Cooking/Model')
+        self.put('shared', 'Crafting/Model',
+                 'return require "EmberRoutesProbe/Cooking/Model"')
+        self.assertTrue(any('shared/Crafting|shared/Cooking' in e
+                            for e in self.errors()))
+
+    def test_baselined_edge_passes_and_commented_require_is_not_an_edge(self):
+        arch.DOMAIN_EDGE_BASELINE.add('client/Work|client/Cooking')
+        self.put('client', 'Cooking/Service')
+        self.put('client', 'Work/Service',
+                 "-- require 'EmberRoutesProbe/Cooking/Absent'\n"
+                 "return require 'EmberRoutesProbe/Cooking/Service'")
+        self.assertEqual([], self.errors())
+
+    def test_removed_edge_requires_baseline_cleanup(self):
+        arch.DOMAIN_EDGE_BASELINE.add('client/Work|client/Cooking')
+        self.put('client', 'Cooking/Service')
+        self.put('client', 'Work/Service')
+        errors = self.errors()
+        self.assertEqual(1, len(errors))
+        self.assertIn('frozen dependency edge is gone', errors[0])
+
+    def test_kernel_edge_fails_even_when_baselined(self):
+        arch.DOMAIN_EDGE_BASELINE.add('shared/Kernel|shared/Work')
+        self.put('shared', 'Work/Model')
+        self.put('shared', 'Kernel/Bus',
+                 'return require "EmberRoutesProbe/Work/Model"')
+        self.assertTrue(any('Kernel must not require' in e for e in self.errors()))
+
+    def test_same_domain_and_computed_names_are_not_edges(self):
+        self.put('client', 'Cooking/A')
+        self.put('client', 'Cooking/B',
+                 'return require "EmberRoutesProbe/Cooking/A"')
+        self.put('client', 'Cooking/C',
+                 "return require('EmberRoutesProbe/Cooking/' .. name)")
+        self.assertEqual([], self.errors())
+
+
 class ProviderRetainedTests(unittest.TestCase):
     """Static side of the provider retained contract (P1-8).
 
-    The manifest is the only wiring the check resolves: PublicWork calls
-    e.provider() per LaborManifest entry and hands the def to
+    PublicWork loads each fixed client module listed in
+    shared/Kernel/BuiltinJobContracts and hands the returned def to
     Providers.register, which rejects a missing retained at runtime.
     """
 
@@ -152,10 +226,10 @@ class ProviderRetainedTests(unittest.TestCase):
 
     def manifest(self, entries):
         body = '\n'.join(
-            "    {category='%s',provider=function() return require '%s' end}," % (c, m)
-            for c, m in entries)
-        return self.put('client', 'Work/LaborManifest',
-                        'local M={}\nM.categories={\n' + body + '\n}\nreturn M')
+            "    {order=%d,category='%s',module='%s'}," % (i, c, m)
+            for i, (c, m) in enumerate(entries, 1))
+        return self.put('shared', 'Kernel/BuiltinJobContracts',
+                        'return {\n' + body + '\n}')
 
     def errors(self):
         errors = []
@@ -199,9 +273,27 @@ class ProviderRetainedTests(unittest.TestCase):
         self.assertTrue(any('without retained' in e for e in self.errors()))
 
     def test_manifest_unresolvable_provider_fails(self):
-        self.put('client', 'Work/LaborManifest',
-                 "local M={}\nM.categories={\n    {category='hauling',provider=someFn},\n}\nreturn M")
-        self.assertTrue(any('no literal-require provider thunk' in e for e in self.errors()))
+        self.put('shared', 'Kernel/BuiltinJobContracts',
+                 "return {{order=1,category='hauling',module=someFn}}")
+        self.assertTrue(any('requires literal category, module and order' in e for e in self.errors()))
+
+    def test_duplicate_category_and_wrong_layer_are_rejected(self):
+        self.put('shared', 'Hauling/HaulingProvider',
+                 "return {retained=function() end}")
+        self.manifest([('hauling', 'EmberRoutesProbe/Hauling/HaulingProvider'),
+                       ('hauling', 'EmberRoutesProbe/Hauling/HaulingProvider')])
+        errors = self.errors()
+        self.assertTrue(any('duplicate category' in e for e in errors))
+        self.assertTrue(any('not found' in e for e in errors))
+
+    def test_retirement_reference_must_be_fixed_client_predicate(self):
+        self.put('client', 'Cooking/CookingProvider', 'return {retained=function() end}')
+        p = self.manifest([('cooking', 'EmberRoutesProbe/Cooking/CookingProvider')])
+        p.write_text(p.read_text(encoding='utf-8') + "\nlocal r={retirement=someFn}", encoding='utf-8')
+        self.assertTrue(any('must be literal' in e for e in self.errors()))
+        p.write_text(p.read_text(encoding='utf-8').replace('retirement=someFn',
+                     "retirement='EmberRoutesProbe/Cooking/Missing'"), encoding='utf-8')
+        self.assertTrue(any('retirement module' in e and 'not found' in e for e in self.errors()))
 
     def test_manifest_missing_provider_module_fails(self):
         self.manifest([('hauling', 'EmberRoutesProbe/Hauling/Missing')])
@@ -230,9 +322,9 @@ class ProviderRetainedTests(unittest.TestCase):
         self.assertEqual([], self.errors())
 
     def test_non_manifest_retained_is_not_a_provider(self):
-        # CraftLegacyRecovery.M.retained(r, j) has a different signature and
-        # semantics; it is only examined if wired as a manifest provider.
-        self.put('client', 'Crafting/CraftLegacyRecovery',
+        # A domain module may export retained(r, j) for its own records; it is
+        # only examined when wired as a manifest provider.
+        self.put('client', 'Hauling/HaulJobs',
                  'local M={}\nfunction M.retained(r,j) return false end\nreturn M')
         self.put('client', 'Cooking/CookingProvider',
                  "local P={}\nfunction P.retained(id) return false end\nreturn P")

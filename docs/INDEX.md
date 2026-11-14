@@ -15,7 +15,7 @@
 | [anti-patching.md](../.agents/rules/anti-patching.md) | **反打补丁铁律**：严禁掩盖问题，必须自上而下追踪至数据模型与职责源头，方案权衡前置 |
 | [code-grounding-and-anti-sycophancy.md](../.agents/rules/code-grounding-and-anti-sycophancy.md) | **代码证据前置与反谄媚**：无行号不结论，必须出具创建认领、正常释放、异常打断闭环三要素代码位置 |
 | [provider-lifecycle.md](../.agents/rules/provider-lifecycle.md) | **工种生命周期铁律**：契约绝对一致、身体控制单点受控、原件责任四阶段闭环、零虚构降级、释放对称 |
-| [DECISIONS.md](../DECISIONS.md) | **核心架构决策日志**：DEC-001 ~ DEC-005 单一事实源与技术分工裁决 |
+| [DECISIONS.md](../DECISIONS.md) | **核心架构决策日志**：DEC-001 ~ DEC-012 单一事实源与技术分工裁决 |
 
 ---
 
@@ -26,7 +26,7 @@
 ```text
 media/lua/
 ├── shared/EmberRoutesProbe/          # 跨端公共领域层（数据模型、账本、规约）
-│   ├── Kernel/                       # 底层调度总线、时间轮、全局工具 (Boot, Log, TaskDirectory, LaborStore)
+│   ├── Kernel/                       # 底层调度总线、时间轮、全局工具 (Boot, Log, TaskDirectory, JobStore)
 │   ├── Settlement/                   # 据点几何、领地与成员策略
 │   ├── Work/                         # 工种契约、工单数据结构、调度选择器
 │   ├── Warehouse/                    # 仓库度量、查询、分类与过滤规则
@@ -40,7 +40,7 @@ media/lua/
 │
 └── client/EmberRoutesProbe/          # 客户端执行与表现层（控制器、服务、动作）
     ├── UI/                           # 【表现层】仪表盘、Widgets、卡片、小队 HUD
-    ├── Runtime/ & Kernel/            # 【驱动层】身体独占控制器 (Driver, TaskController, TaskRuntime)
+    ├── Runtime/                      # 【驱动层】身体独占控制器 (Driver, TaskController, TaskRuntime)
     ├── Settlement/                   # 【业务层】据点成员生命周期、小队服务 (SquadService)
     ├── Work/                         # 【调度层】统一工种发现器 (PublicWorkProviders)、工单流水
     ├── Warehouse/                    # 【仓储层】跨容器索引器 (WarehouseIndex)、货架定位器
@@ -50,15 +50,20 @@ media/lua/
     ├── Crafting/                     # 【制造层】工作台交互、配方执行与产物交付
     ├── Field/                        # 【野外层】农田打理、砍树、采集与产物入仓
     ├── Activity/                     # 【活动层】日程事件泵、场景剧本与出勤仲裁
+    ├── Chatter/                      # 【社交层】闲聊主题与发言节奏 (ChatterService, ChatterCatalog)
     ├── Leisure/                      # 【闲暇层】散步、吸烟、健身、坐姿休息动作
     ├── SelfCare/                     # 【自理层】卧床睡眠、急救包扎、自主进食执行
     └── Integration/                  # 【适配层】第三方模组桥接与原生环境适配
 ```
 
-### 依赖流向单向铁律
-$$\text{UI (表现)} \longrightarrow \text{Domain Services (业务)} \longrightarrow \text{Kernel / Runtime (底层驱动与存储)}$$
-* **严禁反向依赖**：底层或业务域严禁 `require "EmberRoutesProbe/UI/..."`；
-* **严禁越权控制身体**：全库仅允许通过 `TaskController` / `Driver` 获取身体独占授权，严禁业务服务直调 `ISTimedActionQueue.add`。
+### 依赖方向与现行门禁 (Dependency Gates)
+目标方向是 $\text{UI (表现)} \longrightarrow \text{Domain Services (业务)} \longrightarrow \text{Kernel / Runtime (底层驱动与存储)}$，但当前源码尚未做到分层单向。以下规则由 `tools/check-architecture.py` 实际强制：
+
+* **跨区**：`shared` 不得 `require` 客户端模块；业务域不得 `require "EmberRoutesProbe/UI/..."`，原版 UI 组合只由 `Integration` 承担。
+* **Kernel 底部**：`shared/Kernel`（以及将来的同层 Kernel）不得 `require` 同层其他领域，即使把该边写进基线也失败。
+* **同层跨域现状冻结**：`DOMAIN_EDGE_BASELINE` 记录当前 126 条同层跨域边，含 `client/Runtime -> client/<业务域>` 读取和业务域互引。新增边必须先改注册表/服务或显式调整基线；边消失则必须同步删除基线项。该基线只证明“现状被记录”，不证明无环或分层已达目标，拆循环不在本门禁范围。
+
+* **严禁越权控制身体**：全库仅允许通过 `TaskController` / `Driver` 获取身体独占授权，严禁业务服务直调 `ISTimedActionQueue.add`（callback-first 棘轮与 `tests/python/test_taskcontroller_single_point.py` 共同约束）。
 
 ---
 
@@ -136,6 +141,11 @@ $$\text{UI (表现)} \longrightarrow \text{Domain Services (业务)} \longrighta
 - [国际化双语闭环铁律](architecture/i18n-invariants.md)
 
 ### 5.5 活跃实施计划
+- [Claims 与领域契约收敛](superpowers/plans/2026-11-14-claims-contract-convergence.md)：claims 单实现、领域证据下沉、默认测试收口；[证据](reviews/2026-11-14/claims-contract-convergence.md)。
+- [依赖图与桥面签名门禁](reviews/2026-11-14/dependency-bridge-surface.md)：126 条同层依赖边冻结、Kernel 出边禁止、119 个桥面完整签名与变异反证；文档/注释对齐。静态与构建层，实机未验证。
+- [业务链架构收敛](superpowers/plans/2026-11-13-architecture-convergence.md)：领域注册、义务账本、提交与停止接缝；代码与自动检查完成，实机未验证，见[验收记录](reviews/2026-11-14/architecture-convergence.md)。
+- [原生游戏自动 QA](superpowers/plans/2026-11-12-native-qa.md)：[设计](superpowers/specs/2026-11-12-native-qa-design.md)，隔离世界、主菜单/文件同入口与真实场景结果。
+- [Java 身体执行职责收敛](superpowers/plans/2026-11-12-movement-state-pilot.md)：移动状态类型化、每身体移动/姿态组件、身体桥接内部协议类型，保持 Lua 参数及停止恢复语义。
 - [声明式布局后续任务与最终方案（待确认）](superpowers/plans/2026-11-07-declarative-layout-followup.md)：Phase 1 收口、Host 显式适配、仓储工具栏试点与验收；Phase 2 接口待确认，尚未实施。
 - [工程上下文校准](superpowers/plans/2026-11-06-context-calibration.md)：现行契约/手册/静态门禁已对齐，见[0.29.54检查与失败边界](reviews/2026-11-06/context-calibration.md)。
 - [能力缺口补全计划 (2026-11-05)](superpowers/plans/2026-11-05-capability-gap-closure.md)

@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 -- Tool discovery service: evaluates tool availability for field candidates,
 -- scanning worker inventory first, then searching settlement warehouse containers
 -- with bounded budgets.
@@ -29,7 +30,7 @@ local function betterWater(item,needUses,usedItemIds,npcId)
     if not item or usedItemIds[item:getID()] then return nil end
     if not ToolReq.matchPhysical(item,'WATER_FLUID') then return nil end
     if D.uses(item)<needUses then return nil end
-    if not Store.canClaimTool(npcId,item:getID()) then return nil end
+    if not Custody.canClaim(npcId,item:getID()) then return nil end
     return item
 end
 
@@ -59,7 +60,7 @@ function D.findSupplies(entry,npc,kind,needUses,roleFilter)
                 if usedItemIds[i:getID()] then return false end
                 if not ToolReq.matchPhysical(i,role) then return false end
                 if roleFilter and not roleFilter(i,role) then return false end
-                return Store.canClaimTool(npcId,i:getID())
+                return Custody.canClaim(npcId,i:getID())
             end)
         end
         if foundItem then
@@ -103,7 +104,7 @@ function D.findSupplies(entry,npc,kind,needUses,roleFilter)
             if sq and ep.container and Registry.logistics(ep)~='EXCLUDED'
                 and Geometry.inside(entry,sq:getX(),sq:getY())
                 and ep.container:getItems():contains(req.item)
-                and not usedItemIds[req.item:getID()] and Store.canClaimTool(npcId,req.item:getID())
+                and not usedItemIds[req.item:getID()] and Custody.canClaim(npcId,req.item:getID())
                 and ToolReq.matchPhysical(req.item,role) then
                 req.endpoint=ep requirements[roleIndex[role]]=req
                 usedItemIds[req.item:getID()]=true table.remove(neededRoles,i)
@@ -135,10 +136,10 @@ function D.findSupplies(entry,npc,kind,needUses,roleFilter)
                         return nil,'FIELD_OBSERVING',{complete=false,missingRoles=neededRoles}
                     end
                     local it=items:get(i)
-                    if it and not Store.canClaimTool(npcId,it:getID()) then
+                    if it and not Custody.canClaim(npcId,it:getID()) then
                         for _,role in ipairs(neededRoles) do if ToolReq.matchPhysical(it,role) then reserved=true end end
                     end
-                    if it and not usedItemIds[it:getID()] and Store.canClaimTool(npcId,it:getID()) then
+                    if it and not usedItemIds[it:getID()] and Custody.canClaim(npcId,it:getID()) then
                         for rIdx,role in ipairs(neededRoles) do
                             if ToolReq.matchPhysical(it,role) and (not roleFilter or roleFilter(it,role)) then
                                 usedItemIds[it:getID()]=true

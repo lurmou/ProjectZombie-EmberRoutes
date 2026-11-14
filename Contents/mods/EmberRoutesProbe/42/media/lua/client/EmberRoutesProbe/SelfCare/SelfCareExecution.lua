@@ -26,8 +26,11 @@ function Execution.reconcile(job,npc,items)
         return false,'MEDICAL_EFFECT_UNCONFIRMED'
     end
     if p.consumption then
-        if Actions.reconcile(c,items[p.consumption.itemId],p.consumption)~='KNOWN' then return false,'CONSUMPTION_UNCONFIRMED' end
-        p.consumption.effects='KNOWN' p.consumption.stopped=true
+        local fact=p.consumption
+        local consumed=fact.effects=='KNOWN' and fact.started and (fact.completed or fact.stopped)
+            and type(fact.after)=='number' and fact.after<=0.0001 and type(fact.consumed)=='number' and fact.consumed>0
+        if not consumed and Actions.reconcile(c,items[fact.itemId],fact)~='KNOWN' then return false,'CONSUMPTION_UNCONFIRMED' end
+        fact.effects='KNOWN' fact.stopped=true
     end
     if p.reading then
         if require('EmberRoutesProbe/Leisure/StudyActions').reconcile(c,items[p.reading.itemId],p.reading)~='KNOWN' then
@@ -59,7 +62,7 @@ end
 function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,reliefOnly,interruptCompanion)
     local world=Registry.data()
     local c={actor=actor,npc=binding.handle,job=job,payload=job.payload,effects=job.effects,
-        obligations=job.obligations,items=items or {},origin=candidate and candidate.container,
+        items=items or {},origin=candidate and candidate.container,
         leisureTarget=candidate and candidate.leisureTarget,leisureKey=candidate and candidate.targetKey}
     if candidate and candidate.id then c.items[candidate.id]=candidate.item end
     function c.sample() return require('EmberRoutesProbe/SelfCare/NeedsObserver').sample(c.npc,job.npcId,Clock.nowMs()) end
@@ -71,14 +74,14 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         local live=api.peek and api:peek(job.id) or api:get(job.id)
         return live and live.npcId==job.npcId and live.payload.attemptId==c.payload.attemptId or false
     end
-    function c.persist()
+    function c.persist(obligationOps)
         if not c.sameAttempt() then return false end
         local api=Jobs.current()
         local live=api.peek and api:peek(job.id) or api:get(job.id)
         -- Explicit player commands may invalidate the predecessor between native
         -- callbacks. Never overwrite that fact from a captured payload.
         c.payload.resume=live.payload.resume
-        return Commit.update(job.id,live.revision,{payload=c.payload,effects=c.effects,obligations=c.obligations})
+        return Commit.update(job.id,live.revision,{payload=c.payload,effects=c.effects,obligationOps=obligationOps})
     end
     -- The safety closure crosses into native zombie proximity per call; engine
     -- isValid and per-tick validation would otherwise scan every frame. Safety
@@ -142,18 +145,20 @@ function Execution.new(actor,binding,job,candidate,budgets,settle,items,safe,rel
         else
             -- Reconcile a take interrupted before native movement. Its original
             -- never left the source, so there is no outstanding return.
-            if c.payload.sourceId and not c.payload.consumption then
-                local endpoint=Registry.resolve(c.payload.sourceId,'take','local-world')
-                local item=c.items[c.payload.itemId]
-                if endpoint and item and item:getContainer()==endpoint.container then c.obligations={} end
+            local ledger=require 'EmberRoutesProbe/SelfCare/SelfCareObligations'
+            local owed=ledger.outstanding({id=job.id,npcId=job.npcId,payload=c.payload})
+            if owed==nil then return false end
+            if owed and not c.payload.consumption then
+                c.settlementOps=ledger.settlement(job,c.payload,c.items,c.effects,true)
+                if c.settlementOps then owed=false end
             end
-            local owed=false for _ in pairs(c.obligations) do owed=true break end
             if c.payload.readingSite then owed=true end
             c.payload.step=owed and 'SETTLING' or 'IDLE'
             c.payload.lastKind=c.payload.kind
         end
         c.payload.reason=c.reason
-        if not c.persist() then return false end
+        if not c.persist(c.settlementOps) then return false end
+        c.settlementOps=nil
         if c.payload.step=='IDLE' then
             -- Preparation can own claims before a body is granted. A rejected
             -- pending candidate must settle those claims even when start never ran.

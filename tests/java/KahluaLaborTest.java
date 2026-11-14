@@ -7,7 +7,9 @@ import se.krka.kahlua.vm.*;
 /** Installed PZ VM and stdlib, fake native bodies. Never initializes the game. */
 class KahluaLaborTest {
     public static void main(String[] args) throws Exception {
-        var files=args.length>0 ? Arrays.stream(args).filter(a->!a.startsWith("--")).toList() : List.of("labor-core-test.lua","sort-policy-test.lua","logistics-test.lua","multi-worker-test.lua","companion-test.lua","persistence-test.lua","boot-pause-test.lua");
+        var files=Arrays.stream(args).filter(a->!a.startsWith("--")).toList();
+        boolean defaultSuite=files.isEmpty() && !Arrays.asList(args).contains("--all");
+        if(defaultSuite) files=List.of("labor-core-test.lua","sort-policy-test.lua","logistics-test.lua","multi-worker-test.lua","companion-test.lua","persistence-test.lua","boot-pause-test.lua");
 	if (Arrays.asList(args).contains("--all")) {
 	    try (var paths=Files.list(Path.of("tests/lua"))) {
 		files=paths.map(p->p.getFileName().toString()).filter(n->n.endsWith("-test.lua")).sorted().toList();
@@ -34,6 +36,18 @@ class KahluaLaborTest {
 	    if (Arrays.asList(args).contains("--evidence-userdata")) {
 		var io=platform.newTable();io.rawset("stdout",new Object());env.rawset("io",io);
 	    }
+            // Every claims fixture uses the real graph implementation, even when
+            // native body APIs are replaced by Lua fakes. No Lua mutator exists.
+            var claimsBridge=platform.newTable();
+            claimsBridge.rawset("claimsCommand",(JavaFunction)(frame,n)->{
+                try {
+                    var claimsMethod=Class.forName("emberroutes.probe.ClaimsKernel").getMethod("command",KahluaTable.class,String.class,KahluaTable.class);
+                    frame.push(claimsMethod.invoke(null,frame.get(0),frame.get(1),frame.get(2)));return 1;
+                }
+                catch(java.lang.reflect.InvocationTargetException e){throw (RuntimeException)e.getCause();}
+                catch(ReflectiveOperationException e){throw new RuntimeException(e);}
+            });
+            env.rawset("ERLaborTestBridge",claimsBridge);env.rawset("EmberRoutesProbeJava",claimsBridge);
             env.rawset("next",null); // PZ gameplay does not expose the standard Lua next global.
 	    for(String arg:args) if(arg.startsWith("--cost-width=")) env.rawset("ERCostWidth",Double.valueOf(arg.substring(13)));
             if (Arrays.asList(args).contains("--timing"))
@@ -47,7 +61,7 @@ class KahluaLaborTest {
                 env.rawset("ERTestTranslations",translations);
             }
 	    if (Arrays.asList(args).contains("--java-job-data")) {
-		var bridge=platform.newTable();
+		var bridge=claimsBridge;
 		var method=Class.forName("emberroutes.probe.JobData").getMethod("copy",KahluaTable.class);
 		bridge.rawset("jobDataCopy",(JavaFunction)(frame,n)->{
 		    try { frame.push(method.invoke(null,frame.get(0))); return 1; }
@@ -56,9 +70,9 @@ class KahluaLaborTest {
 		});
 		env.rawset("EmberRoutesProbeJava",bridge);
 	    }
-	    if (Arrays.asList(args).contains("--java-labor")) {
-		var bridge=platform.newTable();
-		for(String[] binding:new String[][]{{"laborMutate","LaborCommitKernel","mutate"},{"laborCreate","LaborCommitKernel","create"},{"laborCancel","LaborCommitKernel","cancel"},{"jobDataCopy","JobData","copy"}}) {
+	    if (defaultSuite || Arrays.asList(args).contains("--java-labor")) {
+		var bridge=claimsBridge;
+		for(String[] binding:new String[][]{{"laborMutate","LaborCommitKernel","mutate"},{"laborCreate","LaborCommitKernel","create"},{"laborCancel","LaborCommitKernel","cancel"},{"laborTransfer","LaborCommitKernel","transfer"},{"laborCustody","LaborCommitKernel","custody"},{"jobDataCopy","JobData","copy"}}) {
 		    var method=Arrays.stream(Class.forName("emberroutes.probe."+binding[1]).getMethods()).filter(m->m.getName().equals(binding[2])).findFirst().orElseThrow();
 		    bridge.rawset(binding[0],(JavaFunction)(frame,n)->{
 			Object[] values=new Object[method.getParameterCount()];int offset=method.getParameterTypes()[0]==KahluaThread.class?1:0;
@@ -71,8 +85,8 @@ class KahluaLaborTest {
 		}
 		env.rawset("ERLaborTestBridge",bridge);env.rawset("EmberRoutesProbeJava",bridge);
 	    }
-	    if (Arrays.asList(args).contains("--java-dispatch")) {
-		var bridge=platform.newTable();
+	    if (defaultSuite || Arrays.asList(args).contains("--java-dispatch")) {
+		var bridge=claimsBridge;
 		for (String[] binding:new String[][]{
 		    {"dispatchChoose","DispatchSelection","choose"},{"planningWakeNew","PlanningInvalidation","create"},
 		    {"planningWakeLoad","PlanningInvalidation","load"},{"planningWakeRevision","PlanningInvalidation","revision"},

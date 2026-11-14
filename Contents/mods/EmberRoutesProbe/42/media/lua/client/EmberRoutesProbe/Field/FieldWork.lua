@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 -- Composed field providers. TaskRuntime owns bodies; JobStore/LaborStore own facts/claims.
 local Jobs=require 'EmberRoutesProbe/Runtime/TaskJobs'
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
@@ -134,18 +135,23 @@ function F.provider(def)
         local runtime=Runtime.current()
         if not runtime or not runtime:accepting() or runtime:owns(npcId) then return 'NPC_BUSY','ROLLED_BACK' end
         local binding=Driver.bindId(env.actor,npcId) if not binding or not Driver.valid(binding) then return 'BINDING_INVALID','ROLLED_BACK' end
-        local target,keys,why=def.claim(selected,binding.handle,env.entry)
-        if not target then return why or 'FIELD_TARGET_CHANGED','ROLLED_BACK' end
+        local target,keys,why,rollback=def.claim(selected,binding.handle,env.entry)
+        if not target then
+            if rollback==false then return why or 'TOOL_CUSTODY_ROLLBACK_UNCONFIRMED' end
+            return why or 'FIELD_TARGET_CHANGED','ROLLED_BACK'
+        end
         local function rollbackCustodies()
+            local complete=true
             if target.createdCustodies then
-                for _,cid in ipairs(target.createdCustodies) do Store.releaseCustody(cid) end
+                for _,cid in ipairs(target.createdCustodies) do if not Custody.releaseUncollected(cid,binding.handle) then complete=false end end
             elseif target.toolSupply and target.toolSupply.requirements then
-                for _,req in ipairs(target.toolSupply.requirements) do Store.releaseCustody(req.custodyId) end
+                for _,req in ipairs(target.toolSupply.requirements) do if not Custody.releaseUncollected(req.custodyId,binding.handle) then complete=false end end
             end
+            return complete
         end
         for _,key in ipairs(keys) do
             if Store.resourceOwner(key) then
-                rollbackCustodies()
+                if not rollbackCustodies() then return 'TOOL_CUSTODY_ROLLBACK_UNCONFIRMED' end
                 return 'FIELD_RESOURCE_RESERVED','ROLLED_BACK'
             end
         end
@@ -156,23 +162,26 @@ function F.provider(def)
                 toolSupply=target.toolSupply}}
         local ok,err,evidence=Store.createClaimedJob(j)
         if not ok then
-            rollbackCustodies()
             -- A write failure may have stored part of the Job and a failed
             -- restore may keep claims; only a refusal before the write is clean.
             if Store.createEffectsUnknown(err,evidence) then return err end
+            if not rollbackCustodies() then return 'TOOL_CUSTODY_ROLLBACK_UNCONFIRMED' end
             return err,'ROLLED_BACK'
         end
         if target.tools then
             for _,itemId in ipairs(target.tools) do
-                local c=Store.custodyByItem(itemId)
-                if c then Store.assignToolUse(c.id,jobId) end
+                local c=Custody.byItem(itemId)
+                if c then Custody.assignUse(c.id,jobId) end
             end
         elseif target.toolSupply and target.toolSupply.requirements then
-            for _,req in ipairs(target.toolSupply.requirements) do Store.assignToolUse(req.custodyId,jobId) end
+            for _,req in ipairs(target.toolSupply.requirements) do Custody.assignUse(req.custodyId,jobId) end
+        end
+        for _,cid in ipairs(target.initialHeldCustodies or {}) do
+            if not Custody.markHeld(cid,binding.handle) then return 'TOOL_HELD_UNPROVEN' end
         end
         local token=Store.claimField(Jobs.current():get(jobId))
         if not token then
-            rollbackCustodies()
+            if not rollbackCustodies() then return 'TOOL_CUSTODY_ROLLBACK_UNCONFIRMED' end
             local saved=Jobs.current():get(jobId)
             local proposed=Jobs.current():get(jobId)
             proposed.payload.claims={} proposed.payload.phase='SETTLED' proposed.payload.toolSupply=nil

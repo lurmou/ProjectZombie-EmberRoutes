@@ -8,6 +8,7 @@ local Companion=require 'EmberRoutesProbe/Settlement/Companion'
 local Actions=require 'EmberRoutesProbe/Runtime/Actions'
 local Haul=require 'EmberRoutesProbe/Hauling/Haul'
 local Log=require 'EmberRoutesProbe/Kernel/Log'
+local HaulJobs=require 'EmberRoutesProbe/Hauling/HaulJobs'
 local Save={}
 local active,loaded
 local function roster()
@@ -162,7 +163,7 @@ function Save.candidate(actor,id)
     elseif r.kind=='FIELD_WORK' then
         return require('EmberRoutesProbe/Field/FieldWork').wake(actor,id,r.jobId)
     elseif r.kind=='TRANSFER' then
-        local job=Store.record(id)
+        local job=HaulJobs.record(id)
         if job and job.id==r.jobId and job.producer=='DELIVERY' and not job.controlUncertain and not job.activeAttempt then
             return require('EmberRoutesProbe/Work/Work').resumeFor(actor,id)
         end

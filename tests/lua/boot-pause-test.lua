@@ -3,7 +3,12 @@ package.path = "Contents/mods/EmberRoutesProbe/42/media/lua/shared/?.lua;" .. pa
 DebugLog = { log = function(message) print(message) end }
 local function check(value, message) count = count + 1 assert(value, message) end
 local callbacks = {}
-local function tickPaused() for _=1,3 do callbacks.OnTickEvenPaused() end end -- one dispatch per three render fires
+local now = 0
+function getTimestampMs() return now end
+local function tickPaused()
+    now = now + 50
+    for _=1,3 do callbacks.OnTickEvenPaused() end
+end -- one dispatch per 50 ms, independent of render fires
 Events = {}
 for _, name in ipairs({"OnGameStart", "OnServerStarted", "OnTick", "OnTickEvenPaused", "OnPreMapLoad", "OnSave"}) do
     Events[name] = { Add = function(fn) callbacks[name] = fn end }
@@ -30,12 +35,7 @@ EmberRoutesProbeJava = {moveSeatWithControl=stub,reachedSeat=stub,
     workerCount=stub,workerIdAt=stub,saveCheckpointFor=stub,blockAllCheckpoints=stub,
 }
 local Probe = dofile("Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua")
--- Game loads EvenPaused alongside Boot; retirement rides the mod's single
--- even-paused dispatcher. Boot wired this itself before 67d0e15 dropped it,
--- so the test installs the same handler to exercise the paused path.
-require("EmberRoutesProbe/Kernel/EvenPaused").add(function()
-    if Probe.ready then EmberRoutesProbeJava.retirementTick() end
-end)
+-- Boot registers retirement with the shared even-paused dispatcher.
 Probe.controlledExecution=false -- Explicit legacy lifecycle fixture; activation has a separate regression.
 Probe.tickActions = function() jobs = jobs + 1 end
 Probe.tickHaul = Probe.tickActions
@@ -48,7 +48,7 @@ check(paused == 0, "paused cleanup does nothing before bridge begin")
 callbacks.OnGameStart()
 check(Probe.ready, "version-matched bridge starts")
 tickPaused()
-check(paused == 1 and jobs == 0 and normal == 0, "pause only calls dedicated cleanup/timer hook")
+check(paused == 1 and jobs == 0 and normal == 0, "pause only calls dedicated cleanup/timer hook: "..paused..","..jobs..","..normal)
 callbacks.OnTick()
 check(normal == 1 and jobs == 3, "ordinary tick remains the only job dispatcher")
 callbacks.OnPreMapLoad()

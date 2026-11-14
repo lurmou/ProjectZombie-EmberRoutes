@@ -2184,5 +2184,8 @@
   "IGUI_EmberRoutesProbe_Chatter_Hold_Core_3": "架枪盯好这个点，",
   "IGUI_EmberRoutesProbe_Chatter_Hold_Close_1": "有情况随时叫我。",
   "IGUI_EmberRoutesProbe_Chatter_Hold_Close_2": "你放心去吧。",
-  "IGUI_EmberRoutesProbe_Chatter_Hold_Close_3": "任何动静我都盯着。"
+  "IGUI_EmberRoutesProbe_Chatter_Hold_Close_3": "任何动静我都盯着。",
+  "IGUI_EmberRoutesProbe_QA_Launch": "余烬商路：开发测试",
+  "IGUI_EmberRoutesProbe_QA_Starting": "正在启动测试世界…",
+  "IGUI_EmberRoutesProbe_QA_StartFailed": "启动失败，请查看测试日志"
 }

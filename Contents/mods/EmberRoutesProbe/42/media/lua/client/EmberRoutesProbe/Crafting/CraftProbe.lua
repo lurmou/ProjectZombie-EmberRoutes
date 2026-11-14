@@ -10,10 +10,6 @@ function Craft.record(id)
     return r and r.format==4 and r or nil
 end
 function Craft.prepareRecovery()
-    local retirement=require('EmberRoutesProbe/Crafting/CraftLegacyRecovery')
-    for _ in pairs(retirement.records(require('EmberRoutesProbe/Warehouse/ContainerRegistry').data())) do
-        require('EmberRoutesProbe/Work/LaborStore').data() break
-    end
     require('EmberRoutesProbe/Crafting/ProductionJobs').prepareRecovery()
     require('EmberRoutesProbe/Work/LaborStore').data()
 end

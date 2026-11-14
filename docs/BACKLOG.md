@@ -4,6 +4,18 @@
 
 ## NPC 架构执行记录
 
+2026-11-14 依赖图与桥面门禁（静态/构建层，实机未验证）：实测 208 条字面跨模块边（同层 126、client→shared 82、shared→client 0），`client/Runtime` 对 10 个 client 业务域存在读取。`tools/check-architecture.py` 新增 `DOMAIN_EDGE_BASELINE` 冻结 126 条同层边并硬拒绝 Kernel 出边，5 项反例覆盖；`ProbeBridgeSurfaceTest` 改为 119 个公开静态入口的完整签名（名称/返回/有序参数），返回值、参数个数与重载三种变异反证均被拒。同步修正 INDEX/kernel/work/CHANGE_CHECKLIST/AGENTS 的陈旧计数与测试套件说明；LaborClaims 删除不可达的重复 `canShrink` 包装并更正头注释（Lua 只读校验与 Java 预检保留）。0.29.62 BUILD_OK，Python 门禁 47 项、默认七项与 claims-kernel-recovery 通过；phase3a-stage-b 的 `byId` 失败经 A/B 确认与本批无关。未提交推送；实机、磁盘与性能未验证。见[本批证据](reviews/2026-11-14/dependency-bridge-surface.md)。
+
+2026-11-14 全量架构收敛（代码与相关自动检查完成 / 实机未验证）：main 工作区完成搬运归域、领域注册与退休证据、独立责任账本及生产迁移、提交围栏、停止诊断与受限起立重试。续轮完成 claims Java 单实现（含隔离/冷恢复）、五个领域 JobObligationContract 下沉、默认失败测试按当前受控契约重建；另修复 LOGISTICS_STOPPED 持货 Job 在重启服务后不恢复的问题，停服务期间仍不恢复。0.29.62 BUILD_OK，最终相关 31 组回归全过，Python 门禁 42 项通过；不是全历史测试库全绿声明。正式世界根仍为 v2，旧格式拒绝并保留，不兼容迁移。未提交推送；实机、真实磁盘恢复与性能未验证。见[首轮证据](reviews/2026-11-14/architecture-convergence.md)与[本轮单实现及契约证据](reviews/2026-11-14/claims-contract-convergence.md)。
+
+2026-11-12 Java 移动状态类型化试点：ProbeNpc 的移动观察与路径诊断改为 ProbeMovement 内部枚举，以穷尽映射连接 Outcome 和原生 BehaviorResult；Lua 返回字符串、日志大小写、停止/恢复/授权判据保持原状，无兼容分支。build-probe.ps1 在设置 GAME_ROOT 后 BUILD_OK，102 项逻辑断言及固定检查通过；实机、故障恢复与性能未验证。范围与证据见[试点记录](superpowers/plans/2026-11-12-movement-state-pilot.md)。
+
+同日第二步（用户要求整组完成后测试）：路径/跟随/退避/移动恢复与诊断迁入每身体 NpcLocomotion，ProbeNpc 由 1187 行收敛为 718 行；CarrierRuntime、ProbeRuntime、CompanionNavigation 全部切换，被替代入口删除。原生 super、根运动 finally 恢复、姿态退出及全身停止协调保留；只修正卸载注释，不改变原有 STOPPED 结果。整组完成后集中构建一次 BUILD_OK，115 项桥接方法名、102 项逻辑断言与固定回归通过；22 个迁移方法体及停止次序结构核对通过。实机、故障恢复与性能未验证；床姿/家具退出职责仍在 ProbeNpc，后续单独评估，不宣称全库治理完成。详见上述试点记录第二步。
+
+同日第三步：床姿/地板姿态、家具足迹/退出证据及休息睡眠适配迁入每身体 NpcPosture，继续复用 BedPoseMotion/FurnitureExitState；ProbeNpc 由 718 行收敛为 248 行，保留原生覆写、停稳聚合与全身停止协调。全部 ProbeRuntime 姿态调用切换，旧入口删除；26 个方法体及展开后的停止/update/stopMask/根运动门禁结构比对通过。整组实现后集中构建一次 BUILD_OK 0.29.59，115 项桥接方法名、102 项逻辑断言及固定检查通过；无生产契约、Lua、持久格式或资产责任变化。实机床姿/碰撞/停止恢复、磁盘故障与性能未验证。详见上述试点记录第三步；后续评估桥接边界，尚未实施。
+
+同日第四步（身体桥接内部协议）：新增 BodyBridgeContract，集中休息种类/家具阶段枚举和 14 个停稳位；ProbeRuntime 在原授权围栏内转换类型，公开字符串/数字、拒绝值、守卫次序、冻结停止权限、退出时忽略 kind 及原件责任保持原状。现有表面检查原先仅验 115 个方法名，之前称“签名”不准确，历史条目已更正；本步新增 19 个身体入口完整签名检查及 41 项协议解析/拒绝输入/位值断言。整组完成后构建 BUILD_OK 0.29.59，115 方法名+19 身体签名、143 逻辑断言和固定检查通过，结构核对确认守卫与停稳表达式等价。实机、磁盘故障及性能未验证；其他 96 个公开方法没有完整签名覆盖，不宣称全桥面治理完成。范围和门禁注释误报处理见上述试点记录第四步。
+
 2026-11-11 LayoutHost 构建回滚修复（main 工作区，未发版）：修复 DSL build 的 AddChild 挂载后报错遗漏当前目标、提交 setVisible 异常逃逸及丢失清理责任。改为候选根 Stage、原生调用前保留 `_buildPending`、提交统一异常围栏、逆序回滚、待清理状态阻止激活/重复构建；dispose 可继续清理，未完成不报告 closed。干净回滚后可重新 build，条件求值和重入所有权也纳入边界。41项安装版 Kahlua 定向检查通过；真实 Java 原生 CN/EN 故障注入和截图回读通过；440份 Lua 普通/Debug 编译、架构/i18n（2186键）/未声明全局检查通过；局部8文件 LuaLS 0 error /44 warning。未跑完整打包/全库回归/游戏存档实机或性能测量；没有迁移新页面，既有已迁移页面的集中验收尚未完成。详见[修复闭环、源码哈希与证据](reviews/2026-11-07/layout-host.md#2026-11-11main-工作区构建提交回滚修复)。
 
 2026-11-11 Chatter「删 3 接 2」（版本基线 version.txt 0.29.59，未递增/未发版）：删除 `WORK_STORAGE_FULL` / `WORK_NO_TOOL` / `WORK_DONE` 三个 Catalog 条目及 CN/EN 各 24 键（5 静态全句 + 19 插槽，2210→2186）。`NEEDS_HUNGER` / `NEEDS_THIRST` 接入 `SelfCare.observe`（`SelfCare.lua:197-201`，1 秒采样节拍），新增 `ChatterService.observeNeeds` 消费 `NeedsPolicy.choose` 的已决 kind——阈值表为 local 且注释禁止复制，故未引入任何数值；`sample.safe~=true` 或 `safety~='SAFE'` 时不说话（UNKNOWN 契约），边沿触发 + 现有 8s 冷却防刷，`needEdge` 纳入 `purge`/`purgeAll`。取舍：沿用 `SelfCare.lua:263` 等既有写法传 `{safe=true}`，复用 idle 阈值（EAT 0.25 / DRINK 0.20），工作中 NPC 的台词会早于 workEnter 自护打断；Chatter 仍是纯表现层，不影响派工。验证：`check-architecture.py` 0 错误、`check-i18n.py` 2186 键对称、`check-undeclared-globals.py` 440 文件通过；Kahlua 单测（本机无 lua CLI）与实机表现 UNVERIFIED。`CMD_HOLD/HOME` 按用户决定暂不处理并登记待决。

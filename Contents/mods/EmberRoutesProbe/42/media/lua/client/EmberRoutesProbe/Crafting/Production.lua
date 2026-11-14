@@ -309,7 +309,15 @@ local function deliver(c,asset,callback)
     if source and Registry.accepts(source,item) and Registry.logistics(source)=='STORAGE' then
         local isOutput=false
         for _,candidate in ipairs(c.record.outputs) do if candidate==asset then isOutput=true break end end
-        if not isOutput then asset.destination=source.id if callback then callback() end return false end
+        if not isOutput then
+            asset.destination=source.id
+            if not require('EmberRoutesProbe/Crafting/ProductionObligations').returned(c.record,asset.id,source.id,Registry.id()) then
+                return nil,'PRODUCTION_OBLIGATION_MISSING'
+            end
+            changed(c,'ORIGINAL_AT_SOURCE')
+            if c.commitFailure then return nil,c.commitFailure end
+            if callback then callback() end return false
+        end
     end
     local output=false
     for _,candidate in ipairs(c.record.outputs) do if candidate==asset then output=true break end end
@@ -532,7 +540,7 @@ local function advance(c)
         for _,name in ipairs({"outputs","tools"}) do
             for _,asset in ipairs(r[name]) do
                 local item,reason=find(c,asset) if not item then return nil,reason end
-                proposed.held[#proposed.held+1]={id=asset.id,fullType=item:getFullType(),destination=asset.destination}
+                proposed.held[#proposed.held+1]={id=asset.id,fullType=item:getFullType(),destination=asset.destination,obligationId=asset.obligationId,returnEvidence=asset.returnEvidence}
             end
         end
         proposed.materials,proposed.tools,proposed.outputs={},{},{}

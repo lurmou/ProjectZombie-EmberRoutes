@@ -1,6 +1,6 @@
 local Store=require 'EmberRoutesProbe/Kernel/JobStore'
 local n=0 local function check(ok,label) n=n+1 assert(ok,label) end
-local root={} local store=assert(Store.open(root))
+local root={format=2,obligations=require('EmberRoutesProbe/Kernel/ObligationLedger').fresh()} local store=assert(Store.open(root))
 local function job(key) return {id=key,npcId='a',providerType='craft',scopeId='s',revision=1,state='PREPARING',
     effects='KNOWN',obligations={},payload={step=1}} end
 local a=job('one')
@@ -38,16 +38,18 @@ check(not api and reason=='LEGACY_TASK_RESET_REQUIRED' and old.craftProbes.byNpc
     'no compatibility: old task blocks initialization without deletion or conversion')
 check(not Store.open({taskJobs={format=2,byId={}}}),'future schema fails closed')
 check(not Store.open({taskJobs=true}) and not Store.open({taskJobs=false}) and not Store.open({craftProbes=true}),'malformed roots fail without overwriting data')
-local care=job('care') care.providerType='SELF_CARE'
+assert(require('EmberRoutesProbe/Kernel/JobContracts').register('TEST_PERSONAL',
+    {schemaVersion=1,persistentPersonal=true,errorCodes={}}))
+local care=job('care') care.providerType='TEST_PERSONAL'
 check(store:create(care),'unique personal job accepted')
-local personal=store:forNpc('a','SELF_CARE')
+local personal=store:forNpc('a','TEST_PERSONAL')
 check(#personal==1 and personal[1].id=='care' and #store:forNpc('a','craft')==1,'provider filter excludes unrelated payloads')
 personal[1].payload.step=99
 check(store:get('care').payload.step==1,'filtered personal snapshot remains detached')
-check(store:update('care',1,{payload={step=2}}) and store:forNpc('a','SELF_CARE')[1].payload.step==2,'indexed reads observe replacements without stale cache')
-check(#store:forNpc('unknown','SELF_CARE')==0 and #store:forNpc('a','unknown')==0,'missing actor/provider returns empty snapshot')
+check(store:update('care',1,{payload={step=2}}) and store:forNpc('a','TEST_PERSONAL')[1].payload.step==2,'indexed reads observe replacements without stale cache')
+check(#store:forNpc('unknown','TEST_PERSONAL')==0 and #store:forNpc('a','unknown')==0,'missing actor/provider returns empty snapshot')
 local reopened=assert(Store.open(root))
-check(reopened:forNpc('a','SELF_CARE')[1].id=='care' and #reopened:forNpc('a')==2,'world reopen rebuilds personal index without changing legacy reads')
+check(reopened:forNpc('a','TEST_PERSONAL')[1].id=='care' and #reopened:forNpc('a')==2,'world reopen rebuilds personal index without changing legacy reads')
 check(store:ordinaryCount()==1 and reopened:ordinaryCount()==1,'capacity count excludes recurring personal task and survives reopen')
 check(store:create(job('counted')) and store:ordinaryCount()==2,'capacity count advances on accepted ordinary creation')
 assert(store:update('counted',1,{state='SETTLING'})) assert(store:update('counted',2,{state='DONE'}))
@@ -58,8 +60,9 @@ local Contracts=require 'EmberRoutesProbe/Kernel/JobContracts'
 check(Contracts.register('TEST_DOMAIN',{schemaVersion=1,
     validate=function(j) return type(j.payload.work)=='number' end,
     transition=function(a,b) return b.payload.work>=a.payload.work,'TEST_WORK_REVERSED' end,
-    blocksScope=function(j) return j.payload.pending==true end,
-    errorCodes={TEST_WORK_REVERSED='work decreased across transition'},
+    blocksScope=function(j) return j.payload.pending==true end,scopeBlockedReason='TEST_SCOPE_BLOCKED',
+    obligationGuard=function(j) return j.payload.rejected~=true,'TEST_OBLIGATION_REJECTED' end,
+    errorCodes={TEST_WORK_REVERSED='work decreased across transition',TEST_SCOPE_BLOCKED='test pending work blocks scope',TEST_OBLIGATION_REJECTED='domain evidence missing'},
 }), 'new domain registers without editing core')
 check(not Contracts.register('TEST_DOMAIN',{schemaVersion=1,errorCodes={}}),'duplicate domain registration rejected')
 local custom=job('registered') custom.providerType='TEST_DOMAIN' custom.payload={work=1}
@@ -71,3 +74,11 @@ local old=store:get(custom.id) local proposed={work=4,nested={value=7}}
 check(store:update(custom.id,3,{payload=proposed}),'replacement accepted') proposed.nested.value=9
 check(store:get(custom.id).payload.nested.value==7 and old.payload.work==3,'single copy retains caller and prior-snapshot isolation')
 print('PASS registered domain extension and copy ownership checks')
+
+local refused=job('domain-refused') refused.providerType='TEST_DOMAIN' refused.payload={work=1,rejected=true}
+local ok,why=store:create(refused)
+check(not ok and why=='TEST_OBLIGATION_REJECTED' and not store:get(refused.id),'domain callback guards create before publication')
+local revision=store:get(custom.id).revision
+ok,why=store:update(custom.id,revision,{payload={work=5,rejected=true}})
+check(not ok and why=='TEST_OBLIGATION_REJECTED' and store:get(custom.id).revision==revision,'domain callback guards update without partial write')
+print('PASS domain obligation extension without Kernel provider branches')

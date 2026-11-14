@@ -9,6 +9,12 @@ function M.update(id,revision,patch)
     if not live or live.providerType~='SELF_CARE' then return false,'INVALID_REQUEST' end
     if live.revision~=revision then return false,'STALE_REVISION' end
     local payload=patch.payload or live.payload
+    local ops={} for _,op in ipairs(patch.obligationOps or {}) do ops[#ops+1]=op end
+    if live.payload.obligationId and payload.obligationId~=live.payload.obligationId then
+        local record=require('EmberRoutesProbe/SelfCare/SelfCareObligations').record(live)
+        if not record or record.state~='SETTLED' then return false,'PERSONAL_OBLIGATION_RETAINED' end
+        ops[#ops+1]={action='RETIRE',id=record.id,expectedRevision=record.revision}
+    end
     local before,after,add,remove={},{},{},{}
     local token=Store.getToken(id)
     -- After finishPersonal the recurring identity has no token. Rebuild its
@@ -28,6 +34,6 @@ function M.update(id,revision,patch)
     end
     for key in pairs(before) do if not after[key] then remove[#remove+1]=key end end
     return Store.mutateJob(id,revision,payload,{state=patch.state,effects=patch.effects,
-        obligations=patch.obligations,addKeys=add,removeKeys=remove})
+        obligationOps=#ops>0 and ops or nil,addKeys=add,removeKeys=remove})
 end
 return M

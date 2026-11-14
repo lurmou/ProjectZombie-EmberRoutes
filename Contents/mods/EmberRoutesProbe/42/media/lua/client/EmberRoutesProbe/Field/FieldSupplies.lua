@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 -- Field tool supply executor: drives navigation to warehouse containers,
 -- performs native ISInventoryTransferAction, verifies physical arrival in worker
 -- inventory, and transitions job phase from PREPARE to WORK.
@@ -10,16 +11,14 @@ local S={}
 
 local function transferNode(c,item,from,to,endpoint,req)
     local function valid()
-        if not c.valid() or not Store.validToolUse(c.job.npcId,c.job.id,item:getID()) then return false end
+        if not c.valid() or not Custody.validUse(c.job.npcId,c.job.id,item:getID()) then return false end
         return Registry.revalidate(endpoint,'take','local-world') and Transfer.reachable(c.npc,endpoint)
             and item:getContainer()==from and to:hasRoomFor(c.npc,item)
     end
     local function observe(ok,finished)
         if item:getContainer()==to and to:getItems():contains(item) then
-            local custody=Store.custodyByItem(item:getID())
-            if custody then
-                custody.state='HELD'
-            end
+            local custody=Custody.byItem(item:getID())
+            if not custody or not Custody.markHeld(custody.id,c.npc,item) then return false,false end
             Registry.inventoryChanged(from)
             Registry.inventoryChanged(to)
             return true,true
@@ -61,9 +60,9 @@ function S.step(c)
     for _,req in ipairs(reqs) do
         local inInv=inv:getFirstEvalRecurse(function(i) return i:getID()==req.itemId end)
         if inInv then
-            if not Store.validToolUse(c.job.npcId,c.job.id,req.itemId) then c.reason='TOOL_CUSTODY_CHANGED' return 'Failure' end
-            local custody=Store.custodyByItem(req.itemId)
-            if custody then custody.state='HELD' end
+            if not Custody.validUse(c.job.npcId,c.job.id,req.itemId) then c.reason='TOOL_CUSTODY_CHANGED' return 'Failure' end
+            local custody=Custody.byItem(req.itemId)
+            if not custody or not Custody.markHeld(custody.id,c.npc,inInv) then c.reason='TOOL_CUSTODY_CHANGED' return 'Failure' end
         else
             pendingReq=req
             break
@@ -145,7 +144,7 @@ function S.releaseUncollected(c,supply)
     local observed={}
     for _,req in ipairs(supply and supply.requirements or {}) do
         local held=c.npc:getInventory():getFirstEvalRecurse(function(item) return item:getID()==req.itemId end)
-        local custody=Store.custodyByItem(req.itemId)
+        local custody=Custody.byItem(req.itemId)
         if not custody or custody.id~=req.custodyId then return false end
         if held then observed[#observed+1]={custody=custody,held=true}
         else
@@ -163,8 +162,9 @@ function S.releaseUncollected(c,supply)
         end
     end
     for _,row in ipairs(observed) do
-        if row.held then row.custody.state='HELD'
-        elseif not Store.releaseCustody(row.custody.id) then return false end
+        if row.held then
+            if not Custody.markHeld(row.custody.id,c.npc) then return false end
+        elseif not Custody.releaseUncollected(row.custody.id) then return false end
     end
     return true
 end

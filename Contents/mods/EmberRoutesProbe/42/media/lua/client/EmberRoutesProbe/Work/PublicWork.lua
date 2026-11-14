@@ -86,7 +86,12 @@ local function assertRegister(def)
     local ok,err=Providers.register(def)
     if not ok then error('PROVIDER_REGISTRATION_FAILED:'..tostring(err)..':'..tostring(type(def)=='table' and def.category or '?')) end
 end
-for _,e in ipairs(require('EmberRoutesProbe/Work/LaborManifest').categories) do assertRegister(e.provider()) end
+require('EmberRoutesProbe/Kernel/BuiltinJobContracts').install()
+for _,e in ipairs(require('EmberRoutesProbe/Kernel/DomainRegistry').providerEntries()) do
+    local provider=require(e.module)
+    assert(provider.category==e.category,'PROVIDER_CATEGORY_MISMATCH:'..e.category)
+    assertRegister(provider)
+end
 
 function Service.metrics() return S.metrics:snapshot() end
 -- Diagnostic/test seam: recheck time of a sleeping NPC, nil when awake.

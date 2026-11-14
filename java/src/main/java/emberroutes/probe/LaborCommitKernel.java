@@ -21,10 +21,11 @@ public final class LaborCommitKernel {
         final KahluaTable claims;
         KahluaTable token,before,resources;
         boolean touched,casReached,created;
-        Object next,claimsRevision;
+        Object next,claimsRevision,generation;
         Tx(KahluaTable c) {claims=c;}
         void snapshot() {
             claimsRevision=g(claims,"revision");
+            generation=g(token,"generation");
             resources=shallow(t(token,"resources"));
             Object key=g(token,"capacityKey");
             KahluaTable previous=t(t(t(t(claims,"capacity"),key),"entries"),g(token,"taskId"));
@@ -51,6 +52,7 @@ public final class LaborCommitKernel {
                 }
                 for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),token);
                 token.rawset("resources",resources);
+                token.rawset("generation",generation);
                 ClaimsKernel.releaseCapacity(claims,token,null);
                 KahluaTableIterator it=t(before,"items").iterator();
                 while(it.advance())if(!ClaimsKernel.restore(claims,token,g(before,"key"),it.getKey(),it.getValue()))return false;
@@ -72,6 +74,109 @@ public final class LaborCommitKernel {
     public static KahluaTable cancel(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable claims,KahluaTable contracts,Object cleanup,Object id,Object rev,Object payload,Object command) {
         return change(vm,store,owner,claims,contracts,cleanup,id,rev,payload,command,true);
     }
+    /** Rotate the exact cooking claim before publishing the new Job owner. */
+    public static KahluaTable transfer(KahluaThread vm,KahluaTable store,KahluaTable state,Object id,Object rev,KahluaTable candidate,KahluaTable expected,Object obligationOps) {
+        boolean published=false,rotated=false;
+        KahluaTable claims=t(state,"claims"),owners=t(claims,"owners"),tokens=t(claims,"tokensByTaskId"),bucketTokens=t(state,"cookingTokens");
+        KahluaTable replacement=null,capacityEntry=null; Object previousSequence=g(claims,"nextClaimSeq");
+        try {
+            KahluaTable job=t(first(method(vm,store,"get",id)));
+            if(job==null || !eq(g(job,"revision"),rev))return failure("COOKING_JOB_CHANGED","JOB_CHANGED");
+            if(expected==null || g(bucketTokens,id)!=expected || g(tokens,id)!=expected
+                || !eq(g(expected,"taskId"),id) || !eq(g(expected,"claimId"),g(job,"claimId")))
+                return failure("COOKING_JOB_CHANGED","STALE_CLAIM_IDENTITY");
+            KahluaTable resources=t(expected,"resources");
+            if(resources==null)return failure("COOKING_JOB_CHANGED","RESOURCE_SET_MISSING");
+            for(int i=1;i<=resources.len();i++)if(g(owners,resources.rawget(i))!=expected)
+                return failure("COOKING_JOB_CHANGED","STALE_CLAIM");
+            Object capacityKey=g(expected,"capacityKey");
+            if(capacityKey!=null) {
+                capacityEntry=t(t(t(t(claims,"capacity"),capacityKey),"entries"),id);
+                if(capacityEntry==null || g(capacityEntry,"token")!=expected)
+                    return failure("COOKING_JOB_CHANGED","STALE_CAPACITY");
+            }
+            replacement=table();replacement.rawset("taskId",id);replacement.rawset("claimId",g(expected,"claimId"));
+            replacement.rawset("generation",g(t(candidate,"payload"),"sequence"));
+            replacement.rawset("resources",shallow(resources));
+            rotated=true; // Any subsequent exception may have changed the claim graph.
+            if(capacityEntry!=null) {replacement.rawset("capacityKey",capacityKey);capacityEntry.rawset("token",replacement);}
+            for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),replacement);
+            tokens.rawset(id,replacement);bucketTokens.rawset(id,replacement);
+            claims.rawset("nextClaimSeq",zero(previousSequence)+1);
+            // The store validates the exact domain handoff and notifies only
+            // after the replacement token is already authoritative.
+            published=true;
+            Object[] written=method(vm,store,"transferOwner",id,rev,candidate,obligationOps);
+            if(!yes(first(written))) {
+                published=false;
+                for(int i=1;i<=resources.len();i++)if(g(owners,resources.rawget(i))!=replacement)
+                    return failure("ROLLBACK_FAILURE","RECONCILE_REQUIRED:TRANSFER_OWNER_CHANGED");
+                if(g(tokens,id)!=replacement || g(bucketTokens,id)!=replacement || capacityEntry!=null && g(capacityEntry,"token")!=replacement)
+                    return failure("ROLLBACK_FAILURE","RECONCILE_REQUIRED:TRANSFER_TOKEN_CHANGED");
+                for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),expected);
+                tokens.rawset(id,expected);bucketTokens.rawset(id,expected);
+                if(capacityEntry!=null)capacityEntry.rawset("token",expected);
+                claims.rawset("nextClaimSeq",previousSequence);rotated=false;
+                return failure(written.length>1?text(written[1]):"COOKING_HANDOFF_CHANGED","TRANSFER_REJECTED");
+            }
+            return result(true,g(candidate,"revision"));
+        } catch(RuntimeException error) {
+            return failure(rotated && !published?"ROLLBACK_FAILURE":"TASK_WRITE_FAILURE",(published?"CAS_REACHED_RELOAD_FROM_SAVE:":rotated?"RECONCILE_REQUIRED:TRANSFER_ROTATION:":"")+text(error));
+        }
+    }
+    /** Independent tool custody: one obligation candidate and its exact claim. */
+    public static KahluaTable custody(KahluaThread vm,KahluaTable state,KahluaTable ledger,KahluaTable op,Object retirementVerifier) {
+        KahluaTable root=t(state,"root"),claims=t(state,"claims"),cache=t(state,"custodyTokens");
+        KahluaTable token=null; boolean acquired=false,released=false,published=false;
+        Tx tx=new Tx(claims);
+        try {
+            Object id=g(op,"id"),action=g(op,"action");
+            if(!(id instanceof String) || !(action instanceof String))return failure("INVALID_REQUEST","CUSTODY_INTENT_INVALID");
+            KahluaTable before=t(root,"obligations"),old=t(t(before,"byId"),id);
+            KahluaTable list=table();list.rawset(1.0,op);
+            Object[] proposed=call(vm,g(ledger,"propose"),before,list,retirementVerifier);
+            KahluaTable candidate=t(first(proposed));
+            if(candidate==null)return failure("CUSTODY_REJECTED",proposed.length>1?proposed[1]:"OBLIGATION_REJECTED");
+            if(g(root,"obligations")!=before)return failure("CUSTODY_REJECTED","OBLIGATION_CHANGED");
+            KahluaTable record="CREATE".equals(action)?t(op,"record"):old;
+            if(record==null || !"TOOL_CUSTODY".equals(g(record,"type")))return failure("INVALID_REQUEST","CUSTODY_TYPE_INVALID");
+            KahluaTable data=t(record,"data"); Object itemId=g(data,"itemId"); String key="item:"+text(itemId);
+            if("CREATE".equals(action)) {
+                KahluaTable resources=table();resources.rawset(1.0,key);
+                KahluaTable envelope=table();envelope.rawset("claimId",g(data,"claimId"));
+                KahluaTable response=ClaimsKernel.acquireNew(claims,id,g(data,"sequence"),resources,envelope);
+                if(!yes(g(response,"ok")))return failure("CLAIM_FAILURE",g(response,"result"));
+                token=t(response,"result");acquired=true;cache.rawset(id,token);
+            } else if("RETIRE".equals(action)) {
+                KahluaTable itemOwner=t(t(claims,"owners"),key);
+                if(!"SETTLED".equals(g(record,"state")) || g(cache,id)!=null || g(t(claims,"tokensByTaskId"),id)!=null
+                    || itemOwner!=null && eq(g(itemOwner,"taskId"),id))return failure("CUSTODY_REJECTED","CUSTODY_RETIREMENT_UNPROVEN");
+            } else {
+                token=t(cache,id);
+                if(!"RECONCILE".equals(action) && (token==null || g(t(claims,"tokensByTaskId"),id)!=token
+                    || g(t(claims,"owners"),key)!=token || !eq(g(token,"claimId"),g(data,"claimId"))))
+                    return failure("CLAIM_FAILURE","CUSTODY_CLAIM_CHANGED");
+                if("SETTLE".equals(action)) {
+                    tx.token=token;tx.snapshot();tx.touched=true;
+                    released=true;ClaimsKernel.release(claims,token);cache.rawset(id,null);
+                }
+            }
+            // No callback runs between claim/cache writes and this root swap.
+            published=true;root.rawset("obligations",candidate);
+            return result(true,id);
+        } catch(RuntimeException error) {
+            if(!published) {
+                try {
+                    if(acquired) {ClaimsKernel.release(claims,token);cache.rawset(g(op,"id"),null);}
+                    if(released) {
+                        if(!tx.restore())return failure("ROLLBACK_FAILURE","RECONCILE_REQUIRED:CUSTODY_RESTORE");
+                        t(claims,"tokensByTaskId").rawset(g(op,"id"),token);cache.rawset(g(op,"id"),token);
+                    }
+                } catch(RuntimeException restore) {return failure("ROLLBACK_FAILURE","RECONCILE_REQUIRED:CUSTODY_RESTORE:"+text(restore));}
+            }
+            return failure("TASK_WRITE_FAILURE",(published?"CAS_REACHED_RELOAD_FROM_SAVE:":"")+text(error));
+        }
+    }
     private static KahluaTable change(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable claims,KahluaTable contracts,Object cleanup,Object id,Object rev,Object payload,Object command,boolean cancelling) {
         Tx tx=new Tx(claims);
         String stage="INVALID_REQUEST";
@@ -86,6 +191,7 @@ public final class LaborCommitKernel {
             KahluaTable token=tx.token;
             if(token!=null && (!eq(g(token,"taskId"),id) || !eq(g(token,"claimId"),g(job,"claimId"))))return failure("CLAIM_FAILURE","STALE_CLAIM_IDENTITY");
             Set<Object> owned=keys(token==null?t(t(job,"payload"),"claims"):t(token,"resources"));
+            KahluaTable commitContract=t(first(call(vm,g(contracts,"get"),g(job,"providerType"))));
             if(g(mutation,"workCapacity")==null && token!=null)for(Object key:owned)
                 if(g(t(claims,"owners"),key)!=token)return failure("CLAIM_FAILURE","STALE_CLAIM");
             Set<Object> addSet=keys(add),removeSet=keys(remove);
@@ -164,11 +270,18 @@ public final class LaborCommitKernel {
             }
             stage="CLAIM_FAILURE";
             if(any(remove)) {String why=ClaimsKernel.shrink(claims,token,remove);if(why!=null)return tx.fail("CLAIM_FAILURE",why);}
+            // Any domain sequence is part of claim authority. Publish it before
+            // synchronous Job observers; a rejected CAS restores the old value.
+            if(token!=null && g(proposed,"sequence")!=null
+                && !eq(g(token,"generation"),g(proposed,"sequence"))) {
+                if(!tx.touched) {tx.snapshot();tx.touched=true;}
+                token.rawset("generation",g(proposed,"sequence"));
+            }
             KahluaTable patch=table();patch.rawset("payload",proposed);
             for(String f:new String[]{"state","effects","obligations"})if(g(mutation,f)!=null)patch.rawset(f,g(mutation,f));
             if(cancelling)patch.rawset("state","CANCELLED");
             stage="TASK_WRITE_FAILURE";tx.casReached=true;
-            Object[] cas=method(vm,store,cancelling?"cancel":"update",id,rev,patch);
+            Object[] cas=method(vm,store,cancelling?"cancel":"update",id,rev,patch,g(mutation,"obligationOps"));
             if(!yes(first(cas))) {
                 // Explicit rejection proves no publication; restore once.
                 tx.casReached=false;
@@ -182,7 +295,7 @@ public final class LaborCommitKernel {
             return result(true,tx.next);
         } catch(RuntimeException error) {return tx.fail(stage,"CALLBACK_OR_KERNEL_THROW:"+text(error));}
     }
-    public static KahluaTable create(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable state,KahluaTable contracts,Object allocate,KahluaTable job) {
+    public static KahluaTable create(KahluaThread vm,KahluaTable store,KahluaTable owner,KahluaTable state,KahluaTable contracts,Object allocate,KahluaTable job,Object obligationOps) {
         KahluaTable claims=t(state,"claims");Object id=g(job,"id");
         Tx tx=new Tx(claims);String stage="INVALID_REQUEST";
         try {
@@ -213,11 +326,19 @@ public final class LaborCommitKernel {
             KahluaTable rule=t(first(call(vm,g(contracts,"get"),g(job,"providerType"))));
             Object bucket=g(rule,"tokenBucket");
             KahluaTable bucketTokens=bucket==null?null:t(state,text(bucket)+"Tokens");
-            stage="TASK_WRITE_FAILURE";tx.casReached=true;
-            Object[] written=method(vm,store,"create",job);
-            if(!yes(first(written))) {tx.casReached=false;return tx.fail(stage,written.length>1?written[1]:"CREATE_REJECTED");}
-            t(state,"tokens").rawset(id,tx.token);
+            KahluaTable genericTokens=t(state,"tokens");
+            Object previousToken=g(genericTokens,id),previousBucketToken=g(bucketTokens,id);
+            // JobStore.create notifies synchronously. Publish the acquired token
+            // first, so every observer of the new Job sees its authority too.
+            genericTokens.rawset(id,tx.token);
             if(bucketTokens!=null)bucketTokens.rawset(id,tx.token);
+            stage="TASK_WRITE_FAILURE";tx.casReached=true;
+            Object[] written=method(vm,store,"create",job,obligationOps);
+            if(!yes(first(written))) {
+                genericTokens.rawset(id,previousToken);
+                if(bucketTokens!=null)bucketTokens.rawset(id,previousBucketToken);
+                tx.casReached=false;return tx.fail(stage,written.length>1?written[1]:"CREATE_REJECTED");
+            }
             return result(true,id);
         } catch(RuntimeException error) {
             return tx.fail(stage,"CALLBACK_OR_KERNEL_THROW:"+text(error));

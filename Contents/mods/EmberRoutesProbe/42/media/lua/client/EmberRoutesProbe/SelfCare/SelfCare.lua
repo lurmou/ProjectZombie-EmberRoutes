@@ -51,7 +51,8 @@ function Service.blocksWork(id)
     if not job then return false end
     local p=job.payload local ref=p.resume
     if job.effects~='KNOWN' or p.step~='IDLE' or #p.claims>0 then return true end
-    for _ in pairs(job.obligations) do return true end
+    local retained=require('EmberRoutesProbe/SelfCare/SelfCareObligations').outstanding(job)
+    if retained~=false then return true end
     return Resume.pending(ref,id)
 end
 function Service.activity(id)
@@ -91,8 +92,17 @@ function Service.prepareRemoval(id)
     local runtime=Runtime.current()
     if runtime and runtime:status(id,job.id) then runtime:stopJob(id,job.id,'REMOVE') return false end
     if job.effects~='KNOWN' or #job.payload.claims>0 then return false end
-    for _ in pairs(job.obligations) do return false end
+    if require('EmberRoutesProbe/SelfCare/SelfCareObligations').outstanding(job)~=false then return false end
     return job.payload.step=='IDLE'
+end
+-- An earlier settled record is retired when the next attempt is published.
+-- Rollback keeps the old idle facts but cannot restore a retired reference.
+local function rollbackSnapshot(job)
+    if job.payload.obligationId then
+        if require('EmberRoutesProbe/SelfCare/SelfCareObligations').outstanding(job)~=false then return false end
+        job.payload.obligationId=nil
+    end
+    return true
 end
 local function submit(actor,binding,job,candidate,row,settle,items,reliefOnly,interruptCompanion)
     local runtime=Runtime.current()
@@ -111,7 +121,7 @@ local function idle(job,row,reason)
     local token=Store.claimPersonal(job)
     if not token then row.reason='PERSONAL_CLAIM_CONFLICT' return end
     local p=job.payload p.step='IDLE' p.reason=reason
-    if not Commit.update(job.id,job.revision,{payload=p,obligations={}}) then return end
+    if not Commit.update(job.id,job.revision,{payload=p}) then return end
     if not Store.finishPersonal(job,token) then row.reason='PERSONAL_RELEASE_FAILED' end
 end
 local function settle(actor,binding,job,row)
@@ -371,7 +381,7 @@ local function advance(actor,binding,row,now)
         elseif candidate then
             job=job or personal(id,true) if not job then return end
             local before=job.payload local p=Record.begin(job,'LEISURE',before.resume)
-            if not p then use('Leisure/LeisureService').note(id,'PERSONAL_ATTEMPT_RETAINED') return end
+            if not p or not rollbackSnapshot(job) then use('Leisure/LeisureService').note(id,'PERSONAL_ATTEMPT_RETAINED') return end
             p.leisure=candidate.leisure p.settlementId=candidate.entry.id p.membershipRevision=candidate.membershipRevision
             p.activityRef=candidate.activityRef
             if p.leisure.roleDuty then p.claims={use('Leisure/LeisureRecord').tileKey(p.leisure.point)} end
@@ -462,7 +472,7 @@ local function advance(actor,binding,row,now)
         else row.floorScan=nil end
         row.scan=nil job=job or personal(id,true) if not job then return end
         local before=job.payload
-        local p=Record.begin(job,kind,before.resume) if not p then return end
+        local p=Record.begin(job,kind,before.resume) if not p or not rollbackSnapshot(job) then return end
         if site then p.site=site p.claims=require('EmberRoutesProbe/SelfCare/ReposeSites').keys(site,kind) end
         if floorSite then
             p.floorSite=floorSite p.settlementId=floorSite.settlementId p.claims={use('SelfCare/FloorSleep').key(floorSite)}
@@ -506,7 +516,7 @@ local function advance(actor,binding,row,now)
     job=job or personal(id,true) if not job then row.reason='PERSONAL_JOB_LIMIT' return end
     local before=job
     local p,why=Record.begin(job,kind,job.payload.resume)
-    if not p then row.reason=why return end
+    if not p or not rollbackSnapshot(job) then row.reason=why or 'PERSONAL_OBLIGATION_RETAINED' return end
     p.itemId=candidate.id p.sourceId=candidate.endpoint and candidate.endpoint.id
     p.settlementId=candidate.entry and candidate.entry.id
     if kind=='MEDICAL' then
@@ -521,18 +531,31 @@ local function advance(actor,binding,row,now)
         p.fraction=kind=='EAT' and math.min(1,math.max(.05,(sample.hunger-.08)/math.max(.001,available))) or .5
     end
     p.claims={'item:'..candidate.id}
-    local obligations=p.sourceId and {RETURN_ORIGINALS={sourceId=p.sourceId,itemId=p.itemId}} or {}
-    if not Commit.update(job.id,job.revision,{payload=p,obligations=obligations}) then return end
+    local operations
+    if p.sourceId then
+        local obligationId,op=require('EmberRoutesProbe/SelfCare/SelfCareObligations').create(job,p)
+        p.obligationId=obligationId operations={op}
+    end
+    if not Commit.update(job.id,job.revision,{payload=p,obligationOps=operations}) then return end
     job=Jobs.current():get(job.id)
     local token=Store.claimPersonal(job)
     local function rollback(reason)
         local live=Jobs.current():get(job.id)
-        if token then
-            if not Commit.update(live.id,live.revision,{obligations={}})
-                or not Store.finishPersonal(job,token) then error('PERSONAL_ROLLBACK_FAILED') end
+        if live.payload.obligationId then
+            local operations=require('EmberRoutesProbe/SelfCare/SelfCareObligations').settlement(
+                live,live.payload,{[candidate.id]=candidate.item},live.effects,true)
+            if not operations or not Commit.update(live.id,live.revision,{obligationOps=operations}) then
+                row.reason='PERSONAL_ROLLBACK_UNCONFIRMED' return
+            end
             live=Jobs.current():get(job.id)
         end
-        if not Commit.update(live.id,live.revision,{payload=before.payload,obligations=before.obligations}) then
+        if token then
+            if not Store.finishPersonal(job,token) then error('PERSONAL_ROLLBACK_FAILED') end
+            live=Jobs.current():get(job.id)
+        elseif #live.payload.claims>0 then
+            row.reason='PERSONAL_CLAIM_RETAINED' return
+        end
+        if not Commit.update(live.id,live.revision,{payload=before.payload}) then
             error('PERSONAL_ROLLBACK_FAILED')
         end
         row.reason=reason row.retryAt=now+3000

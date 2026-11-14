@@ -2,9 +2,6 @@
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Ledger=require 'EmberRoutesProbe/Settlement/SettlementLedger'
 local Policy=require 'EmberRoutesProbe/Settlement/MembershipPolicy'
--- Static wiring table only (no domain module loads on require): the
--- category set behind the labor switches below.
-local Manifest=require 'EmberRoutesProbe/Work/LaborManifest'
 local S={}
 local indexWorld,index,squadIndex,dirty=nil,{},{},true
 local contexts={WAIT=true,FOLLOW=true,RETURN=true,SETTLEMENT=true}

@@ -34,12 +34,13 @@ function npc:getMaxWeight() return 100 end
 function npc:getInventoryWeight() return #self.root.items end
 Service.preparePublic(actor,entry)
 Work.allowAutomation(npc.id)
-check(Work.assign(actor,npc.id,{producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',
+local started=Work.assign(actor,npc.id,{producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',
     source=Registry.metadata(source,source.container).id,destination=Registry.metadata(fridge,fridge.container).id,
-    items={a:getID(),b:getID(),c:getID()}})=='STARTED','start autonomous original batch')
+    items={a:getID(),b:getID(),c:getID()}})
+check(started=='STARTED','start autonomous original batch: '..tostring(started))
 local r=Work.record(npc.id) local id=r.id
 local beforeClear=require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id)
-check(not Store.clear(npc.id) and Store.owner(a:getID()) and require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision==beforeClear.revision,
+check(not require('EmberRoutesProbe/Hauling/HaulJobs').clear(npc.id) and Store.owner(a:getID()) and require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision==beforeClear.revision,
     'clear retains uncollected responsibility and persistent revision')
 -- Capacity rejection is a no-write result, not loss of the execution draft.
 local capItem=f.fixture.item('tool',source.container)
@@ -51,7 +52,7 @@ local capToken=assert(Store.getToken(r.id))
 local oldRevision=require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision
 check(not Store.capacity(capToken,a:getID(),capKey,1,1)
     and require('EmberRoutesProbe/Runtime/TaskJobs').current():get(r.id).revision==oldRevision
-    and Store.valid(r,r.generation,capToken),'capacity contention preserves authoritative revision and retryable execution')
+    and require('EmberRoutesProbe/Hauling/HaulJobs').executionValid(r,r.generation,capToken),'capacity contention preserves authoritative revision and retryable execution')
 capClaims:release(rival)
 check(Store.capacity(capToken,a:getID(),capKey,1,1),'capacity may be retried after competing reservation clears')
 assert(Store.releaseCapacity(capToken))
@@ -136,7 +137,7 @@ check(r.state=='PAUSED' and not Runtime.current():owns(npc.id),'USER pause is ne
 check(Work.taskCommand(actor,npc.id,r.id,r.generation,'resume')=='QUEUED','explicit resume grants fresh Session after claim shrink')
 for _=1,200 do controlled(1,true) if r.state=='DONE' and not Runtime.current():owns(npc.id) then break end end
 check(r.state=='DONE' and r.delivered==2 and not keys[npc] and not Store.owner(g:getID()),'controlled completion clears final claim/body without empty reacquire')
--- A current valid format=1 Job upgrades in place from observed IDs, never by quantity.
+-- Unsupported old format is rejected without moving any original.
 local legacyHeld=f.fixture.item('tool',npc.root)
 local legacyDone=f.fixture.item('food',food.container)
 local legacyUntaken=f.fixture.item('tool',source.container)
@@ -144,42 +145,45 @@ local legacy={id=Registry.id(),npcId=npc.id,format=1,kind='EXPLICIT_TRANSFER',sc
     producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',source=Registry.metadata(source,source.container).id,
     destination=Registry.metadata(food,food.container).id,items={legacyDone:getID(),legacyHeld:getID(),legacyUntaken:getID()},
     state='PAUSED',reason='FILTER_REJECTED item='..legacyHeld:getID(),phase='DELIVER',delivered=1}
-assert(Store.claim(legacy)) assert(Store.publish(legacy))
-check(Work.resumeFor(actor,npc.id)=='QUEUED' and legacy.format==2,'current paused format1 upgrades same Job with complete original evidence')
-for _=1,200 do controlled(1,true) if legacy.state=='DONE' and not Runtime.current():owns(npc.id) then break end end
-check(legacy.delivered==2 and legacy.withdrawn==1 and legacyHeld:getContainer()==tools.container
-    and legacyDone:getContainer()==food.container and legacyUntaken:getContainer()==source.container,
-    'upgrade preserves previous delivery, reroutes held original and withdraws untaken original')
--- Revoke access with a PUT already queued. The old snapshot cannot write/clear its successor.
+local legacyToken,legacyWhy=require('EmberRoutesProbe/Hauling/HaulJobs').claim(legacy)
+check(not legacyToken and legacyWhy=='TASK_FORMAT_UNSUPPORTED' and legacy.format==1,'old haul format is explicitly refused')
+check(legacyHeld:getContainer()==npc.root and legacyDone:getContainer()==food.container
+    and legacyUntaken:getContainer()==source.container,'refusal leaves every original in place')
+-- Revoke access during a PUT presentation. The captured poll cannot write after stop.
+local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
+local makeTransfer=Transfer.item local oldPut
+Transfer.item=function(context,item,from,to,endpoint)
+    local operation=makeTransfer(context,item,from,to,endpoint)
+    if from==npc.root then oldPut=operation end
+    return operation
+end
 local spare=box(22,{'food'})
 local moving=f.fixture.item('food',source.container)
 Work.allowAutomation(npc.id)
 check(Work.assign(actor,npc.id,{producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',
     source=Registry.metadata(source,source.container).id,destination=Registry.metadata(food,food.container).id,
     items={moving:getID()}})=='QUEUED','controlled revocation batch queued')
-local oldPut
 for _=1,100 do
     controlled(1,false)
-    local action=f.queued[npc]
-    if action then
-        if action.from==npc.root then oldPut=action break else action:perform() end
-    end
+    if oldPut then break end
 end
-check(oldPut~=nil,'PUT reaches native queue before policy changes')
+check(oldPut~=nil and moving:getContainer()==npc.root,'PUT presentation starts before policy changes')
 local denied=Filter.new() denied.private=true actor.x=12.5
 Registry.configure(actor,food,denied,food.container,'STORAGE')
 local readFood=food.container.getItems
 food.container.getItems=function() error('private target must not be inspected even by stop recovery') end
-oldPut:perform()
-controlled(20,false)
-r=Work.record(npc.id)
-check(not r.controlUncertain and moving:getContainer()==npc.root,'revoked queued PUT remains known from held original without private inventory read')
+for _=1,20 do
+    controlled(1,false) r=Work.record(npc.id)
+    if not r.activeAttempt and moving:getContainer()==npc.root then break end
+end
+check(not r.controlUncertain and moving:getContainer()==npc.root,'revoked PUT remains known from held original without private inventory read')
 for _=1,200 do
     controlled(1,true)
     if r.state=='DONE' and not Runtime.current():owns(npc.id) then break end
 end
 check(r.state=='DONE' and moving:getContainer()==spare.container,'private old target reroutes through a fresh controlled Session')
-oldPut:stop() oldPut:perform()
+oldPut.poll()
+Transfer.item=makeTransfer
 check(moving:getContainer()==spare.container and not Store.owner(moving:getID()),'late revoked callback neither replays original nor changes completed claim')
 food.container.getItems=readFood
 -- UNKNOWN may come from authority/collision recovery, even without an active
@@ -201,17 +205,17 @@ check(unknownJob.effects=='UNKNOWN' and unknownJob.state=='RECONCILE_REQUIRED' a
 -- Rebuild the world-local ledger from a paused, partially settled manifest.
 local reloadHeld=f.fixture.item('tool',npc.root)
 local reloadDone=f.fixture.item('tool',tools.container)
-local saved={id=Registry.id(),npcId=npc.id,format=2,kind='EXPLICIT_TRANSFER',scopeId='local-world',executor='ENTITY',
+local saved={id=Registry.id(),npcId=npc.id,format=3,kind='EXPLICIT_TRANSFER',scopeId='local-world',executor='ENTITY',
     producer='LOGISTICS',settlementId=entry.id,sourceMode='INTAKE',source=Registry.metadata(source,source.container).id,
     destination=Registry.metadata(tools,tools.container).id,items={reloadHeld:getID(),reloadDone:getID()},
     state='PAUSED',reason='USER',phase='DELIVER',generation=0,routeRevision=1,attemptSequence=1,plannedCount=2,manualPaused=true}
 saved.manifest=require('EmberRoutesProbe/Hauling/HaulManifest').create(saved,{[reloadHeld:getID()]=2,[reloadDone:getID()]=3})
-saved.delivered=1 assert(Store.claim(saved)) assert(Store.publish(saved))
+saved.delivered=1 assert(require('EmberRoutesProbe/Hauling/HaulJobs').claim(saved)) assert(require('EmberRoutesProbe/Hauling/HaulJobs').commit(saved))
 local root=Registry.data() local restored={}
 for k,v in pairs(root) do restored[k]=v end
 local oldGet=ModData.getOrCreate
 ModData.getOrCreate=function(name) if name=='EmberRoutes/Work/v1' then return restored end return oldGet(name) end
-local loaded=Store.record(npc.id)
+local loaded=require('EmberRoutesProbe/Hauling/HaulJobs').record(npc.id)
 check(loaded.id==saved.id and Store.owner(reloadHeld:getID()) and not Store.owner(reloadDone:getID()),
     'world-local rebuild claims only unresolved original; delivered receipt never reclaims warehouse stock')
 check(loaded.delivered==1 and #loaded.items==2,'world-local rebuild preserves original denominator and delivery count')

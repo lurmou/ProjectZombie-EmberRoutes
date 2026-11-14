@@ -33,7 +33,7 @@ function R.activeClaims(p)
     end
     if type(p.materials) == 'table' then
         for _, m in ipairs(p.materials) do
-            if type(m) == 'table' and Validate.itemId(m.id) and not m.consumed then
+            if type(m) == 'table' and Validate.itemId(m.id) and (not m.consumed or not p.nativeAttempt or p.nativeAttempt.state~='APPLIED') then
                 res[#res+1] = "item:" .. m.id
             end
         end

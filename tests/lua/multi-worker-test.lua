@@ -78,6 +78,10 @@ local function body(id)
         x=0.5,y=0.5,z=0,motion="REACHED",alive=true},{__index=npc})
 end
 local a,b=body("worker-a"),body("worker-b")
+local healthyPart={HasInjury=function() return false end,bandaged=function() return false end,bleeding=function() return false end}
+local healthyDamage={getOverallBodyHealth=function() return 100 end,getBodyParts=function() return ctx.list({healthyPart}) end}
+function npc:getBodyDamage() return healthyDamage end
+function npc:isDead() return self.alive==false end
 local bodies={[a.id]=a,[b.id]=b}
 local selected=a.id
 bridge.selectedId=function() return selected end
@@ -110,6 +114,9 @@ bridge.checkpointHasHome=function() return false end
 bridge.checkpointHomeX=function() return 0 end
 bridge.checkpointHomeY=bridge.checkpointHomeX
 bridge.checkpointHomeZ=bridge.checkpointHomeX
+-- actions-test uses a load-only Work stub; this fixture exercises the real
+-- coordinator, so discard that stub before resolving the production module.
+package.loaded['EmberRoutesProbe/Work/Work']=nil
 local Work=require "EmberRoutesProbe/Work/Work"
 local time=getTimestampMs()
 getTimestampMs=function() return time end

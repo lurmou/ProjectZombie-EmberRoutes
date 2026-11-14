@@ -48,10 +48,18 @@ function Actions.transfer(c,item,from,to,endpoint,delivered)
     action.perform=function(self)
         if self.attempted then return end self.attempted=true
         if not self:isValid() then self.failure="TRANSFER_PRECONDITION" self:stop() return end
+        if to==npcRoot then
+            local allowed,why,changed=require('EmberRoutesProbe/Crafting/ProductionObligations').preparePickup(c.record,id)
+            if not allowed or changed and not JobExecution.commit(c.record) then
+                self.failure=why or 'PRODUCTION_OBLIGATION_NOT_PUBLISHED' self:stop() return
+            end
+        end
         local ok,reason=pcall(nativePerform,self)
         self.performed=Actions.inRoot(item,to,id) and not from:getItems():contains(item)
         if self.performed then
             c.plan.locations[id]={item=item,endpoint=to~=npcRoot and endpoint or nil}
+            if to~=npcRoot and not require('EmberRoutesProbe/Crafting/ProductionObligations').returned(
+                c.record,id,endpoint.id,Registry.id()) then error('PRODUCTION_OBLIGATION_MISSING') end
             if delivered then delivered() end
 	    c.changed("TRANSFER_APPLIED")
             Registry.inventoryChanged(from) Registry.inventoryChanged(to)

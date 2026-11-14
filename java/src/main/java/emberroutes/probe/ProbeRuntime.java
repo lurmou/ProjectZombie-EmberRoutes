@@ -2,6 +2,10 @@ package emberroutes.probe;
 
 import java.util.*;
 import zombie.characters.IsoPlayer;
+import emberroutes.probe.BodyBridgeContract.ReposeKind;
+import emberroutes.probe.BodyBridgeContract.FurniturePhase;
+import static emberroutes.probe.BodyBridgeContract.STOPPED;
+import static emberroutes.probe.BodyBridgeContract.STOP_UNAVAILABLE;
 
 /** Authority facade. Selection is UI state; execution always resolves an explicit identity. */
 public final class ProbeRuntime {
@@ -37,14 +41,23 @@ public final class ProbeRuntime {
     private static ProbeSaveReceipt saveReceipt;
     private ProbeRuntime() {}
     public static String version() { return BuildInfo.VERSION; }
+    public static se.krka.kahlua.vm.KahluaTable claimsCommand(se.krka.kahlua.vm.KahluaTable state,String operation,se.krka.kahlua.vm.KahluaTable args) {
+        return ClaimsKernel.command(state,operation,args);
+    }
     public static se.krka.kahlua.vm.KahluaTable laborMutate(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable claims,se.krka.kahlua.vm.KahluaTable contracts,Object cleanup,Object id,Object revision,Object payload,Object mutation) {
 	return LaborCommitKernel.mutate(zombie.Lua.LuaManager.thread,store,owner,claims,contracts,cleanup,id,revision,payload,mutation);
     }
     public static se.krka.kahlua.vm.KahluaTable laborCancel(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable claims,se.krka.kahlua.vm.KahluaTable contracts,Object cleanup,Object id,Object revision,Object payload,Object mutation) {
         return LaborCommitKernel.cancel(zombie.Lua.LuaManager.thread,store,owner,claims,contracts,cleanup,id,revision,payload,mutation);
     }
-    public static se.krka.kahlua.vm.KahluaTable laborCreate(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable state,se.krka.kahlua.vm.KahluaTable contracts,Object allocate,se.krka.kahlua.vm.KahluaTable job) {
-        return LaborCommitKernel.create(zombie.Lua.LuaManager.thread,store,owner,state,contracts,allocate,job);
+    public static se.krka.kahlua.vm.KahluaTable laborCreate(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable owner,se.krka.kahlua.vm.KahluaTable state,se.krka.kahlua.vm.KahluaTable contracts,Object allocate,se.krka.kahlua.vm.KahluaTable job,Object obligationOps) {
+        return LaborCommitKernel.create(zombie.Lua.LuaManager.thread,store,owner,state,contracts,allocate,job,obligationOps);
+    }
+    public static se.krka.kahlua.vm.KahluaTable laborTransfer(se.krka.kahlua.vm.KahluaTable store,se.krka.kahlua.vm.KahluaTable state,Object id,Object revision,se.krka.kahlua.vm.KahluaTable candidate,se.krka.kahlua.vm.KahluaTable token,Object obligationOps) {
+        return LaborCommitKernel.transfer(zombie.Lua.LuaManager.thread,store,state,id,revision,candidate,token,obligationOps);
+    }
+    public static se.krka.kahlua.vm.KahluaTable laborCustody(se.krka.kahlua.vm.KahluaTable state,se.krka.kahlua.vm.KahluaTable ledger,se.krka.kahlua.vm.KahluaTable operation,Object retirementVerifier) {
+        return LaborCommitKernel.custody(zombie.Lua.LuaManager.thread,state,ledger,operation,retirementVerifier);
     }
     public static se.krka.kahlua.vm.KahluaTable jobDataCopy(se.krka.kahlua.vm.KahluaTable source) {
 	return JobData.copy(source);
@@ -282,16 +295,16 @@ public final class ProbeRuntime {
     public static String acquireBodyControl(IsoPlayer body,String job,double generation) {
         if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body)
             || generation<1 || generation>9007199254740991d || generation!=Math.floor(generation)
-            || npc.stopMask()!=0 || controlCalls.contains(carrierId(body))) return "";
+            || npc.stopMask()!=STOPPED || controlCalls.contains(carrierId(body))) return "";
         return authority.acquire(carrierId(body),job,(long)generation);
     }
     public static int bodyStopMask(IsoPlayer body,String key) {
         if (!liveAuthority() || !carrierPresent(body) || !(body instanceof ProbeNpc npc)
-            || !authority.allows(carrierId(body),key,true) || controlCalls.contains(carrierId(body))) return -1;
+            || !authority.allows(carrierId(body),key,true) || controlCalls.contains(carrierId(body))) return STOP_UNAVAILABLE;
         return npc.stopMask();
     }
     public static boolean releaseBodyControl(IsoPlayer body,String key) {
-        return bodyStopMask(body,key)==0 && authority.release(carrierId(body),key,true);
+        return bodyStopMask(body,key)==STOPPED && authority.release(carrierId(body),key,true);
     }
     static boolean followAllowed(ProbeNpc body,String id,String key) {
         return liveAuthority() && body.attached() && !body.isDead() && !body.failed() && !body.retiring()
@@ -303,7 +316,7 @@ public final class ProbeRuntime {
     /** Local queue check for a blocked follower: another granted companion lies
      *  within 0.8 tiles ahead. Bounded by the carrier map, never a squad scan. */
     static boolean squadAhead(ProbeNpc self,float dx,float dy) {
-        CompanionNavigation own=self.companionNavigation();
+        CompanionNavigation own=self.locomotion().companionNavigation();
         if (own==null) return false;
         float length=(float)Math.sqrt(dx*dx+dy*dy);
         if (length<0.001f) return false;
@@ -317,7 +330,7 @@ public final class ProbeRuntime {
             float ox=other.getX()-sx,oy=other.getY()-sy;
             float distance2=ox*ox+oy*oy;
             if (distance2>0.64f || distance2<0.0004f) continue;
-            if (!own.yieldsTo(other.companionNavigation())
+            if (!own.yieldsTo(other.locomotion().companionNavigation())
                     || Math.abs(other.getZ()-self.getZ())>0.2f
                     || Math.floor(other.getZ()+0.001f)!=Math.floor(self.getZ()+0.001f)) continue;
             if ((ox*nx+oy*ny)/(float)Math.sqrt(distance2)>0.5f) return true;
@@ -332,8 +345,8 @@ public final class ProbeRuntime {
             if (leader==null || leader==body || !leader.isLocalPlayer() || leader.isDead()
                     || leader.getCell()!=body.getCell() || leader.getCurrentSquare()==null) return "INVALID_ACTOR";
             if (!Double.isFinite(slotRank) || slotRank<0 || slotRank>2 || slotRank!=Math.floor(slotRank)) return "INVALID_SLOT";
-            if (npc.stopMask()!=0) return "BODY_BUSY";
-            npc.beginFollow(leader,id,key,(int)slotRank);
+            if (npc.stopMask()!=STOPPED) return "BODY_BUSY";
+            npc.locomotion().beginFollow(leader,id,key,(int)slotRank);
             return "FOLLOW_STARTED";
         } finally { controlCalls.remove(id); }
     }
@@ -344,10 +357,17 @@ public final class ProbeRuntime {
         try {
             // moveTo clears native actions: do not silently interrupt an active action.
             if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
-            if (body instanceof ProbeNpc npc && npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            if (body instanceof ProbeNpc npc && npc.posture().furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
             CarrierRuntime runtime=handles.get(body);
             String result=runtime.workerCommand("move",actor,x,y,z); refresh(runtime); return result;
         } finally { controlCalls.remove(id); }
+    }
+    public static boolean retryStandExitWithControl(IsoPlayer body,String key) {
+        String id=carrierId(body);
+        if (!liveAuthority() || !carrierPresent(body) || !(body instanceof ProbeNpc npc)
+            || !authority.allows(id,key,true) || !controlCalls.add(id)) return false;
+        try { return npc.posture().retryStandExit(); }
+        finally { controlCalls.remove(id); }
     }
     public static boolean stopWithControl(IsoPlayer body,String key) {
         String id=carrierId(body);
@@ -368,18 +388,18 @@ public final class ProbeRuntime {
                 || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
         try {
             if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
-            if (npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
-            return npc.moveToFurniture(object,Double.isFinite(maxPathLength) ? Math.max(0,Math.min(100,maxPathLength)) : 0,sleep);
+            if (npc.posture().furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            return npc.locomotion().moveToFurniture(object,Double.isFinite(maxPathLength) ? Math.max(0,Math.min(100,maxPathLength)) : 0,sleep);
         } finally { controlCalls.remove(id); }
     }
     public static zombie.iso.IsoObject reachedSeat(IsoPlayer body) {
-        return liveAuthority() && carrierPresent(body) && body instanceof ProbeNpc npc ? npc.reachedFurniture() : null;
+        return liveAuthority() && carrierPresent(body) && body instanceof ProbeNpc npc ? npc.locomotion().reachedFurniture() : null;
     }
     public static boolean reposeWithControl(IsoPlayer body,String key,String kind,boolean enter) {
         String id=carrierId(body);
         if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body)
             || !authority.allows(id,key,!enter) || !controlCalls.add(id)) return false;
-        try { return enter ? npc.beginRepose(kind) : npc.endRepose(); }
+        try { return enter ? npc.posture().beginRepose(ReposeKind.fromLua(kind)) : npc.posture().endRepose(); }
         finally { controlCalls.remove(id); }
     }
     public static String moveCorpseWithControl(IsoPlayer body,String key,zombie.iso.objects.IsoDeadBody corpse) {
@@ -388,8 +408,8 @@ public final class ProbeRuntime {
                 || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
         try {
             if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
-            if (npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
-            return npc.moveToCorpse(corpse);
+            if (npc.posture().furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            return npc.locomotion().moveToCorpse(corpse);
         } finally { controlCalls.remove(id); }
     }
     public static String moveBedWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object,se.krka.kahlua.vm.KahluaTable locations) {
@@ -398,34 +418,29 @@ public final class ProbeRuntime {
             || !authority.allows(id,key,false) || !controlCalls.add(id)) return "CONTROL_DENIED";
         try {
             if (!body.getCharacterActions().isEmpty()) return "NATIVE_ACTION_BUSY";
-            if (npc.furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
-            return npc.moveToBed(object,locations);
+            if (npc.posture().furniturePoseOwned()) return "FURNITURE_EXIT_PENDING";
+            return npc.locomotion().moveToBed(object,locations);
         } finally { controlCalls.remove(id); }
     }
     public static boolean bedPoseReady(IsoPlayer body,String pose) {
-        return carrierPresent(body) && body instanceof ProbeNpc npc && npc.bedPoseReady(pose);
+        return carrierPresent(body) && body instanceof ProbeNpc npc && npc.posture().bedPoseReady(pose);
     }
     public static boolean furniturePoseWithControl(IsoPlayer body,String key,zombie.iso.IsoObject object,String phase) {
         String id=carrierId(body);
         if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body) || object==null && !"FLOOR".equals(phase)
                 || !authority.allows(id,key,false) || !controlCalls.add(id)) return false;
         try {
-            if ("FLOOR".equals(phase)) return object==null && npc.beginOwnedFloorPose();
-            if ("PREPARE".equals(phase)) return npc.prepareFurniturePose(object);
-            if ("STAND_TARGET".equals(phase)) return npc.captureFurnitureStand(object);
-            if ("ALIGN_BED".equals(phase)) return npc.alignBedPose(object);
-            if ("LIE".equals(phase)) return npc.beginOwnedBedPose(object);
-            return false;
+            return npc.posture().applyFurniturePhase(FurniturePhase.fromLua(phase),object);
         } finally { controlCalls.remove(id); }
     }
     public static boolean floorSleepSafe(IsoPlayer body,int x,int y,int z) {
-        return carrierPresent(body) && body instanceof ProbeNpc npc && npc.floorSleepSafe(x,y,z);
+        return carrierPresent(body) && body instanceof ProbeNpc npc && npc.posture().floorSleepSafe(x,y,z);
     }
     public static boolean reposeAtWithControl(IsoPlayer body,String key,String kind,zombie.iso.IsoObject furniture,String quality) {
         String id=carrierId(body);
         if (!liveAuthority() || !(body instanceof ProbeNpc npc) || !carrierPresent(body) || furniture==null
             || !authority.allows(id,key,false) || !controlCalls.add(id)) return false;
-        try { return npc.beginRepose(kind,furniture,quality); }
+        try { return npc.posture().beginRepose(ReposeKind.fromLua(kind),furniture,quality); }
         finally { controlCalls.remove(id); }
     }
     public static boolean freezeBodyControl() {
@@ -497,7 +512,7 @@ public final class ProbeRuntime {
     public static String removeIdleCarrier(String id,IsoPlayer expected,IsoPlayer actor) {
         CarrierRuntime runtime=find(id);
         if (!liveAuthority() || runtime==null || runtime.body()!=expected || !(expected instanceof ProbeNpc npc)) return "STALE_NPC";
-        if (!authority.lifecycleIdle(id) || npc.stopMask()!=0 || !controlCalls.add(id)) return "CONTROL_RETAINED";
+        if (!authority.lifecycleIdle(id) || npc.stopMask()!=STOPPED || !controlCalls.add(id)) return "CONTROL_RETAINED";
         try {
             String result=runtime.workerCommand("remove",actor,0,0,0); refresh(runtime); return result;
         } finally { controlCalls.remove(id); }
@@ -581,7 +596,7 @@ public final class ProbeRuntime {
     public static boolean saveBodyReady(String id,IsoPlayer expected) {
         CarrierRuntime runtime=find(id);
         return liveAuthority() && runtime!=null && runtime.body()==expected && carrierPresent(expected)
-            && expected instanceof ProbeNpc npc && authority.saveIdle(id) && npc.stopMask()==0 && !controlCalls.contains(id);
+            && expected instanceof ProbeNpc npc && authority.saveIdle(id) && npc.stopMask()==STOPPED && !controlCalls.contains(id);
     }
     /** Pure capture after the Lua barrier has reconciled business and Lua queues. */
     public static String captureCheckpointFor(String id,String mode,boolean home,double x,double y,double z) {

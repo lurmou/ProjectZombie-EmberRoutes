@@ -26,6 +26,7 @@ final class CompanionNavigation {
     static final long QUEUE_NANOS = 5_000_000_000L;
 
     private final ProbeNpc body;
+    private final NpcLocomotion movement;
     private final IsoPlayer leader;
     private final String npcId, key;
     private final int slot;
@@ -47,8 +48,8 @@ final class CompanionNavigation {
     // result object per follower per tick.
     private float plannedX, plannedY;
 
-    CompanionNavigation(ProbeNpc body, IsoPlayer leader, String npcId, String key, int slot) {
-        this.body = body; this.leader = leader; this.npcId = npcId; this.key = key; this.slot = slot;
+    CompanionNavigation(ProbeNpc body, NpcLocomotion movement, IsoPlayer leader, String npcId, String key, int slot) {
+        this.body = body; this.movement = movement; this.leader = leader; this.npcId = npcId; this.key = key; this.slot = slot;
         this.sideSign = slotSide(slot) < 0 ? -1 : 1;
         this.trail = SquadTrail.acquire(leader);
         this.metricsAt=System.nanoTime();
@@ -95,25 +96,25 @@ final class CompanionNavigation {
         // happen before another Lua tick; old grants must not continue moving.
         if (!ProbeRuntime.followAllowed(body, npcId, key)) { body.stopProbe(); return; }
         advance(now);
-        if (!terminal && body.companionNavigation()==this && now>=nextPosture) {
+        if (!terminal && movement.companionNavigation()==this && now>=nextPosture) {
             nextPosture=now+THINK_NANOS;
             boolean sameFloor=floorOf(body.getZ())==floorOf(leader.getZ())
                     && Math.abs(body.getZ()-leader.getZ())<=0.2f;
             boolean precision=!"FOLLOW_ACTIVE".equals(status) || segmentKind!=0 || !sameFloor
-                    || !body.moving() || !body.pathReady() || body.followPrecision();
+                    || !movement.active() || !movement.pathReady() || movement.followPrecision();
             float dx=leader.getX()-body.getX(),dy=leader.getY()-body.getY();
             float dirX=body.getPathFindBehavior2().pathNextIsSet
                     ? body.getPathFindBehavior2().pathNextX-body.getX() : body.getForwardDirectionX();
             float dirY=body.getPathFindBehavior2().pathNextIsSet
                     ? body.getPathFindBehavior2().pathNextY-body.getY() : body.getForwardDirectionY();
             boolean sneak=leader.isSneaking();
-            body.followPosture(locomotion.running(dx*dx+dy*dy,leader.isRunning() || leader.isSprinting(),
+            movement.followPosture(locomotion.running(dx*dx+dy*dy,leader.isRunning() || leader.isSprinting(),
                     sneak,precision,dirX,dirY,now),sneak);
         }
     }
 
     private void advance(long now) {
-        if (metricsAt!=0) FollowMetrics.sample(now-metricsAt,status,body.moving() && !body.pathReady());
+        if (metricsAt!=0) FollowMetrics.sample(now-metricsAt,status,movement.active() && !movement.pathReady());
         metricsAt=now;
         if (terminal) return;
         if (leader.isDead() || leader.getCell() != body.getCell() || leader.getCurrentSquare() == null) {
@@ -142,7 +143,7 @@ final class CompanionNavigation {
         if (now < nextThink) return;
         nextThink = now + THINK_NANOS;
         IsoGridSquare square = body.getCurrentSquare();
-        if (body.followTraversal() || (body.moving() && square != null && square.HasStairs())) {
+        if (movement.nativeTraversal() || (movement.active() && square != null && square.HasStairs())) {
             status = "FOLLOW_TRAVERSAL"; return;
         }
         int floor = floorOf(lz);
@@ -172,11 +173,11 @@ final class CompanionNavigation {
             }
             queuedAt=0; progress.waiting(now);
         }
-        if (body.moving()) {
+        if (movement.active()) {
             // Never interrupt an in-flight search or a running path. A pending
             // search has no route yet, so it is not evidence of being blocked;
             // only a search older than SEARCH_GRACE is treated as stuck.
-            boolean searching = !body.pathReady() && now - segmentAt < SEARCH_GRACE_NANOS;
+            boolean searching = !movement.pathReady() && now - segmentAt < SEARCH_GRACE_NANOS;
             if (!searching && progress.stalled(x,y,now)) { block("FOLLOW_STALLED"); return; }
             if (!searching && now >= nextProbeAt && progress.probeDue(x, y, now)) probe(now, tx, ty,true);
             return;
@@ -282,7 +283,7 @@ final class CompanionNavigation {
         needsProbe=false;
         float x = body.getX(), y = body.getY();
         int floor = floorOf(body.getZ());
-        body.holdFollowMovement();
+        movement.holdFollowMovement();
         if (allowQueue && ProbeRuntime.squadAhead(body, goalX - x, goalY - y)) {
             if (queuedAt==0) queuedAt=now;
             status = "FOLLOW_QUEUED"; progress.waiting(now); return;
@@ -337,7 +338,7 @@ final class CompanionNavigation {
             else status="FOLLOW_PATH_FAILED";
             return false;
         }
-        body.retargetFollow(x, y, floor, now);
+        movement.retargetFollow(x, y, floor, now);
         FollowMetrics.submitted();
         segmentX=body.getX(); segmentY=body.getY(); segmentKind=kind;
         segmentAt = now;
@@ -351,9 +352,9 @@ final class CompanionNavigation {
         } else if (now - leaderSeenAt > LEADER_STILL_NANOS) leaderMoving = false;
     }
 
-    private void holdOnce() { if (!holding || body.moving()) body.holdFollowMovement(); holding = true; }
+    private void holdOnce() { if (!holding || movement.active()) movement.holdFollowMovement(); holding = true; }
 
-    private void block(String reason) { body.holdFollowMovement(); status = reason; terminal = true; }
+    private void block(String reason) { movement.holdFollowMovement(); status = reason; terminal = true; }
 
     private boolean walkable(float x, float y, int floor) {
         IsoGridSquare square = body.getCell().getGridSquare((int)Math.floor(x), (int)Math.floor(y), floor);

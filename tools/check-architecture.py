@@ -7,9 +7,18 @@ non-UI->UI (Integration is the UI composition boundary), missing local modules,
 flat modules, and direct ModData writes/getOrCreate in UI. Dynamic loads and
 writes through aliases require source review and targeted runtime tests.
 
+Dependency graph: literal requires are aggregated to same-area domain edges.
+Kernel must have no outgoing edge inside its own area; every other same-area
+edge is frozen in DOMAIN_EDGE_BASELINE. A new edge fails, and so does a
+baseline edge that disappeared (lower the baseline). This freezes the current
+graph, including the Runtime->business reads and the business-domain cycles;
+it does not claim the graph is acyclic or that "domain -> kernel" is the only
+direction. Cross-area edges are governed by the shared->client and
+business->UI rules above.
+
 Also enforced here (P1-8 architecture-gate extension):
-- Provider retained contract: every provider wired through
-  LaborManifest.categories must export a `retained` function, and any literal
+- Provider retained contract: every registered domain provider must export a
+  `retained` function, and any literal
   table passed to Providers.register(...) must carry `retained`. This is the
   static side of PublicWorkProviders.Registry.register, which rejects a
   missing/non-function retained at runtime.
@@ -162,6 +171,193 @@ def inspect(lua_root):
     return errors
 
 
+# Frozen same-area domain edges, as measured on the 2026-11-14 working tree:
+# 126 edges across client/* and shared/*. This records what the source does
+# today (including Runtime->business reads and mutual business-domain
+# references), not an approved layering target. Only-shrink: a new edge fails;
+# a removed edge fails until its line is deleted. Kernel has no outgoing
+# same-area edge and is not allowed to gain one, even by editing this set.
+DOMAIN_EDGE_BASELINE = {
+    'client/Activity|client/Leisure',
+    'client/Activity|client/Runtime',
+    'client/Activity|client/SelfCare',
+    'client/Activity|client/Settlement',
+    'client/Activity|client/Warehouse',
+    'client/Activity|client/Work',
+    'client/Cooking|client/Crafting',
+    'client/Cooking|client/Field',
+    'client/Cooking|client/Integration',
+    'client/Cooking|client/Runtime',
+    'client/Cooking|client/SelfCare',
+    'client/Cooking|client/Settlement',
+    'client/Cooking|client/Warehouse',
+    'client/Cooking|client/Work',
+    'client/Crafting|client/Cooking',
+    'client/Crafting|client/Hauling',
+    'client/Crafting|client/Runtime',
+    'client/Crafting|client/SelfCare',
+    'client/Crafting|client/Settlement',
+    'client/Crafting|client/Warehouse',
+    'client/Crafting|client/Work',
+    'client/Field|client/Activity',
+    'client/Field|client/Cooking',
+    'client/Field|client/Crafting',
+    'client/Field|client/Runtime',
+    'client/Field|client/Settlement',
+    'client/Field|client/Warehouse',
+    'client/Field|client/Work',
+    'client/Hauling|client/Chatter',
+    'client/Hauling|client/Logistics',
+    'client/Hauling|client/Runtime',
+    'client/Hauling|client/SelfCare',
+    'client/Hauling|client/Settlement',
+    'client/Hauling|client/Warehouse',
+    'client/Hauling|client/Work',
+    'client/Integration|client/Activity',
+    'client/Integration|client/Cooking',
+    'client/Integration|client/Crafting',
+    'client/Integration|client/Field',
+    'client/Integration|client/Hauling',
+    'client/Integration|client/Logistics',
+    'client/Integration|client/Runtime',
+    'client/Integration|client/SelfCare',
+    'client/Integration|client/Settlement',
+    'client/Integration|client/UI',
+    'client/Integration|client/Warehouse',
+    'client/Integration|client/Work',
+    'client/Leisure|client/Activity',
+    'client/Leisure|client/Crafting',
+    'client/Leisure|client/Runtime',
+    'client/Leisure|client/SelfCare',
+    'client/Leisure|client/Settlement',
+    'client/Leisure|client/Warehouse',
+    'client/Leisure|client/Work',
+    'client/Logistics|client/Hauling',
+    'client/Logistics|client/Runtime',
+    'client/Logistics|client/SelfCare',
+    'client/Logistics|client/Settlement',
+    'client/Logistics|client/Warehouse',
+    'client/Logistics|client/Work',
+    'client/Runtime|client/Activity',
+    'client/Runtime|client/Chatter',
+    'client/Runtime|client/Cooking',
+    'client/Runtime|client/Crafting',
+    'client/Runtime|client/Field',
+    'client/Runtime|client/Hauling',
+    'client/Runtime|client/SelfCare',
+    'client/Runtime|client/Settlement',
+    'client/Runtime|client/Warehouse',
+    'client/Runtime|client/Work',
+    'client/SelfCare|client/Activity',
+    'client/SelfCare|client/Chatter',
+    'client/SelfCare|client/Cooking',
+    'client/SelfCare|client/Crafting',
+    'client/SelfCare|client/Leisure',
+    'client/SelfCare|client/Runtime',
+    'client/SelfCare|client/Settlement',
+    'client/SelfCare|client/Warehouse',
+    'client/SelfCare|client/Work',
+    'client/Settlement|client/Chatter',
+    'client/Settlement|client/Field',
+    'client/Settlement|client/Runtime',
+    'client/Settlement|client/SelfCare',
+    'client/Settlement|client/Warehouse',
+    'client/Settlement|client/Work',
+    'client/UI|client/Activity',
+    'client/UI|client/Cooking',
+    'client/UI|client/Crafting',
+    'client/UI|client/Integration',
+    'client/UI|client/Leisure',
+    'client/UI|client/Logistics',
+    'client/UI|client/Runtime',
+    'client/UI|client/Settlement',
+    'client/UI|client/Warehouse',
+    'client/UI|client/Work',
+    'client/Warehouse|client/Crafting',
+    'client/Warehouse|client/Field',
+    'client/Warehouse|client/Hauling',
+    'client/Warehouse|client/Logistics',
+    'client/Warehouse|client/Runtime',
+    'client/Warehouse|client/SelfCare',
+    'client/Warehouse|client/Settlement',
+    'client/Warehouse|client/Work',
+    'client/Work|client/Activity',
+    'client/Work|client/Cooking',
+    'client/Work|client/Crafting',
+    'client/Work|client/Field',
+    'client/Work|client/Hauling',
+    'client/Work|client/Logistics',
+    'client/Work|client/Runtime',
+    'client/Work|client/SelfCare',
+    'client/Work|client/Settlement',
+    'client/Work|client/Warehouse',
+    'shared/Activity|shared/Leisure',
+    'shared/Cooking|shared/Crafting',
+    'shared/Cooking|shared/Kernel',
+    'shared/Crafting|shared/Kernel',
+    'shared/Crafting|shared/Warehouse',
+    'shared/Field|shared/Kernel',
+    'shared/Hauling|shared/Kernel',
+    'shared/Leisure|shared/Kernel',
+    'shared/SelfCare|shared/Activity',
+    'shared/SelfCare|shared/Kernel',
+    'shared/SelfCare|shared/Leisure',
+    'shared/Warehouse|shared/Kernel',
+    'shared/Work|shared/Warehouse',
+}
+
+
+def domain_edges(lua_root):
+    """Return same-area cross-domain edges as 'area/source|area/target'."""
+    lua_root = Path(lua_root)
+    modules, sources = {}, []
+    for area in ('client', 'shared', 'server'):
+        base = lua_root / area
+        for path in sorted(base.rglob('*.lua')):
+            modules.setdefault(path.relative_to(base).as_posix()[:-4], set()).add(area)
+            sources.append((area, path, path.relative_to(base)))
+    edges = set()
+    for area, path, rel in sources:
+        entry = rel.as_posix() == 'EmberRoutesProbe.lua'
+        if not entry and not rel.as_posix().startswith(PREFIX):
+            continue
+        parts = rel.parts
+        if not entry and len(parts) == 2:
+            continue  # flat source: inspect() already fails it
+        source = 'Integration' if entry else parts[1]
+        for target, _line in requires(tokens(path.read_text(encoding='utf-8-sig'))):
+            if not target.startswith(PREFIX):
+                continue
+            resolved = modules.get(target)
+            if not resolved:
+                continue  # unresolved targets are inspect() errors
+            target_parts = target[len(PREFIX):].split('/')
+            if len(target_parts) == 1:
+                continue  # flat target: inspect() already fails it
+            for target_area in resolved:
+                if target_area == area and target_parts[0] != source:
+                    edges.add(f'{area}/{source}|{target_area}/{target_parts[0]}')
+    return edges
+
+
+def check_dependency_graph(lua_root, errors):
+    """Freeze same-area domain edges and keep Kernel free of outgoing edges."""
+    edges = domain_edges(lua_root)
+    for edge in sorted(edges):
+        if edge.split('|', 1)[0].split('/')[1] == 'Kernel':
+            errors.append(
+                f'{edge}: Kernel must not require another domain in its own area; '
+                'depend on it through an explicit service/registry instead')
+    for edge in sorted(edges - DOMAIN_EDGE_BASELINE):
+        errors.append(
+            f'{edge}: new same-area cross-domain dependency; route it through a '
+            'registry/service, or change the frozen graph deliberately')
+    for edge in sorted(DOMAIN_EDGE_BASELINE - edges):
+        errors.append(
+            f'{edge}: frozen dependency edge is gone; remove it from DOMAIN_EDGE_BASELINE')
+    return edges
+
+
 # Hardcoded kernel-category names that PublicWork.lua is allowed to reference.
 # Adding a new name here is a contract change; the check fails until the baseline is updated.
 # P4 left only order creation's cooking/craft split (createOrder, createPrerequisite).
@@ -173,7 +369,7 @@ KERNEL_CATEGORY_BASELINE = {'cooking'}
 # into PublicWorkOrders.lua (same baseline, checked below as PUBWORK_ORDERS_REL);
 # PublicWork.lua itself now names no category.
 KERNEL_CATEGORY_LITERAL_COUNT = 0
-MANIFEST_REL = 'client/EmberRoutesProbe/Work/LaborManifest.lua'
+MANIFEST_REL = 'shared/EmberRoutesProbe/Kernel/BuiltinJobContracts.lua'
 
 # PublicWork.lua kernel file (relative to LUA_ROOT)
 PUBWORK_REL = 'client/EmberRoutesProbe/Work/PublicWork.lua'
@@ -431,20 +627,15 @@ def _retained_export(ts):
 
 
 def _manifest_provider_entries(source):
-    """Yield (category, provider-module) for each LaborManifest category entry.
-
-    Entries are `{category='...', ..., provider=function() return require
-    'EmberRoutesProbe/...' end}` blocks. A block whose provider thunk is not
-    a literal require yields (category, None): the static check cannot resolve
-    it, and that is an error, not a skip.
-    """
-    for block in re.findall(r'\{([^{}]*category\s*=[^{}]*)\}', source):
+    """Yield category, fixed client module and ordinal from domain metadata."""
+    for block in re.findall(r'''\{([^{}]*(?:category\s*=\s*['"]|order\s*=\s*\d)[^{}]*)\}''', source):
         category = re.search(r"""category\s*=\s*['"]([^'"]+)['"]""", block)
-        provider = re.search(
-            r"""provider\s*=\s*function\s*\(\s*\)\s*return\s+require\s*['"]([^'"]+)['"]""",
-            block)
+        provider = re.search(r"""module\s*=\s*['"]([^'"]+)['"]""", block)
+        ordinal = re.search(r"""order\s*=\s*(\d+)\b""", block)
         yield (category.group(1) if category else None,
-               provider.group(1) if provider else None)
+               provider.group(1) if provider else None,
+               int(ordinal.group(1)) if ordinal else None,
+               set(re.findall(r'\b([A-Za-z_]\w*)\s*=', block)))
 
 
 def _resolve_module(lua_root, target):
@@ -459,8 +650,8 @@ def check_provider_retained(lua_root, errors):
     """Fail if a registered provider cannot statically show a `retained`.
 
     Two sources, matching how registration actually happens:
-    1. LaborManifest.categories: PublicWork calls `e.provider()` for each
-       entry and passes the returned def to Providers.register. The provider
+    1. BuiltinJobContracts metadata: PublicWork loads each fixed client module
+       and passes its def to Providers.register. The provider
        module file must export `retained` (see _retained_export).
     2. Literal defs: `Providers.register({...})` with a table literal must
        carry `retained` in that literal.
@@ -470,7 +661,7 @@ def check_provider_retained(lua_root, errors):
     and tests/provider-retained-test.lua covers the runtime side. Other
     registries (PageRegistry, JobPolicyRegistry, ActivityRegistry, ...) have
     their own contracts and are not checked here. A `retained` with a
-    different signature/semantics (e.g. CraftLegacyRecovery.M.retained(r, j))
+    different signature/semantics (e.g. a domain record's `retained(r, j)`)
     is not a provider export and is not counted: only manifest-wired provider
     modules and literal provider defs are examined.
     """
@@ -483,18 +674,24 @@ def check_provider_retained(lua_root, errors):
         if not entries:
             errors.append(f'{MANIFEST_REL}: no provider categories found; '
                           'the manifest format changed and this check is blind')
-        for category, target in entries:
+        categories, ordinals = set(), set()
+        for category, target, ordinal, fields in entries:
             if not category:
                 errors.append(f'{MANIFEST_REL}: category entry without a category name')
                 continue
-            if not target:
+            if fields != {'category', 'module', 'order'} or not target or ordinal is None:
                 errors.append(
-                    f'{MANIFEST_REL}: provider {category!r} has no literal-require '
-                    'provider thunk; use provider=function() return require '
-                    "'EmberRoutesProbe/...' end so the retained check can resolve it")
+                    f'{MANIFEST_REL}: provider {category!r} metadata requires literal category, module and order only')
                 continue
-            path = _resolve_module(lua_root, target)
-            if path is None:
+            if category in categories or ordinal in ordinals or ordinal < 1:
+                errors.append(f'{MANIFEST_REL}: duplicate category or order for provider {category!r}')
+            categories.add(category)
+            ordinals.add(ordinal)
+            if not re.fullmatch(r'EmberRoutesProbe/[A-Za-z0-9_/]+', target):
+                errors.append(f'{MANIFEST_REL}: invalid provider module {target!r}')
+                continue
+            path = Path(lua_root) / 'client' / (target + '.lua')
+            if not path.is_file():
                 errors.append(f'{MANIFEST_REL}: provider {category!r} module {target!r} not found')
                 continue
             if not _retained_export(tokens(path.read_text(encoding='utf-8-sig'))):
@@ -502,6 +699,22 @@ def check_provider_retained(lua_root, errors):
                     f'{path.relative_to(lua_root).as_posix()}: provider {category!r} '
                     'registers without retained; add a retained(npcId) function '
                     '(PublicWorkProviders.register rejects one without it at runtime)')
+        if ordinals and ordinals != set(range(1, len(ordinals) + 1)):
+            errors.append(f'{MANIFEST_REL}: provider order must be contiguous from 1')
+        source = manifest.read_text(encoding='utf-8-sig')
+        retirement_assignments = re.findall(r'\bretirement\s*=\s*([^,}\s]+)', source)
+        retirement_targets = re.findall(r"""retirement\s*=\s*['"]([^'"]+)['"]""", source)
+        if len(retirement_assignments) != len(retirement_targets):
+            errors.append(f'{MANIFEST_REL}: retirement references must be literal client module paths')
+        for target in retirement_targets:
+            if not re.fullmatch(r'EmberRoutesProbe/[A-Za-z0-9_/]+', target):
+                errors.append(f'{MANIFEST_REL}: invalid retirement module {target!r}')
+                continue
+            path = Path(lua_root) / 'client' / (target + '.lua')
+            if not path.is_file():
+                errors.append(f'{MANIFEST_REL}: retirement module {target!r} not found')
+            elif not re.search(r'\bfunction\s+\w+\.valid\s*\(', path.read_text(encoding='utf-8-sig')):
+                errors.append(f'{MANIFEST_REL}: retirement module {target!r} lacks valid predicate')
     for area in ('client', 'shared', 'server'):
         for path in sorted((Path(lua_root) / area).rglob('*.lua')):
             ts = tokens(path.read_text(encoding='utf-8-sig'))
@@ -536,11 +749,9 @@ def check_provider_retained(lua_root, errors):
 # not permission to add more: each deletion lowers its file's count here.
 # Lua total 53 lines / 26 files; Java total 5 lines / 1 file.
 COMPAT_BASELINE = {
-    'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Crafting/CraftLegacyRecovery.lua': 3,
-    'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Crafting/CraftProbe.lua': 1,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Runtime/Persistence.lua': 8,
     'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Warehouse/OrderMonitorService.lua': 1,
-    'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/LaborStore.lua': 7,
+    'Contents/mods/EmberRoutesProbe/42/media/lua/client/EmberRoutesProbe/Work/LaborStore.lua': 3,
     'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/Boot.lua': 2,
     'Contents/mods/EmberRoutesProbe/42/media/lua/shared/EmberRoutesProbe/Kernel/JobStore.lua': 2,
 }
@@ -881,6 +1092,8 @@ def main():
     if not LUA_ROOT.is_dir():
         raise SystemExit(f'ERROR: missing Lua root: {LUA_ROOT}')
     errors = inspect(LUA_ROOT)
+    # Frozen same-area dependency graph plus the Kernel no-outgoing-edge rule.
+    check_dependency_graph(LUA_ROOT, errors)
     # Global-write ratchet and kernel-category checks.
     check_global_writes(LUA_ROOT, errors)
     check_kernel_categories(LUA_ROOT, errors)

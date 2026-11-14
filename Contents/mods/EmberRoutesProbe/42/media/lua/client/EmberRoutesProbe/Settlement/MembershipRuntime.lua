@@ -28,18 +28,28 @@ function M.obligations(id)
                     fullType=p.reading and p.reading.fullType}
             end
     end)
+    local ledger=Registry.data().obligations
+    for _,obligation in pairs(ledger and ledger.byId or {}) do
+        if obligation.npcId==id and obligation.state~='SETTLED' and obligation.type=='FURNACE_DUTY' then
+            result[#result+1]={kind='furnace',jobId=obligation.jobId}
+        end
+    end
     local craft=use('Work/BusinessJobs').crafts()[id]
     if craft and not craft.released then result[#result+1]={kind='CRAFT_PENDING',jobId=craft.id} end
     local work=use('Work/Work') local haul=work and work.record and work.record(id)
     if haul and haul.state~='DONE' then result[#result+1]={kind='CARGO_PENDING',jobId=haul.id} end
-    local okStore,store=pcall(use,'Work/LaborStore')
-    if okStore and store and store.custodyForNpc then
-        local okCustodies,custodies=pcall(store.custodyForNpc,id)
+    local okStore,store=pcall(use,'Field/ToolCustody')
+    if okStore and store and store.forNpc then
+        local okCustodies,custodies=pcall(store.forNpc,id)
         if okCustodies and type(custodies)=='table' then
             for _,c in ipairs(custodies) do
                 result[#result+1]={kind='TOOL_CUSTODY',custodyId=c.id,itemId=c.itemId,state=c.state,role=c.role,sourceId=c.sourceContainerId}
             end
+        else
+            result[#result+1]={kind='EFFECT_UNKNOWN',reason='TOOL_CUSTODY_UNAVAILABLE'}
         end
+    else
+        result[#result+1]={kind='EFFECT_UNKNOWN',reason='TOOL_CUSTODY_UNAVAILABLE'}
     end
     return result
 end
@@ -69,9 +79,9 @@ local function recover(id,actor,row,runtime,now)
         use('Crafting/Production').execute(actor,'resume',nil,id,{nonPreemptive=true})
         return
     end
-    local okStore,store=pcall(use,'Work/LaborStore')
-    if okStore and store and store.custodyForNpc then
-        local okCustodies,custodies=pcall(store.custodyForNpc,id)
+    local okStore,store=pcall(use,'Field/ToolCustody')
+    if okStore and store and store.forNpc then
+        local okCustodies,custodies=pcall(store.forNpc,id)
         if okCustodies and type(custodies)=='table' then
             local hasCustody=false
             for _,c in ipairs(custodies) do

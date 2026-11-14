@@ -19,18 +19,14 @@ function Store.claimCooking(job)
     end
     return token,why
 end
-function Store.transferCooking(job,token,npcId)
+function Store.transferCooking(job,token,npcId,obligationOps)
     if not Store.validCooking(job,token) then return nil,'COOKING_JOB_CHANGED' end
     local proposed,why=require('EmberRoutesProbe/Cooking/CookingRecord').handoff(job,npcId)
     if not proposed then return nil,why end
     local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
-    local ok,reason=jobs:transferCooking(job.id,job.revision,proposed)
-    if not ok then return nil,reason end
-    -- Same Job/resource set throughout. Old callbacks fail revision/NPC/token checks.
-    local saved=jobs:get(job.id)
-    local claimId = ensureEntityClaimId(state.root, saved, saved.id)
-    state.cookingTokens[job.id]=assert(state.claims:acquire(job.id,saved.payload.sequence,saved.payload.claims, { claimId = claimId }))
-    return saved
+    local ok,reason,evidence=Store.transferJobOwner(job.id,job.revision,proposed,token,obligationOps)
+    if not ok then return nil,reason,evidence end
+    return jobs:get(job.id)
 end
 -- Side-effect-free scope admission; own unresolved Job may only use its
 -- existing business guards (e.g. return originals), never replay native craft.
@@ -43,7 +39,7 @@ function Store.validCooking(job,token,key)
 	and token and state.cookingTokens[job.id]==token and token.generation==saved.payload.sequence
 	and (not key or state.claims:valid(token,key)) or false
 end
-function Store.replaceCooking(job,token,proposed)
+function Store.replaceCooking(job,token,proposed,obligationOps)
     if not Store.validCooking(job,token) or proposed.id~=job.id or proposed.npcId~=job.npcId
 	or proposed.scopeId~=job.scopeId or proposed.revision~=job.revision
 	or not require('EmberRoutesProbe/Cooking/CookingRecord').valid(proposed) then return false,'COOKING_JOB_CHANGED' end
@@ -61,7 +57,7 @@ function Store.replaceCooking(job,token,proposed)
     local commit=proposed.state=='CANCELLED' and Store.cancelJob or Store.mutateJob
     local ok,why,evidence=commit(job.id,job.revision,proposed.payload,
         {state=proposed.state,effects=proposed.effects,obligations=proposed.obligations,
-            addKeys=add,removeKeys=remove,workCapacity=workCapacity})
+            addKeys=add,removeKeys=remove,workCapacity=workCapacity,obligationOps=obligationOps})
     if not ok then return false,why,evidence end
     local saved=require('EmberRoutesProbe/Runtime/TaskJobs').current():get(job.id)
     if JobState.isTerminal(saved.state) then return true,saved,nil end
@@ -123,7 +119,7 @@ function Store.validField(job,token,key)
     return saved and saved.providerType=='FIELD_WORK' and saved.revision==job.revision
 	and state.fieldTokens[job.id]==token and token~=nil and (not key or state.claims:valid(token,key)) or false
 end
-function Store.replaceField(job,token,proposed,capacity)
+function Store.replaceField(job,token,proposed,capacity,obligationOps)
     if not Store.validField(job,token)
         or not require('EmberRoutesProbe/Field/FieldRecord').valid(proposed) then
         return false,'FIELD_JOB_CHANGED' end
@@ -134,7 +130,7 @@ function Store.replaceField(job,token,proposed,capacity)
     end
     for _,key in ipairs(token.resources) do if not after[key] then remove[#remove+1]=key end end
     local mutation={state=proposed.state,effects=proposed.effects,obligations=proposed.obligations,
-        addKeys=add,removeKeys=remove,capacity=capacity}
+        addKeys=add,removeKeys=remove,capacity=capacity,obligationOps=obligationOps}
     local commit=proposed.state=='CANCELLED' and Store.cancelJob or Store.mutateJob
     local ok,why,evidence=commit(job.id,job.revision,proposed.payload,mutation)
     if not ok then return false,why,evidence end
@@ -149,13 +145,12 @@ function Store.finishField(job)
     if not saved or saved.providerType~='FIELD_WORK' or saved.effects~='KNOWN'
 	or not JobState.isTerminal(saved.state) or #saved.payload.claims>0 then return false end
     for _ in pairs(saved.obligations) do return false end
+    local custody=require 'EmberRoutesProbe/Field/ToolCustody'
+    for _,c in ipairs(custody.forNpc(job.npcId)) do
+        if c.activeJobId==job.id and not custody.assignUse(c.id,nil) then return false end
+    end
     local token=state.fieldTokens[job.id]
     if token then state.claims:release(token) cleanToken(job.id) end
-    if state.root.toolCustody and state.root.toolCustody.byId then
-	for _,c in pairs(state.root.toolCustody.byId) do
-	    if c.activeJobId==job.id then c.activeJobId=nil end
-	end
-    end
     return true
 end
 -- The one exit for an ACTIVITY participant Job whose effects can no longer be
@@ -242,7 +237,7 @@ function Store.finishPersonal(job,token)
     if not Store.validPersonal(job,token) then return false,'STALE_PERSONAL_ATTEMPT' end
     local saved=state.root.taskJobs.byId[job.id]
     if saved.effects~='KNOWN' then return false,'PERSONAL_EFFECT_UNKNOWN' end
-    for _ in pairs(saved.obligations) do return false,'PERSONAL_OBLIGATION_RETAINED' end
+    if require('EmberRoutesProbe/SelfCare/SelfCareObligations').outstanding(saved)~=false then return false,'PERSONAL_OBLIGATION_RETAINED' end
     local jobs=require('EmberRoutesProbe/Runtime/TaskJobs').current()
     local payload=jobs:get(job.id).payload payload.claims={}
     local ok,reason=require('EmberRoutesProbe/SelfCare/SelfCareCommit').update(job.id,saved.revision,{payload=payload})

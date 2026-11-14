@@ -54,7 +54,12 @@ function H.transfer(actor,job,binding)
     end
     local key=Store.resourceOwner(job.payload.duty.siteKey)
     if not key or key.taskId~=job.id then return nil,'FURNACE_CLAIM_CHANGED' end
+    local ledger=Registry.data().obligations
+    local obligation=ledger and ledger.byId[job.payload.duty.id]
+    if not obligation then return nil,'FURNACE_OBLIGATION_MISSING' end
     local token,err2=Store.claimCooking(job) if not token then return nil,err2 end
-    return Store.transferCooking(job,token,binding.id)
+    local ops={{action='TRANSFER',id=obligation.id,expectedRevision=obligation.revision,npcId=binding.id,
+        evidence={siteKey=job.payload.duty.siteKey,siteVerified=true,originalsVerified=true,bodyReleased=true}}}
+    return Store.transferCooking(job,token,binding.id,ops)
 end
 return H

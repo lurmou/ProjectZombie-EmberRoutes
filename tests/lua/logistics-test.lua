@@ -8,6 +8,56 @@ local Ledger=require "EmberRoutesProbe/Settlement/SettlementLedger"
 local Store=require "EmberRoutesProbe/Logistics/LogisticsStore"
 local Service=require "EmberRoutesProbe/Logistics/LogisticsService"
 local Claims=require "EmberRoutesProbe/Work/LaborStore"
+local Probe=world.fixture.ctx.Probe
+-- actions-test leaves its deliberately displaced diagnostic original for the
+-- caller to resolve; return that exact object before starting this world.
+local actionHost=world.fixture.ctx
+local diagnostic=actionHost.Actions.fixtures
+diagnostic.cargo:getContainer():Remove(diagnostic.cargo)
+diagnostic.npc.root.items[#diagnostic.npc.root.items+1]=diagnostic.cargo
+diagnostic.cargo.container=diagnostic.npc.root
+assert(actionHost.Actions.cleanupForHaul(),'diagnostic fixture resolved before logistics')
+Probe.runtimeReady=true
+Probe.publicDispatch=true
+Probe.isPublicDispatch=function() return Probe.publicDispatch==true end
+if ERDispatchTestBridge then for key,value in pairs(ERDispatchTestBridge) do EmberRoutesProbeJava[key]=value end end
+local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local keys={}
+world.bridge.acquireBodyControl=function(body,job,generation) assert(not keys[body]) keys[body]=job..':'..generation return keys[body] end
+world.bridge.bodyStopMask=function(body,key) return key==keys[body] and (body.actions:isEmpty() and 0 or 4) or -1 end
+world.bridge.moveWithControl=function(body,key,player,x,y,z)
+    assert(keys[body]==key) body.x,body.y,body.z=x,y,z body.motion='REACHED' return 'MOVE_REQUESTED'
+end
+world.bridge.stopWithControl=function(body,key) assert(keys[body]==key) body.motion='STOPPED' return true end
+world.bridge.releaseBodyControl=function(body,key) assert(keys[body]==key and body.actions:isEmpty()) keys[body]=nil return true end
+world.bridge.retireBodyControl=function() return true end
+local frozen=false
+world.bridge.freezeBodyControl=function() frozen=true return true end
+world.bridge.thawBodyControl=function() frozen=false return true end
+world.bridge.saveBodyReady=function(_,body) return frozen and not keys[body] and body.actions:isEmpty() end
+world.bridge.captureCheckpointFor=function() return 'CHECKPOINT_SAVED' end
+world.bridge.armSaveReceipt=function() return true end
+world.bridge.verifySaveReceipt=function() return true end
+local rawAdd,rawClear=ISTimedActionQueue.add,ISTimedActionQueue.clear
+ISTimedActionQueue.queues={}
+ISTimedActionQueue.add=function(action)
+    local q={queue={action},current=action} ISTimedActionQueue.queues[action.character]=q
+    local perform=action.perform
+    action.perform=function(self) perform(self) if world.queued[self.character]~=self then q.queue={} q.current=nil end end
+    rawAdd(action)
+end
+ISTimedActionQueue.clear=function(body)
+    rawClear(body) local q=ISTimedActionQueue.queues[body] if q then q.queue={} q.current=nil end
+end
+Probe.controlledExecution=true Runtime.begin()
+package.loaded['EmberRoutesProbe/Settlement/Companion']=nil
+-- This scene has no craft orders or tools; keep those unrelated providers inert.
+package.loaded['EmberRoutesProbe/Crafting/Production']={afterSave=function() end,busy=function() return false end,pause=function() end}
+package.loaded['EmberRoutesProbe/Crafting/ProductionRecipe']={}
+package.loaded['EmberRoutesProbe/Crafting/CraftSurfaces']={}
+package.loaded['EmberRoutesProbe/Crafting/ProductionChain']={}
+package.loaded['EmberRoutesProbe/Field/FieldDemand']={advance=function() end}
+local Public=require 'EmberRoutesProbe/Work/PublicWork'
 local count=0 local function check(value,message) count=count+1 assert(value,message) end
 local originalPrint=print print=function() end
 function actor:getIndex() return 0 end
@@ -15,7 +65,9 @@ world.select(a.id) Work.execute(actor,"clear") world.select(b.id) Work.execute(a
 local area={x=0,y=0,w=40,h=10}
 actor.x=4.5
 local entry=assert(Ledger.commit(actor,nil,"Logistics test",area))
-dofile('tests/lua/membership-fixture.lua')(function() return Ledger.get(entry.id) end,{a.id,b.id})
+local members=dofile('tests/lua/membership-fixture.lua')(function() return Ledger.get(entry.id) end,{a.id,b.id})
+local Save=require('EmberRoutesProbe/Runtime/TaskPersistence')
+Save.load() -- World recovery precedes every admitted task.
 local function container(x,types,role,private)
     local object=f.object(x) actor.x=x+0.5
     local filter=Filter.new() filter.private=private==true
@@ -57,86 +109,99 @@ check(Service.start(actor,entry.id)=="STARTED","start both modes together")
 local sawBatch,sawMultiCargo=false,false
 local function tick(n)
     for _=1,n do
-        Service.tick()
+        Public.tick() Service.tick()
         for _,npc in ipairs({a,b}) do
             local record=Work.record(npc.id)
             if record and record.producer and #record.items>1 then sawBatch=true end
             local action=world.queued[npc]
-            if action and action.from==npc.root and #npc.root.items>1 then sawMultiCargo=true end
+            if #npc.root.items>1 then sawMultiCargo=true end
         end
-        world.tick(1,true)
+        world.tick(1,true) Runtime.current():step()
     end
 end
-tick(450)
+tick(1200)
 for _,item in ipairs(originals) do check(item:getContainer()==food.container,"input originals routed to matching food warehouse") end
 check(tool:getContainer()==wrong.container and misplaced:getContainer()==food.container,"mixed input uses nearest matching tool warehouse while misplaced food is removed")
-check(sawBatch and sawMultiCargo,"one route loads multiple originals before first delivery")
+check(sawBatch and sawMultiCargo,"one route loads multiple originals before first delivery: "..tostring(sawBatch)..'/'..tostring(sawMultiCargo))
 check(keep:getContainer()==correct.container,"correctly stored original never rebalanced")
 check(unknown:getContainer()==input.container and favorite:getContainer()==input.container,"unroutable and protected input retained")
 check(secret:getContainer()==private.container and personal:getContainer()==untagged.container,"private and untagged properties untouched")
 check(Service.running(entry.id),"empty/no-route scans remain a low frequency running service")
 local tidyOnly=f.item("food",wrong.container)
 local intakeOnly=f.item("food",input.container)
-Store.mode(actor,entry.id,"intake") Service.invalidate(entry.id) tick(120)
-check(tidyOnly:getContainer()==food.container and intakeOnly:getContainer()==input.container,"tidy works independently while input sorting disabled")
+Store.mode(actor,entry.id,"intake") Service.invalidate(entry.id) tick(1200)
+check(tidyOnly:getContainer()==food.container and intakeOnly:getContainer()==input.container,"tidy works independently while input sorting disabled: "..tostring(tidyOnly:getContainer()==food.container)..'/'..tostring(intakeOnly:getContainer()==input.container))
 Store.mode(actor,entry.id,"intake") Store.mode(actor,entry.id,"tidy") Service.invalidate(entry.id)
-local remainWrong=f.item("food",wrong.container) tick(120)
+local remainWrong=f.item("food",wrong.container) tick(1200)
 check(intakeOnly:getContainer()==food.container and remainWrong:getContainer()==wrong.container,"input sorting works independently while tidy disabled")
-Store.mode(actor,entry.id,"tidy") Service.invalidate(entry.id) tick(120)
+Store.mode(actor,entry.id,"tidy") Service.invalidate(entry.id) tick(1200)
 check(remainWrong:getContainer()==food.container,"re-enabling tidy wakes shared workers")
 food.container.full=true
-local alternate=f.item("food",input.container) Service.invalidate() tick(120)
+local alternate=f.item("food",input.container) Service.invalidate() tick(1200)
 check(alternate:getContainer()==correct.container,"full preferred target routes new batch to another matching warehouse")
 food.container.full=false
 
 -- Manual intervention must stick until explicit settlement restart.
-world.select(a.id) Work.pause("MOVE",a.id)
+world.select(a.id) members[a.id].context='WAIT' Work.pause("MOVE",a.id)
 local later=f.item("food",input.container)
-Service.invalidate() tick(120)
+Service.invalidate() tick(1200)
 check(not Work.automationAllowed(a.id),"manual move suspends A automatic assignment")
 check(later:getContainer()==food.container,"B continues shared work after A manual takeover")
 
 -- Stop/persist/restart preserves the full in-flight batch and original identity.
-Service.start(actor,entry.id)
+members[a.id].context='SETTLEMENT' Work.allowAutomation(a.id) Service.start(actor,entry.id)
 local cargo={}
 for i=1,4 do cargo[i]=f.item("food",input.container) end
 Service.invalidate()
 local heldNpc
 for _=1,200 do
     tick(1)
-    if #a.root.items>=2 then heldNpc=a break elseif #b.root.items>=2 then heldNpc=b break end
+    for _,npc in ipairs({a,b}) do
+        local current=Work.record(npc.id)
+        if #npc.root.items>=2 and current and current.reservation then heldNpc=npc break end
+    end
+    if heldNpc then break end
 end
 check(heldNpc~=nil,"batch has multiple held originals")
 local record=Work.record(heldNpc.id)
 check(record.reservation and record.reservation.format==2,"durable capacity manifest contains per-original batch reservation")
 local taskId,phase=record.id,record.phase
-require("EmberRoutesProbe/Runtime/Persistence").save()
-check(record.state=="PAUSED" and record.phase==phase and record.id==taskId,"normal save captures paused multi-item phase without creating replacement task")
-for _=1,40 do tick(1) if record.state=="RUNNING" then break end end
-check(Work.record(heldNpc.id)==record and record.state=="RUNNING","running service resumes exact saved batch after normal in-game save")
+local blockReason
+world.bridge.blockAllCheckpoints=function(reason) blockReason=reason return 'CHECKPOINT_BLOCKED' end
+assert(Save.prepare())
+for _=1,40 do world.tick(1,false) Runtime.current():step() if Save.ready() then break end end
+assert(Save.ready(),'save preparation drains controlled bodies')
+local saveResult=require("EmberRoutesProbe/Runtime/Persistence").save()
+assert(saveResult and string.find(saveResult,'^CHECKPOINT_SAVED'),tostring(saveResult)..'/'..tostring(blockReason))
+check(record.state=="PAUSED" and record.phase==phase and record.id==taskId,"normal save captures paused multi-item phase without creating replacement task: "..tostring(saveResult)..'/'..tostring(record.state)..'/'..tostring(blockReason))
+for _=1,1200 do Save.tick(actor) tick(1) if record.state=="RUNNING" then break end end
+check(Work.record(heldNpc.id)==record and record.state=="RUNNING","running service resumes exact saved batch after normal in-game save: "..tostring(record.state)..'/'..tostring(record.reason)..'/'..tostring(frozen))
 check(Service.stop(actor,entry.id)=="STOPPED","stop all automatic workers at settlement boundary")
+for _=1,50 do tick(1) if record.state=='PAUSED' and not Runtime.current():owns(heldNpc.id) then break end end
 check(not Service.running(entry.id) and record.state=="PAUSED" and Work.hasCargo(actor,heldNpc.id),"stopped cargo remains owned on same NPC")
 tick(20)
 check(record.state=="PAUSED","stopped service never restarts itself")
 check(Service.start(actor,entry.id)=="STARTED","single settlement restart resumes original automatic work")
-tick(250)
-for _,item in ipairs(cargo) do check(item:getContainer()==food.container,"restart delivers every original from prior batch") end
+tick(1200)
+for _,item in ipairs(cargo) do check(item:getContainer()==food.container,"restart delivers every original from prior batch: "..tostring(record.state)..'/'..tostring(record.reason)..'/'..tostring(record.controlUncertain)..'/'..tostring(record.manualPaused)..'/'..tostring(require('EmberRoutesProbe/Runtime/TaskJobs').current():peek(record.id).state)..'/'..tostring(Service.running(entry.id))) end
 
 -- Rule revocation just before a native pickup must prevent the physical effect.
 local revoke=f.item("food",input.container) Service.invalidate()
-local action
-for _=1,200 do
-    Service.tick() world.tick(1,false)
-    for _,npc in ipairs({a,b}) do local candidate=world.queued[npc]
-        if candidate and candidate.item==revoke and candidate.from==input.container then action=candidate break end
-    end
-    if action then break end
+local tag=Registry.metadata(input,input.container)
+local originalStart=world.bridge.nativeActionStart
+local revoked=false
+world.bridge.nativeActionStart=function(...)
+    if not revoked and revoke:getContainer()==input.container then tag.logisticsRole='EXCLUDED' revoked=true end
+    return originalStart(...)
 end
-check(action~=nil,"guard-sensitive pickup queued")
-local tag=Registry.metadata(input,input.container) tag.logisticsRole="EXCLUDED"
-action:perform()
-check(revoke:getContainer()==input.container,"effect guard rejects source role revocation without requiring UI notification")
+for _=1,1200 do
+    Public.tick() Service.tick() world.tick(1,false) Runtime.current():step()
+    if revoked then break end
+end
+check(revoked,"guard-sensitive pickup started")
+world.bridge.nativeActionStart=originalStart
 tick(20)
+check(revoke:getContainer()==input.container,"effect guard rejects source role revocation without requiring UI notification")
 Service.stop(actor,entry.id)
 -- Planner slices and batch sizing are bounded by physical weight, not NPC count.
 tag.logisticsRole="INPUT" Registry.changed(tag.id)

@@ -2,13 +2,12 @@
 local Registry=require 'EmberRoutesProbe/Warehouse/ContainerRegistry'
 local Members=require 'EmberRoutesProbe/Settlement/MembershipService'
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 local M={}
 local function exceptional(c) return c.state=='RECONCILE_REQUIRED' end
 function M.assets(npcId,handle,budget)
     local records,items,assets={},{},{}
-    for _,c in pairs(Registry.data().toolCustody and Registry.data().toolCustody.byId or {}) do
-        if tostring(c.npcId)==tostring(npcId) then records[#records+1]=c items[#items+1]=c.itemId end
-    end
+    for _,c in ipairs(Custody.forNpc(npcId)) do records[#records+1]=c items[#items+1]=c.itemId end
     table.sort(records,function(a,b) return a.id<b.id end)
     local types=require('EmberRoutesProbe/Warehouse/ItemDisplay').types({id='TOOL_VIEW:'..npcId,items=items},handle,budget or {remaining=128})
     for _,c in ipairs(records) do
@@ -23,7 +22,7 @@ function M.assets(npcId,handle,budget)
 end
 function M.rows(scopeId,context)
     local root=Registry.data() local groups={} local rows={} local runtime=Runtime.current()
-    for _,c in pairs(root.toolCustody and root.toolCustody.byId or {}) do
+    for _,c in ipairs(Custody.all()) do
         local npcId=tostring(c.npcId) local member=Members.view(npcId)
         local scope=c.returnIntent and c.returnIntent.scopeId or member and member.settlementId
         if scope==scopeId and (exceptional(c) or not c.activeJobId and (c.returnIntent or c.returnJobId or c.state=='PENDING_RETURN')) then

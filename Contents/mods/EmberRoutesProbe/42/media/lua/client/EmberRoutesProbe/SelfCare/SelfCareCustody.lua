@@ -162,8 +162,12 @@ function Custody.returns(c)
                 index=index+1 tree=nil routing=nil target=nil
             end
         end
-        c.obligations={}
-        return c.persist() and 'Success' or 'Failure'
+        local ledger=require 'EmberRoutesProbe/SelfCare/SelfCareObligations'
+        local outstanding=ledger.outstanding({id=c.job.id,npcId=c.job.npcId,payload=c.payload})
+        if outstanding==nil then c.reason='PERSONAL_OBLIGATION_MISSING' return 'Failure' end
+        local operations=outstanding and ledger.settlement(c.job,c.payload,c.items,c.effects,false) or nil
+        if outstanding and not operations then c.reason='PERSONAL_SETTLEMENT_UNPROVEN' return 'Failure' end
+        return c.persist(operations) and 'Success' or 'Failure'
     end,halt=function()
         return not tree or require('EmberRoutesProbe/Activity/BehaviorTree').halt(tree,c)
     end}

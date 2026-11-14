@@ -53,11 +53,16 @@ function D.reserve(c,endpoint)
     local j=Record.copy(c.job)
     local square=endpoint.object:getSquare()
     if not square then return false,'FURNACE_UNAVAILABLE' end
-    j.payload.duty={id=j.id..':furnace',siteKey=stove.siteKey,ownerId=j.npcId,revision=1,
+    local sequence=(j.payload.dutySequence or 0)+1
+    if sequence>1000000000000 then return false,'FURNACE_SEQUENCE_EXHAUSTED' end
+    j.payload.dutySequence=sequence
+    j.payload.duty={id=j.id..':furnace:'..tostring(sequence),siteKey=stove.siteKey,ownerId=j.npcId,revision=1,
         endpointId=endpoint.id,position={x=square:getX(),y=square:getY(),z=square:getZ()},
         originalActive=false,openedByJob=false,lastActive=false,state='RESERVED'}
-    j.payload.claims[#j.payload.claims+1]=stove.siteKey j.obligations.furnace=true
-    return Context.publish(c,j)
+    j.payload.claims[#j.payload.claims+1]=stove.siteKey
+    local obligation={id=j.payload.duty.id,type='FURNACE_DUTY',npcId=j.npcId,jobId=j.id,
+        revision=1,state='ACTIVE',data={siteKey=stove.siteKey}}
+    return Context.publish(c,j,{{action='CREATE',id=obligation.id,record=obligation}})
 end
 function D.resolve(job)
     local duty=job.payload.duty
@@ -141,16 +146,23 @@ function D.release(c,endpoint)
     if c.job.effects~='KNOWN' or stove.active or duty.lastActive~=false
         or duty.state=='OBSERVATION_REQUIRED' or duty.state=='TRANSFER_PENDING' then return false,'FURNACE_OBLIGATION_RETAINED' end
     for _,asset in ipairs(c.job.payload.assets) do if asset.custody=='STATION' then return false,'FURNACE_FOOD_RETAINED' end end
+    local shutdownObserved=not duty.openedByJob
     if duty.openedByJob then
         local a=c.job.payload.attempt local r=a and a.receipt
         -- A subsequent unload may replace the last attempt; retain shutdown
         -- evidence on Duty until every original has left the station.
-        if not duty.shutdownObserved and (not r or a.state~='APPLIED' or a.kind~='TOGGLE'
-            or r.siteKey~=duty.siteKey or r.actualActive~=false) then return false,'FURNACE_SHUTDOWN_NOT_OBSERVED' end
+        shutdownObserved=duty.shutdownObserved==true or (r and a.state=='APPLIED' and a.kind=='TOGGLE'
+            and r.siteKey==duty.siteKey and r.actualActive==false) or false
+        if not shutdownObserved then return false,'FURNACE_SHUTDOWN_NOT_OBSERVED' end
     end
     local j=Record.copy(c.job)
     for i=#j.payload.claims,1,-1 do if j.payload.claims[i]==duty.siteKey then table.remove(j.payload.claims,i) end end
-    j.payload.duty=nil j.obligations.furnace=nil
-    return Context.publish(c,j)
+    j.payload.duty=nil
+    local ledger=Registry.data().obligations
+    local obligation=ledger and ledger.byId[duty.id]
+    if not obligation then return false,'FURNACE_OBLIGATION_MISSING' end
+    local evidence={effects='KNOWN',siteKey=duty.siteKey,inactive=true,foodClear=true,
+        shutdownRequired=duty.openedByJob,shutdownObserved=shutdownObserved}
+    return Context.publish(c,j,{{action='SETTLE',id=duty.id,expectedRevision=obligation.revision,evidence=evidence}})
 end
 return D

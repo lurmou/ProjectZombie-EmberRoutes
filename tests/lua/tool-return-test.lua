@@ -467,11 +467,11 @@ check(not blockedAdvance,'MembershipService.advance blocks when obligations pres
 -- =========================================================================
 -- 8. Death & Save Recovery Handling (Step 6)
 -- =========================================================================
--- Existing death contract releases claims without moving physical originals.
-local deadCount=Store.settleNpcDeath('1')
-check(deadCount>=1,'settled deceased NPC custody claims')
-check(Store.custodyByItem(801)==nil,'death settles custody under current contract')
-check(Store.canClaimTool('2',801),'death releases claim without moving the physical tool')
+-- Death alone is not evidence of physical return or safe release.
+local deadCount,deadReason=Store.settleNpcDeath('1')
+check(deadCount==0 and deadReason=='DEAD_CARRIER_OBLIGATION_RETAINED','death reports retained custody')
+check(Store.custodyByItem(801)~=nil,'death preserves custody')
+check(not Store.canClaimTool('2',801),'death does not release the original claim')
 
 -- World reload recovery test
 local entry901={

@@ -62,10 +62,14 @@ local function noCodes(codes)
     for _ in pairs(codes) do return false end
     return true
 end
-check(noCodes(Contracts.get('FIELD_WORK').errorCodes)
-    and noCodes(Contracts.get('ACTIVITY').errorCodes)
-    and noCodes(Contracts.get('SELF_CARE').errorCodes),
-    'boolean-only builtins declare empty errorCodes')
+check(noCodes(Contracts.get('ACTIVITY').errorCodes), 'boolean-only activity declares empty errorCodes')
+check(Contracts.get('FIELD_WORK').errorCodes.FIELD_OBLIGATION_MISSING~=nil
+    and Contracts.get('SELF_CARE').errorCodes.PERSONAL_SETTLEMENT_UNPROVEN~=nil,
+    'domain obligation callbacks declare their rejection codes')
+check(rejected({schemaVersion=1,blocksScope=function() return true end,errorCodes={}}),
+    'scope blocker requires its own declared reason')
+local bad,reason=Contracts.register('BAD_OBLIGATION_HOOK',{schemaVersion=1,errorCodes={},obligationGuard=true})
+check(not bad and reason=='JOB_CONTRACT_INVALID','non-callable obligation hook refused')
 
 -- LaborRecovery requires the contract to carry errorCodes as well.
 local Recovery=require 'EmberRoutesProbe/Work/LaborRecovery'

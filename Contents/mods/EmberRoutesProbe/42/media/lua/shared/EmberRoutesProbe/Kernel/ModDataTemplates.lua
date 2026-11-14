@@ -19,7 +19,8 @@ local function copy(value)
 end
 T.templates={
     -- Work root fields owned by the Registry load entry.
-    work={format=1,containers={},craftSurfaces={}},
+    -- Work root has its own format: v2 requires the independent obligation ledger.
+    work={format=2,containers={},craftSurfaces={}},
     -- Work root fields owned by LaborStore (applied there, not by Registry).
     -- quarantineAudit is deliberately absent: it is created lazily by the
     -- first successful unquarantine, so a failed release writes no audit
@@ -30,7 +31,6 @@ T.templates={
     logisticsEntry={intake=true,tidy=true,revision=0,workers={}},
     customKits={format=1,kits={}},
     taskJobs={format=1,byId={}},
-    toolCustody={format=1,byId={},byNpc={},byItem={}},
     maintainStock={format=1,revision=0,rules={}},
     jobPolicies={format=1,revision=0,byScope={}},
     publicWork={format=1,sequence=0,orders={},priorities={},rules={},requests={}},

@@ -14,6 +14,7 @@ function Record.create(id,npcId)
 end
 function Record.valid(job)
     local p=job and job.payload
+    if job and job.obligations then for _ in pairs(job.obligations) do return false end end
     if not (job and job.providerType=='SELF_CARE' and type(p)=='table' and p.format==1
         and steps[p.step] and type(p.sequence)=='number' and p.sequence>=0
         and p.sequence==math.floor(p.sequence) and p.sequence<math.huge and type(p.claims)=='table'
@@ -40,6 +41,7 @@ function Record.valid(job)
     if count~=#p.claims then return false end
     if p.step~='IDLE' and (not kinds[p.kind] or p.sequence<1
         or p.attemptId~=job.id..':'..tostring(p.sequence)) then return false end
+    if p.obligationId~=nil and not stringId(p.obligationId) then return false end
     if p.itemId~=nil and not itemId(p.itemId) or p.sourceId~=nil and not stringId(p.sourceId)
         or p.settlementId~=nil and not stringId(p.settlementId)
         or p.fraction~=nil and (not finite(p.fraction) or p.fraction<=0 or p.fraction>1) then return false end
@@ -132,7 +134,6 @@ end
 -- retained facts/original identities/obligations can discard residual claims.
 function Record.deathRetained(job)
     local p=job.payload
-    for _ in pairs(job.obligations) do return true end
     return p.itemId~=nil or p.sourceId~=nil or p.transfer~=nil or p.consumption~=nil
         or p.reading~=nil or p.repose~=nil or p.relief~=nil or p.leisure~=nil or p.readingSite~=nil
 end
@@ -154,7 +155,6 @@ function Record.begin(job,kind,resume)
     if not Record.valid(job) then return nil,'PERSONAL_RECORD_INVALID' end
     if not kinds[kind] then return nil,'PERSONAL_KIND_INVALID' end
     if job.effects~='KNOWN' or job.payload.step~='IDLE' then return nil,'PERSONAL_ATTEMPT_RETAINED' end
-    for _ in pairs(job.obligations) do return nil,'PERSONAL_OBLIGATION_RETAINED' end
     for _ in pairs(job.payload.claims) do return nil,'PERSONAL_CLAIM_RETAINED' end
     local sequence=job.payload.sequence+1
     return {format=1,step='REQUESTED',sequence=sequence,attemptId=job.id..':'..tostring(sequence),

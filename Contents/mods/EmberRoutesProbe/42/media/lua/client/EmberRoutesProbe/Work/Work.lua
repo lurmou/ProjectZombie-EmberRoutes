@@ -7,6 +7,7 @@ local Store=require "EmberRoutesProbe/Work/LaborStore"
 local Signals=require "EmberRoutesProbe/Work/LaborSignals"
 local Runtime=require 'EmberRoutesProbe/Runtime/TaskRuntime'
 local TaskResume=require 'EmberRoutesProbe/Runtime/TaskResume'
+local HaulJobs=require 'EmberRoutesProbe/Hauling/HaulJobs'
 local Reasons=TaskResume.Reasons
 local Work={}
 local agents,handles,schedule,suspended={},{},Schedule.new(),{}
@@ -45,8 +46,8 @@ end
 local function invalidateCare(id,reason)
     if Probe.invalidateCare then Probe.invalidateCare(id,reason) end
 end
-function Work.record(id) return Store.record(selected(nil,id)) end
-function Work.lastCompleted(id) return Store.recent(selected(nil,id)) end
+function Work.record(id) return HaulJobs.record(selected(nil,id)) end
+function Work.lastCompleted(id) return HaulJobs.recent(selected(nil,id)) end
 function Work.stopAdapter(id,controller,ticket)
     local worker=agents[id]
     if not worker then return nil,'NO_ACTIVE_TRANSFER' end
@@ -136,7 +137,7 @@ function Work.resumeFor(actor,id)
 end
 -- Explicit stable Job identity; never falls back to the player's selected NPC.
 function Work.taskCommand(actor,id,jobId,generation,command)
-    local r=Store.record(id)
+    local r=HaulJobs.record(id)
     if not r or r.id~=jobId or r.generation~=generation then return 'TASK_CHANGED' end
     if r.state=='DONE' then return 'DONE' end
     if command=='stop' then Work.pause('USER',id) return 'STOP_REQUESTED' end
@@ -156,9 +157,9 @@ function Work.taskCommand(actor,id,jobId,generation,command)
     return result
 end
 function Work.discardAutomatic(actor,id)
-    local record=Store.record(id)
+    local record=HaulJobs.record(id)
     if not record or record.producer~="LOGISTICS" or Work.busy(id) or Work.hasCargo(actor,id) then return false end
-    return Store.clear(id)
+    return HaulJobs.clear(id)
 end
 -- No invalidateCare here: a world reset drops careCommandEpochs with the
 -- Registry.data() root-table switch, and Service.reset clears the rows.

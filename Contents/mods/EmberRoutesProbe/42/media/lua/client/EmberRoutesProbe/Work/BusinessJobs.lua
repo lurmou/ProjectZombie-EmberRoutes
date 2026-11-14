@@ -47,18 +47,13 @@ end
 function M.canRetire(id,orderId)
     load()
     local j=world.taskJobs.byId[id]
-    if not j or (j.providerType~='CRAFT' and j.providerType~='HAUL')
-        or not JobState.isTerminal(j.state) or j.effects~='KNOWN' then return false end
+    if not j then return false end
+    local module=require('EmberRoutesProbe/Kernel/DomainRegistry').retirementModule(j.providerType)
+    if not module or not JobState.isTerminal(j.state) or j.effects~='KNOWN' then return false end
     for _ in pairs(j.obligations) do return false end
     local r=j.payload
     if r.uncertain or r.controlUncertain or r.phase=='COMMITTING' or r.reservation then return false end
-    if j.providerType=='CRAFT' then
-        if not r.released or (r.state~='DONE' and r.state~='CANCELLED') then return false end
-	if r.state=='DONE' and r.format==4 and (r.delivered~=r.produced
-            or r.produced<r.target and r.reason~='TARGET_REACHED') then return false end
-    elseif r.state~='DONE' then return false
-    elseif r.format==3 and (not require('EmberRoutesProbe/Hauling/HaulManifest').valid(r)
-        or #require('EmberRoutesProbe/Hauling/HaulManifest').claimItemIds(r)>0 or r.activeAttempt) then return false end
+    if not require(module).valid(r) then return false end
     local runtime=require('EmberRoutesProbe/Runtime/TaskRuntime').current()
     if not runtime or not runtime:accepting() or runtime:status(j.npcId,id) then return false end
     if world.executionSave and world.executionSave.state=='BLOCKED' then return false end

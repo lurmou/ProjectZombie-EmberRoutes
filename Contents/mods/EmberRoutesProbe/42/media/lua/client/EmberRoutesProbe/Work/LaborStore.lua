@@ -2,10 +2,9 @@ local Registry=require "EmberRoutesProbe/Warehouse/ContainerRegistry"
 local JobState=require 'EmberRoutesProbe/Kernel/JobState'
 local Templates=require 'EmberRoutesProbe/Kernel/ModDataTemplates'
 local Claims=require "EmberRoutesProbe/Kernel/LaborClaims"
-local CraftRetirement=require "EmberRoutesProbe/Crafting/CraftLegacyRecovery"
-local Manifest=require 'EmberRoutesProbe/Hauling/HaulManifest'
 local Evidence=require 'EmberRoutesProbe/Warehouse/QuarantineEvidence'
 local Clock = require 'EmberRoutesProbe/Kernel/Clock'
+local CustodyView=require 'EmberRoutesProbe/Field/ToolCustodyView'
 local Store={}
 local root,claims,tokens
 local domainState={}
@@ -15,10 +14,6 @@ local activityTokens={}
 local fieldTokens={}
 local custodyTokens={}
 local recoveredGenerations={}
-local recent={}
-local function legacyRecords()
-    return CraftRetirement.records(Registry.data())
-end
 local function validClaimIdFormat(claimId, entityId)
     if type(claimId) ~= "string" then return false end
     local prefix, seq = string.match(claimId, "^(.+):c(%d+)$")
@@ -45,8 +40,9 @@ end
 function Store.data()
     local current=Registry.data()
     if current~=root then
-        local rebuilt,newTokens=Claims.new(),{}
+        local rebuilt,newTokens=Claims.new(current.nextClaimSeq),{}
         local pendingHaul={}
+        local pendingCustody={}
         local pendingPersonal={}
         -- Domain recoveries that only need a forced state/effects write. They are
         -- collected here and applied through JobStore:adopt after root and token
@@ -81,7 +77,7 @@ function Store.data()
         end
 
         -- Ensure monotonic claim sequence is initialized and preserved across cold boots
-        rebuilt.nextClaimSeq = current.nextClaimSeq
+        -- Claims.new seeded the reconstruction sequence from this world.
 
 	local function restoreClaimIdentities()
 	    -- Collect the complete identity graph before acquiring ANY token. A
@@ -109,13 +105,9 @@ function Store.data()
 		    candidate(job,id,job.payload.claims,job)
 		end
 	    end
-	    for id,entry in pairs(current.toolCustody and current.toolCustody.byId or {}) do
-		if type(entry)=='table' then candidate(entry,id,entry.claims) end
-	    end
-	    for id,r in pairs(legacyRecords()) do
-		if CraftRetirement.retained(r,current.taskJobs.byId[id]) then
-		    candidate(r,id,CraftRetirement.resources(r),current.taskJobs and current.taskJobs.byId[id])
-		end
+	    for id,record in pairs(current.obligations.byId) do
+		local entry=CustodyView.fromRecord(record)
+		if entry then candidate(entry,id,entry.claims) end
 	    end
 	    table.sort(candidates,function(a,b)
 		if a.id==b.id then return tostring(a.record.claimId or '') < tostring(b.record.claimId or '') end
@@ -231,16 +223,6 @@ function Store.data()
             end
         end
 
-        for id, record in pairs(legacyRecords()) do
-	    if CraftRetirement.retained(record,current.taskJobs.byId[id]) then
-                for _, key in ipairs(CraftRetirement.resources(record)) do
-                    if type(key) == "string" then
-                        recordClaimant(key, { kind = "NATIVE_CRAFT", id = id, record = record })
-                    end
-                end
-            end
-        end
-
         if current.taskJobs and current.taskJobs.byId then
             for id, job in pairs(current.taskJobs.byId) do
                 if type(job) == "table" and not JobState.isTerminal(job.state) and type(job.payload) == 'table' and type(job.payload.claims) == 'table' then
@@ -253,9 +235,10 @@ function Store.data()
             end
         end
 
-        if current.toolCustody and current.toolCustody.byId then
-            for id, entry in pairs(current.toolCustody.byId) do
-                if type(entry) == "table" and entry.state ~= 'RETURNED' and type(entry.claims) == 'table' then
+        if current.obligations and current.obligations.byId then
+            for id, record in pairs(current.obligations.byId) do
+                local entry=CustodyView.fromRecord(record)
+                if entry then
                     for _, key in ipairs(entry.claims) do
                         if type(key) == "string" then
                             recordClaimant(key, { kind = "CUSTODY", id = id, entry = entry })
@@ -288,9 +271,6 @@ function Store.data()
             return false
         end
 
-        CraftRetirement.restore({current=current,rebuilt=rebuilt,newTokens=newTokens,
-            hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId})
-
         local rebuiltPersonal = {}
         local rebuiltCooking = {}
         local rebuiltActivity = {}
@@ -307,49 +287,36 @@ function Store.data()
 	pendingHaul=pendingHaul,current=current,rebuilt=rebuilt,hasConflict=hasConflict,ensureEntityClaimId=ensureEntityClaimId,rebuiltPersonal=rebuiltPersonal,rebuiltCooking=rebuiltCooking,rebuiltActivity=rebuiltActivity,rebuiltField=rebuiltField,rebuiltCraft=rebuiltCraft,rebuiltHaul=rebuiltHaul,newTokens=newTokens})
 
         local rebuiltCustody = {}
-        local custodyByNpc,custodyByItem={},{}
-        -- The custody document carries its own version key. A missing table is
-        -- created from the template; a wrong version, or a non-empty table
-        -- without one, is refused with an explicit code instead of being
-        -- silently replaced by an empty document.
-        local custody=current.toolCustody
-        if custody==nil then
-            custody=Templates.fresh('toolCustody') current.toolCustody=custody
-        else
-            local okCustody,whyCustody=Templates.open(custody,Templates.templates.toolCustody,'TOOL_CUSTODY_FORMAT_UNSUPPORTED')
-            if not okCustody then error(whyCustody) end
-            if type(custody.byId)~='table' then error('TOOL_CUSTODY_FORMAT_UNSUPPORTED') end
-        end
         do
             local CustodyRecord = require('EmberRoutesProbe/Field/ToolCustodyRecord')
-            for id, entry in pairs(custody.byId) do
+            for id, record in pairs(current.obligations.byId) do
+                local entry=CustodyView.fromRecord(record)
+                if entry then
                 -- A physical PUT may already have happened. Keep the exact return
                 -- identity/intent until a controlled stop and original observation.
-                if not CustodyRecord.valid(entry) or entry.id~=id or custodyByItem[entry.itemId] then
+                if not CustodyRecord.valid(entry) or entry.id~=id then
                     error('TOOL_CUSTODY_RECORD_INVALID')
                 end
                 -- Only byId owns custody. Serialization need not preserve aliases
                 -- in the two persisted lookup caches; rebuild them before use.
-                local npcId=tostring(entry.npcId)
-                custodyByNpc[npcId]=custodyByNpc[npcId] or {}
-                custodyByNpc[npcId][id]=entry custodyByItem[entry.itemId]=entry
                 if hasConflict(entry.claims) then
-                    entry.state = 'HELD'
+                    pendingCustody[#pendingCustody+1]={id=id,revision=record.revision}
                 else
-                    local claimId = ensureEntityClaimId(current, entry, id)
+                    local claimId = entry.claimId
                     local token, why = rebuilt:acquire(id, entry.sequence, entry.claims, { claimId = claimId })
                     if not token then
-                        entry.state = 'HELD'
+                        pendingCustody[#pendingCustody+1]={id=id,revision=record.revision}
                     else
                         rebuiltCustody[id] = token
                     end
                 end
+                end
             end
         end
-        current.toolCustody.byNpc,current.toolCustody.byItem=custodyByNpc,custodyByItem
         -- Publish the cache only after the entire ledger passed validation.
         current.nextClaimSeq = math.max(current.nextClaimSeq or 1, rebuilt.nextClaimSeq or 1)
         root,claims,tokens=current,rebuilt,newTokens
+        require('EmberRoutesProbe/Kernel/CommitFence').enter(root)
         personalTokens=rebuiltPersonal
         cookingTokens=rebuiltCooking
         activityTokens=rebuiltActivity
@@ -358,12 +325,16 @@ function Store.data()
 	domainState.root,domainState.claims,domainState.tokens=root,claims,tokens
 	domainState.personalTokens=personalTokens
 	domainState.cookingTokens,domainState.activityTokens,domainState.fieldTokens=cookingTokens,activityTokens,fieldTokens
+        domainState.custodyTokens=custodyTokens
         recoveredGenerations={}
-        recent={}
         -- Invocation-local ordered cold-recovery work, NOT a persistent recovery
         -- queue. Root and all token caches are published before any kernel call.
         -- SELF_CARE's cold proposals are invocation-local, not saved receipts.
         -- A rejected published commit stops recovery; reload the saved world.
+        for _,intent in ipairs(pendingCustody) do
+            local ok,why=Store.commitCustody({action='RECONCILE',id=intent.id,expectedRevision=intent.revision})
+            if not ok then error('TOOL_CUSTODY_RECOVERY_FAILED:'..tostring(why)) end
+        end
         for _,intent in ipairs(pendingPersonal) do
             local ok,why,evidence=require('EmberRoutesProbe/SelfCare/SelfCareCommit').update(
                 intent.id,intent.revision,intent.patch)
@@ -372,7 +343,7 @@ function Store.data()
                 local token=Store.getToken(intent.id)
                 if token then claims:release(token) end
                 tokens[intent.id]=nil personalTokens[intent.id]=nil
-                claims.tokensByTaskId[intent.id]=nil
+                claims:forgetToken(intent.id)
             end
         end
         domainState.haulRecoveryFailures={}
@@ -403,17 +374,6 @@ function Store.data()
     return root
 end
 function Store.haulRecoveryDiagnosis() return domainState.haulRecoveryFailures end
-function Store.record(npcId)
-    Store.data()
-    return require('EmberRoutesProbe/Hauling/HaulJobs').record(npcId)
-end
--- One UI summary per current NPC, scoped to this world session; no item handles.
-function Store.recent(npcId)
-    Store.data()
-    local saved=recent[npcId]
-    if not saved then return nil end
-    local copy={} for key,value in pairs(saved) do copy[key]=value end return copy
-end
 local function snapshotOwner(owner)
     if not owner then return nil end
     if owner.kind=='SYSTEM_QUARANTINE' then
@@ -461,7 +421,7 @@ local function cleanToken(jobId)
     if activityTokens then activityTokens[jobId] = nil end
     if fieldTokens then fieldTokens[jobId] = nil end
     if custodyTokens then custodyTokens[jobId] = nil end
-    if claims and claims.tokensByTaskId then claims.tokensByTaskId[jobId] = nil end
+    if claims then claims:forgetToken(jobId) end
 end
 function Store.getToken(jobId)
     Store.data()
@@ -629,26 +589,6 @@ local function scopeAllowed(jobId,scopeId)
     local job=store:peek(jobId)
     return not store:scopeBlocked(job and job.scopeId or scopeId or 'local-world',jobId)
 end
-function Store.claim(record)
-    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').claim(record) end
-    return nil,'TASK_FORMAT_UNSUPPORTED'
-end
-function Store.settleHaulLines(record,token,generation,settlements)
-    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').settle(record,token,generation,settlements) end
-    return false,'TASK_FORMAT_UNSUPPORTED'
-end
-function Store.publish(record)
-    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').commit(record) end
-    return false,'TASK_FORMAT_UNSUPPORTED'
-end
-function Store.valid(record,generation,token)
-    if not scopeAllowed(record.id,record.settlementId) then return false end
-    if record.format==3 then return require('EmberRoutesProbe/Hauling/HaulJobs').valid(record,generation,token) end
-    return false
-end
-function Store.pause(record)
-    local token=Store.claim(record) return token
-end
 function Store.capacity(token,itemId,key,amount,free)
     Store.data()
     local j=token and root.taskJobs.byId[token.taskId]
@@ -670,218 +610,6 @@ function Store.releaseCapacity(token,itemId)
 end
 function Store.availableCapacity(key,free) Store.data() return claims:available(key,free) end
 function Store.availableFor(token,key,itemId,free) Store.data() return claims:availableFor(token,key,itemId,free) end
-function Store.finish(record)
-    if record.format==3 then
-	local ok,why=require('EmberRoutesProbe/Hauling/HaulJobs').finish(record)
-	if ok and record.producer=='LOGISTICS' and record.delivered==#record.items then recent[record.npcId]={id=record.id,settlementId=record.settlementId,sourceMode=record.sourceMode,delivered=record.delivered,total=#record.items} end
-	return ok,why
-    end
-    return false,'TASK_FORMAT_UNSUPPORTED'
-end
-function Store.clear(npcId)
-    local record=Store.record(npcId) if not record then return true end
-    if record.format~=3 then return false,'TASK_FORMAT_UNSUPPORTED' end
-    -- Absence from the carrier is not source/receipt proof. A paused draft
-    -- with outstanding originals cannot be discarded by this command.
-    if record.activeAttempt or record.controlUncertain or #Manifest.claimItemIds(record)>0 then return false,'HAUL_OBLIGATION_RETAINED' end
-    local ok,why=Store.finish(record)
-    if not ok then return false,why end
-    recent[npcId]=nil return true
-end
-function Store.canClaimTool(npcId,itemId)
-    Store.data()
-    npcId=tostring(npcId)
-    local key='item:'..itemId
-    local owner=claims.owners[key]
-    if not owner then return true end
-    if root.toolCustody and root.toolCustody.byItem then
-        local c=root.toolCustody.byItem[itemId]
-        if c and tostring(c.npcId)==npcId and owner.taskId==c.id
-            and (c.state=='HELD' or c.state=='RESERVED') then return true end
-    end
-    return false
-end
-function Store.validToolUse(npcId,jobId,itemId)
-    Store.data()
-    npcId=tostring(npcId)
-    local key='item:'..itemId
-    local owner=claims.owners[key]
-    if not owner then return false end
-    if owner.taskId==jobId then return true end
-    if root.toolCustody and root.toolCustody.byItem then
-        local c=root.toolCustody.byItem[itemId]
-        if c and tostring(c.npcId)==npcId and owner.taskId==c.id and c.activeJobId==jobId
-            and (c.state=='HELD' or c.state=='RESERVED') then
-            return true
-        end
-    end
-    return false
-end
-function Store.claimCustody(npcId,itemId,role,sourceContainerId,activeJobId)
-    Store.data()
-    npcId=tostring(npcId)
-    local custodyStore=root.toolCustody
-    if not custodyStore then
-        custodyStore=Templates.fresh('toolCustody')
-        root.toolCustody=custodyStore
-    end
-    local custodyId='custody:'..npcId..':'..itemId
-    local existing=custodyStore.byId[custodyId]
-    if existing then
-        if existing.state~='HELD' and existing.state~='RESERVED' then return nil,'TOOL_CUSTODY_UNRESOLVED' end
-        if existing.activeJobId and existing.activeJobId~=activeJobId then
-            return nil,'TOOL_ALREADY_ASSIGNED'
-        end
-        existing.activeJobId=activeJobId
-        return existing
-    end
-    local entry={
-        format=1,
-        id=custodyId,
-        npcId=npcId,
-        itemId=itemId,
-        role=role,
-        state='RESERVED',
-        sequence=1,
-        activeJobId=activeJobId,
-        sourceContainerId=sourceContainerId,
-        claims={'item:'..itemId}
-    }
-    if not require('EmberRoutesProbe/Field/ToolCustodyRecord').valid(entry) then
-        return nil,'TOOL_CUSTODY_INVALID'
-    end
-    local claimId = ensureEntityClaimId(root, entry, custodyId)
-    local token,why=claims:acquire(custodyId,entry.sequence,entry.claims, { claimId = claimId })
-    if not token then return nil,why or 'TOOL_CLAIM_CONFLICT' end
-    custodyTokens[custodyId]=token
-    custodyStore.byId[custodyId]=entry
-    custodyStore.byNpc[npcId]=custodyStore.byNpc[npcId] or {}
-    custodyStore.byNpc[npcId][custodyId]=entry
-    custodyStore.byItem[itemId]=entry
-    return entry
-end
-function Store.releaseCustody(custodyId)
-    Store.data()
-    local custodyStore=root.toolCustody
-    if not custodyStore or not custodyStore.byId then return false end
-    local entry=custodyStore.byId[custodyId]
-    if not entry then return false end
-    local token=custodyTokens[custodyId]
-    if token then
-        claims:release(token)
-        custodyTokens[custodyId]=nil
-    end
-    custodyStore.byId[custodyId]=nil
-    if custodyStore.byNpc[entry.npcId] then
-        custodyStore.byNpc[entry.npcId][custodyId]=nil
-    end
-    custodyStore.byItem[entry.itemId]=nil
-    return true
-end
-function Store.assignToolUse(custodyId,jobId)
-    Store.data()
-    local custodyStore=root.toolCustody
-    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
-    if not entry then return false,'CUSTODY_NOT_FOUND' end
-    if entry.state~='HELD' and entry.state~='RESERVED' then return false,'TOOL_CUSTODY_UNRESOLVED' end
-    entry.activeJobId=jobId
-    return true
-end
-function Store.custodyForNpc(npcId)
-    Store.data()
-    npcId=tostring(npcId)
-    local result={}
-    local custodyStore=root.toolCustody
-    if custodyStore and custodyStore.byNpc and custodyStore.byNpc[npcId] then
-        for _,entry in pairs(custodyStore.byNpc[npcId]) do
-            result[#result+1]=entry
-        end
-    end
-    return result
-end
-function Store.custodyByItem(itemId)
-    Store.data()
-    return root.toolCustody and root.toolCustody.byItem and root.toolCustody.byItem[itemId] or nil
-end
-function Store.assignToolReturn(custodyId,returnJobId,intent)
-    Store.data()
-    local custodyStore=root.toolCustody
-    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
-    if not entry then return false,'CUSTODY_NOT_FOUND' end
-    if entry.state~='HELD' and entry.state~='RESERVED' then return false,'INVALID_CUSTODY_STATE' end
-    if entry.returnJobId and entry.returnJobId~=returnJobId then return false,'ALREADY_RETURNING' end
-    if intent~=nil and (type(intent)~='table' or intent.format~=1 or intent.jobId~=returnJobId
-        or type(intent.destinationId)~='string' or intent.destinationId==''
-        or type(intent.scopeId)~='string' or intent.scopeId=='') then return false,'RETURN_INTENT_INVALID' end
-    entry.returnIntent=intent and {format=1,jobId=returnJobId,destinationId=intent.destinationId,scopeId=intent.scopeId} or nil
-    entry.state='PENDING_RETURN'
-    entry.returnJobId=returnJobId
-    entry.activeJobId=nil
-    return true,entry
-end
-function Store.abortToolReturn(custodyId,returnJobId)
-    Store.data()
-    local custodyStore=root.toolCustody
-    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
-    if not entry then return false,'CUSTODY_NOT_FOUND' end
-    if entry.returnJobId==returnJobId and (entry.state=='PENDING_RETURN'
-        or entry.state=='RECONCILE_REQUIRED' and entry.returnIntent~=nil) then
-        entry.state='HELD'
-        entry.returnJobId=nil
-        entry.returnIntent=nil
-        return true
-    end
-    return false,'NOT_IN_RETURN_STATE'
-end
-function Store.completeCustodyReturn(custodyId,returnJobId,destinationId,item)
-    Store.data()
-    local custodyStore=root.toolCustody
-    local entry=custodyStore and custodyStore.byId and custodyStore.byId[custodyId]
-    if not entry then return false,'CUSTODY_NOT_FOUND' end
-    if entry.returnJobId~=returnJobId or (entry.state~='PENDING_RETURN'
-        and not (entry.state=='RECONCILE_REQUIRED' and entry.returnIntent~=nil)) then
-        return false,'RETURN_JOB_MISMATCH'
-    end
-    if entry.returnIntent and entry.returnIntent.destinationId~=destinationId then return false,'RETURN_DESTINATION_CHANGED' end
-    if not item or item:getID()~=entry.itemId then
-        return false,'RETURN_ITEM_MISMATCH'
-    end
-    local Registry=require('EmberRoutesProbe/Warehouse/ContainerRegistry')
-    local endpoint=Registry.resolve(destinationId,'put','local-world')
-    if not endpoint or not endpoint.container or not Registry.revalidate(endpoint,'put','local-world')
-        or Registry.logistics(endpoint)~='STORAGE' then
-        return false,'DESTINATION_NOT_RESOLVED'
-    end
-    local container=endpoint.container
-    if item:getContainer()~=container or not container:getItems():contains(item) then
-        return false,'ITEM_NOT_IN_DESTINATION'
-    end
-    local token=custodyTokens[custodyId]
-    if token then
-        claims:release(token)
-        custodyTokens[custodyId]=nil
-    end
-    custodyStore.byId[custodyId]=nil
-    if custodyStore.byNpc[entry.npcId] then
-        custodyStore.byNpc[entry.npcId][custodyId]=nil
-    end
-    custodyStore.byItem[entry.itemId]=nil
-    Registry.inventoryChanged(container)
-    return true
-end
--- Death is a custody settlement, not a state: a dead carrier's custodies can
--- never transition again (no recovery path consumes them), so keeping their
--- item claims would brick those tools for every future worker. Release them;
--- the physical items are unaffected and become claimable again if they ever
--- re-enter a container or inventory scan.
-function Store.settleNpcDeath(npcId)
-    Store.data()
-    npcId=tostring(npcId)
-    local list=Store.custodyForNpc(npcId)
-    local released=0
-    for _,c in ipairs(list) do if Store.releaseCustody(c.id) then released=released+1 end end
-    return released
-end
 require('EmberRoutesProbe/Work/LaborJobCommit').install(Store,domainState,nextAuthoritativeClaimId,cleanToken)
 require('EmberRoutesProbe/Work/LaborDomainAdapters').install(Store,domainState,ensureEntityClaimId,cleanToken,scopeAllowed)
 return Store

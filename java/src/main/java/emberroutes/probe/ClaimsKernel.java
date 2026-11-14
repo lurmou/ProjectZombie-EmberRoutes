@@ -7,8 +7,73 @@ import static emberroutes.probe.KernelValues.*;
 
 /** Live operations over the SAME owners/capacity/token tables as Lua recovery.
  *  No copied ledger, static cache, inventory mutation or independent ownership. */
-final class ClaimsKernel {
+public final class ClaimsKernel {
     private ClaimsKernel() {}
+    /** Fixed bridge operations; no Lua mutation fallback or second graph. */
+    public static KahluaTable command(KahluaTable self,String operation,KahluaTable args) {
+        if ("NEW".equals(operation)) {
+            KahluaTable state=table();
+            for (String key:new String[]{"owners","capacity","tokensByTaskId"}) state.rawset(key,table());
+            state.rawset("revision",0.0);state.rawset("nextClaimSeq",g(args,"nextClaimSeq")==null?1.0:g(args,"nextClaimSeq"));
+            return result(true,state);
+        }
+        KahluaTable token=t(args,"token");Object key=g(args,"key"),item=g(args,"itemId");
+        return switch(operation) {
+            case "ACQUIRE_NEW" -> acquireNew(self,g(args,"taskId"),g(args,"generation"),t(args,"resources"),t(args,"envelope"));
+            case "ACQUIRE" -> acquire(self,g(args,"taskId"),g(args,"generation"),t(args,"resources"),t(args,"envelope"));
+            case "QUARANTINE" -> ClaimsRecovery.quarantine(self,key);
+            case "RESTORE_QUARANTINE" -> ClaimsRecovery.restore(self,key,t(args,"record"));
+            case "UNQUARANTINE" -> ClaimsRecovery.resolve(self,key,t(args,"resolution"));
+            case "RELEASE_QUARANTINE_CAPACITY" -> releaseQuarantineCapacity(self,key);
+            case "CAN_SHRINK" -> status(canShrink(self,token,g(args,"resources")));
+            case "SHRINK" -> status(shrink(self,token,t(args,"resources")));
+            case "REPLACE" -> status(replace(self,token,t(args,"resources")));
+            case "EXTEND" -> status(append(self,token,t(args,"resources"),false));
+            case "RESERVE" -> status(reserve(self,token,key,item,g(args,"amount"),g(args,"free")));
+            case "RESERVE_MANY" -> status(reserveMany(self,token,key,t(args,"weights"),g(args,"free")));
+            case "RESTORE" -> result(restore(self,token,key,item,g(args,"amount")),null);
+            case "RESTORE_WORK" -> result(setWorkCapacity(self,token,key,g(args,"amount"))==null,null);
+            case "RELEASE" -> {release(self,token);yield result(true,null);}
+            case "RELEASE_CAPACITY" -> {releaseCapacity(self,token,item);yield result(true,null);}
+            case "FORGET_TOKEN" -> {t(self,"tokensByTaskId").rawset(g(args,"taskId"),null);yield result(true,null);}
+            default -> result(false,"CLAIMS_OPERATION_INVALID");
+        };
+    }
+    private static KahluaTable status(String reason) {return result(reason==null,reason);}
+    private static Object claimId(KahluaTable self,Object id,KahluaTable envelope,KahluaTable previous) {
+        Object supplied=g(envelope,"claimId");
+        if(yes(supplied))return supplied;
+        Object existing=g(previous,"claimId");
+        return yes(existing)?existing:text(id)+":c"+text(g(self,"nextClaimSeq"));
+    }
+    static KahluaTable acquire(KahluaTable self,Object id,Object generation,KahluaTable resources,KahluaTable envelope) {
+        KahluaTable owners=t(self,"owners"),previous=null;Set<Object> seen=new HashSet<>();
+        for(int i=1;i<=resources.len();i++) {
+            Object key=resources.rawget(i);
+            if(!seen.add(key))return result(false,"RESOURCE_DUPLICATED");
+            KahluaTable owner=t(owners,key);
+            if(owner!=null) {
+                if(quarantine(owner))return result(false,"RESOURCE_SYSTEM_QUARANTINED");
+                if(!eq(g(owner,"taskId"),id))return result(false,"ITEM_RESERVED");
+            }
+            if(previous==null)previous=owner;
+        }
+        if(previous!=null) {
+            KahluaTable before=t(previous,"resources");
+            for(int i=1;i<=before.len();i++)if(!seen.contains(before.rawget(i)))return result(false,"RESOURCE_SET_CHANGED");
+            for(int i=1;i<=resources.len();i++)if(g(owners,resources.rawget(i))!=previous)return result(false,"RESOURCE_SET_CHANGED");
+        }
+        KahluaTable token=table();token.rawset("taskId",id);token.rawset("generation",generation);
+        token.rawset("claimId",claimId(self,id,envelope,previous));token.rawset("resources",resources);add(self,"nextClaimSeq",1);
+        for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),token);
+        t(self,"tokensByTaskId").rawset(id,token);
+        if(previous==null && resources.len()>0)add(self,"revision",1);
+        Object capacityKey=g(previous,"capacityKey");KahluaTable entry=t(t(t(t(self,"capacity"),capacityKey),"entries"),id);
+        if(yes(capacityKey) && entry!=null && g(entry,"token")==previous) {
+            entry.rawset("token",token);token.rawset("capacityKey",capacityKey);
+        }
+        return result(true,token);
+    }
     private static boolean valid(KahluaTable self,KahluaTable token,Object key) {return token!=null && g(t(self,"owners"),key)==token;}
     private static boolean quarantine(KahluaTable owner) {return "SYSTEM_QUARANTINE".equals(g(owner,"kind"));}
     private static boolean mine(KahluaTable owner,KahluaTable token) {
@@ -32,29 +97,54 @@ final class ClaimsKernel {
             if(owner!=null)return result(false,quarantine(owner)?"RESOURCE_SYSTEM_QUARANTINED":"ITEM_RESERVED");
         }
         KahluaTable token=table();token.rawset("taskId",id);token.rawset("generation",generation);
-        token.rawset("resources",shallow(resources));token.rawset("claimId",g(envelope,"claimId"));
+        token.rawset("resources",shallow(resources));token.rawset("claimId",claimId(self,id,envelope,null));
         add(self,"nextClaimSeq",1);
         for(int i=1;i<=resources.len();i++)owners.rawset(resources.rawget(i),token);
         tokens.rawset(id,token);if(resources.len()>0)add(self,"revision",1);
         return result(true,token);
     }
     public static String extend(KahluaTable self,KahluaTable token,KahluaTable additions) {
+        return append(self,token,additions,true);
+    }
+    /** Commit additions must be disjoint; domain append is idempotent. */
+    private static String append(KahluaTable self,KahluaTable token,KahluaTable additions,boolean strict) {
         if(token==null)return "STALE_CLAIM";
         KahluaTable owners=t(self,"owners"),resources=t(token,"resources");
         Set<Object> seen=new HashSet<>();
         for(int i=1;i<=resources.len();i++) {
             Object key=resources.rawget(i);if(g(owners,key)!=token)return "STALE_CLAIM";seen.add(key);
         }
+        KahluaTable added=table();
         for(int i=1;i<=additions.len();i++) {
-            Object key=additions.rawget(i);if(!(key instanceof String) || !seen.add(key))return "RESOURCE_DUPLICATED";
-            if(g(owners,key)!=null)return "ITEM_RESERVED";
+            Object key=additions.rawget(i);
+            if(strict && (!(key instanceof String) || seen.contains(key)))return "RESOURCE_DUPLICATED";
+            if(!seen.add(key))continue;
+            KahluaTable owner=t(owners,key);
+            if(owner!=null && (strict || owner!=token))return !strict && quarantine(owner)?"RESOURCE_SYSTEM_QUARANTINED":"ITEM_RESERVED";
+            added.rawset(added.len()+1,key);
         }
-        resources=shallow(resources);token.rawset("resources",resources);
-        for(int i=1;i<=additions.len();i++) {
-            Object key=additions.rawget(i);resources.rawset(resources.len()+1,key);owners.rawset(key,token);
+        if(strict) {resources=shallow(resources);token.rawset("resources",resources);}
+        for(int i=1;i<=added.len();i++) {
+            Object key=added.rawget(i);resources.rawset(resources.len()+1,key);owners.rawset(key,token);
         }
-        if(additions.len()>0)add(self,"revision",1);
+        if(added.len()>0)add(self,"revision",1);
         return null;
+    }
+    private static String replace(KahluaTable self,KahluaTable token,KahluaTable resources) {
+        if(token==null)return "STALE_CLAIM";
+        Object cap=g(token,"capacityKey");KahluaTable entry=t(t(t(t(self,"capacity"),cap),"entries"),g(token,"taskId"));
+        if(yes(cap) && (entry==null || g(entry,"token")!=token))return "STALE_CLAIM";
+        KahluaTable owners=t(self,"owners"),before=t(token,"resources");Set<Object> seen=new HashSet<>();
+        for(int i=1;i<=before.len();i++)if(g(owners,before.rawget(i))!=token)return "STALE_CLAIM";
+        for(int i=1;i<=resources.len();i++) {
+            Object key=resources.rawget(i);if(!seen.add(key))return "RESOURCE_DUPLICATED";
+            KahluaTable owner=t(owners,key);
+            if(owner!=null && owner!=token)return quarantine(owner)?"RESOURCE_SYSTEM_QUARANTINED":"ITEM_RESERVED";
+        }
+        boolean changed=false;
+        for(int i=1;i<=before.len();i++)if(!seen.contains(before.rawget(i))) {owners.rawset(before.rawget(i),null);changed=true;}
+        for(int i=1;i<=resources.len();i++) {Object key=resources.rawget(i);if(g(owners,key)==null)changed=true;owners.rawset(key,token);}
+        token.rawset("resources",resources);if(changed)add(self,"revision",1);return null;
     }
     public static String canShrink(KahluaTable self,KahluaTable token,Object released) {
 	if(token==null || !(released instanceof KahluaTable keys))return "STALE_CLAIM";
@@ -154,15 +244,16 @@ final class ClaimsKernel {
 	if(old!=null) {it=t(old,"items").iterator();while(it.advance())if(weights.rawget(it.getKey())==null)return "RESOURCE_SET_CHANGED";}
 	it=weights.iterator();while(it.advance())require(restore(self,token,key,it.getKey(),it.getValue()),"BATCH_RESERVATION_INVALID");return null;
     }
-    private static void releaseQuarantineCapacity(KahluaTable self,Object key) {
+    static KahluaTable releaseQuarantineCapacity(KahluaTable self,Object key) {
 	KahluaTable capacity=t(self,"capacity");KahluaTableIterator it=capacity.iterator();
 	while(it.advance()) {
 	    KahluaTable b=t(it.getValue()),q=t(b,"quarantine"),entry=t(q,key);
 	    if(entry!=null) {
 		b.rawset("total",Math.max(0,n(b.rawget("total"))-n(entry.rawget("amount"))));q.rawset(key,null);
 		if(q.isEmpty() && n(b.rawget("count"))==0)capacity.rawset(it.getKey(),null);
-		return;
+		return result(true,g(entry,"amount"));
 	    }
 	}
+        return result(false,null);
     }
 }

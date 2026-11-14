@@ -64,12 +64,12 @@ final class CarrierRuntime {
         ProbeNpc npc = SESSION.get();
         if (npc != null && ownsCurrentWorld()) {
             if (npc.retiring()) advanceRetirement(npc);
-            else npc.pauseMovementClock(System.nanoTime());
+            else npc.locomotion().pauseMovementClock(System.nanoTime());
         }
     }
 
     public boolean carrierActive(IsoPlayer expected) {
-        return carrierPresent(expected) && !SESSION.get().moving();
+        return carrierPresent(expected) && !SESSION.get().locomotion().active();
     }
 
     public boolean carrierPresent(IsoPlayer expected) {
@@ -82,7 +82,7 @@ final class CarrierRuntime {
     }
 
     public String motionResult(IsoPlayer expected) {
-        return carrierPresent(expected) ? SESSION.get().lastMoveResult() : "UNAVAILABLE";
+        return carrierPresent(expected) ? SESSION.get().locomotion().lastMoveResult() : "UNAVAILABLE";
     }
 
     public boolean stopCarrier(IsoPlayer expected) {
@@ -199,7 +199,7 @@ final class CarrierRuntime {
                     : ProbeRules.allowedPoint(npc.getX(),npc.getY(),npc.getZ(),x,y,z))) {
                 return result("INVALID_POINT", "target too far from carrier");
             }
-            npc.moveTo((float)x, (float)y, (float)z);
+            npc.locomotion().moveTo((float)x, (float)y, (float)z);
             return result("MOVE_REQUESTED", inspect());
         }
         if (!square.isFree(false)) return result("INVALID_TILE", "birth square occupied");
@@ -493,7 +493,7 @@ final class CarrierRuntime {
         return "id=" + probeId + " pos=" + npc.getX() + "," + npc.getY() + "," + npc.getZ()
                 + " attached=" + npc.attached() + " world=" + inWorld + " pending=" + pending
                 + " square=" + onSquare + " updates=" + npc.updates() + " state=" + npc.getCurrentStateName()
-                + " " + npc.motionStatus()
+                + " " + npc.locomotion().motionStatus()
                 + " retiring=" + npc.retiring() + " retirement=" + RETIREMENT.result()
                 + " clearedLinks=" + WORLD_LINKS.clearedLinks() + " attackers=" + WORLD_LINKS.attackers()
                 + " health=" + npc.getBodyDamage().getOverallBodyHealth()

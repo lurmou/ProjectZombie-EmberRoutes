@@ -148,7 +148,8 @@ check(t.c.closed and t.c.items[t.ids[1]]:getContainer()==t.b.container and t.a.c
 -- Session loss keeps Duty; a later candidate drains it without opening another fire.
 t=preparation(false) untilState(t,function() return t.stove.object.active end)
 assert(t.r:stop(npc.id,'SELF_CARE')) finish(t)
-check(t.c.job.state=='SUSPENDED' and t.c.job.obligations.furnace and t.stove.object.active,'interruption preserves physical-device duty and exact loaded originals')
+check(t.c.job.state=='SUSPENDED' and Registry.data().obligations.byId[t.c.job.payload.duty.id]
+    and t.stove.object.active,'interruption preserves physical-device duty and exact loaded originals')
 t=resume(t) finish(t)
 check(t.c.job.state=='CANCELLED' and t.c.job.payload.heat.aborted and t.c.job.payload.expected==0
     and t.c.items[t.ids[1]]:getContainer()==t.a.container and not t.c.job.payload.duty,
@@ -177,7 +178,8 @@ check(t.c.closed and t.c.job.state=='CANCELLED' and t.c.items[t.ids[1]]:getConta
 t=preparation(false) untilState(t,function() return t.stove.object.active end)
 local foreign=f.item('Base.Carrot',true,t.stove.container) finish(t)
 check(t.stove.object.active and foreign:getContainer()==t.stove.container and not Store.owner(foreign.id)
-    and t.c.job.obligations.furnace,'foreign intervention retains reconciliation duty without stealing food or switching player contents off')
+    and Registry.data().obligations.byId[t.c.job.payload.duty.id],
+    'foreign intervention retains reconciliation duty without stealing food or switching player contents off')
 local forged=Record.copy(t.c.job) forged.payload.duty.position.x=forged.payload.duty.position.x+1
 check(not Jobs:update(forged.id,forged.revision,{payload=forged.payload}),
     'a retained physical-device position cannot be rebound to another stove during recovery')

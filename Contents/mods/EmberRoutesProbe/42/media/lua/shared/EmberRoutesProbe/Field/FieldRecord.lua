@@ -17,7 +17,8 @@ function R.valid(j)
     seen={}
     for _,a in ipairs(p.assets) do
         if not Validate.itemId(a.id) or seen[a.id] or type(a.fullType)~='string'
-            or (a.custody~='GROUND' and a.custody~='HELD' and a.custody~='DELIVERED') then return false end
+            or not Validate.stringId(a.obligationId)
+            or (a.custody~='GROUND' and a.custody~='HELD' and a.custody~='PENDING_TAKE' and a.custody~='DELIVERED') then return false end
         if a.custody~='DELIVERED' and not (function()
             for _,key in ipairs(p.claims) do if key=='item:'..a.id then return true end end
         end)() then return false end

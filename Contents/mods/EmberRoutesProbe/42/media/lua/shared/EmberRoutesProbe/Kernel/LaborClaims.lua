@@ -1,311 +1,79 @@
--- Logical coordination only. Tokens fence callbacks; no world assets are changed.
+-- Claims graph writes have one implementation in Java, including recovery.
+-- Lua adapts the call/return protocol and keeps read-only queries
+-- (valid, canShrink, available*); it owns no write path.
 local Claims={}
 local methods={} methods.__index=methods
-
-local SYSTEM_QUARANTINE_OWNER = {
-    kind = "SYSTEM_QUARANTINE",
-    ownerId = "SYSTEM_QUARANTINE",
-    taskId = "SYSTEM_QUARANTINE",
-    resources = {}
-}
-
-function Claims.new()
-    return setmetatable({
-        owners = {},
-        capacity = {},
-        tokensByTaskId = {},
-        revision = 0,
-        nextClaimSeq = 1
-    }, methods)
+local function command(self,operation,args)
+    local bridge=EmberRoutesProbeJava and EmberRoutesProbeJava.claimsCommand
+    assert(bridge,'CLAIMS_JAVA_REQUIRED')
+    return bridge(self,operation,args)
 end
-
-function methods:quarantine(key)
-    local previous = self.owners[key]
-    local origTaskId = nil
-    local origToken = nil
-    local origGen = nil
-    local origClaimId = nil
-    local capKey = nil
-    local itemId = nil
-    local amt = nil
-
-    if previous and previous.kind ~= "SYSTEM_QUARANTINE" then
-        origTaskId = previous.taskId
-        origToken = previous
-        origGen = previous.generation
-        origClaimId = previous.claimId or (tostring(previous.taskId) .. ":c" .. tostring(previous.generation or 0))
-        if previous.resources then
-            local keep = {}
-            for _, r in ipairs(previous.resources) do
-                if r ~= key then
-                    keep[#keep + 1] = r
-                end
-            end
-            previous.resources = keep
-        end
-        if string.sub(key, 1, 5) == "item:" and previous.capacityKey then
-            itemId = tonumber(string.sub(key, 6))
-            capKey = previous.capacityKey
-            local bucket = self.capacity[capKey]
-            local claim = bucket and bucket.entries[previous.taskId]
-            if claim and claim.items and claim.items[itemId] then
-                amt = claim.items[itemId]
-                claim.items[itemId] = nil
-                claim.count = claim.count - 1
-                claim.amount = math.max(0, claim.amount - amt)
-                if claim.count == 0 then
-                    bucket.entries[previous.taskId] = nil
-                    previous.capacityKey = nil
-                    bucket.count = bucket.count - 1
-                end
-                bucket.quarantine = bucket.quarantine or {}
-                bucket.quarantine[key] = {
-                    amount = amt,
-                    capacityKey = capKey,
-                    itemId = itemId,
-                    originalTaskId = origTaskId,
-                    originalToken = origToken,
-                    originalClaimId = origClaimId,
-                    originalGeneration = origGen
-                }
-                self.capacity[capKey] = bucket
-            end
-        end
-    elseif previous and previous.kind == "SYSTEM_QUARANTINE" then
-        origTaskId = previous.originalTaskId
-        origToken = previous.originalToken
-        origClaimId = previous.originalClaimId
-        origGen = previous.originalGeneration
-        capKey = previous.capacityKey
-        itemId = previous.capacityItemId
-        amt = previous.capacityAmount
-        if capKey and itemId and amt and amt > 0 then
-            local bucket = self.capacity[capKey] or { entries = {}, total = 0, count = 0, quarantine = {} }
-            bucket.quarantine = bucket.quarantine or {}
-            bucket.quarantine[key] = {
-                amount = amt,
-                capacityKey = capKey,
-                itemId = itemId,
-                originalTaskId = origTaskId,
-                originalToken = origToken,
-                originalClaimId = origClaimId,
-                originalGeneration = origGen
-            }
-            self.capacity[capKey] = bucket
-        end
-    end
-
-    local owner = {
-        kind = "SYSTEM_QUARANTINE",
-        ownerId = "SYSTEM_QUARANTINE",
-        taskId = "SYSTEM_QUARANTINE",
-        resource = key,
-        originalTaskId = origTaskId,
-        originalToken = origToken,
-        originalClaimId = origClaimId,
-        originalGeneration = origGen,
-        capacityKey = capKey,
-        capacityItemId = itemId,
-        capacityAmount = amt
-    }
-    self.owners[key] = owner
-    self.revision = self.revision + 1
-    return true, owner
+function Claims.new(nextClaimSeq)
+    return setmetatable(command(nil,'NEW',{nextClaimSeq=nextClaimSeq}).result,methods)
 end
-
-function methods:restoreQuarantine(key, record)
-    local origTaskId = record and (record.originalTaskId or record.taskId)
-    local origClaimId = record and record.originalClaimId
-    local origGen = record and record.originalGeneration
-    local capKey = record and record.capacityKey
-    local itemId = record and (record.capacityItemId or record.itemId)
-    local amt = record and (record.capacityAmount or record.amount)
-
-    -- Restore is reconstruction, never an ownership transfer. Check the existing
-    -- canonical facts before changing either owners, capacity or revision.
-    local previous = self.owners[key]
-    if previous then
-        if previous.kind ~= "SYSTEM_QUARANTINE" then
-            return false, "QUARANTINE_RESTORE_OWNER_CONFLICT"
-        end
-        if previous.originalTaskId ~= origTaskId or previous.originalClaimId ~= origClaimId
-            or previous.originalGeneration ~= origGen or previous.capacityKey ~= capKey
-            or previous.capacityItemId ~= itemId or previous.capacityAmount ~= amt then
-            return false, "QUARANTINE_RESTORE_CONFLICT"
-        end
-        return true, previous
-    end
-
-    local owner = {
-        kind = "SYSTEM_QUARANTINE",
-        ownerId = "SYSTEM_QUARANTINE",
-        taskId = "SYSTEM_QUARANTINE",
-        resource = key,
-        originalTaskId = origTaskId,
-        originalToken = nil,
-        originalClaimId = origClaimId,
-        originalGeneration = origGen,
-        capacityKey = capKey,
-        capacityItemId = itemId,
-        capacityAmount = amt
-    }
-    self.owners[key] = owner
-
-    if capKey and itemId and amt and amt > 0 then
-        local bucket = self.capacity[capKey] or { entries = {}, total = 0, count = 0, quarantine = {} }
-        bucket.quarantine = bucket.quarantine or {}
-        bucket.quarantine[key] = {
-            amount = amt,
-            capacityKey = capKey,
-            itemId = itemId,
-            originalTaskId = origTaskId,
-            originalClaimId = origClaimId,
-            originalGeneration = origGen
-        }
-        bucket.total = bucket.total + amt
-        self.capacity[capKey] = bucket
-    end
-    self.revision = self.revision + 1
-    return true, owner
+-- Cache invalidation only; this never releases an owner or a capacity promise.
+function methods:forgetToken(taskId)
+    command(self,'FORGET_TOKEN',{taskId=taskId})
 end
-
-function methods:releaseQuarantineCapacity(key)
-    for capKey, bucket in pairs(self.capacity) do
-        if bucket.quarantine and bucket.quarantine[key] then
-            local qEntry = bucket.quarantine[key]
-            bucket.total = math.max(0, bucket.total - qEntry.amount)
-            bucket.quarantine[key] = nil
-            local hasQuarantine = false
-            for _ in pairs(bucket.quarantine) do hasQuarantine = true break end
-            if not hasQuarantine and bucket.count == 0 then
-                self.capacity[capKey] = nil
-            end
-            return true, qEntry.amount
-        end
-    end
-    return false
+function methods:acquireNew(taskId,generation,resources,envelope)
+    local result=command(self,'ACQUIRE_NEW',{taskId=taskId,generation=generation,resources=resources,envelope=envelope})
+    if result.ok then return result.result end
+    return nil,result.result
 end
-
-function methods:unquarantine(key, resolution)
-    local current = self.owners[key]
-    if current and current.kind == "SYSTEM_QUARANTINE" then
-        if type(resolution) == "table" and resolution.capacityAction == "RETAIN" then
-            local targetToken = resolution.targetToken or resolution.recipientToken
-            if not targetToken or type(targetToken) ~= "table" or not targetToken.taskId then
-                return false, "CAPACITY_RETAIN_WITHOUT_RECIPIENT_REJECTED"
-            end
-            if not self.tokensByTaskId or self.tokensByTaskId[targetToken.taskId] ~= targetToken then
-                return false, "CAPACITY_RETAIN_RECIPIENT_TOKEN_INVALID"
-            end
-
-            local foundBucket, foundCapKey, foundQEntry = nil, nil, nil
-            for capKey, bucket in pairs(self.capacity) do
-                if bucket.quarantine and bucket.quarantine[key] then
-                    foundBucket = bucket
-                    foundCapKey = capKey
-                    foundQEntry = bucket.quarantine[key]
-                    break
-                end
-            end
-            if not foundQEntry then
-                return false, "QUARANTINE_CAPACITY_ENTRY_NOT_FOUND"
-            end
-
-            if targetToken.capacityKey and targetToken.capacityKey ~= foundCapKey then
-                return false, "CAPACITY_TARGET_CHANGED"
-            end
-
-            local existingClaim = foundBucket.entries[targetToken.taskId]
-            if existingClaim and existingClaim.token ~= targetToken then
-                return false, "CAPACITY_ENTRY_OCCUPIED_BY_ANOTHER_TOKEN"
-            end
-
-            foundBucket.quarantine[key] = nil
-            targetToken.capacityKey = foundCapKey
-            local claim = existingClaim
-            if not claim then
-                claim = { token = targetToken, items = {}, amount = 0, count = 0 }
-                foundBucket.entries[targetToken.taskId] = claim
-                foundBucket.count = foundBucket.count + 1
-            end
-            if claim.items[foundQEntry.itemId] == nil then
-                claim.count = claim.count + 1
-            end
-            claim.items[foundQEntry.itemId] = (claim.items[foundQEntry.itemId] or 0) + foundQEntry.amount
-            claim.amount = claim.amount + foundQEntry.amount
-            claim.token = targetToken
-        else
-	    -- Identity isolation can retain a cooking batch capacity key as
-	    -- well as an item key. Settle the reservation attached to THIS key.
-	    self:releaseQuarantineCapacity(key)
-        end
-
-        self.owners[key] = nil
-        self.revision = self.revision + 1
-        return true
-    end
-    return false, "NOT_QUARANTINED"
-end
-
-function methods:acquireNew(taskId, generation, resources, envelope)
-    if self.tokensByTaskId and self.tokensByTaskId[taskId] then
-        return nil, "TASK_ALREADY_HAS_CLAIMS"
-    end
-    for _, token in pairs(self.owners) do
-        if token.taskId == taskId then
-            return nil, "TASK_ALREADY_HAS_CLAIMS"
-        end
-    end
-    local seen = {}
-    for _, key in ipairs(resources) do
-        if seen[key] then return nil, "RESOURCE_DUPLICATED" end
-        seen[key] = true
-        local owner = self.owners[key]
-        if owner then
-            if owner.kind == "SYSTEM_QUARANTINE" then
-                return nil, "RESOURCE_SYSTEM_QUARANTINED"
-            end
-            return nil, "ITEM_RESERVED"
-        end
-    end
-    local claimId = (envelope and envelope.claimId) or (tostring(taskId) .. ":c" .. tostring(self.nextClaimSeq))
-    self.nextClaimSeq = self.nextClaimSeq + 1
-    local token = { taskId = taskId, generation = generation, resources = resources, claimId = claimId }
-    for _, key in ipairs(resources) do self.owners[key] = token end
-    if self.tokensByTaskId then self.tokensByTaskId[taskId] = token end
-    if #resources > 0 then self.revision = self.revision + 1 end
-    return token
-end
-
 function methods:acquire(taskId,generation,resources,envelope)
-    local seen,previous={},nil
-    for _,key in ipairs(resources) do
-        if seen[key] then return nil,"RESOURCE_DUPLICATED" end seen[key]=true
-        local owner=self.owners[key]
-        if owner then
-            if owner.kind == "SYSTEM_QUARANTINE" then return nil, "RESOURCE_SYSTEM_QUARANTINED" end
-            if owner.taskId~=taskId then return nil,"ITEM_RESERVED" end
-        end
-        previous=previous or owner
-    end
-    if previous then
-        for _,key in ipairs(previous.resources) do if not seen[key] then return nil,"RESOURCE_SET_CHANGED" end end
-        for _,key in ipairs(resources) do if self.owners[key]~=previous then return nil,"RESOURCE_SET_CHANGED" end end
-    end
-    local claimId = (envelope and envelope.claimId) or (previous and previous.claimId) or (tostring(taskId) .. ":c" .. tostring(self.nextClaimSeq))
-    self.nextClaimSeq = self.nextClaimSeq + 1
-    local token={taskId=taskId,generation=generation,resources=resources,claimId=claimId}
-    for _,key in ipairs(resources) do self.owners[key]=token end
-    if self.tokensByTaskId then self.tokensByTaskId[taskId]=token end
-    if not previous and #resources>0 then self.revision=self.revision+1 end
-    if previous and previous.capacityKey then
-        local bucket=self.capacity[previous.capacityKey]
-        local claim=bucket and bucket.entries[taskId]
-        if claim and claim.token==previous then
-            claim.token=token token.capacityKey=previous.capacityKey
-        end
-    end
-    return token
+    local result=command(self,'ACQUIRE',{taskId=taskId,generation=generation,resources=resources,envelope=envelope})
+    if result.ok then return result.result end
+    return nil,result.result
+end
+function methods:quarantine(key)
+    local result=command(self,'QUARANTINE',{key=key})
+    return result.ok,result.result
+end
+function methods:restoreQuarantine(key,record)
+    local result=command(self,'RESTORE_QUARANTINE',{key=key,record=record})
+    return result.ok,result.result
+end
+function methods:unquarantine(key,resolution)
+    local result=command(self,'UNQUARANTINE',{key=key,resolution=resolution})
+    return result.ok,result.result
+end
+function methods:releaseQuarantineCapacity(key)
+    local result=command(self,'RELEASE_QUARANTINE_CAPACITY',{key=key})
+    return result.ok,result.result
+end
+function methods:shrink(token,resources)
+    local result=command(self,'SHRINK',{token=token,resources=resources})
+    return result.ok,result.result
+end
+function methods:replace(token,resources)
+    local result=command(self,'REPLACE',{token=token,resources=resources})
+    return result.ok,result.result
+end
+function methods:extend(token,resources)
+    local result=command(self,'EXTEND',{token=token,resources=resources})
+    return result.ok,result.result
+end
+function methods:reserve(token,key,itemId,amount,free)
+    local result=command(self,'RESERVE',{token=token,key=key,itemId=itemId,amount=amount,free=free})
+    return result.ok,result.result
+end
+function methods:reserveMany(token,key,weights,free)
+    local result=command(self,'RESERVE_MANY',{token=token,key=key,weights=weights,free=free})
+    return result.ok,result.result
+end
+function methods:restore(token,key,itemId,amount)
+    local result=command(self,'RESTORE',{token=token,key=key,itemId=itemId,amount=amount})
+    return result.ok
+end
+function methods:restoreWork(token,key,amount)
+    local result=command(self,'RESTORE_WORK',{token=token,key=key,amount=amount})
+    return result.ok
+end
+function methods:release(token)
+    local result=command(self,'RELEASE',{token=token})
+end
+function methods:releaseCapacity(token,itemId)
+    local result=command(self,'RELEASE_CAPACITY',{token=token,itemId=itemId})
 end
 function methods:valid(token,key) return token and self.owners[key]==token end
 
@@ -344,176 +112,8 @@ function methods:canShrink(token, releasedKeys)
     if token.capacityKey and (not claim or claim.token ~= token) then return false, 'STALE_CLAIM' end
     return true
 end
-
--- Validate the whole removal before touching owners, resources or capacity.
--- Supports releasing quarantined resources originally belonging to this token,
--- with deferred capacity release.
-function methods:shrink(token, releasedKeys)
-    local ok, reason = self:canShrink(token, releasedKeys)
-    if not ok then return false, reason end
-
-    local drop, keep = {}, {}
-    for _, key in ipairs(releasedKeys) do drop[key] = true end
-    for _, key in ipairs(token.resources) do
-        if not drop[key] then keep[#keep + 1] = key end
-    end
-
-    for _, key in ipairs(releasedKeys) do
-        if string.sub(key, 1, 5) == 'item:' then
-            self:releaseCapacity(token, tonumber(string.sub(key, 6)))
-        end
-        local owner = self.owners[key]
-        if owner == token then
-            self.owners[key] = nil
-        elseif owner and owner.kind == "SYSTEM_QUARANTINE" then
-            local isMine = (owner.originalToken and owner.originalToken == token) or
-                (owner.originalClaimId ~= nil and token.claimId ~= nil and token.claimId == owner.originalClaimId)
-            if isMine then
-                owner.originalTaskId = nil
-                owner.originalToken = nil
-                owner.originalClaimId = nil
-                owner.originalGeneration = nil
-                if string.sub(key, 1, 5) == 'item:' then
-                    self:releaseQuarantineCapacity(key)
-                end
-            end
-        end
-    end
-
-    token.resources = keep
-    if #releasedKeys > 0 then self.revision = self.revision + 1 end
-    return true
-end
--- Validate both sets before mutation. Retained tools/surface never lose ownership.
-function methods:replace(token,resources)
-    if not token then return false,"STALE_CLAIM" end
-    if token.capacityKey then
-        local b=self.capacity[token.capacityKey] local c=b and b.entries[token.taskId]
-        if not c or c.token~=token then return false,'STALE_CLAIM' end
-    end
-    local seen={}
-    for _,key in ipairs(token.resources) do if self.owners[key]~=token then return false,"STALE_CLAIM" end end
-    for _,key in ipairs(resources) do
-        if seen[key] then return false,"RESOURCE_DUPLICATED" end seen[key]=true
-        local owner=self.owners[key]
-        if owner and owner~=token then
-            if owner.kind=="SYSTEM_QUARANTINE" then return false,"RESOURCE_SYSTEM_QUARANTINED" end
-            return false,"ITEM_RESERVED"
-        end
-    end
-    local changed=false
-    for _,key in ipairs(token.resources) do if not seen[key] then self.owners[key]=nil changed=true end end
-    for _,key in ipairs(resources) do if not self.owners[key] then changed=true end self.owners[key]=token end
-    if changed then self.revision=self.revision+1 end
-    token.resources=resources return true
-end
--- Add freshly created original outputs without releasing inputs/tools in between.
-function methods:extend(token,resources)
-    if not token then return false,"STALE_CLAIM" end
-    local seen={}
-    for _,key in ipairs(token.resources) do
-        if self.owners[key]~=token then return false,"STALE_CLAIM" end seen[key]=true
-    end
-    local added={}
-    for _,key in ipairs(resources) do
-        if not seen[key] then
-            local owner=self.owners[key]
-            if owner and owner~=token then
-                if owner.kind=="SYSTEM_QUARANTINE" then return false,"RESOURCE_SYSTEM_QUARANTINED" end
-                return false,"ITEM_RESERVED"
-            end
-            added[#added+1]=key seen[key]=true
-        end
-    end
-    for _,key in ipairs(added) do token.resources[#token.resources+1]=key self.owners[key]=token end
-    if #added>0 then self.revision=self.revision+1 end
-    return true
-end
-function methods:reserve(token,key,itemId,amount,free)
-    if not token or not self:valid(token,"item:"..itemId) then return false,"STALE_CLAIM" end
-    if type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge then
-        return false,"CAPACITY_UNAVAILABLE"
-    end
-    if type(free)~="number" or free~=free or free<0 or free==math.huge then
-        return false,"CAPACITY_UNAVAILABLE"
-    end
-    if token.capacityKey and token.capacityKey~=key then return false,"CAPACITY_TARGET_CHANGED" end
-    local bucket=self.capacity[key] or {entries={},total=0,count=0}
-    local previous=bucket.entries[token.taskId]
-    local oldWeight=previous and previous.items[itemId] or 0
-    local proposed=bucket.total-oldWeight+amount
-    if proposed>free then return false,"CAPACITY_RESERVED" end
-    if not previous then bucket.count=bucket.count+1 end
-    local claim=previous or {token=token,items={},amount=0,count=0}
-    if claim.items[itemId]==nil then claim.count=claim.count+1 end
-    claim.items[itemId]=amount claim.amount=claim.amount-oldWeight+amount claim.token=token
-    bucket.entries[token.taskId]=claim bucket.total=proposed self.capacity[key]=bucket token.capacityKey=key
-    return true
-end
-function methods:releaseCapacity(token,itemId)
-    local key=token.capacityKey local bucket=key and self.capacity[key]
-    local claim=bucket and bucket.entries[token.taskId]
-    if claim and claim.token==token then
-        local amount
-        if itemId then amount=claim.items[itemId] else amount=claim.amount end
-        if amount==nil then return end
-        if itemId then claim.items[itemId]=nil claim.count=claim.count-1 else claim.count=0 end
-        claim.amount=math.max(0,claim.amount-amount) bucket.total=math.max(0,bucket.total-amount)
-        if claim.count==0 then
-            bucket.entries[token.taskId]=nil token.capacityKey=nil bucket.count=bucket.count-1
-	    if bucket.count==0 then
-		if bucket.quarantine then
-		    for _ in pairs(bucket.quarantine) do return end
-		end
-		self.capacity[key]=nil
-	    end
-        end
-    end
-end
-function methods:release(token)
-    if not token then return end
-    local changed=false
-    for _,key in ipairs(token.resources) do if self.owners[key]==token then self.owners[key]=nil changed=true end end
-    if self.tokensByTaskId and token.taskId and self.tokensByTaskId[token.taskId]==token then
-        self.tokensByTaskId[token.taskId]=nil
-    end
-    if changed then self.revision=self.revision+1 end
-    self:releaseCapacity(token)
-end
--- Loading conservative reservations does not assert that space still exists.
--- The native capacity check is repeated before every effect.
-function methods:restore(token,key,itemId,amount)
-    if not self:valid(token,"item:"..itemId) or type(key)~="string" or key==""
-        or type(amount)~="number" or amount~=amount or amount<0 or amount==math.huge then return false end
-    if token.capacityKey and token.capacityKey~=key then return false end
-    local bucket=self.capacity[key] or {entries={},total=0,count=0}
-    local previous=bucket.entries[token.taskId]
-    if not previous then bucket.count=bucket.count+1 end
-    local claim=previous or {token=token,items={},amount=0,count=0}
-    local before=claim.items[itemId] or 0
-    if claim.items[itemId]==nil then claim.count=claim.count+1 end
-    claim.items[itemId]=amount claim.amount=claim.amount-before+amount
-    bucket.total=bucket.total-before+amount bucket.entries[token.taskId]=claim
-    self.capacity[key]=bucket token.capacityKey=key
-    return true
-end
 function methods:available(key,free)
     return math.max(0,free-(self.capacity[key] and self.capacity[key].total or 0))
-end
--- A stable batch promise, independent of food IDs that may be replaced by the
--- native recipe. Shares the SAME capacity buckets with hauling reservations.
-function methods:restoreWork(token,key,amount)
-    if not token or not self:valid(token,'cooking:capacity:'..token.taskId)
-        or type(key)~='string' or type(amount)~='number' or amount<=0 or amount~=amount or amount==math.huge
-        or token.capacityKey and token.capacityKey~=key then return false end
-    local bucket=self.capacity[key] or {entries={},total=0,count=0}
-    local claim=bucket.entries[token.taskId]
-    if claim and (claim.token~=token or claim.count>0) then return false end
-    if not claim then bucket.count=bucket.count+1 end
-    claim=claim or {token=token,items={},count=0,amount=0}
-    bucket.total=bucket.total-claim.amount+amount claim.amount=amount claim.workAmount=amount
-    bucket.entries[token.taskId]=claim self.capacity[key]=bucket token.capacityKey=key
-    return true
 end
 function methods:availableWork(token,key,free)
     local bucket=self.capacity[key] local claim=bucket and token and bucket.entries[token.taskId]
@@ -524,25 +124,5 @@ function methods:availableFor(token,key,itemId,free)
     local bucket=self.capacity[key] local claim=bucket and token and bucket.entries[token.taskId]
     local own=claim and claim.token==token and claim.items[itemId] or 0
     return self:available(key,free)+own
-end
-function methods:reserveMany(token,key,weights,free)
-    if not token or type(key)~="string" or key=="" or (token.capacityKey and token.capacityKey~=key) or type(free)~="number" or free~=free
-        or free<0 or free==math.huge then return false,"CAPACITY_UNAVAILABLE" end
-    local bucket=self.capacity[key] local old=bucket and bucket.entries[token.taskId]
-    local total,count=0,0
-    for itemId,amount in pairs(weights) do
-        count=count+1
-        if count>30 or not self:valid(token,"item:"..itemId) or type(amount)~="number" or amount~=amount
-            or amount<0 or amount==math.huge then return false,"STALE_CLAIM" end
-        total=total+amount
-    end
-    if count==0 or (bucket and bucket.total or 0)-(old and old.amount or 0)+total>free then return false,"CAPACITY_RESERVED" end
-    if old then for itemId in pairs(old.items) do if weights[itemId]==nil then return false,"RESOURCE_SET_CHANGED" end end end
-    -- All validation precedes mutation; at most 30 already claimed resources.
-    for itemId,amount in pairs(weights) do
-        local ok,reason=self:restore(token,key,itemId,amount)
-        if not ok then error(reason or "BATCH_RESERVATION_INVALID") end
-    end
-    return true
 end
 return Claims

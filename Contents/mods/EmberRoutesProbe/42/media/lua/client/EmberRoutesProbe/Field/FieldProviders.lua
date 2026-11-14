@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 local Field=require 'EmberRoutesProbe/Field/FieldWork'
 local Discovery=require 'EmberRoutesProbe/Field/FieldDiscovery'
 local Operations=require 'EmberRoutesProbe/Field/FieldOperations'
@@ -31,7 +32,7 @@ local function claim(category,selected,npc,entry,jobId)
             if item then
                 local id=item:getID()
                 local owner=Store.owner(id)
-                local allowed=not owner or (npcId and Store.canClaimTool(npcId,id))
+                local allowed=not owner or (npcId and Custody.canClaim(npcId,id))
                 if not allowed then return nil,nil,'FIELD_HANDS_OCCUPIED' end
             end
         end
@@ -46,28 +47,34 @@ local function claim(category,selected,npc,entry,jobId)
     npcId=npcId or (EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc))
     if type(npcId)~='string' or npcId=='' then return nil end
     local toolSupplyReqs={}
+    local initialHeldCustodies={}
     local createdCustodies={}
+    local function rollbackCreated()
+        local complete=true
+        for _,cid in ipairs(createdCustodies) do if not Custody.releaseUncollected(cid,npc) then complete=false end end
+        return complete
+    end
     for _,req in ipairs(supplies.requirements) do
         local itemId=req.item:getID()
         t.tools[#t.tools+1]=itemId
         if req.inInventory then
-            local existing=Store.custodyByItem(itemId)
+            local existing=Custody.byItem(itemId)
             if existing then
-                if jobId then Store.assignToolUse(existing.id,jobId) end
+                if jobId then Custody.assignUse(existing.id,jobId) end
             else
-                local custody,err=Store.claimCustody(npcId,itemId,req.role,nil,jobId)
+                local custody,err,evidence=Custody.claim(npcId,itemId,req.role,nil,jobId,npc,req.item)
                 if not custody then
-                    for _,cid in ipairs(createdCustodies) do Store.releaseCustody(cid) end
-                    return nil,nil,err or 'TOOL_CUSTODY_CONFLICT'
+                    if require('EmberRoutesProbe/Kernel/CommitFence').status() then return nil,nil,err or evidence,false end
+                    return nil,nil,err or 'TOOL_CUSTODY_CONFLICT',rollbackCreated()
                 end
-                custody.state='HELD'
                 createdCustodies[#createdCustodies+1]=custody.id
+                initialHeldCustodies[#initialHeldCustodies+1]=custody.id
             end
         else
-            local custody,err=Store.claimCustody(npcId,itemId,req.role,req.endpoint.id,jobId)
+            local custody,err,evidence=Custody.claim(npcId,itemId,req.role,req.endpoint.id,jobId)
             if not custody then
-                for _,cid in ipairs(createdCustodies) do Store.releaseCustody(cid) end
-                return nil,nil,err or 'TOOL_CUSTODY_CONFLICT'
+                if require('EmberRoutesProbe/Kernel/CommitFence').status() then return nil,nil,err or evidence,false end
+                return nil,nil,err or 'TOOL_CUSTODY_CONFLICT',rollbackCreated()
             end
             createdCustodies[#createdCustodies+1]=custody.id
             toolSupplyReqs[#toolSupplyReqs+1]={
@@ -79,6 +86,7 @@ local function claim(category,selected,npc,entry,jobId)
         end
     end
     t.createdCustodies=createdCustodies
+    t.initialHeldCustodies=initialHeldCustodies
     if #toolSupplyReqs>0 then
         t.toolSupply={requirements=toolSupplyReqs}
     end
@@ -95,7 +103,7 @@ local function claim(category,selected,npc,entry,jobId)
         end
     end
     for _,item in pairs({primary=npc:getPrimaryHandItem(),secondary=npc:getSecondaryHandItem()}) do
-        if not Store.custodyByItem(item:getID()) then
+        if not Custody.byItem(item:getID()) then
             local key='item:'..item:getID() local seen=false
             for _,existing in ipairs(keys) do if key==existing then seen=true break end end
             if not seen then keys[#keys+1]=key end
@@ -111,7 +119,7 @@ end
 local function rollbackNewTools(c,target)
     local released=true
     for _,id in ipairs(target.createdCustodies or {}) do
-	if not Store.releaseCustody(id) then released=false end
+	if not Custody.releaseUncollected(id,c.npc) then released=false end
     end
     if not released then c.unknown('FIELD_TOOL_ROLLBACK_UNCONFIRMED') end
     return released

@@ -191,6 +191,7 @@ function Service.recover()
             and not Work.busy(id) and (not rt or not rt:owns(id)) then
             local reason=r.reason or ''
 	    local system=(r.format==2 or r.format==3) and (reason=='ROUTING_WAIT' or reason=='SAVE' or reason=='LOAD_RECOVERY'
+                or reason=='LOGISTICS_STOPPED'
                 or reason=='HEALTH_NEEDS_CARE' or reason=='HEALTH_NEEDS_DOCTOR' or reason=='HEALTH_UNAVAILABLE'
                 or reason=='DRIVER_UNAVAILABLE') -- Older low-health pauses used this generic reason.
                 or r.format==1 and (reason=='SAVE' or reason=='LOAD_RECOVERY' or reason=='NATIVE_TRANSFER_STOPPED'

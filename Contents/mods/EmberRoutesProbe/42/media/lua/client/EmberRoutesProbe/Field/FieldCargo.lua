@@ -9,6 +9,7 @@ local Supply=require 'EmberRoutesProbe/Crafting/CraftSupply'
 local Transfer=require 'EmberRoutesProbe/Work/WorkTransfer'
 local Native=require 'EmberRoutesProbe/Field/FieldActions'
 local C={}
+local Obligations=require 'EmberRoutesProbe/Field/FieldObligations'
 function C.snapshot(container)
     local list=container:getItems() if list:size()>512 then return nil end
     local result={}
@@ -35,21 +36,26 @@ function C.outputs(c,before,after,ground)
     -- Overflow items stay unregistered originals and the observation reports
     -- itself incomplete instead, which the attempt protocol reads as not
     -- applied - the safe direction.
-    local overflow=false
-    local ok=c.change(function(j)
-        for id,value in pairs(after) do
-            if not before[id] and not Record.asset(j,id) then
+    local overflow=false local additions={} local operations={}
+    for id,value in pairs(after) do
+        if not before[id] and not Record.asset(c.job,id) then
+            if #c.job.payload.assets+#additions>=96 then overflow=true
+            else
                 local item=ground and value.item or value
-                if #j.payload.assets>=96 then overflow=true
-                else
-                    j.payload.assets[#j.payload.assets+1]={id=id,fullType=item:getFullType(),
-                        custody=ground and 'GROUND' or 'HELD',x=ground and value.x or nil,
-                        y=ground and value.y or nil,z=ground and value.z or nil}
-                    Record.addClaim(j.payload,'item:'..id)
-                end
+                local obligationId,op=Obligations.create(c.job,id,nil,false)
+                additions[#additions+1]={id=id,fullType=item:getFullType(),obligationId=obligationId,
+                    custody=ground and 'GROUND' or 'HELD',x=ground and value.x or nil,
+                    y=ground and value.y or nil,z=ground and value.z or nil}
+                operations[#operations+1]=op
             end
         end
-    end)
+    end
+    local ok=c.change(function(j)
+        for _,asset in ipairs(additions) do
+            j.payload.assets[#j.payload.assets+1]=asset
+            Record.addClaim(j.payload,'item:'..asset.id)
+        end
+    end,nil,#operations>0 and operations or nil)
     if overflow then c.reason='FIELD_OUTPUT_LIMIT' return false end
     return ok
 end
@@ -78,11 +84,22 @@ local function transfer(c,item,from,to,endpoint,pickup,destination)
         if item:getContainer()==to and to:getItems():contains(item)
             and (pickup and (not pickup:getSquare() or not pickup:getSquare():getWorldObjects():contains(pickup))
                 or not pickup and not from:getItems():contains(item)) then
+            local asset=Record.asset(c.job,item:getID())
+            local owed=asset and Obligations.record(asset.obligationId,c.job.id,item:getID())
+            if not owed then return false,false end
+            local ops
+            if not pickup then
+                local attempt=c.job.payload.attempt
+                if not attempt or not endpoint or not endpoint.id then return false,false end
+                ops={{action='SETTLE',id=owed.id,expectedRevision=owed.revision,
+                    evidence={effects='KNOWN',itemId=item:getID(),destinationId=endpoint.id,
+                        originalPresent=true,attemptId=attempt.id}}}
+            end
             local saved=c.change(function(j)
                 local a=Record.asset(j,item:getID())
                 a.custody=pickup and 'HELD' or 'DELIVERED'
                 if not pickup then Record.dropClaim(j.payload,'item:'..item:getID()) end
-            end)
+            end,nil,ops)
             if not pickup then Registry.inventoryChanged(from) Registry.inventoryChanged(to) end
             return saved,true
         end

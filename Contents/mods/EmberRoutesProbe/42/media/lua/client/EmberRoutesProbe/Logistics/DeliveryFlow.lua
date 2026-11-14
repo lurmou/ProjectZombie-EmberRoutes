@@ -8,6 +8,7 @@ local Producers=require 'EmberRoutesProbe/Work/LaborProducers'
 local Target=require 'EmberRoutesProbe/Logistics/DeliveryTarget'
 local Routing=require 'EmberRoutesProbe/Hauling/HaulRouting'
 local Clock = require 'EmberRoutesProbe/Kernel/Clock'
+local HaulJobs=require 'EmberRoutesProbe/Hauling/HaulJobs'
 local F={}
 local function nextSource(r)
     for _,line in ipairs(r.manifest) do if line.custodyState=='UNCOLLECTED' then return line.sourceId end end
@@ -19,7 +20,7 @@ local function withdrawSource(c,sourceId)
 	    changes[#changes+1]={itemId=line.itemId,state='WITHDRAWN'}
 	end
     end
-    if #changes>0 then assert(Store.settleHaulLines(c.job,c.token,c.generation,changes)) end
+    if #changes>0 then assert(HaulJobs.settle(c.job,c.token,c.generation,changes)) end
 end
 function F.next(c,snapshotStep,withdraw)
     local r=c.job
@@ -58,7 +59,9 @@ function F.next(c,snapshotStep,withdraw)
             local item,where,reason=View.find(index,l.itemId)
             local isCarried=item and where and where<=(c.scanCharCount or 1)
             local isSource=item and where and source and where==((c.scanCharCount or 1)+1)
-            if item and isCarried then l.custodyState='CARRIED' held[#held+1]=item
+            if item and isCarried then
+                if not HaulJobs.observeHeld(r,l) then return nil,'RECONCILE_REQUIRED' end
+                held[#held+1]=item
 	    elseif l.custodyState=='CARRIED' or l.custodyState=='RECONCILE' then return nil,'RECONCILE_REQUIRED'
 	    elseif l.sourceId==sourceId then
 		if item and isSource then uncollected=uncollected or {line=l,item=item}
@@ -67,7 +70,7 @@ function F.next(c,snapshotStep,withdraw)
 	    end
         end
     end
-    if #missing>0 then assert(Store.settleHaulLines(r,c.token,c.generation,missing)) end
+    if #missing>0 then assert(HaulJobs.settle(r,c.token,c.generation,missing)) end
     if not r.deliveryOnly then
 	if uncollected then
 	    local item=uncollected.item
@@ -80,7 +83,7 @@ function F.next(c,snapshotStep,withdraw)
 	    end
 	    -- Capacity may change after planning. Skip only this untouched item,
 	    -- then try other planned originals that may still fit on this trip.
-	    assert(Store.settleHaulLines(r,c.token,c.generation,{{itemId=uncollected.line.itemId,state='WITHDRAWN'}}))
+	    assert(HaulJobs.settle(r,c.token,c.generation,{{itemId=uncollected.line.itemId,state='WITHDRAWN'}}))
 	    return nil,'SCAN_PENDING'
 	elseif nextSource(r) then return nil,'SCAN_PENDING'
         else withdraw(c) end

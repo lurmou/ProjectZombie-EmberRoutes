@@ -70,8 +70,9 @@ check(not Record.transition(applied,reprice),'admitted quota cannot grow behind 
 local cycle={} cycle.self=cycle
 check(not pcall(Record.copy,cycle),'cyclic native-like data fails bounded copy rather than recursing forever')
 local hot=job('stove','chef')
-hot.payload.claims={'cooking:stove:1'} hot.obligations.furnace=true
-hot.payload.duty={id='duty:1',siteKey='cooking:stove:1',ownerId='chef',revision=1,
+hot.payload.claims={'cooking:stove:1'}
+hot.payload.dutySequence=1
+hot.payload.duty={id=hot.id..':furnace:1',siteKey='cooking:stove:1',ownerId='chef',revision=1,
     originalActive=false,openedByJob=true,state='STOP_REQUIRED'}
 local off=assert(Record.begin(hot,'TOGGLE',{}))
 off=assert(Record.committing(off,off.payload.attempt.id))

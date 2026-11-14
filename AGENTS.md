@@ -68,7 +68,7 @@
 - **状态职责分开**：Order需求、Job执行、Session身体控制、资产效果与原件责任分别建模；展示状态可以汇总，不能反向充当执行、结算或释放依据。不为统一名称而丢弃暂停、未知效果或恢复状态。
 - **释放须有业务证据**：记录缺失、会话消失、超时或身体停止均不能单独证明资产结清。释放目录额度或原件声明须有对应业务的明确证据；不足时保留责任并进入可诊断核对状态。reset、取消、死亡与读档须区分派生缓存和持久责任，不通过清空内存表冒充恢复完成。
 - **验证与报告对应范围**：按风险运行最少必要检查，优先验证边界和失败路径，不为简单抽离新增重复实现的测试。修改测试说明是调用适配还是预期行为变化，不删除失败用例来取得通过。分别报告本轮通过、失败、未运行的检查及范围；未测量不宣称性能提升，未比较替代方案不宣称架构最优。
-- **回调优先于侵入（callback-first，Fabric 借鉴）**：新增跨域调用先查有没有注册表/事件（Provider 注册表、ActivityRegistry、JobPolicyRegistry、事件/广播等），有就走注册表/事件；没有才允许直接调用，并在调用处注明原因。直接挂载 `Probe.<name> = ...` 与绕过受控单点直接 `ISTimedActionQueue.add(...)` 都属于侵入式调用：新增时必须在同行或紧邻上方的注释行写 `-- callback-first: <为什么不能走注册表/事件>`，否则 `tools/check-architecture.py`（`DIRECT_CALL_BASELINE` 只缩不增棘轮）拦下。存量（main 6ed6b25：66 处 Probe 挂载 / 20 文件、5 处队列直调 / 4 文件，全部无注释）按现状放行、不追补注释；队列直调的唯一受控单点是 `Runtime/TaskController.lua:165` 的 `body.add` 漏斗，其余存量直调（无 body 时的 fallback、玩家角色路径）同样只放行存量。`function Probe.<name>(...)` 定义是 Probe API 自身定义，不属挂载，不进门禁。
+- **回调优先于侵入（callback-first，Fabric 借鉴）**：新增跨域调用先查有没有注册表/事件（Provider 注册表、ActivityRegistry、JobPolicyRegistry、事件/广播等），有就走注册表/事件；没有才允许直接调用，并在调用处注明原因。直接挂载 `Probe.<name> = ...` 与绕过受控单点直接 `ISTimedActionQueue.add(...)` 都属于侵入式调用：新增时必须在同行或紧邻上方的注释行写 `-- callback-first: <为什么不能走注册表/事件>`，否则 `tools/check-architecture.py`（`DIRECT_CALL_BASELINE` 只缩不增棘轮）拦下。存量（main 6ed6b25：66 处 Probe 挂载 / 20 文件、5 处队列直调 / 4 文件，全部无注释）按现状放行、不追补注释；当前计数以 `tools/check-architecture.py` 的 `DIRECT_CALL_BASELINE` 为准（只减不增）。队列直调的唯一受控单点是 `Runtime/TaskController.lua:165` 的 `body.add` 漏斗，其余存量直调（无 body 时的 fallback、玩家角色路径）同样只放行存量。`function Probe.<name>(...)` 定义是 Probe API 自身定义，不属挂载，不进门禁。
 
 ## 固定参考项目
 

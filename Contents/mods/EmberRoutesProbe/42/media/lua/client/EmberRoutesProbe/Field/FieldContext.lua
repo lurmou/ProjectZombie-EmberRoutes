@@ -10,10 +10,10 @@ function C.new(actor,job,binding,def,root)
     local c={actor=actor,npc=binding.handle,binding=binding,job=job,reason=nil,nextTick=0}
     c.token=Store.claimField(job) if not c.token then return nil end
     function c.same() return Registry.data()==root and Store.validField(c.job,c.token) end
-    function c.change(edit,capacity)
+    function c.change(edit,capacity,obligationOps)
         if not c.same() then return false end
         local j=Jobs.current():get(c.job.id) edit(j)
-        local ok,value=Store.replaceField(c.job,c.token,j,capacity)
+        local ok,value=Store.replaceField(c.job,c.token,j,capacity,obligationOps)
         if not ok then c.reason=value return false end
         c.job=value return true
     end

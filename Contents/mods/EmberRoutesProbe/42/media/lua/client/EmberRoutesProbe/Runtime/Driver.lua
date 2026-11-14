@@ -81,6 +81,10 @@ function Driver.stopControlled(control)
     return control and Driver.valid(control.binding)
         and EmberRoutesProbeJava.stopWithControl(control.binding.handle,control.key) or false
 end
+function Driver.retryStandExit(control)
+    return control and Driver.valid(control.binding)
+        and EmberRoutesProbeJava.retryStandExitWithControl(control.binding.handle,control.key) or false
+end
 function Driver.followControlled(control,actor,rank)
     if not control or not Driver.valid(control.binding) then return 'STALE_NPC' end
     if not EmberRoutesProbeJava.followWithControl then return 'FOLLOW_UNAVAILABLE' end

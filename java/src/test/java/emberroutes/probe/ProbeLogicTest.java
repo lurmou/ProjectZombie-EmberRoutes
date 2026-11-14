@@ -55,7 +55,15 @@ public final class ProbeLogicTest {
             check(session.get() == null, "null factory result not retained");
         }
         check(session.spawn(Object::new) != null, "retry after construction failure");
+        check(StandExitPolicy.allows(false,false,false,false,false,true), "stalled sitting can retry get-up");
+        check(!StandExitPolicy.allows(false,true,false,false,false,true), "do not restart native get-up");
+        check(!StandExitPolicy.allows(true,false,false,false,false,true), "bed exit owns its animation");
+        check(!StandExitPolicy.allows(false,false,true,false,false,true), "corpse control excludes retry");
+        check(!StandExitPolicy.allows(false,false,false,true,false,true), "queued action excludes retry");
+        check(!StandExitPolicy.allows(false,false,false,false,true,true), "pending get-up is not reset");
+        check(!StandExitPolicy.allows(false,false,false,false,false,false), "retry requires settled sitting pose");
         movementRegression();
+        bodyBridgeContractRegression();
         rootMotionRegression();
         retirementRegression();
         FurnitureExitState exit=new FurnitureExitState();
@@ -97,7 +105,46 @@ public final class ProbeLogicTest {
         System.out.println(BuildInfo.PREFIX + " PASS " + assertions + " assertions");
     }
 
+    private static void bodyBridgeContractRegression() {
+        String[] repose = {"REST", "SLEEP"};
+        check(BodyBridgeContract.ReposeKind.values().length == repose.length, "repose protocol has exactly two kinds");
+        for (String token : repose)
+            check(BodyBridgeContract.ReposeKind.fromLua(token).name().equals(token), "exact repose token: " + token);
+        String[] phases = {"FLOOR", "PREPARE", "STAND_TARGET", "ALIGN_BED", "LIE"};
+        check(BodyBridgeContract.FurniturePhase.values().length == phases.length, "furniture protocol has exactly five phases");
+        for (String token : phases)
+            check(BodyBridgeContract.FurniturePhase.fromLua(token).name().equals(token), "exact furniture token: " + token);
+        for (String invalid : new String[] {null, "", "sleep", "Rest", " REST", "SLEEP ", "FLOOR", "UNKNOWN"})
+            check(BodyBridgeContract.ReposeKind.fromLua(invalid) == null, "unrecognized repose is not normalized: " + invalid);
+        for (String invalid : new String[] {null, "", "floor", "lie", " FLOOR", "LIE ", "SLEEP", "UNKNOWN"})
+            check(BodyBridgeContract.FurniturePhase.fromLua(invalid) == null, "unrecognized phase is not normalized: " + invalid);
+        String[] signals = {"MOVEMENT", "MOVING_FLAG", "TIMED_ACTION", "PATH", "PATH_GOAL", "PATH_NEXT",
+                "ASLEEP", "RESTING", "BED", "FITNESS", "EMOTE", "POSTURE", "CORPSE", "FOLLOW"};
+        int[] masks = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192};
+        check(BodyBridgeContract.StopSignal.values().length == signals.length, "stop protocol has exactly fourteen signals");
+        int combined = 0;
+        for (int i = 0; i < signals.length; i++) {
+            int actual = BodyBridgeContract.StopSignal.valueOf(signals[i]).mask;
+            check(actual == masks[i] && (combined & actual) == 0, "stable non-overlapping stop bit: " + signals[i]);
+            combined |= actual;
+        }
+        check(combined == 16383 && BodyBridgeContract.STOPPED == 0 && BodyBridgeContract.STOP_UNAVAILABLE == -1,
+                "unavailable remains distinct from native stopped and the combined stop mask");
+    }
+
     private static void movementRegression() {
+        // Boundary contract: carrier observations preserve the existing Lua vocabulary.
+        String[] movementResults = {"IDLE", "MOVING", "REACHED", "FAILED", "PATH_ENDED", "TIMEOUT"};
+        ProbeMovement.Outcome[] outcomes = ProbeMovement.Outcome.values();
+        check(outcomes.length == movementResults.length, "all movement outcomes covered by bridge contract");
+        for (int i = 0; i < outcomes.length; i++)
+            check(ProbeMovement.MoveStatus.from(outcomes[i]).name().equals(movementResults[i]),
+                    "movement outcome keeps bridge spelling: " + outcomes[i]);
+        check(ProbeMovement.PathStatus.WORKING.toString().equals("Working")
+                && ProbeMovement.PathStatus.FAILED.toString().equals("Failed")
+                && ProbeMovement.PathStatus.SUCCEEDED.toString().equals("Succeeded"),
+                "native path diagnostic spelling preserved");
+
         ProbeMovement move = new ProbeMovement();
         AtomicInteger advances = new AtomicInteger();
         java.util.function.Supplier<ProbeMovement.PathResult> step = () -> {

@@ -1,3 +1,4 @@
+local Custody=require 'EmberRoutesProbe/Field/ToolCustody'
 -- Native work leaves. Each effect is observed; no synthetic harvest/forage loot.
 require 'TimedActions/ISCleanBlood'
 require 'TimedActions/ISChopTreeAction'
@@ -43,9 +44,9 @@ local function canUse(npc,item,jobId)
     local npcId=EmberRoutesProbeJava and EmberRoutesProbeJava.carrierId and EmberRoutesProbeJava.carrierId(npc)
     if type(npcId)~='string' or npcId=='' then return nil end
     if jobId then
-        return Store.validToolUse(npcId,jobId,item:getID()) or Store.canClaimTool(npcId,item:getID())
+        return Custody.validUse(npcId,jobId,item:getID()) or Custody.canClaim(npcId,item:getID())
     end
-    return Store.canClaimTool(npcId,item:getID())
+    return Custody.canClaim(npcId,item:getID())
 end
 function O.supplies(npc,kind,jobId)
     local inv=npc:getInventory()
@@ -70,7 +71,7 @@ local function ownedTools(c)
     for _,id in ipairs(c.job.payload.target.tools or {}) do
         local inv=c.npc:getInventory() local item=inv:getFirstEvalRecurse(function(i) return i:getID()==id end)
         local valid=item and (Store.validField(c.job,c.token,'item:'..id)
-            or Store.validToolUse(c.job.npcId,c.job.id,id))
+            or Custody.validUse(c.job.npcId,c.job.id,id))
         if not valid then return nil end
         result[#result+1]=item
     end
@@ -229,7 +230,7 @@ local function corpse(c,t)
         if item then
             local id=item:getID()
             local owner=Store.owner(id)
-            local allowed=not owner or owner.taskId==c.job.id or Store.canClaimTool(c.job.npcId,id)
+            local allowed=not owner or owner.taskId==c.job.id or Custody.canClaim(c.job.npcId,id)
             if not allowed then c.reason='FIELD_HANDS_OCCUPIED' return 'Failure' end
             local time=equipTime(c.npc,item)
             c.node=Native.new(c,{kind='UNEQUIP',create=function() return ISUnequipAction:new(c.npc,item,time) end,
@@ -420,7 +421,17 @@ local function waste(c,t)
     c.approach=nil c.path=nil
     local own=c.npc:getInventory()
     if require('EmberRoutesProbe/Work/LaborProducers').freeCarry(c.npc)<item:getUnequippedWeight() then c.reason='FIELD_CARRY_FULL' return 'Failure' end
+    local Obligations=require 'EmberRoutesProbe/Field/FieldObligations'
     c.node=Native.new(c,{kind='TAKE_WASTE',transfer=item,
+        before=function()
+            if Record.asset(c.job,item:getID()) then return false end
+            if item:getContainer()~=ep.container or not ep.container:getItems():contains(item) then return false end
+            local id,op=Obligations.create(c.job,item:getID(),ep.id,true)
+            return c.change(function(j)
+                j.payload.assets[#j.payload.assets+1]={id=item:getID(),fullType=item:getFullType(),
+                    custody='PENDING_TAKE',obligationId=id}
+            end,nil,{op})
+        end,
         valid=function()
             return require('EmberRoutesProbe/Warehouse/ContainerRegistry').revalidate(ep,'take','local-world')
                 and require('EmberRoutesProbe/Warehouse/ContainerRegistry').logistics(ep)=='STORAGE'
@@ -431,15 +442,31 @@ local function waste(c,t)
         create=function() return ISInventoryTransferAction:new(c.npc,item,ep.container,own) end,
         observe=function(ok,finished)
             if item:getContainer()==own and own:getItems():contains(item) and not ep.container:getItems():contains(item) then
-                local saved=c.change(function(j)
-                    if not Record.asset(j,item:getID()) then
-                        j.payload.assets[#j.payload.assets+1]={id=item:getID(),fullType=item:getFullType(),custody='HELD'}
-                    end
-                end)
+                local asset=Record.asset(c.job,item:getID())
+                local owed=asset and Obligations.record(asset.obligationId,c.job.id,item:getID())
+                if not owed or owed.state~='RECONCILE_REQUIRED' then return false,false end
+                local saved=c.change(function(j) Record.asset(j,item:getID()).custody='HELD' end,nil,
+                    {{action='CONFIRM',id=owed.id,expectedRevision=owed.revision,
+                        evidence={effects='KNOWN',itemId=item:getID(),originalPresent=true}}})
                 require('EmberRoutesProbe/Warehouse/ContainerRegistry').inventoryChanged(ep.container)
                 return saved,true
             end
-            return item:getContainer()==ep.container,false,not finished
+            local unchanged=item:getContainer()==ep.container and ep.container:getItems():contains(item)
+            local asset=Record.asset(c.job,item:getID())
+            if unchanged and finished and asset then
+                local owed=Obligations.record(asset.obligationId,c.job.id,item:getID())
+                local attempt=c.job.payload.attempt
+                if not owed or not attempt then return false,false end
+                local saved=c.change(function(j)
+                    for index,value in ipairs(j.payload.assets) do
+                        if value.id==item:getID() then table.remove(j.payload.assets,index) break end
+                    end
+                end,nil,{{action='SETTLE',id=owed.id,expectedRevision=owed.revision,
+                    evidence={kind='UNCHANGED',effects='KNOWN',itemId=item:getID(),destinationId=ep.id,
+                        originalPresent=true,attemptId=attempt.id}}})
+                return saved,false
+            end
+            return unchanged,false,not finished
         end})
     if not c.node then c.reason=c.reason or 'FIELD_NATIVE_CREATE_FAILED' return 'Failure' end
     return 'Running'
